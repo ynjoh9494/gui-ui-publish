@@ -1,0 +1,20 @@
+# 버전 태그(v1.2.3)를 push하면 검사·빌드 후 zip과 사용 안내를 GitHub Release에 올린다. 태그는 npm run release로 만든다.
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node scripts/release.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

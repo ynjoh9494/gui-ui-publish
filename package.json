@@ -1,0 +1,25 @@
+{
+  "name": "gui-ui-publish",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test --disable-warning=ExperimentalWarning test/*.test.ts",
+    "benchmark": "node scripts/benchmark-performance.ts",
+    "check": "npm run typecheck && npm test && npm run build",
+    "walkthrough": "node build.mjs && node scripts/preview-walkthrough.mjs",
+    "release": "node scripts/release.mjs",
+    "guide-screens": "node build.mjs && node scripts/guide-screens.mjs"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.141.0",
+    "@types/node": "^26.6.5",
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.64.1",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

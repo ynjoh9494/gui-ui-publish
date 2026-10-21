@@ -1,0 +1,15 @@
+{
+  "name": "GUI·UI Publish",
+  "id": "1694308491190572655",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "dist/ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "menu": [
+    { "name": "GUI Publish", "command": "gui" },
+    { "name": "UI Flipbook", "command": "ui" }
+  ],
+  "networkAccess": { "allowedDomains": ["none"], "reasoning": "파일 내부 데이터만 사용하며 외부 서버와 통신하지 않는다." },
+  "permissions": ["currentuser"]
+}

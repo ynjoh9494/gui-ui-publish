@@ -1,0 +1,101 @@
+import { COPY } from './copy.ts';
+import { flipbookHistoryRows } from './history.ts';
+import type { State } from './store.ts';
+import type { Flipbook, FlipbookKind, FlipbookScale, TagSnapshot, Team } from './types.ts';
+
+// 플립북 페이지에 반영할 내용. 전달 작업마다 따로 적용하지 않고 플립북의 현재 상태로 맞추므로
+// 같은 전달을 다시 실행하거나 여러 건이 밀려 있어도 이미지·이력 행이 중복되지 않는다.
+
+// 이력 행. Screen ID·버전은 표시하지 않는다(2026-10-20 사용자 결정).
+export interface FlipbookRow {
+  // 이력 행을 다시 찾는 표식(팀·배포 작업 ID). 같은 배포의 여러 화면은 한 줄이다.
+  key: string;
+  team: Team;
+  tag: TagSnapshot;
+  // 태그에 연결할 팔레트 색. 태그 컴포넌트에 이 색 변수와 태그 이름을 넣는다.
+  colorKey: string;
+  description: string;
+  worker: string;
+  at: string;
+}
+
+// 플립북에 놓을 GUI. 원본 프레임을 바로 복사해 넣는다. key가 GUI 영역의 표식과 같으면 다시 복사하지 않는다.
+export interface FlipbookGui { uid: string; code: string; version: number; key: string; sourceNodeId: string | null; scale?: FlipbookScale }
+
+export interface FlipbookView {
+  flipbookId: string;
+  kind: FlipbookKind;
+  name: string;
+  // 플러그인이 제목에 쓴 적 있는 이름. 제목이 이 중 하나일 때만 현재 이름으로 바꾸고, 사용자가 고친 제목은 둔다.
+  titleNames: string[];
+  category: { key: string; name: string; order: number };
+  // 플립북 프레임이 있는(만들) 페이지
+  pageId: string | null;
+  // 선택한 순서. 정책은 비어 있다. 상단 input-cell-id에 이 순서로 Screen ID 태그를 넣는다.
+  gui: FlipbookGui[];
+  scale: FlipbookScale;
+  // 1x 화면의 가로 크기(설정). GUI 영역 폭이기도 하다.
+  guiWidth: number;
+  // 상단 Status: GUI·UI 구분 없이 마지막 기록의 태그
+  status: FlipbookRow | null;
+  // 최신순. 첫 행은 최신 영역, 나머지는 Previous 영역에 놓는다.
+  rows: FlipbookRow[];
+  // 새로 만들 때 Section 안에서 놓을 자리: 이 플립북 바로 다음(null이면 맨 앞, 없으면 맨 뒤)
+  after?: string | null;
+  // 플러그인에서 제목을 바꿨다. 캔버스에서 고친 제목도 새 제목으로 바꾼다.
+  retitle?: boolean;
+}
+
+// 1x 화면 가로 크기(2026-10-20 사용자 결정): 설정한 1x 폭이 GUI 영역 폭이고,
+// 1/2x는 간격을 포함해 두 장, 1/4x는 네 장이 1x 폭에 꼭 들어가는 크기다.
+export const GUI_GAP = 12;
+export const GUI_WIDTH_MIN = 200;
+export const GUI_WIDTH_MAX = 3840;
+export function guiTargetWidth(width: number, scale: FlipbookScale): number {
+  const count = Math.round(1 / scale);
+  return (width - GUI_GAP * (count - 1)) / count;
+}
+export function validGuiWidth(width: number): boolean {
+  return Number.isInteger(width) && width >= GUI_WIDTH_MIN && width <= GUI_WIDTH_MAX;
+}
+
+export const NO_CATEGORY_KEY = '__none__';
+export const POLICY_CATEGORY_KEY = '__policy__';
+// 템플릿 원본 컴포넌트의 제목 기본값
+export const TEMPLATE_TITLE = COPY.coreFlipbook001;
+
+function pad(n: number): string { return String(n).padStart(2, '0'); }
+
+// 템플릿 이력 행의 날짜 형식(MM/DD HH:mm)
+export function formatShort(ms: number, utcOffsetMinutes: number): string {
+  const d = new Date(ms + utcOffsetMinutes * 60000);
+  return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+}
+
+export function guiKey(uid: string, version: number): string {
+  return `${uid}@${version}`;
+}
+
+// 화면이 여러 개여도 첫 번째로 선택한 화면의 이름만 자동 제목으로 쓴다.
+export function defaultTitle(kind: FlipbookKind, screens: { name: string }[]): string {
+  if (!screens.length) return '';
+  return screens[0].name;
+}
+
+export function flipbookView(state: State, flipbookId: string): FlipbookView {
+  const fb: Flipbook | undefined = state.flipbooks.get(flipbookId);
+  if (!fb) throw new Error(COPY.coreFlipbook002);
+  const offset = state.project.utcOffsetMinutes;
+  const rows: FlipbookRow[] = flipbookHistoryRows(state, flipbookId).map(r => ({
+    key: `${r.team}:${r.batchId}`, team: r.team, tag: r.tag, colorKey: r.tag.colorKey, description: r.description,
+    worker: r.worker, at: formatShort(r.committedAt, offset),
+  }));
+  return {
+    flipbookId, kind: fb.kind, name: fb.title, titleNames: [TEMPLATE_TITLE, ...fb.titleNames],
+    category: fb.category, pageId: fb.pageId ?? state.project.flipbookPageId,
+    gui: fb.screens.map(s => ({
+      uid: s.uid, code: s.code, version: s.version, key: guiKey(s.uid, s.version), sourceNodeId: state.screens.get(s.uid)?.source?.nodeId ?? null, scale: s.scale ?? fb.scale,
+    })),
+    scale: fb.scale, guiWidth: state.project.guiWidth, status: rows[0] ?? null, rows,
+  };
+}

@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GUI·UI Publish 사용 안내</title>
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --text: #1d2125; --muted: #5b636b; --line: #e1e4e8;
+  --accent: #2563eb; --accent-soft: #e8efff; --warn: #b45309; --warn-soft: #fff6e5;
+  --red: #e03131; --yellow: #f59f00; --gray-dot: #adb5bd; --code: #f1f3f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15171a; --surface: #1e2125; --text: #e7e9eb; --muted: #a0a7ae; --line: #33383e;
+    --accent: #7aa2ff; --accent-soft: #1f2a44; --warn: #f0b45a; --warn-soft: #3a2c14; --code: #2a2e33;
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 16px; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.7 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif;
+  word-break: keep-all; overflow-wrap: anywhere;
+}
+a { color: var(--accent); }
+.layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 40px; max-width: 1120px; margin: 0 auto; padding: 40px 24px 80px; }
+nav.toc { position: sticky; top: 24px; align-self: start; font-size: 13.5px; }
+nav.toc strong { display: block; margin-bottom: 8px; color: var(--muted); font-size: 12px; letter-spacing: .04em; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; }
+nav.toc li a { display: block; padding: 5px 10px; border-left: 2px solid var(--line); color: var(--text); text-decoration: none; }
+nav.toc li a:hover { border-left-color: var(--accent); color: var(--accent); }
+main { min-width: 0; }
+header.hero { margin-bottom: 32px; }
+header.hero h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.3; }
+header.hero .meta { color: var(--muted); font-size: 13.5px; }
+header.hero .lead { margin: 16px 0 0; font-size: 16px; }
+section { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 28px 32px; margin-bottom: 20px; }
+h2 { margin: 0 0 16px; font-size: 21px; line-height: 1.4; }
+h3 { margin: 28px 0 10px; font-size: 16.5px; }
+h3:first-of-type { margin-top: 8px; }
+p { margin: 0 0 12px; }
+ul, ol { margin: 0 0 12px; padding-left: 22px; }
+li { margin: 3px 0; }
+b, strong { font-weight: 650; }
+kbd, code { font: 13px/1.4 ui-monospace, Consolas, monospace; background: var(--code); border-radius: 4px; padding: 1px 6px; }
+.ui { font-weight: 650; }
+.ui::before { content: "「"; font-weight: 400; color: var(--muted); }
+.ui::after { content: "」"; font-weight: 400; color: var(--muted); }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 16px 0 4px; }
+.card { border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+.card h4 { margin: 0 0 6px; font-size: 15px; }
+.card p { margin: 0; color: var(--muted); font-size: 14px; }
+.card .who { display: inline-block; margin-bottom: 8px; font-size: 12px; color: var(--accent); background: var(--accent-soft); border-radius: 99px; padding: 1px 10px; }
+
+.flow { display: flex; align-items: stretch; gap: 6px; margin: 18px 0 8px; }
+.flow .node { flex: 1 1 0; min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 13.5px; background: var(--bg); }
+.flow .node b { display: block; font-size: 14px; margin-bottom: 2px; }
+.flow .node.by-gui { border-color: var(--accent); }
+.flow .node.by-ui { border-color: var(--yellow); }
+.flow .arrow { align-self: center; color: var(--muted); font-size: 18px; }
+.legend { font-size: 13px; color: var(--muted); }
+
+.steps { counter-reset: step; list-style: none; padding: 0; margin: 12px 0 16px; }
+.steps > li { counter-increment: step; position: relative; padding: 0 0 14px 40px; margin: 0; }
+.steps > li::before {
+  content: counter(step); position: absolute; left: 0; top: 1px; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--accent); color: #fff; font-size: 13px; font-weight: 700; display: grid; place-items: center;
+}
+.steps > li:not(:last-child)::after { content: ""; position: absolute; left: 12.5px; top: 30px; bottom: 2px; width: 1px; background: var(--line); }
+.steps > li > b:first-child { display: block; }
+
+.note { border-radius: 10px; padding: 12px 16px; margin: 14px 0; font-size: 14px; background: var(--accent-soft); }
+.note.warn { background: var(--warn-soft); }
+.note > b:first-child { display: block; margin-bottom: 2px; }
+.note.warn > b:first-child { color: var(--warn); }
+.note ul { margin: 4px 0 0; }
+
+table { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; font-size: 13px; white-space: nowrap; }
+td:first-child { white-space: nowrap; font-weight: 600; }
+.table-wrap { overflow-x: auto; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.dot.red { background: var(--red); } .dot.yellow { background: var(--yellow); } .dot.gray { background: var(--gray-dot); }
+figure { margin: 16px 0 20px; }
+figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 2px 10px rgba(0, 0, 0, .06); }
+figure.narrow img { max-width: 560px; }
+figcaption { margin-top: 8px; color: var(--muted); font-size: 13px; }
+.download { display: inline-block; margin-top: 4px; padding: 8px 16px; border-radius: 8px; background: var(--accent); color: #fff; text-decoration: none; font-weight: 600; }
+footer { color: var(--muted); font-size: 13px; text-align: center; margin-top: 28px; }
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: minmax(0, 1fr); padding: 24px 16px 60px; gap: 0; }
+  nav.toc { display: none; }
+  section { padding: 22px 18px; }
+  header.hero h1 { font-size: 25px; }
+  .flow { flex-direction: column; }
+  .flow .arrow { transform: rotate(90deg); }
+}
+@media print {
+  body { background: #fff; }
+  nav.toc { display: none; }
+  .layout { grid-template-columns: 1fr; padding: 0; }
+  section { break-inside: avoid-page; border: none; padding: 12px 0; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="목차">
+  <strong>목차</strong>
+  <ol>
+    <li><a href="#about">이 플러그인은</a></li>
+    <li><a href="#flow">전체 흐름</a></li>
+    <li><a href="#install">설치와 업데이트</a></li>
+    <li><a href="#setup">초기 세팅</a></li>
+    <li><a href="#gui">GUI Publish 사용법</a></li>
+    <li><a href="#ui">UI Flipbook 사용법</a></li>
+    <li><a href="#tips">알아 둘 점</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="hero">
+  <h1>GUI·UI Publish 사용 안내</h1>
+  <div class="meta">버전 {{VERSION}} · {{DATE}}</div>
+  <p class="lead">GUI팀이 확정한 화면을 UI팀의 플립북(화면설계서 페이지)에 바로 반영하고, 어떤 화면이 언제 바뀌었는지 기록으로 남기는 Figma 플러그인입니다.</p>
+  <p class="meta">이 문서의 그림은 예시 데이터로 만든 플러그인 화면입니다.</p>
+</header>
+
+<section id="about">
+  <h2>이 플러그인은</h2>
+  <p>GUI팀과 UI팀이 <b>하나의 Figma 파일</b>에서 함께 씁니다. GUI 원본 화면을 고치고 배포하면, 그 화면을 쓰는 플립북에 최신 GUI가 자동으로 들어가고 UI팀에게 수정 사실이 표시됩니다.</p>
+  <div class="cards">
+    <div class="card">
+      <span class="who">GUI 담당</span>
+      <h4>GUI Publish</h4>
+      <p>원본 화면을 지난 배포와 비교해 바뀐 화면을 찾고, 화면 이름·Screen ID·카테고리를 정해 배포(확정)합니다.</p>
+    </div>
+    <div class="card">
+      <span class="who">UI 담당</span>
+      <h4>UI Flipbook</h4>
+      <p>화면을 골라 플립북을 만들고, GUI가 다시 배포된 플립북을 확인해 상태와 코멘트를 남깁니다.</p>
+    </div>
+  </div>
+  <div class="note">
+    <b>기록은 모두 Figma 파일 안에 저장됩니다</b>
+    외부 서버나 팀 라이브러리를 쓰지 않습니다. 설정과 배포 기록은 파일에 저장되므로 같은 파일을 여는 사람은 모두 같은 내용을 봅니다.
+  </div>
+</section>
+
+<section id="flow">
+  <h2>전체 흐름</h2>
+  <div class="flow" role="list">
+    <div class="node by-gui" role="listitem"><b>① GUI 원본 수정</b>GUI 원본 페이지에서 화면을 고칩니다.</div>
+    <div class="arrow" aria-hidden="true">→</div>
+    <div class="node by-gui" role="listitem"><b>② 변경사항 확인</b>GUI Publish가 지난 배포와 비교해 바뀐 화면을 표시합니다.</div>
+    <div class="arrow" aria-hidden="true">→</div>
+    <div class="node by-gui" role="listitem"><b>③ 배포</b>화면 정보를 정하고 확정합니다. 썸네일과 기록이 남습니다.</div>
+    <div class="arrow" aria-hidden="true">→</div>
+    <div class="node by-ui" role="listitem"><b>④ 플립북 자동 반영</b>그 화면을 쓰는 플립북의 GUI 영역이 새 화면으로 바뀌고 빨간 점이 붙습니다.</div>
+    <div class="arrow" aria-hidden="true">→</div>
+    <div class="node by-ui" role="listitem"><b>⑤ 확인 완료</b>UI Flipbook에서 수정된 화면을 보고 상태·코멘트를 남깁니다.</div>
+  </div>
+  <p class="legend">파란 테두리는 GUI Publish, 노란 테두리는 UI Flipbook에서 하는 일입니다.</p>
+</section>
+
+<section id="install">
+  <h2>설치와 업데이트</h2>
+  <div class="note warn">
+    <b>Figma 데스크톱 앱이 필요합니다</b>
+    zip으로 받은 플러그인(개발 플러그인)은 웹 브라우저의 Figma에서는 불러올 수 없습니다.
+  </div>
+  <h3>처음 설치</h3>
+  <ol class="steps">
+    <li><b>zip 압축 풀기</b>압축을 푼 폴더를 지우지 않을 곳(예: <code>문서\FigmaPlugins\GUIUIPublish</code>)에 둡니다. Figma가 이 폴더의 파일을 직접 읽으므로 폴더를 옮기거나 지우면 플러그인이 실행되지 않습니다.</li>
+    <li><b>Figma에서 불러오기</b>Figma 데스크톱 앱에서 아무 디자인 파일이나 열고, 메뉴 <span class="ui">Plugins</span> → <span class="ui">Development</span> → <span class="ui">Import plugin from manifest…</span>를 눌러 폴더 안의 <code>manifest.json</code>을 고릅니다.</li>
+    <li><b>실행</b><span class="ui">Plugins</span> → <span class="ui">Development</span> → <span class="ui">GUI·UI Publish</span>에서 <span class="ui">GUI Publish</span> 또는 <span class="ui">UI Flipbook</span>을 고릅니다. <kbd>Ctrl</kbd>+<kbd>/</kbd>(Mac은 <kbd>⌘</kbd>+<kbd>/</kbd>)로 열리는 빠른 실행 창에서 이름으로 찾아도 됩니다.</li>
+  </ol>
+  <h3>업데이트</h3>
+  <p>새 버전이 나오면 아래 링크에서 최신 zip을 받아, 처음 설치한 폴더에 압축을 풀어 <b>덮어씁니다</b>. 다시 불러올 필요 없이 플러그인을 다시 실행하면 새 버전이 적용됩니다. 지금 버전은 이 문서 맨 위에 적혀 있습니다.</p>
+  <a class="download" href="{{DOWNLOAD_URL}}">최신 버전 받기</a>
+</section>
+
+<section id="setup">
+  <h2>초기 세팅</h2>
+  <p>설정은 Figma 파일마다 따로 저장됩니다. <b>파일 하나에 한 번, 담당자 한 명</b>이 아래를 정해 두면 나머지 팀원은 바로 사용할 수 있습니다. 두 명령 모두 머리 오른쪽의 톱니바퀴 버튼 <span class="ui">관리</span>에서 정합니다.</p>
+
+  <h3>GUI Publish → 관리</h3>
+  <ol class="steps">
+    <li><b>GUI 원본 범위</b>변경사항을 확인할 GUI 원본 페이지를 추가합니다. 여러 페이지를 지정할 수 있습니다. 화면 프레임은 페이지 최상위나 Section 안(중첩 Section 포함)에 있어야 찾을 수 있습니다.</li>
+    <li><b>Screen ID 규칙</b>플랫폼 Prefix와 카테고리 코드를 정합니다. 자동으로 만드는 Screen ID는 <code>{Prefix}_{카테고리 코드}_{번호 3자리}</code> 형식입니다(예: <code>STB_HO_001</code>). 카테고리 코드는 카테고리를 만들 때 이름에서 두 글자로 자동 생성되며 바꿀 수 있습니다.</li>
+    <li><b>작업자</b>배포 이력에 남길 작업자 이름을 등록합니다. 배포할 때 입력란에서 바로 추가할 수도 있습니다.</li>
+  </ol>
+  <figure class="narrow">
+    <img src="screens/gui-settings.png" alt="GUI Publish 관리 화면: GUI 원본 범위, Screen ID, 작업자 등의 항목">
+    <figcaption>GUI Publish → 관리. 항목을 눌러 펼칩니다.</figcaption>
+  </figure>
+
+  <h3>UI Flipbook → 관리</h3>
+  <ol class="steps">
+    <li><b>플립북 페이지</b>플립북을 둘 페이지를 하나 이상 추가합니다.</li>
+    <li><b>템플릿</b>캔버스에서 템플릿 프레임을 선택한 뒤 템플릿으로 지정합니다. 템플릿이 아래 요건을 갖추지 않으면 지정할 때 빠진 항목을 알려 줍니다.</li>
+    <li><b>화면 크기</b>플립북에 넣는 1x 화면의 가로 크기입니다(기본 1920px). 1/2x는 두 장, 1/4x는 네 장이 1x 폭에 들어가도록 이 값으로 계산합니다.</li>
+  </ol>
+  <figure class="narrow">
+    <img src="screens/ui-settings.png" alt="UI Flipbook 관리 화면: 플립북 페이지, 템플릿 지정 버튼, 화면 크기">
+    <figcaption>UI Flipbook → 관리. 캔버스에서 템플릿 프레임을 선택한 뒤 「캔버스에서 선택한 템플릿 프레임을 템플릿으로 지정」을 누릅니다.</figcaption>
+  </figure>
+
+  <h3>템플릿 요건</h3>
+  <p>템플릿은 일반 프레임 하나이며, 안에 다음 레이어가 이 이름으로 있어야 합니다. 플러그인은 템플릿을 복제하고 안의 컴포넌트를 인스턴스로 바꿔 플립북을 만듭니다.</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>레이어 이름</th><th>종류</th><th>들어가야 하는 것</th></tr></thead>
+    <tbody>
+      <tr><td>UI Title</td><td>컴포넌트</td><td>큰 제목 텍스트, <code>Status</code> 인스턴스</td></tr>
+      <tr><td>Flipbook-Title</td><td>컴포넌트</td><td><code>input-cell-chapter</code>·<code>input-cell-page</code> 안의 텍스트, <code>input-cell-id</code>(<b>슬롯</b>)</td></tr>
+      <tr><td>GUI Image Slot</td><td>프레임</td><td>GUI 화면 복사본이 들어갈 영역(컴포넌트가 아닌 일반 프레임)</td></tr>
+      <tr><td>Update History List</td><td>컴포넌트</td><td>이력 행이 들어갈 <code>List</code>(<b>슬롯</b>)</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>템플릿과 <b>같은 페이지</b>에 태그 컴포넌트 <code>TagBig</code>(상단 Status), <code>TagSmall</code>(이력 행), 컴포넌트 세트 <code>Team</code>의 <code>Tag=System</code>(Screen ID 태그)도 있어야 합니다.</p>
+</section>
+
+<section id="gui">
+  <h2>GUI Publish 사용법</h2>
+  <h3>배포하기</h3>
+  <ol class="steps">
+    <li><b>변경사항 확인</b><span class="ui">변경사항 확인</span>을 눌러 원본 화면을 지난 배포와 비교합니다. 확인을 마쳐야 배포할 화면을 고를 수 있습니다. 캔버스에서 고른 화면만 비교하려면 옆의 <span class="ui">선택 화면 변경사항 확인</span>을 씁니다.</li>
+    <li><b>화면 목록 보기</b>카테고리별로 화면과 상태 아이콘이 나옵니다(아래 표). 화면을 누르면 캔버스의 원본으로 이동하고, <kbd>Shift</kbd>·<kbd>Ctrl</kbd>로 여러 화면을 고릅니다. 검색과 필터로 변경된 화면만 볼 수 있습니다.</li>
+    <li><b>배포 켜기</b>이번에 배포할 화면의 <span class="ui">배포</span>를 켜고 등록 방식을 고릅니다. 새 화면으로 등록, <span class="ui">기존 화면 교체</span>(기존 화면의 새 버전으로 기록), <span class="ui">화면이 아님</span>(배포 뒤 목록에서 제외) 중 하나입니다.</li>
+    <li><b>화면 정보 입력</b>화면 이름, Screen ID, 카테고리, <span class="ui">독립 화면</span>·<span class="ui">케이스</span> 관계를 정합니다. 카테고리를 고르면 Screen ID가 규칙대로 자동 입력되고 직접 고칠 수도 있습니다. 케이스는 기본 화면을 고르면 다음 번호가 들어갑니다. 신규 화면은 프레임 이름의 대괄호 안에 Screen ID가 있으면(예: <code>[STB_HO_001] 홈</code>) 그 ID를 씁니다.</li>
+    <li><b>태그·작업자, 추가 설명</b>배포 이력에 남을 태그와 작업자를 고릅니다. 아래쪽 <span class="ui">추가 설명</span>은 배포 한 번에 하나이며 선택 입력입니다.</li>
+    <li><b>최종 확인 → 확정</b><span class="ui">최종 확인</span>에서 포함한 화면과 필수 정보 미충족 개수를 봅니다. 빨간 테두리로 표시된 입력을 채운 뒤, 배포 확인 요약을 보고 확정합니다.</li>
+  </ol>
+  <figure>
+    <img src="screens/gui-form.png" alt="화면 목록에서 화면을 골라 배포를 켜고 등록 방식, 화면 이름, Screen ID, 카테고리를 입력한 모습">
+    <figcaption>왼쪽 목록에서 화면을 고르고 오른쪽에서 배포를 켠 뒤 화면 정보를 입력합니다. 아래쪽에 추가 설명과 최종 확인이 있습니다.</figcaption>
+  </figure>
+  <figure>
+    <img src="screens/gui-confirm.png" alt="GUI 배포 최종 확인 창: 신규·변경·삭제 개수와 화면별 작업, 버전, 태그, 작업자">
+    <figcaption>최종 확인 창. 내용을 확인하고 「배포 확정」을 누릅니다.</figcaption>
+  </figure>
+  <div class="note">
+    <b>확정하면 일어나는 일</b>
+    <ul>
+      <li>화면마다 1/4 크기 썸네일이 <span class="ui">GUI 썸네일 (자동 관리)</span> 페이지에 남습니다.</li>
+      <li>그 화면을 쓰는 플립북의 GUI 영역에 원본 복사본이 바로 들어가고, 플립북에 빨간 점이 붙습니다.</li>
+      <li>배포 기록이 쌓이며, 배포된 화면을 고르면 <span class="ui">배포 이력</span>과 이전 배포 썸네일을 볼 수 있습니다.</li>
+    </ul>
+  </div>
+
+  <h3>상태 아이콘</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>상태</th><th>뜻</th></tr></thead>
+    <tbody>
+      <tr><td>신규</td><td>아직 등록되지 않은 프레임입니다. 배포를 켜고 등록 방식을 고릅니다.</td></tr>
+      <tr><td>변경 감지</td><td>지난 배포와 다릅니다. 실제로 바뀌었으면 배포하고, 아니면 <span class="ui">변경 무시</span>를 누릅니다.</td></tr>
+      <tr><td>삭제</td><td>등록된 원본 프레임을 GUI 원본 범위에서 찾지 못했습니다. 배포를 켜고 삭제하거나 다른 화면으로 교체합니다.</td></tr>
+      <tr><td>변경사항 없음</td><td>비교에서 차이를 찾지 못했습니다. 필요하면 배포에 포함할 수 있습니다.</td></tr>
+      <tr><td>비교 전</td><td>아직 비교하지 않았습니다. 변경사항 확인을 누릅니다.</td></tr>
+      <tr><td>비교 불가</td><td>원본을 읽거나 비교하지 못했습니다. 다시 확인합니다.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>배포를 켜면 아이콘이 <span class="ui">추가됨</span>·<span class="ui">화면 교체됨</span>·<span class="ui">이전 버전</span>·<span class="ui">화면이 아님</span>·<span class="ui">수정됨</span>·<span class="ui">삭제됨</span>으로 바뀌어 배포 뒤 결과를 미리 보여 줍니다.</p>
+  <figure>
+    <img src="screens/gui-changed.png" alt="배포한 화면이 바뀌어 변경 감지된 모습: 변경 무시 버튼, 이전 배포 썸네일, 배포 이력">
+    <figcaption>배포한 화면을 고친 뒤 다시 확인하면 변경 감지로 나옵니다. 이름 앞에 Screen ID가 붙고, 오른쪽에 변경 무시·이전 배포 썸네일·배포 이력이 보입니다.</figcaption>
+  </figure>
+
+  <h3>다른 파일에서 GUI 페이지를 복사해 왔을 때</h3>
+  <p>페이지를 통째로 복사해 오면 같은 화면도 신규로 보입니다. GUI 원본 범위가 아닌 새 페이지에 붙여 넣은 뒤, 머리의 <span class="ui">새 버전 페이지</span> 탭에서 그 페이지를 고르고 <span class="ui">비교</span>를 누릅니다. 화면 내용으로 기존 화면과 연결을 제안하며(「동일」, 「유사 n%」, 「이름 같음」), 연결을 확인한 뒤 <span class="ui">전환</span>을 두 번 누르면 그 페이지가 GUI 원본 범위가 됩니다. 기존 페이지는 바뀌지 않습니다.</p>
+</section>
+
+<section id="ui">
+  <h2>UI Flipbook 사용법</h2>
+  <h3>플립북 만들기</h3>
+  <ol class="steps">
+    <li><b>새 플립북</b>목록 위 <span class="ui">새 플립북</span>을 누르면 고른 플립북 바로 다음 자리에 새 플립북이 미리보기로 들어갑니다. <span class="ui">만들기</span>를 누르기 전에는 저장되지 않습니다. 끌거나 <kbd>Alt</kbd>+<kbd>↑</kbd><kbd>↓</kbd>로 자리를 옮기고 X로 지웁니다.</li>
+    <li><b>제목·위치</b>연필 버튼으로 제목을 정하고, 플립북을 놓을 페이지와 Section을 고릅니다. 새 Section도 추가할 수 있습니다. 제목을 비우면 첫 화면 이름이 제목이 됩니다.</li>
+    <li><b>화면 고르기</b><span class="ui">화면 선택</span>에서 카테고리별로 화면을 고르고, <span class="ui">선택된 화면</span>에서 화면마다(또는 한 번에) 크기를 1x·1/2x·1/4x로 정합니다. 화면을 고르지 않으면 정책 플립북(제목 필수)이 됩니다.</li>
+    <li><b>만들기</b>아래쪽 <span class="ui">플립북 N개 만들기</span>를 누르면 목록 순서대로 캔버스의 정한 자리에 만듭니다.</li>
+  </ol>
+  <figure>
+    <img src="screens/ui-create.png" alt="새 플립북을 목록에 넣고 페이지·Section을 정한 뒤 화면을 선택한 모습">
+    <figcaption>새 플립북은 왼쪽 목록에 미리보기로 들어가고, 오른쪽에서 페이지·Section·화면을 정합니다. 아래쪽 「플립북 N개 만들기」로 캔버스에 만듭니다.</figcaption>
+  </figure>
+  <ul>
+    <li><span class="dot yellow"></span>노란 점은 플립북이 아직 없는 화면, <span class="dot gray"></span>회색 점은 새 플립북에서 고른 화면입니다.</li>
+    <li>화면을 <b>우클릭</b>하면 그 화면 하나로 된 새 플립북을 바로 추가합니다.</li>
+    <li><span class="ui">플립북 없는 화면 일괄 만들기</span>는 페이지와 범위(카테고리·화면 유형·검색)를 정해, 플립북이 없는 화면마다 플립북을 하나씩 만듭니다.</li>
+  </ul>
+
+  <h3>GUI 수정 확인하기</h3>
+  <ol class="steps">
+    <li><b>빨간 점 찾기</b>GUI가 다시 배포된 플립북에는 <span class="dot red"></span>빨간 점이 붙고, 목록 맨 위에 확인이 필요한 플립북 개수가 나옵니다. <span class="ui">업데이트된 화면만 보기</span>를 켜면 그 플립북만 남습니다.</li>
+    <li><b>수정된 화면 보기</b>플립북을 고르면 위쪽에 GUI 썸네일(수정된 화면에 빨간 점)과 배포 이력이, 아래쪽에 확인 영역이 나옵니다.</li>
+    <li><b>상태·코멘트 → 확인 완료</b><span class="ui">상태</span>(기본 「최신」)와 <span class="ui">코멘트</span>(선택)를 남기고 <span class="ui">확인 완료</span>를 누르면 빨간 점이 풀립니다. 상태는 플립북의 Status에, 코멘트는 Update History List에 한 줄로 남습니다. 여러 플립북을 골라 한 번에 처리할 수 있습니다.</li>
+  </ol>
+  <figure>
+    <img src="screens/ui-review.png" alt="빨간 점이 붙은 플립북을 고르면 수정된 화면, 상태, 코멘트, 확인 완료 버튼이 보이는 모습">
+    <figcaption>GUI가 다시 배포된 플립북. 아래쪽 확인 영역에서 수정된 화면을 보고 상태·코멘트를 남긴 뒤 「확인 완료」를 누릅니다.</figcaption>
+  </figure>
+
+  <h3>그 밖의 기능</h3>
+  <ul>
+    <li><b>크기 다시 맞추기</b>: <span class="ui">관리</span>의 화면 크기를 바꾸면 이후 반영되는 플립북부터 적용됩니다. 이미 만든 플립북은 목록에서 골라 상세 위쪽의 <span class="ui">{설정 폭}px로 맞추기</span>를 누릅니다.</li>
+    <li><b>연결 끊김</b>: 캔버스에서 프레임을 찾지 못한 플립북에는 연결 끊김 아이콘이 붙습니다. 필요 없으면 <span class="ui">목록에서 삭제</span>로 뺍니다. 그대로 두면 GUI가 다시 배포될 때 프레임을 새로 만듭니다.</li>
+  </ul>
+
+  <div class="note">
+    <b>플러그인이 바꾸는 곳과 바꾸지 않는 곳</b>
+    플러그인은 큰 제목·Page title, Chapter, Screen ID 태그, Status, GUI 영역, 이력 행만 바꿉니다. <b>Description과 콜아웃은 건드리지 않습니다.</b> GUI 영역 위에 올려 둔 마커는 GUI를 다시 넣을 때 같은 화면의 같은 위치로 따라 옮겨집니다.
+  </div>
+</section>
+
+<section id="tips">
+  <h2>알아 둘 점</h2>
+  <ul>
+    <li><b>튜토리얼</b>: 머리 오른쪽 끝의 파란 물음표 버튼을 누르면 실행한 명령의 주요 흐름을 14단계로 보여 줍니다. 예시 화면에서 진행하므로 실제 파일은 바뀌지 않습니다. <kbd>Esc</kbd>로 언제든 끝낼 수 있습니다.</li>
+    <li><b>원본 프레임 이름</b>: 화면 이름과 Screen ID는 플러그인 기록에만 저장되며 원본 프레임 이름은 바꾸지 않습니다. 배포된 화면은 프레임 이름을 바꿔도 변경 감지로 보지 않습니다.</li>
+    <li><b>자동 관리 페이지</b>: <span class="ui">GUI 썸네일 (자동 관리)</span> 페이지와 DATA 페이지는 플러그인이 관리합니다. 직접 고치지 마세요.</li>
+    <li><b>플립북 프레임 옮기기</b>: 플립북 프레임은 플립북 페이지 안에서만 옮기세요. 다른 페이지로 옮기면 연결 끊김으로 봅니다.</li>
+    <li><b>데이터 초기화</b>: <span class="ui">관리</span>의 <span class="ui">데이터 초기화</span>는 이 파일의 화면 등록·배포 기록·설정을 모두 지웁니다. 캔버스는 지우지 않으며, 되돌리려면 Figma 버전 기록을 써야 합니다.</li>
+    <li><b>큰 화면</b>: 화면이 많거나 크면 변경사항 확인과 배포에 시간이 걸릴 수 있습니다. 변경사항 확인은 진행 중에 취소할 수 있습니다.</li>
+  </ul>
+  <figure class="narrow">
+    <img src="screens/tutorial.png" alt="튜토리얼 첫 단계: 관리 버튼을 밝게 표시하고 말풍선으로 설명하는 모습">
+    <figcaption>튜토리얼은 설명하는 영역만 밝게 남기고 말풍선으로 안내합니다.</figcaption>
+  </figure>
+</section>
+
+<footer>GUI·UI Publish {{VERSION}} · <a href="{{REPO_URL}}">배포 페이지</a></footer>
+</main>
+</div>
+</body>
+</html>
