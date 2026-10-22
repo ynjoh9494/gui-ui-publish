@@ -180,6 +180,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   let versionOpen = false;
   // UI Flipbook의 텍스트 편집 탭(2026-10-22 사용자 요청). 관리를 다녀와도 열린 탭을 유지한다.
   let textOpen = false;
+  // 플러그인에 마지막으로 알린 텍스트 편집 탭 표시 여부
+  let textTabSent = false;
   // GUI 화면정보의 이전 배포 썸네일을 펼쳐 두었는가
   let prevThumbOpen = false;
   let sizeBeforeVersion: { width: number; height: number } | null = null;
@@ -396,13 +398,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   const newKind = (n: NewFlipbook) => rowKind({ uids: n.uids, multi: n.uids.length > 1, scale: n.scale });
   // 따로 고르지 않았으면 첫 화면의 카테고리 Section이다. 화면이 없으면 「정책」으로 보내지 않고 그 페이지 맨 아래 Section에 둔다
   // (2026-10-22 사용자 요청). 페이지에 플립북이 없으면 미분류다.
-  function autoSection(n: NewFlipbook): FlipbookSection {
+  // canvas: 이미 계산한 캔버스 배치. 목록 전체를 배치할 때 새 플립북마다 다시 계산하지 않도록 넘긴다.
+  function autoSection(n: NewFlipbook, canvas?: ArrangedGroup[]): FlipbookSection {
     const first = newScreens(n)[0];
     if (first || !state) return defaultSection(first);
-    const onPage = arrangeFlipbooks(state, pages, id => uiScans.get(id)?.spot).filter(g => g.pageId === n.pageId);
+    const onPage = (canvas ?? canvasArrangement()).filter(g => g.pageId === n.pageId);
     return onPage.length ? onPage[onPage.length - 1].section : defaultSection(undefined);
   }
-  const newSection = (n: NewFlipbook): FlipbookSection => n.section ?? autoSection(n);
+  const newSection = (n: NewFlipbook, canvas?: ArrangedGroup[]): FlipbookSection => n.section ?? autoSection(n, canvas);
   // 제목을 비우면 첫 화면 이름, 화면이 없으면 「새 플립북」을 쓴다.
   const newTitle = (n: NewFlipbook): string => n.title.trim() || defaultTitle(newKind(n), newScreens(n));
   const canvasArrangement = (): ArrangedGroup[] => state ? arrangeFlipbooks(state, pages, id => uiScans.get(id)?.spot) : [];
@@ -410,8 +413,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   function arrangement(): ArrangedGroup[] {
     if (!state) return [];
     const moving = new Set(movedFlipbooks.map(m => m.key));
-    const placed = canvasArrangement().map(g => ({ ...g, items: g.items.filter(item => !moving.has(item)) }));
-    const floats = [...newFlipbooks.map(n => ({ key: n.key, pageId: n.pageId, section: newSection(n), after: n.after, seq: n.seq })), ...movedFlipbooks].sort((a, b) => a.seq - b.seq);
+    const canvas = canvasArrangement();
+    const placed = canvas.map(g => ({ ...g, items: g.items.filter(item => !moving.has(item)) }));
+    const floats = [...newFlipbooks.map(n => ({ key: n.key, pageId: n.pageId, section: newSection(n, canvas), after: n.after, seq: n.seq })), ...movedFlipbooks].sort((a, b) => a.seq - b.seq);
     return placeDrafts(placed, floats, pages);
   }
   // 목록에 보이는 순서로 새 플립북·옮긴 기존 플립북의 앞 항목과 순서를 다시 적는다. 같은 자리에 여럿을 넣거나 옮긴 뒤에도 순서가 그대로 남는다.
@@ -621,7 +625,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   }
   // 「취소」·「플립북 N개 만들기」(새 플립북이 없으면 「배치 반영」)
   function newActions(): string {
-    const label = newSubmitting ? '만드는 중…' : newFlipbooks.length ? `플립북 ${newFlipbooks.length}개 만들기` : COPY.uiApp316;
+    const label = newSubmitting ? COPY.uiApp330 : newFlipbooks.length ? `${COPY.uiApp331} ${newFlipbooks.length}${COPY.uiApp332}` : COPY.uiApp316;
     return `<button data-action="new-clear" ${newSubmitting ? 'disabled' : ''}>${COPY.uiApp149}</button>
       <button class="primary" data-action="create-submit" ${newSubmitting || !flipbookPageOptions().length ? 'disabled' : ''}>${label}</button>`;
   }
@@ -897,7 +901,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       return `<div class="group">
         <div class="group-bar" data-group="${esc(g.key)}"><button class="group-head flipbook-head" data-action="group" data-group="${esc(g.key)}" aria-expanded="${open}">
           <span class="caret">${open ? '▾' : '▸'}</span><span class="group-name">${esc(g.name)}</span>
-          <span class="count">${g.items.length - drafts}${drafts ? ` <b class="new-count" title="만들 플립북">+${drafts}</b>` : ''}</span>
+          <span class="count">${g.items.length - drafts}${drafts ? ` <b class="new-count" title="${COPY.uiApp333}">+${drafts}</b>` : ''}</span>
           ${flagged ? `<span class="review-dot group-review" role="img" title="${COPY.uiApp192}" aria-label="${COPY.uiApp192}"></span>` : ''}
         </button></div>
         ${items.map(item => {
@@ -909,10 +913,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
             const name = editing
               ? `<input class="title-input" data-input="new-title" data-key="${esc(n.key)}" value="${esc(n.title)}" placeholder="${esc(defaultTitle(newKind(n), newScreens(n)))}" aria-label="${COPY.uiApp203}">`
               : `<span class="name" data-edit-title="${esc(n.key)}" title="${COPY.uiApp314}">${esc(title)}</span>`;
-            return `<div class="row new-row${sel ? ' selected' : ''}" data-action="new-select" data-key="${esc(n.key)}" data-group="${esc(g.key)}" draggable="${!editing}" tabindex="0" aria-selected="${sel}" title="드래그하거나 Alt+↑↓로 자리를 옮깁니다.">
+            return `<div class="row new-row${sel ? ' selected' : ''}" data-action="new-select" data-key="${esc(n.key)}" data-group="${esc(g.key)}" draggable="${!editing}" tabindex="0" aria-selected="${sel}" title="${COPY.uiApp334}">
               <span class="drag-handle" aria-hidden="true">⠿</span>
               ${name}
-              <button class="icon-button" data-action="new-edit-title" data-key="${esc(n.key)}" title="제목 수정" aria-label="${esc(title)} 제목 수정" aria-pressed="${editing}">${PENCIL_ICON}</button>
+              <button class="icon-button" data-action="new-edit-title" data-key="${esc(n.key)}" title="${COPY.uiApp335}" aria-label="${esc(title)} ${COPY.uiApp335}" aria-pressed="${editing}">${PENCIL_ICON}</button>
               <button class="icon-button" data-action="new-remove" data-key="${esc(n.key)}" title="${COPY.uiApp105}" aria-label="${esc(title)} ${COPY.uiApp105}">${X_ICON}</button>
             </div>`;
           }
@@ -956,7 +960,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     if (error) error.innerHTML = createError ? `<p class="bad" role="alert">${esc(createError)}</p>` : '';
     if ((!newFlipbooks.length && !movedFlipbooks.length) || editingNewShown()) { footer.innerHTML = ''; return; }
     // 구현 기본값(확인 필요): 기존 플립북을 보고 있거나 순서만 바꿔 「플립북 편집」이 없으면 하단에 개수와 버튼을 둔다.
-    const counts = [newFlipbooks.length ? `만들 플립북 <b>${newFlipbooks.length}</b>${COPY.uiApp015}` : '', movedFlipbooks.length ? `${COPY.uiApp315} <b>${movedFlipbooks.length}</b>${COPY.uiApp015}` : ''].filter(Boolean).join(' · ');
+    const counts = [newFlipbooks.length ? `${COPY.uiApp333} <b>${newFlipbooks.length}</b>${COPY.uiApp015}` : '', movedFlipbooks.length ? `${COPY.uiApp315} <b>${movedFlipbooks.length}</b>${COPY.uiApp015}` : ''].filter(Boolean).join(' · ');
     footer.innerHTML = `${createError ? `<p class="bad footer-note" role="alert">${esc(createError)}</p>` : ''}<div class="footer-line">
       <span>${counts}</span><span class="footer-actions">${newActions()}</span></div>`;
   }
@@ -1209,7 +1213,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const heading = renamable && editingAt(fb.id, 'detail')
       ? `<input class="title-input" data-input="fb-title" data-id="${esc(fb.id)}" value="${esc(fb.title)}" placeholder="${esc(defaultTitle(fb.kind, fb.screens))}" aria-label="${COPY.uiApp203}">`
       : `<h2${renamable ? ` data-edit-title="${esc(fb.id)}" title="${COPY.uiApp314}"` : ''}>${esc(entryName(state, entry))}${multi ? ` ${COPY.uiApp046} ${chosen.length - 1}${COPY.uiApp015}` : ''}</h2>`;
-    let top = `<div class="detail-head title-head">${heading}${renamable ? `<button class="icon-button" data-action="fb-edit-title" data-id="${esc(entry.flipbookId)}" title="제목 수정" aria-label="플립북 제목 수정" aria-pressed="${editingAt(fb.id, 'detail')}">${PENCIL_ICON}</button>` : ''}</div>`;
+    let top = `<div class="detail-head title-head">${heading}${renamable ? `<button class="icon-button" data-action="fb-edit-title" data-id="${esc(entry.flipbookId)}" title="${COPY.uiApp335}" aria-label="${COPY.uiApp336}" aria-pressed="${editingAt(fb.id, 'detail')}">${PENCIL_ICON}</button>` : ''}</div>`;
     // 연결이 끊긴 플립북은 목록에서 삭제할 수 있다. 한 번 누르면 삭제한다(2026-10-20 사용자 결정).
     const unlinked = chosen.filter(e => e.estimate === 'missing');
     if (unlinked.length) {
@@ -1438,7 +1442,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const sectionField = addingSection
       ? `<div class="addable"><input data-input="new-section-name" placeholder="새 섹션 이름" aria-label="새 섹션 이름"><button data-action="new-section-confirm">${COPY.uiApp101}</button><button data-action="new-section-cancel">${COPY.uiApp149}</button></div>`
       : `<div class="addable"><select data-input="new-section" aria-label="섹션 선택">
-          ${option('', chosen.length ? `${automatic.name} (화면 카테고리)` : automatic.name, !n.section || n.section.key === automatic.key)}
+          ${option('', chosen.length ? `${automatic.name} ${COPY.uiApp337}` : automatic.name, !n.section || n.section.key === automatic.key)}
           ${choices.map(s => option(s.key, s.name, !!n.section && n.section.key === s.key)).join('')}
         </select><button class="add-button" data-action="new-section-add">${ADD_LABEL}</button></div>`;
     // 머리는 「플립북 편집」이고, 그 아래 페이지 → 섹션 → 제목을 한 줄씩 둔다(2026-10-22 사용자 요청).
@@ -1533,7 +1537,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     setAll(overlay.querySelector('[data-input="bulk-category-all"]'), keys.filter(k => bulk!.categories.has(k)).length, keys.length);
     setAll(overlay.querySelector('[data-input="bulk-screen-all"]'), targets.length, shown.length);
     const submit = overlay.querySelector<HTMLButtonElement>('[data-action="bulk-submit"]')!;
-    submit.textContent = bulk.submitting ? '만드는 중…' : `플립북 ${targets.length}개 만들기`;
+    submit.textContent = bulk.submitting ? COPY.uiApp330 : `${COPY.uiApp331} ${targets.length}${COPY.uiApp332}`;
     submit.disabled = bulk.submitting || !targets.length || !bulk.pageId;
     if (bulk.submitting) for (const control of overlay.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select')) control.disabled = true;
   }
@@ -1971,7 +1975,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
 
   function renderAll() {
     renderTabs(); renderToolbar(); renderList(); renderDetail(); renderFooter(); renderConfirm(); renderVersion(); renderToast();
-    editor.render(textOpen && mode === 'UI' && tab !== 'ADMIN' && !!state);
+    const textShown = textOpen && mode === 'UI' && tab !== 'ADMIN' && !!state;
+    editor.render(textShown);
+    if (textShown !== textTabSent) { textTabSent = textShown; bridge.send({ type: 'textTab', open: textShown }); }
     root.classList.toggle('admin-mode', tab === 'ADMIN');
     applyCollapse();
   }

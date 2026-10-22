@@ -143,6 +143,8 @@ export type ToMain =
   | { type: 'revealNode'; nav: number; nodeId: string }
   // 텍스트 편집: 캔버스에서 고른 텍스트 레이어 하나의 문단(본문·목록 단계·굵기)을 읽거나, 편집한 문단을 그 레이어에 쓴다.
   | { type: 'textImport' }
+  // 텍스트 편집 탭이 보이는지. 보이는 동안만 캔버스 선택이 바뀔 때 대상(textTarget)을 보낸다.
+  | { type: 'textTab'; open: boolean }
   | { type: 'textApply'; paragraphs: RichParagraph[] }
   // save: 손잡이를 놓았을 때. 다음 실행 때 이 크기로 연다.
   | { type: 'resize'; width: number; height: number; save?: boolean; compact?: boolean };
@@ -180,7 +182,7 @@ export type ToUi =
   | { type: 'pages'; pages: PageInfo[] }
   | { type: 'thumbnails'; items: { hash: string; bytes: Uint8Array | null }[] }
   | { type: 'textImported'; paragraphs: RichParagraph[] }
-  // 텍스트 편집 대상. 캔버스 선택이 바뀔 때와 처음 열 때 보낸다.
+  // 텍스트 편집 대상. 탭이 보이는 동안 캔버스 선택이 바뀔 때와 탭을 열 때 보낸다.
   | { type: 'textTarget'; target: SelectionTarget }
   | { type: 'notice'; message: string }
   // 진행 중인 작업. null이면 끝났다.

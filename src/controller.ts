@@ -79,6 +79,8 @@ export class Controller {
   private selectedScan: Record<Team, boolean> = { GUI: false, UI: false };
   private previousCanvasIds: string[] = [];
   private canvasSelectionSeq = 0;
+  // 텍스트 편집 탭이 보이는 동안만 캔버스 선택마다 대상을 찾는다(선택마다 조상·하위 트리를 읽는 작업이라 탭이 닫혀 있으면 하지 않는다).
+  private textTabOpen = false;
   private scanningGui = false;
   // 새 버전 페이지 비교 결과. 전환은 이 결과의 프레임만 연결하고, 계산한 지문을 그대로 원본 목록으로 쓴다.
   // sources·common: 유사도 근거를 제안 때와 같은 규칙으로 다시 계산하는 데 쓴다.
@@ -110,7 +112,7 @@ export class Controller {
           if (ensureScreenIdRules(this.store, this.host.actor)) this.store.reload();
           this.host.post({ type: 'init', mode: this.host.mode, state: toUiWire(this.store.state), actor: this.host.actor, pages: this.host.pages(), issues: this.store.issues.map(i => `${i.key}: ${i.message}`) });
           this.postEntries();
-          if (this.host.mode === 'UI') this.postTextTarget();
+          if (this.host.mode === 'UI' && this.textTabOpen) this.postTextTarget();
           // UI Flipbook 목록은 프레임이 캔버스에 있는지 바로 보여 준다(연결 끊김 표시).
           if (this.host.mode === 'UI') { await this.checkTemplate(); await this.linkFlipbooks(); }
           break;
@@ -185,6 +187,10 @@ export class Controller {
           if (latest()) this.host.post({ type: 'nav', nav: msg.nav, ok, message: ok ? '' : COPY.controller016 });
           break;
         }
+        case 'textTab':
+          this.textTabOpen = msg.open;
+          if (msg.open && this.host.mode === 'UI') this.postTextTarget();
+          break;
         case 'textImport': this.host.post({ type: 'textImported', paragraphs: this.host.readSelection() }); break;
         case 'textApply': {
           this.host.post({ type: 'notice', message: writeMessage(await this.host.writeSelection(msg.paragraphs)) });
@@ -592,7 +598,7 @@ export class Controller {
   }
 
   async canvasSelectionChanged(): Promise<void> {
-    if (this.host.mode === 'UI') this.postTextTarget();
+    if (this.host.mode === 'UI' && this.textTabOpen) this.postTextTarget();
     const nodes = this.host.selectionNodeIds();
     if (nodes === null) return;
     const canvasSeq = ++this.canvasSelectionSeq;
@@ -881,6 +887,8 @@ export class Controller {
     const pageIds = [...new Set([...request.rows.map(row => row.pageId || request.pageId), ...moves.map(m => m.pageId)])];
     const usable = (pageId: string) => !!pageId && pageId !== s.state.project.dataPageId && s.state.project.flipbookPageIds.includes(pageId) && this.host.pages().some(p => p.id === pageId);
     if (!pageIds.length || pageIds.some(pageId => !usable(pageId))) throw new Error(COPY.controller063);
+    // 새 행은 기록만 읽어 검사하므로 옮기기 전에 확인한다. 잘못된 행이 있으면 기존 플립북도 옮기지 않는다.
+    const made = request.rows.length ? planFlipbooks(request, guiScreens(s.state), this.host.actor, s.now(), s.newId) : [];
     // 기존 플립북 옮기기(2026-10-22 사용자 요청)를 먼저 반영한다. 새 플립북의 자리(앞 항목)가 옮긴 플립북일 수 있다.
     const moved = moves.length ? await this.moveFlipbooks(moves) : [];
     if (!request.rows.length) {
@@ -889,7 +897,6 @@ export class Controller {
     }
     // 다음 만들기의 기본 페이지로 남긴다.
     if (request.pageId && pageIds.includes(request.pageId) && s.state.project.flipbookPageId !== request.pageId) s.saveProject({ ...s.state.project, flipbookPageId: request.pageId });
-    const made = planFlipbooks(request, guiScreens(s.state), this.host.actor, s.now(), s.newId);
     // 정한 자리: 기존 플립북 ID는 그대로, `row:N`은 같은 요청에서 먼저 만드는 N번째 행의 플립북이다.
     const after = new Map<string, string | null>();
     request.rows.forEach((row, i) => {
@@ -929,19 +936,29 @@ export class Controller {
     const sections = new Map(moves.map(m => [m.flipbookId, s.state.flipbooks.get(m.flipbookId)?.category.key]));
     checkMoves(s.state, moves, s.state.project.flipbookPageIds);
     const done: FlipbookMove[] = [];
+    // 중간에 실패해도 이미 옮긴 프레임은 기록에 남긴 뒤 오류를 낸다. 기록이 옛 자리로 남으면 다음 반영에서 프레임이 되돌아가고,
+    // 다른 페이지로 옮긴 플립북은 옛 페이지에서 찾지 못해 연결이 끊긴 것으로 보인다.
+    let failed = false, failure: unknown = null;
     for (const move of moves) {
-      const ok = await this.host.moveFlipbook({ flipbookId: move.flipbookId, fromPageId: fromPage.get(move.flipbookId)!, pageId: move.pageId, category: move.section, after: move.after });
-      if (ok) done.push(move);
+      try {
+        const ok = await this.host.moveFlipbook({ flipbookId: move.flipbookId, fromPageId: fromPage.get(move.flipbookId)!, pageId: move.pageId, category: move.section, after: move.after });
+        if (ok) done.push(move);
+      } catch (error) {
+        failed = true; failure = error;
+        break;
+      }
     }
     const changed = moveFlipbooks(s, done, s.state.project.flipbookPageIds, this.host.actor);
     const retitled = changed.filter(fb => sections.get(fb.id) !== fb.category.key || fromPage.get(fb.id) !== fb.pageId).map(fb => fb.id);
     if (retitled.length) await this.deliverFlipbooks({}, { targets: retitled });
-    if (!done.length) return [];
-    await this.refreshData();
-    this.postState();
-    const { found, spots } = await this.inspectFlipbooks();
-    this.uiScans = this.uiScans.map(u => ({ ...u, nodeId: found.get(u.flipbookId) ?? u.nodeId, spot: spotOf(spots, found.get(u.flipbookId) ?? u.nodeId) }));
-    this.postUiScans();
+    if (done.length) {
+      await this.refreshData();
+      this.postState();
+      const { found, spots } = await this.inspectFlipbooks();
+      this.uiScans = this.uiScans.map(u => ({ ...u, nodeId: found.get(u.flipbookId) ?? u.nodeId, spot: spotOf(spots, found.get(u.flipbookId) ?? u.nodeId) }));
+      this.postUiScans();
+    }
+    if (failed) throw failure;
     return done.map(m => m.flipbookId);
   }
 

@@ -13,7 +13,9 @@ import { Snapshotter } from './snapshot.ts';
 // 템플릿(2026-10-20 사용자 결정)은 일반 프레임이다. 그 안의 UI Title·Flipbook-Title·Update History List는 컴포넌트이고,
 // GUI Image Slot은 컴포넌트가 아닌 프레임이다. 플립북은 템플릿 프레임을 복제하고 안의 컴포넌트를 인스턴스로 바꿔 만든다.
 
-const FLIPBOOK_KEY = 'flipbookOf';
+// 플러그인 ID가 바뀌어도 데이터가 남도록 pluginData 대신 네임스페이스가 있는 sharedPluginData를 쓴다.
+export const NS = 'guiuipublish';
+export const FLIPBOOK_KEY = 'flipbookOf';
 // 플립북 프레임이 자기 노드 ID를 적어 두는 키. 캔버스에서 복제한 프레임은 원본의 값을 그대로 가져가므로 자기 ID와 다르다.
 const NODE_KEY = 'flipbookNode';
 const CATEGORY_KEY = 'categoryOf';
@@ -55,8 +57,8 @@ export async function loadedPage(pageId: string): Promise<PageNode> {
 
 const TITLE = 'UI Title';
 const HEADER = 'Flipbook-Title';
-const GUI_AREA = 'GUI Image Slot';
-const DESCRIPTION_AREA = 'description area';
+export const GUI_AREA = 'GUI Image Slot';
+export const DESCRIPTION_AREA = 'description area';
 const HISTORY = 'Update History List';
 const ID_CELL = 'input-cell-id';
 
@@ -533,7 +535,7 @@ export async function findFlipbook(ns: string, pageId: string, flipbookId: strin
 
 // UI 작성 영역: Description 슬롯 안의 내용과 GUI 영역 위에 놓은 마커·콜아웃(GUI 복사본이 아닌 노드),
 // 플립북 프레임에 절대 위치로 놓은 노드. 플러그인이 바꾸는 영역은 넣지 않는다.
-export async function uiAreaSnapshot(snapshotter: Snapshotter, frame: FrameNode, ns = 'guiuipublish'): Promise<NodeSnapshot> {
+export async function uiAreaSnapshot(snapshotter: Snapshotter, frame: FrameNode, ns = NS): Promise<NodeSnapshot> {
   const p = parts(frame);
   const children: NodeSnapshot[] = [];
   if (p.description && 'children' in p.description)

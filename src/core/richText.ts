@@ -151,11 +151,14 @@ export function backspaceAtStart(doc: RichParagraph[], block: number): { doc: Ri
 // 고른 문단들의 목록 단계를 바꾼다. 한 단계씩만 들어가도록 바로 앞 문단보다 한 단계 넘게 깊어지지 않게 한다.
 export function setDepth(doc: RichParagraph[], from: number, to: number, next: (depth: number | null) => number | null): RichParagraph[] {
   const out = doc.map(p => ({ ...p, bold: p.bold.map(r => ({ ...r })) }));
-  for (let i = Math.min(from, to); i <= Math.max(from, to); i++) {
+  const limit = (i: number) => i > 0 && out[i - 1].depth !== null ? out[i - 1].depth! + 1 : 0;
+  const hi = Math.max(from, to);
+  for (let i = Math.min(from, to); i <= hi; i++) {
     const wanted = next(out[i].depth);
-    const limit = i > 0 && out[i - 1].depth !== null ? out[i - 1].depth! + 1 : 0;
-    out[i].depth = wanted === null ? null : Math.max(0, Math.min(wanted, limit, MAX_DEPTH));
+    out[i].depth = wanted === null ? null : Math.max(0, Math.min(wanted, limit(i), MAX_DEPTH));
   }
+  // 앞 항목을 얕게 하거나 글머리표를 떼면 바로 뒤의 하위 항목이 단계를 건너뛰게 되므로, 이어지는 목록 항목도 같은 규칙으로 맞춘다.
+  for (let i = hi + 1; i < out.length && out[i].depth !== null; i++) out[i].depth = Math.min(out[i].depth!, limit(i));
   return out;
 }
 

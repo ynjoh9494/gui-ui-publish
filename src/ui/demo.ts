@@ -221,7 +221,7 @@ export function createDemo(options: DemoOptions): Demo {
       if (before) placed.splice(placed.indexOf(before), 0, moved);
       else if (same.length) placed.splice(placed.indexOf(same[same.length - 1]) + 1, 0, moved);
       else placed.push(moved);
-      log(`플립북 옮김: ${move.category.name} / ${move.flipbookId}`);
+      log(`${COPY.uiPreview054} ${move.category.name} / ${move.flipbookId}`);
       changed();
       return true;
     },

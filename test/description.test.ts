@@ -22,6 +22,7 @@ class Node {
   height = 1200;
   paddingLeft = 12;
   paddingRight = 12;
+  itemSpacing = 0;
   parent: Node | null = null;
   children: Node[] = [];
   data = new Map<string, string>();
@@ -57,8 +58,9 @@ class Node {
 class Text extends Node {
   hasMissingFont = false;
   fontSize = 12;
-  lineHeight: unknown;
-  fills: unknown;
+  lineHeight: unknown = { unit: 'AUTO' };
+  letterSpacing: unknown = { unit: 'PERCENT', value: 0 };
+  fills: unknown = [];
   textAutoResize = 'NONE';
   chars: Char[];
   text: string;
@@ -70,6 +72,7 @@ class Text extends Node {
     this.chars = [...text].map(() => ({ font: base, list: 'NONE', indent: 0 }));
   }
   get fontName() { return this.chars[0]?.font ?? this.base; }
+  set fontName(font: Font) { assert.ok(loaded.has(key(font))); this.base = font; this.chars.forEach(char => { char.font = font; }); }
   get characters() { return this.text; }
   set characters(value: string) {
     for (const char of this.chars) assert.ok(loaded.has(key(char.font)));
@@ -84,6 +87,7 @@ class Text extends Node {
     copy.fontSize = this.fontSize;
     copy.lineHeight = this.lineHeight;
     copy.fills = this.fills;
+    copy.letterSpacing = this.letterSpacing;
     copy.width = this.width;
     copy.height = this.height;
     copy.data = new Map(this.data);
@@ -93,6 +97,11 @@ class Text extends Node {
   setRangeFontName(start: number, end: number, font: Font) { assert.ok(loaded.has(key(font))); this.range(start, end).forEach(char => { char.font = font; }); }
   setRangeListOptions(start: number, end: number, option: { type: string }) { this.range(start, end).forEach(char => { char.list = option.type; }); }
   setRangeIndentation(start: number, end: number, value: number) { this.range(start, end).forEach(char => { char.indent = value; }); }
+  getRangeFontName(start: number, end: number) { const fonts = this.range(start, end).map(char => char.font); return new Set(fonts.map(key)).size > 1 ? MIXED : fonts[0]; }
+  getRangeFontSize() { return this.fontSize; }
+  getRangeLineHeight() { return this.lineHeight; }
+  getRangeLetterSpacing() { return this.letterSpacing; }
+  getRangeFills() { return this.fills; }
   getRangeListOptions(start: number, end: number) { const values = new Set(this.range(start, end).map(char => char.list)); return values.size > 1 ? MIXED : { type: [...values][0] }; }
   getRangeIndentation(start: number, end: number) { const values = new Set(this.range(start, end).map(char => char.indent)); return values.size > 1 ? MIXED : [...values][0]; }
   getStyledTextSegments() {
@@ -221,4 +230,57 @@ test('기존 내용 불러오기는 임의 텍스트를 읽고, 본문 슬롯이
   await assert.rejects(fillDescription(root as unknown as SceneNode, parseRichText('새 내용')));
   assert.equal(header.children[0].visible, true);
   assert.equal(area.children[0].visible, true);
+});
+
+test('플립북 밖 화면의 Description 그룹(본문 슬롯 없음) 안 텍스트는 그 텍스트 레이어가 대상이다', () => {
+  const text = new Text('줄거리', '내용');
+  const group = new Node('GROUP', 'Description', [text]);
+  const screen = new Node('FRAME', 'VOD 상세', [group]);
+  setup([text]);
+  assert.equal(selectedDescriptionRoot(), null);
+  assert.deepEqual(selectionTarget(), { kind: 'text', name: '줄거리' });
+  setup([screen]);
+  assert.deepEqual(selectionTarget(), { kind: 'none' });
+  // 플립북 표식 안의 Description은 슬롯이 없어도 대상이다(적용할 때 본문 영역이 없다고 알린다).
+  screen.setSharedPluginData('guiuipublish', 'flipbookOf', 'f1');
+  setup([text]);
+  assert.equal(selectedDescriptionRoot()?.id, group.id);
+});
+
+test('새 제목·본문 레이어는 슬롯에 있던 텍스트의 서식을 이어받고, 다시 적용해도 유지한다', async () => {
+  const regular = { family: 'Pretendard', style: 'Regular' }, bold = { family: 'Pretendard', style: 'Bold' };
+  const title = new Text('제목', 'Policy', bold);
+  const sample = new Text('예시', '예시 문구', regular);
+  const blue = [{ type: 'SOLID', color: { r: 0, g: 0, b: 1 } }];
+  for (const node of [title, sample]) { node.fontSize = 14; node.lineHeight = { unit: 'PIXELS', value: 20 }; node.fills = blue; }
+  const hidden = new Text('숨김', '숨긴 예시', REGULAR);
+  hidden.visible = false;
+  const area = new Node('SLOT', 'description area', [hidden, new Node('FRAME', '예시 묶음', [title, sample])]);
+  const root = new Node('FRAME', 'Description', [area]);
+  setup([root]);
+  await fillDescription(root as unknown as SceneNode, parseRichText('**Policy**\n\n- 설명'));
+  const check = () => {
+    const groups = area.children.filter(node => !node.removed);
+    for (const group of groups) for (const node of group.children as Text[]) {
+      assert.equal(node.chars[0].font.family, 'Pretendard');
+      assert.equal(node.fontSize, 14);
+      assert.deepEqual(node.lineHeight, { unit: 'PIXELS', value: 20 });
+      assert.deepEqual(node.fills, blue);
+    }
+    return groups;
+  };
+  const [group] = check();
+  assert.equal((group.children[0] as Text).chars[0].font.style, 'Bold');
+  assert.equal((group.children[1] as Text).chars[0].font.style, 'Regular');
+  assert.equal(group.itemSpacing, 3);
+  group.itemSpacing = 6;
+  setup([root]);
+  await fillDescription(root as unknown as SceneNode, parseRichText('**Navigation**\n\n- 이동'));
+  assert.equal(check()[0].itemSpacing, 6, 'spacing follows the previous groups');
+
+  const empty = new Node('SLOT', 'description area');
+  const bare = new Node('FRAME', 'Description', [empty]);
+  setup([bare]);
+  await fillDescription(bare as unknown as SceneNode, parseRichText('본문만'));
+  assert.equal((empty.children[0].children[0] as Text).fontSize, 16, 'defaults only when the slot has no text');
 });

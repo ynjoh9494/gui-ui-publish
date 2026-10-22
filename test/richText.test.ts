@@ -89,6 +89,13 @@ test('Tab은 바로 앞 문단보다 한 단계까지만 들어가고, Shift+Tab
   assert.equal(doc[1].depth, 0, '입력 문서는 바꾸지 않는다');
 });
 
+test('앞 항목을 얕게 하거나 글머리표를 떼면 바로 뒤 하위 항목도 한 단계까지만 깊게 맞춘다', () => {
+  const doc = parseRichText('- A\n\t- B\n\t\t- C\n\t\t\t- D\n\n\t- E');
+  assert.deepEqual(setDepth(doc, 1, 1, d => d === null || d === 0 ? null : d - 1).map(p => p.depth), [0, 0, 1, 2, null, 1], 'stops at the blank line');
+  assert.deepEqual(backspaceAtStart(doc, 0).doc.map(p => p.depth), [null, 0, 1, 2, null, 1]);
+  assert.deepEqual(toggleList(doc, 0, 0).map(p => p.depth), [null, 0, 1, 2, null, 1]);
+});
+
 test('목록 버튼은 고른 문단이 모두 목록이면 글머리표를 떼고, 아니면 모두 목록으로 만든다', () => {
   const doc = parseRichText('- 하나\n둘');
   assert.deepEqual(toggleList(doc, 0, 1).map(p => p.depth), [0, 0]);

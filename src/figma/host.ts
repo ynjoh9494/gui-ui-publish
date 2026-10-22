@@ -7,14 +7,12 @@ import { clampWindow } from '../core/wire.ts';
 import type { Host } from '../host.ts';
 import { ensureDataPage, renderDataPage } from './data.ts';
 import { createFingerprintReader } from './fingerprints.ts';
-import { findFlipbook, flipbookSpots, inspectFlipbooks, listFlipbooks, moveFlipbookFrame, uiAreaSnapshot, syncFlipbook, templateFromSelection, templateIssues, flipbookSession, type FlipbookSession } from './flipbook.ts';
+import { NS, findFlipbook, flipbookSpots, inspectFlipbooks, listFlipbooks, moveFlipbookFrame, uiAreaSnapshot, syncFlipbook, templateFromSelection, templateIssues, flipbookSession, type FlipbookSession } from './flipbook.ts';
 import { fillDescription, readDescription, selectedDescriptionRoot, selectionTarget } from './description.ts';
 import { readRichText, selectedTextNode, writeRichText } from './richText.ts';
 import { makeThumbnail, placeThumbnails, renameThumbnails, thumbnailBytes } from './thumbs.ts';
 import { Snapshotter } from './snapshot.ts';
 
-// 플러그인 ID가 바뀌어도 데이터가 남도록 pluginData 대신 네임스페이스가 있는 sharedPluginData를 쓴다.
-export const NS = 'guiuipublish';
 // 사용자별 플러그인 창 크기(figma.clientStorage)
 export const WINDOW_KEY = 'windowSize';
 const SCREEN_KEY = 'screenId';

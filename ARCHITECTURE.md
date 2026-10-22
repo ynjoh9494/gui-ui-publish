@@ -33,7 +33,7 @@ flowchart LR
 | `src/figma/host.ts` | `Host` 구현, 페이지·노드 탐색, 파일 저장소와 캔버스 API 연결 |
 | `src/figma/snapshot.ts`, `fingerprints.ts` | 노드의 시각 속성·해석된 변수 값을 스냅샷으로 수집하고 지문·유사도 특징 생성 |
 | `src/core/description.ts` | 텍스트 편집 적용 결과 타입 |
-| `src/figma/description.ts` | 플립북 안 선택(여러 개·플립북 프레임 포함)에서 그 플립북의 Description을 찾고 텍스트 편집 대상을 알려 줌. 본문 슬롯에 굵은 제목 줄마다 제목·본문 레이어 묶음을 적용·불러오기. 제목 문구는 판정하지 않음 |
+| `src/figma/description.ts` | 플립북 안 선택(여러 개·플립북 프레임 포함)에서 그 플립북의 Description을 찾고 텍스트 편집 대상을 알려 줌. 플립북 밖에서는 본문 슬롯이 있는 Description만 대상. 본문 슬롯에 굵은 제목 줄마다 제목·본문 레이어 묶음을 적용(슬롯에 있던 텍스트 서식을 이어받음)·불러오기. 제목 문구는 판정하지 않음 |
 | `src/figma/richText.ts` | 고른 텍스트 레이어 하나의 본문·굵기·목록 단계 읽기와 쓰기(레이어 글꼴 유지) |
 | `src/figma/flipbook.ts`, `layers.ts`, `thumbs.ts`, `data.ts` | 템플릿 복제, GUI 레이어 복사·배치, JPG 썸네일, DATA 페이지 렌더링 |
 | `src/ui/app.ts`, `styles.css` | UI 상태·입력 초안·목록과 상세 렌더링 |

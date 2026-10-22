@@ -793,3 +793,43 @@ test('고른 플립북만 설정한 1x 크기로 다시 반영하고 반영한 �
   await controller.handle({ type: 'resizeFlipbooks', ids: ['fb4'] });
   assert.equal(synced.length, 1, 'an unlinked flipbook is not recreated');
 });
+
+test('플립북 만들기에서 새 행이 잘못되면 기존 플립북도 옮기지 않고, 옮기다 실패하면 이미 옮긴 플립북은 기록에 남긴다', async () => {
+  const posted: ToUi[] = [];
+  const store = new Store(memoryKV());
+  store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['ui'], flipbookPageId: 'ui' });
+  let n = 0;
+  for (const fb of planFlipbooks({ pageId: 'ui', rows: [row([], false, '정책 A'), row([], false, '정책 B')] }, new Map(), actor, 1000, () => `fb${++n}`)) store.put(keys.flipbook(fb.id), fb);
+  const moved: string[] = [];
+  let failOn = '';
+  const host = {
+    kv: store.kv, mode: 'UI', actor,
+    post: (message: ToUi) => posted.push(message),
+    pages: () => [{ id: 'ui', name: 'UI' }],
+    templateIssues: async () => [],
+    listFlipbooks: async () => new Map([['fb1', '1:1'], ['fb2', '1:2']]),
+    syncFlipbook: async (_: unknown, view: { flipbookId: string }) => ({ nodeId: view.flipbookId === 'fb1' ? '1:1' : '1:2', notes: [] }),
+    moveFlipbook: async (move: { flipbookId: string }) => {
+      if (move.flipbookId === failOn) throw new Error('page gone');
+      moved.push(move.flipbookId);
+      return true;
+    },
+    ensureDataPage: async () => 'data',
+    renderData: async () => {},
+  } as unknown as Host;
+  const controller = new Controller(host);
+  const section = { key: 'custom', name: '새 Section', order: 1 };
+  const moves = [{ flipbookId: 'fb1', pageId: 'ui', section, after: null }, { flipbookId: 'fb2', pageId: 'ui', section, after: 'fb1' }];
+
+  await controller.handle({ type: 'createFlipbooks', request: { pageId: 'ui', rows: [row(['missing'])], moves } });
+  assert.equal(posted.filter(m => m.type === 'error').length, 1);
+  assert.deepEqual(moved, [], 'an invalid new row stops the moves too');
+  assert.notEqual(controller.store.state.flipbooks.get('fb1')?.category.key, 'custom');
+
+  failOn = 'fb2';
+  await controller.handle({ type: 'createFlipbooks', request: { pageId: 'ui', rows: [], moves } });
+  assert.equal(posted.filter(m => m.type === 'error').length, 2);
+  assert.deepEqual(moved, ['fb1']);
+  assert.equal(controller.store.state.flipbooks.get('fb1')?.category.key, 'custom', 'the frame that moved keeps its new record');
+  assert.notEqual(controller.store.state.flipbooks.get('fb2')?.category.key, 'custom', 'the frame that did not move keeps its old record');
+});

@@ -4,7 +4,7 @@ import type { RichParagraph } from '../core/richText.ts';
 // 텍스트 편집 탭: 캔버스에서 고른 텍스트 레이어 하나를 읽고 쓴다. 글꼴·크기·행간·색은 레이어 것을 그대로 두고
 // 내용, 목록(글머리표)·들여쓰기, 굵기만 바꾼다. 목록 기호는 글자로 쓰지 않고 Figma 목록 서식을 쓴다.
 
-const BOLD_STYLE = /bold|black|heavy/i;
+export const BOLD_STYLE = /bold|black|heavy/i;
 // 굵은 글씨로 쓸 같은 글꼴 계열의 스타일. 앞에서부터 불러올 수 있는 것을 쓴다.
 const BOLD_STYLES = ['Bold', 'SemiBold', 'Semi Bold', 'ExtraBold', 'Extra Bold', 'Black'];
 

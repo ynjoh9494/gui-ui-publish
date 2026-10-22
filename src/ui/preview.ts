@@ -47,7 +47,7 @@ function renderTools() {
       <button data-uiedit="${screenId}">${COPY.uiPreview038}</button></div>`).join('') : '') +
     `<p>${COPY.uiPreview040} <b>${COPY.uiPreview041}</b>${COPY.uiPreview042}</p><button data-reset>${COPY.uiPreview043}</button>` +
     `<h2>새 버전 페이지</h2><button data-version ${demo.hasVersionPage() ? 'disabled' : ''}>다른 파일에서 붙여 넣기</button><p>원본 페이지의 화면을 새 노드·제각각 이름으로 복사하고, 두 번째 화면은 내용을 고치고 새 화면 하나를 더합니다.</p>` +
-    `<h2>플러그인 명령</h2><button data-mode="GUI" ${host.mode === 'GUI' ? 'disabled' : ''}>GUI Publish</button> <button data-mode="UI" ${host.mode === 'UI' ? 'disabled' : ''}>UI Flipbook</button>` +
+    `<h2>${COPY.uiPreview053}</h2><button data-mode="GUI" ${host.mode === 'GUI' ? 'disabled' : ''}>GUI Publish</button> <button data-mode="UI" ${host.mode === 'UI' ? 'disabled' : ''}>UI Flipbook</button>` +
     `<h2>${COPY.uiPreview052} · ${demo.text.name}</h2><pre class="preview-text"></pre>`;
   tools.querySelector('.preview-text')!.textContent = serializeRichText(demo.text.paragraphs);
 }

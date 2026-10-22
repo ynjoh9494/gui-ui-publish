@@ -378,6 +378,15 @@ export const COPY = {
   uiApp327: "대상:",
   uiApp328: "플립북",
   uiApp329: "텍스트 레이어",
+  // 새 플립북 만들기 버튼·목록 행(2026-10-22)
+  uiApp330: "만드는 중…",
+  uiApp331: "플립북",
+  uiApp332: "개 만들기",
+  uiApp333: "만들 플립북",
+  uiApp334: "드래그하거나 Alt+↑↓로 자리를 옮깁니다.",
+  uiApp335: "제목 수정",
+  uiApp336: "플립북 제목 수정",
+  uiApp337: "(화면 카테고리)",
   // 튜토리얼 — src/ui/tutorial.ts. 단계마다 말풍선 제목·설명 순서다.
   uiTutorial001: '도움말',
   uiTutorial002: '튜토리얼 종료',
@@ -683,6 +692,8 @@ export const COPY = {
   figmaText005: "선택한 Description에서 본문 영역을 찾지 못했습니다.",
   figmaText006: "플립북에서 Description을 찾지 못했습니다.",
   figmaText007: "한 플립북만 선택하세요.",
+  // 적용할 때 만드는 본문 레이어와 제목 없는 묶음의 이름
+  figmaText008: "본문",
   // 생성되는 플립북 문구 — src/figma/flipbook.ts
   figmaFlipbook001: '플립북 페이지를 찾을 수 없습니다.', // 37
   figmaFlipbook002: '플립북 템플릿 프레임을 찾을 수 없습니다. 설정에서 다시 지정하세요.', // 49
@@ -798,6 +809,8 @@ export const COPY = {
   // 가짜 캔버스에서 골라 둔 텍스트 레이어의 처음 내용(텍스트 편집 탭)
   uiPreview051: "**Policy**\n- 채널 목록은 번호 순서로 보여 줍니다.\n\t- 시청 중인 채널에 **포커스**를 둡니다.\n- 좌우 키로 날짜를 바꿉니다.",
   uiPreview052: "가짜 텍스트 레이어",
+  uiPreview053: "플러그인 명령",
+  uiPreview054: "플립북 옮김:",
 } as const;
 
 // 화면·안내·오류 문구. 원본 파일과 행은 추출 당시 위치다.
