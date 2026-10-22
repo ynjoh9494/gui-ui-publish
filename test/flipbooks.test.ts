@@ -120,6 +120,14 @@ test('GUI 목록은 배포된 화면의 ID 태그와 입력 중 이름·ID를 �
   assert.deepEqual(buildList('GUI', store.state, entries, () => 'excluded', { ...view, query: '012', guiDisplay: (entry, saved) => ({ ...saved, code: entry.key === 'earlier' ? 'STB_HO_012' : saved.code }) }).groups.flatMap(group => group.rows).map(row => row.entry.key), ['earlier']);
 });
 
+test('GUI 신규 후보는 이름과 관계없이 스캔한 캔버스 순서로 표시한다', () => {
+  const store = new Store(memoryKV());
+  const entries = [guiEntry('right', '가 화면', 'fp'), guiEntry('left', '나 화면', 'fp')];
+  const rows = buildList('GUI', store.state, entries, () => 'excluded', { collapsed: new Set(), query: '', changedOnly: false })
+    .groups.flatMap(group => group.rows);
+  assert.deepEqual(rows.map(row => row.entry.key), entries.map(entry => entry.key));
+});
+
 test('GUI 목록은 입력 중인 카테고리·케이스 관계로 그룹과 들여쓰기를 정한다', () => {
   const store = new Store(memoryKV());
   store.put(keys.category('home'), { id: 'home', name: '홈', order: 1, active: true });
@@ -334,7 +342,7 @@ test('이전 버전의 Screen ID 없는 저장 데이터도 실행 목록과 DAT
   assert.deepEqual(dataModel(store.state, actor, 0).screens.map(x => x.name).sort(), ['다른 화면', '이전 화면']);
 });
 
-test('플립북 만들기 표의 행마다 플립북을 만든다. 화면을 비우면 정책, 여러 화면은 선택 순서와 크기대로', () => {
+test('플립북 만들기 표의 행마다 플립북을 만든다. 화면을 비워도 만들고(제목 기본값 「새 플립북」, Section 기본값 미분류), 여러 화면은 선택 순서와 크기대로', () => {
   const screens = new Map([screen('a', 'A'), screen('b', 'B')].map(s => [s.uid, s]));
   let id = 0;
   const next = () => `fb${++id}`;
@@ -342,7 +350,8 @@ test('플립북 만들기 표의 행마다 플립북을 만든다. 화면을 비
   assert.deepEqual(made.map(f => [f.kind, f.pageId, f.scale]), [['single', 'p2', 1], ['multi', 'p2', 0.5], ['policy', 'p2', 1]]);
   assert.deepEqual(made[1].screens, [{ uid: 'b', code: 'B', name: '화면 b', version: 1, scale: 0.25 }, { uid: 'a', code: 'A', name: '화면 a', version: 1, scale: 0.5 }]);
   assert.deepEqual([made[0].title, made[1].title, made[2].title], ['화면 b', '화면 b', '정책']);
-  assert.throws(() => planFlipbooks({ pageId: 'p', rows: [row(['a']), row([])] }, screens, actor, 100, next), /2번째 행: .*제목/);
+  const blank = planFlipbooks({ pageId: 'p', rows: [row([])] }, screens, actor, 100, next)[0];
+  assert.deepEqual([blank.title, blank.autoTitle, blank.category.name], ['새 플립북', true, '미분류']);
   assert.throws(() => planFlipbooks({ pageId: 'p', rows: [row(['a', 'a'], true)] }, screens, actor, 100, next), /두 번/);
   // GUI 원본 프레임이 없는 화면으로는 만들 수 없다.
   const noSource = new Map([['a', { ...screen('a', 'A'), sourceNodeId: null }]]);

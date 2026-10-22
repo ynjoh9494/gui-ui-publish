@@ -3,7 +3,7 @@ import { baseline, changeDetected, classify, ignoreBlock, uiEstimate, uncheckedE
 import { LEGACY_FINGERPRINT_VERSION } from './core/fingerprint.ts';
 import { dataModel } from './core/data.ts';
 import { flipbookView, guiKey, validGuiWidth } from './core/flipbook.ts';
-import { importGuiUpdates, markReviewed, planFlipbooks, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookRequest, type ReviewRequest } from './core/flipbooks.ts';
+import { checkMoves, importGuiUpdates, markReviewed, moveFlipbooks, planFlipbooks, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookMove, type FlipbookRequest, type ReviewRequest } from './core/flipbooks.ts';
 import type { Draft } from './core/drafts.ts';
 import type { SelectionWrite } from './core/description.ts';
 import { flipbookHistoryRows, guiHistoryRows } from './core/history.ts';
@@ -867,9 +867,16 @@ export class Controller {
     const issues = await this.checkTemplate();
     if (issues.length) throw new Error(`${COPY.controller103} ${issues.join(' / ')}`);
     // 항목마다 페이지를 고를 수 있다(2026-10-21 사용자 요청). 모든 페이지가 설정에서 지정한 UI 페이지여야 한다.
-    const pageIds = [...new Set(request.rows.map(row => row.pageId || request.pageId))];
-    if (!pageIds.length || pageIds.some(pageId => !pageId || pageId === s.state.project.dataPageId || !s.state.project.flipbookPageIds.includes(pageId) || !this.host.pages().some(p => p.id === pageId)))
-      throw new Error(COPY.controller063);
+    const moves = request.moves ?? [];
+    const pageIds = [...new Set([...request.rows.map(row => row.pageId || request.pageId), ...moves.map(m => m.pageId)])];
+    const usable = (pageId: string) => !!pageId && pageId !== s.state.project.dataPageId && s.state.project.flipbookPageIds.includes(pageId) && this.host.pages().some(p => p.id === pageId);
+    if (!pageIds.length || pageIds.some(pageId => !usable(pageId))) throw new Error(COPY.controller063);
+    // 기존 플립북 옮기기(2026-10-22 사용자 요청)를 먼저 반영한다. 새 플립북의 자리(앞 항목)가 옮긴 플립북일 수 있다.
+    const moved = moves.length ? await this.moveFlipbooks(moves) : [];
+    if (!request.rows.length) {
+      this.host.post({ type: 'flipbooksCreated', ids: [], moved, message: `${COPY.controller133} ${moved.length}${COPY.controller134}` });
+      return;
+    }
     // 다음 만들기의 기본 페이지로 남긴다.
     if (request.pageId && pageIds.includes(request.pageId) && s.state.project.flipbookPageId !== request.pageId) s.saveProject({ ...s.state.project, flipbookPageId: request.pageId });
     const made = planFlipbooks(request, guiScreens(s.state), this.host.actor, s.now(), s.newId);
@@ -900,8 +907,32 @@ export class Controller {
     }
     this.uiScans = this.uiScans.map(u => ({ ...u, spot: spotOf(spots, u.nodeId) }));
     this.postUiScans();
-    const message = [`${COPY.controller054} ${made.length}${COPY.controller055}`, report.failed.length || report.notes.length || report.skipped ? deliveryMessage(report) : ''].filter(Boolean).join(' ');
-    this.host.post({ type: 'flipbooksCreated', ids: made.map(fb => fb.id), message });
+    const message = [`${COPY.controller054} ${made.length}${COPY.controller055}`, moved.length ? `${COPY.controller133} ${moved.length}${COPY.controller134}` : '', report.failed.length || report.notes.length || report.skipped ? deliveryMessage(report) : ''].filter(Boolean).join(' ');
+    this.host.post({ type: 'flipbooksCreated', ids: made.map(fb => fb.id), moved, message });
+  }
+
+  // 목록에서 옮긴 기존 플립북을 기록과 캔버스에 반영하고 옮긴 플립북 ID를 돌려준다. 목록 순서대로 옮겨야 앞 항목이 이미 제자리에 있다.
+  // Section이 바뀐 플립북은 Chapter도 새 Section 이름으로 맞춘다. 캔버스에서 프레임을 찾지 못한 플립북은 기록만 바꾸지 않고 건너뛴다.
+  private async moveFlipbooks(moves: FlipbookMove[]): Promise<string[]> {
+    const s = this.store;
+    const fromPage = new Map(moves.map(m => { const fb = s.state.flipbooks.get(m.flipbookId); return [m.flipbookId, fb?.pageId ?? s.state.project.flipbookPageId ?? '']; }));
+    const sections = new Map(moves.map(m => [m.flipbookId, s.state.flipbooks.get(m.flipbookId)?.category.key]));
+    checkMoves(s.state, moves, s.state.project.flipbookPageIds);
+    const done: FlipbookMove[] = [];
+    for (const move of moves) {
+      const ok = await this.host.moveFlipbook({ flipbookId: move.flipbookId, fromPageId: fromPage.get(move.flipbookId)!, pageId: move.pageId, category: move.section, after: move.after });
+      if (ok) done.push(move);
+    }
+    const changed = moveFlipbooks(s, done, s.state.project.flipbookPageIds, this.host.actor);
+    const retitled = changed.filter(fb => sections.get(fb.id) !== fb.category.key || fromPage.get(fb.id) !== fb.pageId).map(fb => fb.id);
+    if (retitled.length) await this.deliverFlipbooks({}, { targets: retitled });
+    if (!done.length) return [];
+    await this.refreshData();
+    this.postState();
+    const { found, spots } = await this.inspectFlipbooks();
+    this.uiScans = this.uiScans.map(u => ({ ...u, nodeId: found.get(u.flipbookId) ?? u.nodeId, spot: spotOf(spots, found.get(u.flipbookId) ?? u.nodeId) }));
+    this.postUiScans();
+    return done.map(m => m.flipbookId);
   }
 
   // 플립북 제목 변경(2026-10-21 사용자 요청): 기록을 바꾸고 큰 제목·Page title·프레임 이름을 새 제목으로 맞춘다.

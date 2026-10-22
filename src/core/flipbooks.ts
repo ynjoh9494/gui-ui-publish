@@ -1,6 +1,6 @@
 // 플립북 만들기와 GUI 갱신 반영. Figma에 닿지 않는 기록 부분만 다룬다.
 import { COPY } from './copy.ts';
-import { defaultTitle, NO_CATEGORY_KEY, POLICY_CATEGORY_KEY } from './flipbook.ts';
+import { defaultTitle, NO_CATEGORY_KEY } from './flipbook.ts';
 import { importedRecord, recordsToImport, type GuiRecordInfo, type GuiScreenInfo } from './guiScreens.ts';
 import { keys, type State, type Store } from './store.ts';
 import type { Actor, Flipbook, FlipbookKind, FlipbookReview, FlipbookScale, ImportedGuiRecord, TagSnapshot, UiRecord, UiState } from './types.ts';
@@ -12,26 +12,32 @@ export type FlipbookSection = Flipbook['category'];
 export const CUSTOM_SECTION_PREFIX = 'section:';
 const CUSTOM_SECTION_ORDER = Number.MAX_SAFE_INTEGER - 2;
 
-// 플립북 만들기 목록의 한 항목. 화면을 비우면 정책 플립북, 여러 화면은 선택 순서대로 한 플립북에 넣는다.
+// 플립북 만들기 목록의 한 항목. 화면을 비워도 만들 수 있고, 여러 화면은 선택 순서대로 한 플립북에 넣는다.
 export interface FlipbookRowRequest {
   uids: string[];
   multi: boolean;
   scale: FlipbookScale;
   scales?: Record<string, FlipbookScale>;
-  // 비우면 첫 번째 화면의 이름을 쓴다. 정책(화면 없음)은 필수다.
+  // 비우면 첫 번째 화면의 이름, 화면이 없으면 「새 플립북」을 쓴다.
   title?: string;
   // 이 항목을 만들 페이지. 비우면 요청의 페이지다.
   pageId?: string;
-  // 놓을 Section. 비우면 첫 화면의 카테고리(정책은 「정책」)다.
+  // 놓을 Section. 비우면 첫 화면의 카테고리(화면이 없으면 미분류)다. 만들기 화면은 정한 Section을 항상 보낸다.
   section?: FlipbookSection | null;
   // Section 안에서 놓을 자리: 이 플립북(기존 플립북 ID 또는 `row:앞 행 번호`) 바로 다음. null이면 맨 앞, 비우면 맨 뒤다.
   after?: string | null;
 }
 
+// 기존 플립북을 다른 자리로 옮기기(2026-10-22 사용자 요청): 목록에서 드래그한 플립북을 그 페이지·Section의 정한 자리로 옮긴다.
+// after: 그 Section에서 바로 앞 기존 플립북 ID(null이면 맨 앞). 목록 순서대로 보내야 앞 항목이 이미 제자리에 있다.
+export interface FlipbookMove { flipbookId: string; pageId: string; section: FlipbookSection; after: string | null }
+
 export interface FlipbookRequest {
   // 플립북을 만들 페이지
   pageId: string;
   rows: FlipbookRowRequest[];
+  // 만들기 전에 캔버스에 반영할 기존 플립북 옮기기. 비우면 옮기지 않는다.
+  moves?: FlipbookMove[];
 }
 
 const SCALES: FlipbookScale[] = [1, 0.5, 0.25];
@@ -41,9 +47,8 @@ export function rowKind(row: FlipbookRowRequest): FlipbookKind {
   return row.multi ? 'multi' : 'single';
 }
 
-// 따로 고르지 않았을 때의 Section: 첫 화면의 카테고리, 정책은 「정책」
-export function defaultSection(kind: FlipbookKind, first: GuiScreenInfo | undefined): FlipbookSection {
-  if (kind === 'policy') return { key: POLICY_CATEGORY_KEY, name: COPY.coreFlipbooks001, order: Number.MAX_SAFE_INTEGER - 1 };
+// 따로 고르지 않았을 때의 Section: 첫 화면의 카테고리. 화면이 없다고 「정책」에 넣지 않는다(2026-10-22 사용자 요청).
+export function defaultSection(first: GuiScreenInfo | undefined): FlipbookSection {
   const c = first?.category;
   return c ? { key: c.id, name: c.name, order: c.order } : { key: NO_CATEGORY_KEY, name: COPY.coreFlipbook003, order: Number.MAX_SAFE_INTEGER };
 }
@@ -87,35 +92,61 @@ function planRow(row: FlipbookRowRequest, pageId: string, screens: Map<string, G
   if (!SCALES.includes(scale)) throw new Error(COPY.coreFlipbooks007);
   for (const s of chosen) if (!SCALES.includes(row.scales?.[s.uid] ?? scale)) throw new Error(COPY.coreFlipbooks007);
   const typed = (row.title ?? '').trim();
-  if (kind === 'policy' && !typed) throw new Error(COPY.coreFlipbooks008);
   const auto = defaultTitle(kind, chosen);
   const title = typed || auto;
-  const autoTitle = kind !== 'policy' && title === auto;
+  const autoTitle = title === auto;
   return {
-    id: newId(), rev: 1, kind, title, autoTitle, titleNames: autoTitle ? [title] : [], scale, category: sectionOf(row, kind, chosen[0]),
+    id: newId(), rev: 1, kind, title, autoTitle, titleNames: autoTitle ? [title] : [], scale, category: sectionOf(row, chosen[0]),
     screens: chosen.map(s => ({ uid: s.uid, code: s.code, name: s.name, version: s.version, scale: row.scales?.[s.uid] ?? scale })),
     pageId, status: 'active', createdAt: now, actor,
   };
 }
 
 // 고른 Section이 있으면 그 Section, 없으면 첫 화면의 카테고리
-function sectionOf(row: FlipbookRowRequest, kind: FlipbookKind, first: GuiScreenInfo | undefined): FlipbookSection {
-  if (!row.section) return defaultSection(kind, first);
+function sectionOf(row: FlipbookRowRequest, first: GuiScreenInfo | undefined): FlipbookSection {
+  if (!row.section) return defaultSection(first);
   const name = row.section.name.trim();
   if (!row.section.key || !name) throw new Error(COPY.coreFlipbooks011);
   return { key: row.section.key, name, order: Number.isFinite(row.section.order) ? row.section.order : CUSTOM_SECTION_ORDER };
 }
 
-// 플립북 제목을 바꾼다(2026-10-21 사용자 요청). 비우면 첫 화면 이름(자동 제목)으로 돌아가며, 정책 플립북은 제목이 필수다.
+// 기존 플립북의 페이지·Section 기록을 옮긴 자리로 바꾸고 바뀐 플립북을 돌려준다. 캔버스 프레임은 Host가 옮긴다.
+// 페이지는 설정에서 지정한 플립북 페이지여야 한다. 같은 Section 안에서 순서만 바뀐 플립북도 돌려준다(캔버스 자리는 바뀐다).
+// 옮기기 요청을 확인한다. 캔버스를 옮기기 전에 불러 잘못된 요청이면 아무것도 옮기지 않는다.
+export function checkMoves(state: State, moves: FlipbookMove[], pageIds: readonly string[]): void {
+  for (const move of moves) {
+    if (state.flipbooks.get(move.flipbookId)?.status !== 'active') throw new Error(COPY.coreFlipbook002);
+    if (!pageIds.includes(move.pageId)) throw new Error(COPY.coreFlipbooks012);
+    if (!move.section.key || !move.section.name.trim()) throw new Error(COPY.coreFlipbooks011);
+  }
+}
+
+export function moveFlipbooks(store: Store, moves: FlipbookMove[], pageIds: readonly string[], actor: Actor): Flipbook[] {
+  checkMoves(store.state, moves, pageIds);
+  const out: Flipbook[] = [];
+  for (const move of moves) {
+    const before = store.state.flipbooks.get(move.flipbookId)!;
+    const name = move.section.name.trim();
+    const category = { key: move.section.key, name, order: Number.isFinite(move.section.order) ? move.section.order : CUSTOM_SECTION_ORDER };
+    const fromPage = before.pageId ?? store.state.project.flipbookPageId;
+    const same = fromPage === move.pageId && before.category.key === category.key && before.category.name === category.name;
+    const after: Flipbook = same ? before : { ...before, rev: before.rev + 1, pageId: move.pageId, category };
+    if (!same) store.put(keys.flipbook(before.id), after);
+    store.audit(actor, 'flipbook.move', before.id, { pageId: fromPage, section: before.category.key }, { pageId: move.pageId, section: category.key, after: move.after });
+    out.push(after);
+  }
+  return out;
+}
+
+// 플립북 제목을 바꾼다(2026-10-21 사용자 요청). 비우면 자동 제목(첫 화면 이름, 화면이 없으면 「새 플립북」)으로 돌아간다.
 // 캔버스의 큰 제목·Page title은 반영할 때 새 제목으로 바꾼다.
 export function renameFlipbook(store: Store, flipbookId: string, title: string, actor: Actor): Flipbook {
   const before = store.state.flipbooks.get(flipbookId);
   if (!before || before.status !== 'active') throw new Error(COPY.coreFlipbook002);
   const typed = title.trim();
-  if (before.kind === 'policy' && !typed) throw new Error(COPY.coreFlipbooks008);
   const auto = defaultTitle(before.kind, before.screens);
   const next = typed || auto;
-  const autoTitle = before.kind !== 'policy' && next === auto;
+  const autoTitle = next === auto;
   const after: Flipbook = { ...before, rev: before.rev + 1, title: next, autoTitle, titleNames: before.titleNames.includes(next) ? before.titleNames : [...before.titleNames, next] };
   store.put(keys.flipbook(flipbookId), after);
   store.audit(actor, 'flipbook.rename', flipbookId, before.title, next);

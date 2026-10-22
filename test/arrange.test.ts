@@ -48,7 +48,7 @@ test('UI 목록은 캔버스의 Section·플립북 순서를 따르고, 위치�
   assert.deepEqual(listed.groups.map(g => g.rows.map(r => r.entry.key)), [['fb4'], ['fb2', 'fb1', 'fb3']], '목록도 같은 순서');
   // 위치를 모르면 이전처럼 Screen ID 순이다.
   assert.deepEqual(arrangeFlipbooks(store.state, pages).find(g => g.section.key === 'home')!.items, ['fb1', 'fb2', 'fb3']);
-  // 캔버스에서 다른 Section으로 끌어 놓은 프레임은 기록의 Section 기준으로 묶고 위치를 모르는 것으로 본다.
+  // 캔버스에서 다른 Section으로 드래그해 놓은 프레임은 기록의 Section 기준으로 묶고 위치를 모르는 것으로 본다.
   spots.fb1 = { section: 'section:banner', sectionIndex: 0, index: 1 };
   assert.deepEqual(arrangeFlipbooks(store.state, pages, fbId => spots[fbId]).find(g => g.section.key === 'home')!.items, ['fb2', 'fb1', 'fb3']);
 });
@@ -80,7 +80,7 @@ test('만들기 전 새 플립북을 정한 자리에 끼워 넣고, 없는 Sect
   assert.deepEqual(first.map(g => g.key), ['p1|home', 'p2|home']);
 });
 
-test('플립북 제목을 바꾸고, 비우면 첫 화면 이름으로 돌아가며, 정책 플립북은 제목이 필요하다', () => {
+test('플립북 제목을 바꾸고, 비우면 첫 화면 이름(화면이 없으면 「새 플립북」)으로 돌아간다', () => {
   const store = new Store(memoryKV());
   let id = 0;
   const made = planFlipbooks({ pageId: 'p', rows: [row(['a']), row([], '정책')] }, new Map([screen('a', 'STB_HO_001')].map(s => [s.uid, s])), actor, 100, () => `fb${++id}`);
@@ -89,7 +89,7 @@ test('플립북 제목을 바꾸고, 비우면 첫 화면 이름으로 돌아가
   assert.deepEqual([renamed.title, renamed.autoTitle, renamed.rev], ['홈 메인', false, 2]);
   assert.ok(renamed.titleNames.includes('홈 메인'), '플러그인이 쓴 제목으로 남긴다');
   assert.deepEqual([renameFlipbook(store, 'fb1', '', actor).title, store.state.flipbooks.get('fb1')!.autoTitle], ['화면 a', true]);
-  assert.throws(() => renameFlipbook(store, 'fb2', ' ', actor), /제목/);
+  assert.deepEqual([renameFlipbook(store, 'fb2', ' ', actor).title, store.state.flipbooks.get('fb2')!.autoTitle], ['새 플립북', true]);
   assert.equal(flipbookView(store.state, 'fb1').name, '화면 a');
 });
 
@@ -135,6 +135,55 @@ test('항목마다 페이지·Section·자리를 정해 만들고, 같은 요청
   await controller.handle({ type: 'renameFlipbook', id: made[0].id, title: '첫 정책' });
   assert.deepEqual(views.map(v => [v.flipbookId, v.retitle]), [[made[0].id, true]]);
   assert.equal(controller.store.state.flipbooks.get(made[0].id)?.title, '첫 정책');
+});
+
+test('목록에서 옮긴 기존 플립북을 목록 순서대로 캔버스에서 옮기고, Section이 바뀐 플립북만 다시 반영한다. 잘못된 요청은 아무것도 옮기지 않는다', async () => {
+  const posted: ToUi[] = [];
+  const store = new Store(memoryKV());
+  store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['ui', 'ui2'], flipbookPageId: 'ui' });
+  const home = { key: 'home', name: '홈', order: 1 };
+  const banner = customSection('배너', 'section:banner');
+  let id = 0;
+  const made = planFlipbooks({ pageId: 'ui', rows: [{ ...row([], 'A'), section: home }, { ...row([], 'B'), section: home }, { ...row([], 'C'), section: banner }] }, new Map(), actor, 100, () => `fb${++id}`);
+  for (const fb of made) store.put(keys.flipbook(fb.id), fb);
+  const moved: { flipbookId: string; fromPageId: string; pageId: string; section: string; after: string | null }[] = [];
+  const synced: string[] = [];
+  const host = {
+    kv: store.kv, mode: 'UI', actor,
+    post: (message: ToUi) => posted.push(message),
+    pages: () => [{ id: 'ui', name: 'UI' }, { id: 'ui2', name: 'UI 2' }, { id: 'gui', name: 'GUI' }],
+    templateIssues: async () => [],
+    listFlipbooks: async () => new Map(made.map(fb => [fb.id, `n:${fb.id}`])),
+    flipbookSpots: async () => ({}),
+    moveFlipbook: async (move: { flipbookId: string; fromPageId: string; pageId: string; category: { key: string }; after: string | null }) => {
+      moved.push({ flipbookId: move.flipbookId, fromPageId: move.fromPageId, pageId: move.pageId, section: move.category.key, after: move.after });
+      return true;
+    },
+    syncFlipbook: async (_: unknown, view: { flipbookId: string }) => { synced.push(view.flipbookId); return { nodeId: `n:${view.flipbookId}`, notes: [] }; },
+    uiFingerprint: async () => ({ fingerprint: null, error: null }),
+    ensureDataPage: async () => 'data', renderData: async () => {},
+  } as unknown as Host;
+  const controller = new Controller(host);
+  // 다른 페이지로 옮기는 요청에 플립북 페이지가 아닌 페이지가 있으면 아무것도 옮기지 않는다.
+  await controller.handle({ type: 'createFlipbooks', request: { pageId: 'ui', rows: [], moves: [{ flipbookId: 'fb2', pageId: 'gui', section: home, after: null }] } });
+  assert.ok(posted.some(m => m.type === 'error'));
+  assert.deepEqual(moved, []);
+  posted.length = 0;
+  // B를 홈 맨 앞으로, C(배너)를 다른 페이지의 홈 Section B 다음으로 옮긴다. 새 플립북 없이 옮기기만 한다.
+  await controller.handle({ type: 'createFlipbooks', request: { pageId: 'ui', rows: [], moves: [
+    { flipbookId: 'fb2', pageId: 'ui', section: home, after: null },
+    { flipbookId: 'fb3', pageId: 'ui2', section: home, after: 'fb2' },
+  ] } });
+  assert.equal(posted.some(m => m.type === 'error'), false, JSON.stringify(posted.filter(m => m.type === 'error')));
+  assert.deepEqual(moved, [
+    { flipbookId: 'fb2', fromPageId: 'ui', pageId: 'ui', section: 'home', after: null },
+    { flipbookId: 'fb3', fromPageId: 'ui', pageId: 'ui2', section: 'home', after: 'fb2' },
+  ], '목록 순서대로, 원래 페이지에서 옮긴다');
+  const c = controller.store.state.flipbooks.get('fb3')!;
+  assert.deepEqual([c.pageId, c.category.key, c.category.name], ['ui2', 'home', '홈'], '옮긴 페이지·Section을 기록한다');
+  assert.deepEqual(synced, ['fb3'], 'Section이 바뀐 플립북만 다시 반영해 Chapter를 맞춘다');
+  const done = posted.find(m => m.type === 'flipbooksCreated') as Extract<ToUi, { type: 'flipbooksCreated' }>;
+  assert.deepEqual([done.ids, done.moved], [[], ['fb2', 'fb3']]);
 });
 
 test('캔버스 위치는 페이지의 플러그인 Section을 위에서부터, Section 안 플립북을 놓인 순서대로 센다', async () => {

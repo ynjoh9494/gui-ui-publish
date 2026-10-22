@@ -209,6 +209,22 @@ export function createDemo(options: DemoOptions): Demo {
       log(`${COPY.uiPreview025} ${view.category.name} / ${view.name} ${COPY.uiPreview026} ${view.status ? `${view.status.tag.name}(${view.status.colorKey})` : '-'} ${COPY.uiPreview027} ${view.rows[0]?.at ?? '-'} ${COPY.uiPreview028} ${Math.max(0, view.rows.length - 1)}${COPY.uiPreview029}`);
       return { nodeId: flipbooks.get(view.flipbookId)!, notes: [] };
     },
+    // 기존 플립북 옮기기: 정한 플립북 바로 다음(null이면 Section 맨 앞, 없으면 맨 뒤)으로 옮긴다.
+    async moveFlipbook(move) {
+      const from = placed.findIndex(p => p.flipbookId === move.flipbookId);
+      if (from < 0) return false;
+      const [item] = placed.splice(from, 1);
+      const moved = { ...item, pageId: move.pageId, section: move.category.key };
+      const same = placed.filter(p => p.pageId === move.pageId && p.section === move.category.key);
+      const anchor = move.after ? same.findIndex(p => p.flipbookId === move.after) : -1;
+      const before = move.after === null ? same[0] : anchor >= 0 ? same[anchor + 1] : undefined;
+      if (before) placed.splice(placed.indexOf(before), 0, moved);
+      else if (same.length) placed.splice(placed.indexOf(same[same.length - 1]) + 1, 0, moved);
+      else placed.push(moved);
+      log(`플립북 옮김: ${move.category.name} / ${move.flipbookId}`);
+      changed();
+      return true;
+    },
     async reveal(nodeId, isLatest) {
       await wait(options.revealMs ?? 0);
       if (!isLatest()) return false;

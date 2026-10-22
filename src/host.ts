@@ -43,6 +43,8 @@ export interface Host extends FingerprintReader {
   templateFromSelection(): Promise<{ id: string; name: string }>;
   templateIssues?(templateId: string | null): Promise<string[]>;
   syncFlipbook(settings: { pageId: string; templateId: string; force?: boolean }, view: FlipbookView): Promise<{ nodeId: string; notes: string[] }>;
+  // 기존 플립북 프레임을 다른 페이지·Section의 정한 자리로 옮긴다. 프레임을 찾지 못하면 false.
+  moveFlipbook(move: { flipbookId: string; fromPageId: string; pageId: string; category: { key: string; name: string }; after: string | null }): Promise<boolean>;
   beginDelivery?(): void;
   endDelivery?(): void;
   reveal(nodeId: string, isLatest: () => boolean): Promise<boolean>;

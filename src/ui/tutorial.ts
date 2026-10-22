@@ -230,7 +230,7 @@ const UI_STEPS: Step[] = [
   },
   {
     title: COPY.uiTutorial042, body: COPY.uiTutorial043,
-    spots: d => [[d.q('.detail .title-head'), d.q('.detail .new-place')]],
+    spots: d => [d.q('.detail .new-place')],
   },
   {
     title: COPY.uiTutorial044, body: COPY.uiTutorial045,
@@ -250,7 +250,7 @@ const UI_STEPS: Step[] = [
   },
   {
     title: COPY.uiTutorial048, body: COPY.uiTutorial049,
-    spots: d => [d.q('.footer .footer-line')],
+    spots: d => [d.q('.detail .new-actions')],
   },
   {
     title: COPY.uiTutorial050, body: COPY.uiTutorial051,

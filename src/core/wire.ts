@@ -163,7 +163,7 @@ export type ToUi =
   | { type: 'history'; id: string; rows: HistoryRow[] }
   | { type: 'guiScreens'; screens: GuiScreenInfo[] }
   // 플립북을 만들었다. ids: 새 플립북 ID
-  | { type: 'flipbooksCreated'; ids: string[]; message: string }
+  | { type: 'flipbooksCreated'; ids: string[]; moved?: string[]; message: string }
   // 확인 완료를 기록했다. ids: 기록한 플립북 ID
   | { type: 'reviewed'; ids: string[]; message: string }
   // 목록에서 삭제했다. ids: 삭제한 플립북 ID

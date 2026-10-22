@@ -25,13 +25,13 @@ const expandGroups = async () => {
 };
 const mode = async name => {
   await page.locator(`#tools [data-mode=${name}]`).click();
-  await page.waitForFunction(title => document.querySelector('#app .tabs .app-title')?.textContent === title, name === 'UI' ? 'UI Flipbook' : 'GUI Publish');
+  await page.waitForFunction(tab => document.querySelector(`#app .tabs [data-action=${tab}]`), name === 'UI' ? 'text-close' : 'version-close');
 };
 const resize = (width, height) => app.evaluate((root, size) => { root.style.width = `${size.width}px`; root.style.height = `${size.height}px`; }, { width, height });
 
 try {
   await page.goto(pathToFileURL('dist/preview.html').href);
-  await page.waitForFunction(() => document.querySelector('#app .tabs .app-title')?.textContent === 'GUI Publish');
+  await page.waitForFunction(() => document.querySelector('#app .tabs [data-action=version-close]'));
   await resize(900, 640);
   // 작업 결과 토스트가 화면 아래를 가리지 않게 숨긴다.
   await page.addStyleTag({ content: '#app .toast { display: none !important; }' });

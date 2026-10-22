@@ -74,7 +74,7 @@ flowchart LR
 
 UI Flipbook의 현재 화면 흐름은 **플립북 만들기, GUI 갱신 알림, 확인 완료**다. `Controller`와 코어에는 과거 UI Publish용 스캔·계획·확정 경로가 남아 있지만 현재 UI의 툴바에는 UI 배포 기능이 노출되지 않는다. `uv:` 이력은 현재 확인 완료의 상태·코멘트 기록에도 사용하며 이전 기록을 읽는 호환 경로도 있다.
 
-1. 만들기 요청의 화면·페이지·Section·배율을 `planFlipbooks()`가 플립북 모델로 만든다. `deliverFlipbooks()`가 템플릿을 검사하고 프레임을 복제해 제목, Status, Screen ID, GUI 영역과 이력을 채운다. 화면이 없는 정책 플립북도 만들 수 있다.
+1. 만들기 요청의 화면·페이지·Section·배율을 `planFlipbooks()`가 플립북 모델로 만든다. `deliverFlipbooks()`가 템플릿을 검사하고 프레임을 복제해 제목, Status, Screen ID, GUI 영역과 이력을 채운다. 화면이 없는 플립북도 만들 수 있다. 같은 요청의 `moves`(목록에서 옮긴 기존 플립북)는 만들기 전에 `checkMoves()`로 확인하고, 목록 순서대로 `Host.moveFlipbook()`(Figma: `moveFlipbookFrame()`)으로 프레임을 옮긴 뒤 `moveFlipbooks()`가 페이지·Section 기록을 바꾼다. Section이 바뀐 플립북은 다시 반영해 Chapter를 맞춘다.
 2. GUI Publish 후 `importGuiUpdates()`가 플립북에 들어 있는 화면의 새 버전과 이력 사본을 기록한다. `syncFlipbook()`은 원본 GUI 레이어를 복사해 설정 폭과 1x·1/2x·1/4x 배율로 배치한다. 버전·배율·폭이 같은 기존 복사본은 재사용한다.
 3. 템플릿과 플립북의 플러그인 관리 영역만 수정한다. Description 내용, 콜아웃, 마커는 보존하고 GUI 복사본을 다시 배치할 때 해당 화면을 따라 마커 위치를 옮긴다.
 4. 새 GUI 이력이 `rv:`에 저장된 화면별 확인 버전보다 앞서면 플립북에 확인 필요 표시를 한다. `markReviewed()`는 그때까지의 버전, Status 태그와 코멘트를 저장하고 플립북의 표시·이력 행을 갱신한다. 시각 대신 화면별 버전으로 확인 여부를 판단한다.

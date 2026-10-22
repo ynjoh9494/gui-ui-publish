@@ -76,9 +76,9 @@ export function guiKey(uid: string, version: number): string {
   return `${uid}@${version}`;
 }
 
-// 화면이 여러 개여도 첫 번째로 선택한 화면의 이름만 자동 제목으로 쓴다.
+// 화면이 여러 개여도 첫 번째로 선택한 화면의 이름만 자동 제목으로 쓴다. 화면이 없으면 「새 플립북」이다(2026-10-22 사용자 요청).
 export function defaultTitle(kind: FlipbookKind, screens: { name: string }[]): string {
-  if (!screens.length) return '';
+  if (!screens.length) return COPY.coreFlipbook004;
   return screens[0].name;
 }
 

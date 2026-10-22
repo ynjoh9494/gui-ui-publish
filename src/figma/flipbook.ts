@@ -270,16 +270,16 @@ function flipbookFrames(container: ChildrenMixin, ns: string): FrameNode[] {
     .sort((a, b) => a.y - b.y || a.x - b.x);
 }
 
-function categorySection(ns: string, page: PageNode, view: FlipbookView): SectionNode {
+function categorySection(ns: string, page: PageNode, category: { key: string; name: string }): SectionNode {
   const sections = page.children.filter((n): n is SectionNode => n.type === 'SECTION');
-  const found = sections.find(s => s.getSharedPluginData(ns, CATEGORY_KEY) === view.category.key);
+  const found = sections.find(s => s.getSharedPluginData(ns, CATEGORY_KEY) === category.key);
   if (found) {
-    if (found.name !== view.category.name) found.name = view.category.name;
+    if (found.name !== category.name) found.name = category.name;
     return found;
   }
   const section = figma.createSection();
-  section.name = view.category.name;
-  section.setSharedPluginData(ns, CATEGORY_KEY, view.category.key);
+  section.name = category.name;
+  section.setSharedPluginData(ns, CATEGORY_KEY, category.key);
   page.appendChild(section);
   const others = page.children.filter(n => n !== section);
   section.x = others.length ? Math.min(...others.map(n => n.x)) : 0;
@@ -403,7 +403,7 @@ async function createFlipbook(ns: string, page: PageNode, template: FrameNode, v
   const gui = parts(frame).gui;
   if (gui) for (const child of [...gui.children]) child.remove();
 
-  const section = categorySection(ns, page, view);
+  const section = categorySection(ns, page, view.category);
   const frames = flipbookFrames(section, ns);
   section.appendChild(frame);
   // 만들기 목록에서 정한 자리: 지정한 플립북 바로 다음(null이면 맨 앞). 그 플립북이 Section에 없으면 맨 뒤에 둔다.
@@ -420,7 +420,7 @@ export async function renameSection(ns: string, pageId: string, categoryId: stri
 
 // 카테고리가 바뀐 화면의 플립북을 새 카테고리 Section으로 옮긴다. 프레임 안의 UI 작성 내용은 함께 옮겨진다.
 function moveToCategory(ns: string, page: PageNode, frame: FrameNode, view: FlipbookView): void {
-  const target = categorySection(ns, page, view);
+  const target = categorySection(ns, page, view.category);
   if (frame.parent === target) return;
   const from = frame.parent?.type === 'SECTION' ? frame.parent : null;
   const frames = flipbookFrames(target, ns);
@@ -429,6 +429,26 @@ function moveToCategory(ns: string, page: PageNode, frame: FrameNode, view: Flip
   fitSection(ns, target);
   // 원래 Section의 남은 프레임은 그 자리에 둔다. 빠진 자리만큼 Section을 줄인다.
   if (from) fitSection(ns, from, true);
+}
+
+// 목록에서 옮긴 기존 플립북(2026-10-22 사용자 요청)을 캔버스에서도 옮긴다. 새 플립북을 넣을 때와 같은 규칙이다:
+// 그 Section의 정한 플립북(after) 바로 다음 칸(null이면 맨 앞)에 놓고, 칸이 차 있으면 같은 행의 뒤쪽 프레임만 민다.
+// 빠진 자리는 정리하지 않고, 원래 Section은 빠진 만큼만 줄인다(카테고리가 바뀐 플립북을 옮길 때와 같다). 다른 페이지로도 옮긴다.
+// 프레임을 찾지 못하면 false. 프레임 안의 UI 작성 내용은 함께 옮겨진다.
+export async function moveFlipbookFrame(ns: string, move: { flipbookId: string; fromPageId: string; pageId: string; category: { key: string; name: string }; after: string | null }): Promise<boolean> {
+  const from = await loadedPage(move.fromPageId);
+  const frame = pageFlipbooks(ns, from).get(move.flipbookId);
+  if (!frame) return false;
+  const page = move.pageId === move.fromPageId ? from : await loadedPage(move.pageId);
+  const target = categorySection(ns, page, move.category);
+  const source = frame.parent?.type === 'SECTION' ? frame.parent : null;
+  const frames = flipbookFrames(target, ns).filter(f => f !== frame);
+  const anchor = move.after ? frames.find(f => f.getSharedPluginData(ns, FLIPBOOK_KEY) === move.after) : undefined;
+  if (frame.parent !== target) target.appendChild(frame);
+  placeFrame(frames, frame, move.after === null ? null : anchor);
+  fitSection(ns, target);
+  if (source && source !== target) fitSection(ns, source, true);
+  return true;
 }
 
 // 플립북 ID → 플립북 프레임. 캔버스에서 플립북 프레임을 복제하면 복사본도 같은 플립북 ID를 가진다.

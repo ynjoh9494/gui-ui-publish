@@ -8,7 +8,7 @@ import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScre
 import { formatTime, type HistoryRow } from '../core/history.ts';
 import { arrangeFlipbooks, buildList, guiGroupKey, placeDrafts, savedGuiDisplay, savedGuiPlace, UNCATEGORIZED, type ArrangedGroup, type GuiPlace, type ListModel } from '../core/list.ts';
 import { emptyComment, type BatchComment, type Plan } from '../core/publish.ts';
-import { customSection, defaultSection, filterScreens, needsReview, pageSections, rowKind, screenCategoryKey, uncreatedScreens, unreviewed, type FlipbookRowRequest, type FlipbookSection, type ScreenFilter, type ScreenKind } from '../core/flipbooks.ts';
+import { customSection, defaultSection, filterScreens, needsReview, pageSections, rowKind, screenCategoryKey, uncreatedScreens, unreviewed, type FlipbookMove, type FlipbookRowRequest, type FlipbookSection, type ScreenFilter, type ScreenKind } from '../core/flipbooks.ts';
 import { defaultTitle, guiTargetWidth, GUI_WIDTH_MAX, GUI_WIDTH_MIN, validGuiWidth } from '../core/flipbook.ts';
 import { TAG_PALETTE } from '../core/palette.ts';
 import { findCategoryByName, systemTagId, workerLabel } from '../core/registry.ts';
@@ -40,7 +40,7 @@ const NODE_PREVIEW = 'node:';
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
 const WHILE_BUSY = new Set(['tab', 'settings', 'group', 'select', 'changed-only', 'cancel-scan', 'toggle-detail', 'tutorial', 'text-open', 'text-close']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
-const BEFORE_CHECK = new Set([...WHILE_BUSY, 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'fb-edit-title', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
+const BEFORE_CHECK = new Set([...WHILE_BUSY, 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'text-import', 'text-apply',
   'version-open', 'version-close', 'version-match', 'version-select', 'version-review-only', 'version-reveal', 'version-switch', 'version-cancel']);
 
@@ -104,24 +104,32 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   // GUI 배포의 추가 설명. 배포 한 번에 하나(2026-10-20 사용자 결정)
   let comment: BatchComment = emptyComment();
   // 새 플립북(2026-10-21 사용자 요청: 플립북 만들기 탭을 플립북 목록에 합친다). 「새 플립북」을 누르면 목록에 바로 들어가는 미리보기이며,
-  // 만들기를 누르기 전에는 저장하지 않는다. 목록에서 끌거나 Alt+↑↓로 자리를, 오른쪽에서 페이지·Section을 정한다.
-  // section: null이면 첫 화면의 카테고리 Section(정책은 「정책」). after: Section 안에서 바로 앞 항목(기존 플립북 ID 또는 새 플립북 키, null이면 맨 앞, 없으면 맨 뒤).
+  // 만들기를 누르기 전에는 저장하지 않는다. 목록에서 드래그하거나 Alt+↑↓로 자리를, 오른쪽에서 페이지·Section을 정한다.
+  // section: null이면 첫 화면의 카테고리 Section(화면이 없으면 그 페이지 맨 아래 Section). after: Section 안에서 바로 앞 항목(기존 플립북 ID 또는 새 플립북 키, null이면 맨 앞, 없으면 맨 뒤).
   // 배열 순서는 목록 순서와 같게 유지한다(normalizeNew).
-  type NewFlipbook = { key: string; uids: string[]; scale: FlipbookScale; scales: Record<string, FlipbookScale>; title: string; pageId: string; section: FlipbookSection | null; after?: string | null };
+  // seq: 목록에 끼워 넣는 순서(앞 항목이 먼저 놓이게 목록 순서대로 매긴다). 옮긴 기존 플립북과 함께 센다.
+  type NewFlipbook = { key: string; uids: string[]; scale: FlipbookScale; scales: Record<string, FlipbookScale>; title: string; pageId: string; section: FlipbookSection | null; after?: string | null; seq: number };
+  // 목록에서 옮긴 기존 플립북(2026-10-22 사용자 요청). 키는 플립북 ID다. 만들기(새 플립북이 없으면 배치 반영)를 누르면 캔버스에 반영할지 묻는다.
+  type MovedFlipbook = { key: string; pageId: string; section: FlipbookSection; after?: string | null; seq: number };
+  let movedFlipbooks: MovedFlipbook[] = [];
+  let floatSeq = 0;
+  // 새 플립북 확인 모달: 캔버스 배치 반영 여부(arrange), 만들기 취소 확인(cancel)
+  let newDialog: 'arrange' | 'cancel' | null = null;
   const NEW_PREFIX = 'new:';
   const isNewKey = (key: string) => key.startsWith(NEW_PREFIX);
   let newFlipbooks: NewFlipbook[] = [];
   let newSeq = 0;
   // 목록에서 고른 새 플립북. 기존 플립북 선택(selection.UI)과 함께 쓰지 않는다.
   let selectedNew: string | null = null;
-  // 제목을 고치는 중인 새 플립북 키 또는 기존 플립북 ID
+  // 제목을 고치는 중인 새 플립북 키 또는 기존 플립북 ID와 고치는 자리. 이름을 더블클릭한 자리(목록·오른쪽 영역)에서 고친다(2026-10-22 사용자 요청).
   let editingTitle: string | null = null;
+  let editingIn: 'list' | 'detail' = 'detail';
+  // 목록을 다시 그린 뒤 목록의 제목 입력에 포커스를 둔다.
+  let focusListTitle = false;
   // 새 Section 이름을 입력하는 중인가
   let addingSection = false;
-  // 「모두 취소」를 한 번 눌렀는가. 한 번 더 누르면 새 플립북을 모두 지운다.
-  let clearNewArmed = false;
   let newSubmitting = false;
-  // 끌고 있는 새 플립북
+  // 드래그 중인 새 플립북
   let draggingNew: string | null = null;
   let sizeBeforeCreate: { width: number; height: number } | null = null;
   const createCollapsedCategories = new Set<string>();
@@ -208,6 +216,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     <div class="toast" role="status" aria-live="polite"></div>
     <div class="overlay" hidden></div>
     <div class="overlay bulk-overlay" hidden></div>
+    <div class="overlay arrange-overlay" hidden></div>
     <div class="resize-handle" title="${COPY.uiApp208}" aria-label="${COPY.uiApp208}"></div>`;
   const $ = (sel: string) => root.querySelector(sel) as HTMLElement;
   const editor = textEditor(root);
@@ -237,17 +246,21 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       start = { x: ev.clientX, width: list.getBoundingClientRect().width };
       root.classList.add('resizing-panes');
     });
-    divider.addEventListener('pointermove', ev => {
-      if (start) setWidth(start.width + ev.clientX - start.x);
-    });
     const stop = (ev: PointerEvent) => {
       if (!start) return;
       start = null;
       root.classList.remove('resizing-panes');
       if (divider.hasPointerCapture(ev.pointerId)) divider.releasePointerCapture(ev.pointerId);
     };
+    divider.addEventListener('pointermove', ev => {
+      if (!start) return;
+      // 플러그인 창 밖에서 버튼을 놓으면 pointerup이 오지 않는다. 돌아왔을 때 버튼이 떼어져 있으면 끝낸다.
+      if (!(ev.buttons & 1)) { stop(ev); return; }
+      setWidth(start.width + ev.clientX - start.x);
+    });
     divider.addEventListener('pointerup', stop);
     divider.addEventListener('pointercancel', stop);
+    divider.addEventListener('lostpointercapture', stop);
     divider.addEventListener('keydown', ev => {
       if (tab === 'ADMIN') return;
       const { min, max } = limits();
@@ -261,6 +274,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   }
 
   // 창 크기 손잡이: 끄는 동안 프레임마다 크기를 보내고, 놓으면 그 크기를 기억한다.
+  // 플러그인 창(iframe) 밖으로 나간 동안에는 포인터 이벤트가 오지 않아 크기도 따라가지 않는다. 밖에서 버튼을 놓으면 pointerup이 오지 않으므로,
+  // 다시 들어온 첫 움직임에서 버튼이 떼어져 있으면 마지막으로 반영한 크기로 끝낸다(2026-10-22 사용자 보고: 놓은 뒤에도 창 크기가 따라 움직임).
   {
     const handle = $('.resize-handle');
     let start: { x: number; y: number; width: number; height: number } | null = null;
@@ -272,16 +287,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       if (pending) bridge.send({ type: 'resize', ...pending, save: save && !compactFrom, compact: !!compactFrom });
       if (save) pending = null;
     };
-    handle.addEventListener('pointerdown', ev => {
-      ev.preventDefault();
-      handle.setPointerCapture(ev.pointerId);
-      start = { x: ev.screenX, y: ev.screenY, width: root.offsetWidth, height: root.offsetHeight };
-    });
-    handle.addEventListener('pointermove', ev => {
-      if (!start) return;
-      pending = clampWindow(start.width + ev.screenX - start.x, start.height + ev.screenY - start.y, !!compactFrom);
-      if (!frame) frame = requestAnimationFrame(() => send());
-    });
     const stop = (ev: PointerEvent) => {
       if (!start) return;
       start = null;
@@ -289,8 +294,21 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       if (frame) cancelAnimationFrame(frame);
       send(true);
     };
+    handle.addEventListener('pointerdown', ev => {
+      if (ev.button !== 0) return;
+      ev.preventDefault();
+      handle.setPointerCapture(ev.pointerId);
+      start = { x: ev.screenX, y: ev.screenY, width: root.offsetWidth, height: root.offsetHeight };
+    });
+    handle.addEventListener('pointermove', ev => {
+      if (!start) return;
+      if (!(ev.buttons & 1)) { stop(ev); return; }
+      pending = clampWindow(start.width + ev.screenX - start.x, start.height + ev.screenY - start.y, !!compactFrom);
+      if (!frame) frame = requestAnimationFrame(() => send());
+    });
     handle.addEventListener('pointerup', stop);
     handle.addEventListener('pointercancel', stop);
+    handle.addEventListener('lostpointercapture', stop);
   }
 
   // ── 상태 계산 ─────────────────────────────────────────
@@ -376,66 +394,114 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     return n.uids.map(uid => screens.find(screen => screen.uid === uid)).filter((screen): screen is GuiScreenInfo => !!screen);
   }
   const newKind = (n: NewFlipbook) => rowKind({ uids: n.uids, multi: n.uids.length > 1, scale: n.scale });
-  // 따로 고르지 않았으면 첫 화면의 카테고리 Section이다(만들 때 본체도 같은 규칙을 쓴다).
-  const newSection = (n: NewFlipbook): FlipbookSection => n.section ?? defaultSection(newKind(n), newScreens(n)[0]);
-  // 제목을 비우면 첫 화면 이름을 쓴다. 화면도 제목도 없으면 「새 플립북」으로 보여 준다.
-  function newTitle(n: NewFlipbook): string {
-    const chosen = newScreens(n);
-    return n.title.trim() || (chosen.length ? defaultTitle(newKind(n), chosen) : '');
+  // 따로 고르지 않았으면 첫 화면의 카테고리 Section이다. 화면이 없으면 「정책」으로 보내지 않고 그 페이지 맨 아래 Section에 둔다
+  // (2026-10-22 사용자 요청). 페이지에 플립북이 없으면 미분류다.
+  function autoSection(n: NewFlipbook): FlipbookSection {
+    const first = newScreens(n)[0];
+    if (first || !state) return defaultSection(first);
+    const onPage = arrangeFlipbooks(state, pages, id => uiScans.get(id)?.spot).filter(g => g.pageId === n.pageId);
+    return onPage.length ? onPage[onPage.length - 1].section : defaultSection(undefined);
   }
-  // 목록 순서: 기존 플립북은 캔버스 순서, 새 플립북은 정한 자리
+  const newSection = (n: NewFlipbook): FlipbookSection => n.section ?? autoSection(n);
+  // 제목을 비우면 첫 화면 이름, 화면이 없으면 「새 플립북」을 쓴다.
+  const newTitle = (n: NewFlipbook): string => n.title.trim() || defaultTitle(newKind(n), newScreens(n));
+  const canvasArrangement = (): ArrangedGroup[] => state ? arrangeFlipbooks(state, pages, id => uiScans.get(id)?.spot) : [];
+  // 목록 순서: 기존 플립북은 캔버스 순서, 새 플립북과 옮긴 기존 플립북은 정한 자리
   function arrangement(): ArrangedGroup[] {
     if (!state) return [];
-    const placed = arrangeFlipbooks(state, pages, id => uiScans.get(id)?.spot);
-    return placeDrafts(placed, newFlipbooks.map(n => ({ key: n.key, pageId: n.pageId, section: newSection(n), after: n.after })), pages);
+    const moving = new Set(movedFlipbooks.map(m => m.key));
+    const placed = canvasArrangement().map(g => ({ ...g, items: g.items.filter(item => !moving.has(item)) }));
+    const floats = [...newFlipbooks.map(n => ({ key: n.key, pageId: n.pageId, section: newSection(n), after: n.after, seq: n.seq })), ...movedFlipbooks].sort((a, b) => a.seq - b.seq);
+    return placeDrafts(placed, floats, pages);
   }
-  // 목록에 보이는 순서로 새 플립북의 앞 항목과 배열 순서를 다시 적는다. 같은 자리에 여럿을 넣거나 옮긴 뒤에도 순서가 그대로 남는다.
+  // 목록에 보이는 순서로 새 플립북·옮긴 기존 플립북의 앞 항목과 순서를 다시 적는다. 같은 자리에 여럿을 넣거나 옮긴 뒤에도 순서가 그대로 남는다.
   function normalizeNew(groups = arrangement()) {
-    const byKey = new Map(newFlipbooks.map(n => [n.key, n]));
+    const byKey = new Map<string, NewFlipbook | MovedFlipbook>([...newFlipbooks, ...movedFlipbooks].map(n => [n.key, n]));
     const order: NewFlipbook[] = [];
+    let seq = 0;
     for (const group of groups) group.items.forEach((item, i) => {
       const n = byKey.get(item);
       if (!n) return;
       n.after = i ? group.items[i - 1] : null;
-      order.push(n);
+      n.seq = ++seq;
+      if (isNewKey(n.key)) order.push(n as NewFlipbook);
     });
     newFlipbooks = order;
+    floatSeq = seq;
   }
-  // 새 플립북을 다른 자리로 옮긴다. to: 그 항목 앞(before)·뒤(after), 또는 그룹 맨 앞(start)·맨 뒤(end).
-  // 다른 Section으로 옮기면 그 페이지·Section을 고른 것으로 본다.
-  function moveNew(key: string, groupKey: string, to: { before?: string; after?: string; start?: boolean }) {
+  // 옮긴 기존 플립북이 원래 Section으로 돌아오고 그 Section의 기존 플립북 순서도 캔버스와 같아지면 옮기지 않은 것으로 본다.
+  function pruneMoved() {
+    if (!movedFlipbooks.length) return;
+    const existing = (g: ArrangedGroup) => g.items.filter(item => !isNewKey(item)).join('\n');
+    const original = canvasArrangement();
+    const originalGroup = new Map(original.flatMap(g => g.items.map(item => [item, g.key] as const)));
+    const originalOrder = new Map(original.map(g => [g.key, existing(g)]));
+    const groupOf = new Map(arrangement().flatMap(g => g.items.map(item => [item, g] as const)));
+    const keep = movedFlipbooks.filter(m => {
+      const g = groupOf.get(m.key);
+      return !g || g.key !== originalGroup.get(m.key) || existing(g) !== originalOrder.get(g.key);
+    });
+    if (keep.length === movedFlipbooks.length) return;
+    movedFlipbooks = keep;
+    normalizeNew();
+  }
+  // 캔버스에 반영할 옮기기: 목록 순서대로 보낸다. 앞 항목은 같은 Section에서 바로 앞 기존 플립북이다(새 플립북은 아직 없으므로 건너뛴다).
+  function plannedMoves(): FlipbookMove[] {
+    const moving = new Set(movedFlipbooks.map(m => m.key));
+    const out: FlipbookMove[] = [];
+    for (const group of arrangement()) {
+      let previous: string | null = null;
+      for (const item of group.items) {
+        if (isNewKey(item)) continue;
+        if (moving.has(item) && group.pageId) out.push({ flipbookId: item, pageId: group.pageId, section: group.section, after: previous });
+        previous = item;
+      }
+    }
+    return out;
+  }
+  // 새 플립북이나 기존 플립북을 다른 자리로 옮긴다. to: 그 항목 앞(before)·뒤(after), 또는 그룹 맨 앞(start)·맨 뒤(end).
+  // 다른 Section으로 옮기면 그 페이지·Section을 고른 것으로 본다. 기존 플립북은 만들기 전까지 목록에서만 옮긴다.
+  function moveItem(key: string, groupKey: string, to: { before?: string; after?: string; start?: boolean }) {
     const groups = arrangement();
-    const n = newFlipbooks.find(x => x.key === key);
     const target = groups.find(g => g.key === groupKey);
-    if (!n || !target || !target.pageId || (to.before === key || to.after === key)) return;
+    if (!target || !target.pageId || (to.before === key || to.after === key)) return;
+    const n = isNewKey(key) ? newFlipbooks.find(x => x.key === key) : undefined;
+    let m = n ? undefined : movedFlipbooks.find(x => x.key === key);
+    if (!n && !m) {
+      if (isNewKey(key) || state?.flipbooks.get(key)?.status !== 'active') return;
+      m = { key, pageId: target.pageId, section: target.section, seq: 0 };
+      movedFlipbooks.push(m);
+    }
     for (const group of groups) group.items = group.items.filter(item => item !== key);
     const ref = to.before ?? to.after;
     const at = ref ? target.items.indexOf(ref) + (to.after ? 1 : 0) : to.start ? 0 : target.items.length;
     target.items.splice(ref && at < (to.after ? 1 : 0) ? target.items.length : at, 0, key);
-    if (n.pageId !== target.pageId || newSection(n).key !== target.section.key) { n.pageId = target.pageId; n.section = target.section; }
+    if (n && (n.pageId !== target.pageId || newSection(n).key !== target.section.key)) { n.pageId = target.pageId; n.section = target.section; }
+    if (m) { m.pageId = target.pageId; m.section = target.section; }
     normalizeNew(groups);
+    pruneMoved();
     expanded.UI.add(target.key);
   }
-  // 새 플립북을 다른 페이지·Section의 맨 뒤로 옮긴다(section이 null이면 화면 카테고리 Section). 바로 뒤에 있던 새 플립북은 제자리에 남긴다.
+  // 새 플립북을 다른 페이지·Section의 맨 뒤로 옮긴다(section이 null이면 화면 카테고리 Section). 바로 뒤에 있던 항목은 제자리에 남긴다.
   function relocateNew(n: NewFlipbook, pageId: string, section: FlipbookSection | null) {
-    for (const other of newFlipbooks) if (other.after === n.key) other.after = n.after;
+    for (const other of [...newFlipbooks, ...movedFlipbooks]) if (other.after === n.key) other.after = n.after;
     n.pageId = pageId; n.section = section; n.after = undefined;
-    // 배열 맨 뒤에 두어야 그 Section의 다른 새 플립북보다 뒤에 놓인다(placeDrafts는 배열 순서대로 놓는다).
-    newFlipbooks = [...newFlipbooks.filter(x => x !== n), n];
+    // 가장 나중에 놓아야 그 Section의 다른 항목보다 뒤에 놓인다(placeDrafts는 순서대로 놓는다).
+    n.seq = ++floatSeq;
     normalizeNew();
     expanded.UI.add(`${pageId}|${newSection(n).key}`);
   }
   // Alt+↑↓: 한 칸 옮긴다. 그룹 끝에서는 이웃 그룹의 맨 끝·맨 앞으로 넘어간다.
-  function stepNew(key: string, step: -1 | 1) {
+  function stepItem(key: string, step: -1 | 1) {
     const groups = arrangement().filter(g => g.pageId && flipbookPageOptions().some(p => p.id === g.pageId));
     const gi = groups.findIndex(g => g.items.includes(key));
     if (gi < 0) return;
     const items = groups[gi].items;
     const i = items.indexOf(key);
     const neighbor = items[i + step];
-    if (neighbor) { moveNew(key, groups[gi].key, step < 0 ? { before: neighbor } : { after: neighbor }); return; }
+    if (neighbor) { moveItem(key, groups[gi].key, step < 0 ? { before: neighbor } : { after: neighbor }); return; }
     const next = groups[gi + step];
-    if (next) moveNew(key, next.key, step < 0 ? {} : { start: true });
+    if (next) moveItem(key, next.key, step < 0 ? {} : { start: true });
   }
   // 「새 플립북」: 고른 항목 바로 다음(같은 페이지·Section)에 넣고 고른다. 고른 항목이 없으면 기본 페이지의 화면 카테고리 Section 맨 뒤다.
   // quiet: 화면 우클릭으로 추가. 고른 항목을 바꾸지 않고, 화면·제목이 빈 새 플립북이 있으면 그 항목을 채운다.
@@ -455,14 +521,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       if (expanding || sizeBeforeCreate.width < 960 || sizeBeforeCreate.height < 800) bridge.send({ type: 'resize', width: Math.max(sizeBeforeCreate.width, 960), height: Math.max(sizeBeforeCreate.height, 800) });
     }
     const pageId = options.find(pg => pg.id === state!.project.flipbookPageId)?.id ?? options[0].id;
-    const n: NewFlipbook = { key: `${NEW_PREFIX}${++newSeq}`, uids, scale: 1, scales: {}, title: '', pageId, section: null };
+    const n: NewFlipbook = { key: `${NEW_PREFIX}${++newSeq}`, uids, scale: 1, scales: {}, title: '', pageId, section: null, seq: ++floatSeq };
     const anchorKey = quiet ? null : selectedNew ?? (selection.UI.size ? selected.UI : null);
     const group = anchorKey ? arrangement().find(g => g.items.includes(anchorKey)) : null;
     if (anchorKey && group?.pageId && options.some(p => p.id === group.pageId)) { n.pageId = group.pageId; n.section = group.section; n.after = anchorKey; }
     newFlipbooks.push(n);
     normalizeNew();
     expanded.UI.add(`${n.pageId}|${newSection(n).key}`);
-    clearNewArmed = false;
     createError = null;
     if (!quiet) {
       selectedNew = n.key; editingTitle = null; addingSection = false;
@@ -478,16 +543,18 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     newFlipbooks = newFlipbooks.filter(n => n.key !== key);
     normalizeNew(groups);
     if (selectedNew === key) { selectedNew = null; editingTitle = null; }
-    if (!newFlipbooks.length) finishNew();
+    if (!newFlipbooks.length && !movedFlipbooks.length) finishNew();
     renderList(); renderDetail(); renderFooter();
   }
-  // 새 플립북을 모두 만들었거나 지웠다. 「새 플립북」을 처음 누를 때 넓힌 창을 되돌린다.
+  // 새 플립북을 모두 만들었거나 지웠다. 옮긴 기존 플립북도 반영했거나 되돌렸다. 「새 플립북」을 처음 누를 때 넓힌 창을 되돌린다.
   function finishNew() {
     newFlipbooks = [];
+    movedFlipbooks = [];
+    newDialog = null;
+    renderNewDialog();
     selectedNew = null;
     editingTitle = null;
     addingSection = false;
-    clearNewArmed = false;
     createError = null;
     // 접어 둔 동안이면 창은 그대로 두고 펼칠 때 돌아갈 너비만 바꾼다.
     if (sizeBeforeCreate) {
@@ -507,16 +574,23 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     if (editingTitle !== key) editingTitle = null;
     addingSection = false;
     selection.UI.clear(); selected.UI = null; anchor.UI = null;
-    removeAllArmed = false; clearNewArmed = false;
-    renderList(); renderDetail();
+    removeAllArmed = false;
+    renderList(); renderDetail(); renderFooter();
   }
-  function submitNew() {
-    if (!state || newSubmitting || !newFlipbooks.length) return;
+  // 만들기(새 플립북이 없으면 배치 반영). 옮긴 기존 플립북이 있으면 캔버스 배치에 반영할지 먼저 묻는다(2026-10-22 사용자 요청).
+  // reflect: 모달에서 고른 답. 반영하지 않으면 기존 플립북은 캔버스 순서로 돌아가고 새 플립북만 만든다.
+  function submitNew(reflect?: boolean) {
+    if (!state || newSubmitting || (!newFlipbooks.length && !movedFlipbooks.length)) return;
     const options = flipbookPageOptions();
     normalizeNew();
-    const blank = newFlipbooks.find(n => !n.uids.length && !n.title.trim());
-    if (blank) { createError = COPY.coreFlipbooks005; selectNew(blank.key); renderFooter(); return; }
+    pruneMoved();
+    if (movedFlipbooks.length && reflect === undefined) { newDialog = 'arrange'; renderNewDialog(); return; }
+    newDialog = null;
+    renderNewDialog();
+    if (!reflect && movedFlipbooks.length) { movedFlipbooks = []; normalizeNew(); }
+    if (!newFlipbooks.length && !movedFlipbooks.length) { finishNew(); renderList(); renderDetail(); renderFooter(); return; }
     if (newFlipbooks.some(n => !options.some(p => p.id === n.pageId))) { createError = COPY.uiApp209; renderFooter(); return; }
+    const moves = plannedMoves();
     const index = new Map(newFlipbooks.map((n, i) => [n.key, i]));
     const rows: FlipbookRowRequest[] = newFlipbooks.map(n => ({
       uids: n.uids, multi: n.uids.length > 1, scale: n.scale, scales: n.scales, title: n.title.trim(), pageId: n.pageId, section: newSection(n),
@@ -524,15 +598,53 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     }));
     newSubmitting = true;
     createError = null;
-    bridge.send({ type: 'createFlipbooks', request: { pageId: options.find(pg => pg.id === state!.project.flipbookPageId)?.id ?? newFlipbooks[0].pageId, rows } });
-    renderFooter();
+    bridge.send({ type: 'createFlipbooks', request: { pageId: options.find(pg => pg.id === state!.project.flipbookPageId)?.id ?? newFlipbooks[0]?.pageId ?? moves[0].pageId, rows, moves } });
+    renderList(); renderDetail(); renderFooter();
   }
+  // 새 플립북 확인 모달. 배치 반영 여부는 「반영하지 않음」·「반영함」, 만들기 취소는 「계속 편집」·「모두 취소」 두 버튼이다.
+  // 두 번 눌러 실행하는 버튼은 누적 데이터 삭제처럼 중요한 동작에만 쓰고, 만들기 중 취소는 모달로 확인한다(2026-10-22 사용자 요청).
+  function renderNewDialog() {
+    const overlay = $('.arrange-overlay');
+    if (!newDialog) { overlay.hidden = true; overlay.innerHTML = ''; return; }
+    overlay.innerHTML = newDialog === 'arrange'
+      ? `<div class="dialog arrange-dialog" role="dialog" aria-modal="true" aria-label="${COPY.uiApp317}">
+      <h2>${COPY.uiApp317}</h2>
+      <p>${COPY.uiApp318} <b>${movedFlipbooks.length}</b>${COPY.uiApp319}</p>
+      <p class="note">${COPY.uiApp320}</p>
+      <div class="dialog-actions"><button data-action="arrange-skip">${COPY.uiApp321}</button><button class="primary" data-action="arrange-apply">${COPY.uiApp322}</button></div></div>`
+      : `<div class="dialog arrange-dialog cancel-dialog" role="dialog" aria-modal="true" aria-label="${COPY.uiApp323}">
+      <h2>${COPY.uiApp323}</h2>
+      <p>${COPY.uiApp324}</p>
+      <div class="dialog-actions"><button data-action="new-dialog-close">${COPY.uiApp325}</button><button class="danger" data-action="new-cancel-confirm">${COPY.uiApp326}</button></div></div>`;
+    overlay.hidden = false;
+    overlay.querySelector<HTMLButtonElement>('.dialog-actions button:last-child')?.focus();
+  }
+  // 「취소」·「플립북 N개 만들기」(새 플립북이 없으면 「배치 반영」)
+  function newActions(): string {
+    const label = newSubmitting ? '만드는 중…' : newFlipbooks.length ? `플립북 ${newFlipbooks.length}개 만들기` : COPY.uiApp316;
+    return `<button data-action="new-clear" ${newSubmitting ? 'disabled' : ''}>${COPY.uiApp149}</button>
+      <button class="primary" data-action="create-submit" ${newSubmitting || !flipbookPageOptions().length ? 'disabled' : ''}>${label}</button>`;
+  }
+  // 오른쪽에 「플립북 편집」이 보이면 버튼은 그 머리에 있고 하단 줄은 없다(2026-10-22 사용자 요청).
+  const editingNewShown = () => !!currentNew() && !detailCollapsed;
   function renameExisting(id: string, title: string) {
     const fb = state?.flipbooks.get(id);
     editingTitle = null;
     if (fb && title.trim() !== fb.title && (title.trim() || !fb.autoTitle)) bridge.send({ type: 'renameFlipbook', id, title });
-    renderDetail();
+    renderDetail(); renderList();
   }
+  // 제목 고치기를 연다. 목록에서 열면 그 행의 이름을, 오른쪽 영역에서 열면 제목을 입력으로 바꾼다.
+  function editTitle(id: string, where: 'list' | 'detail') {
+    editingTitle = id;
+    editingIn = where;
+    focusListTitle = where === 'list';
+    renderList(); renderDetail();
+    if (where === 'detail') {
+      const input = root.querySelector<HTMLInputElement>('.detail .title-input');
+      input?.focus(); input?.select();
+    }
+  }
+  const editingAt = (id: string | undefined, where: 'list' | 'detail') => !!id && editingTitle === id && editingIn === where;
 
   // ── 렌더링 ───────────────────────────────────────────
 
@@ -542,7 +654,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   const HELP = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>';
   function renderTabs() {
     const settings = tab === 'ADMIN';
-    $('.tabs').innerHTML = `<span class="app-title">${mode === 'UI' ? 'UI Flipbook' : 'GUI Publish'}${settings ? ` · ${COPY.uiApp004}` : ''}</span>` +
+    // 머리에는 명령 이름(GUI Publish·UI Flipbook)을 쓰지 않고 탭만 둔다(2026-10-22 사용자 요청). 탭이 없는 관리 화면만 「관리」를 쓴다.
+    $('.tabs').innerHTML = `${settings ? `<span class="app-title">${COPY.uiApp004}</span>` : ''}` +
       `${mode === 'GUI' && !settings ? `<div class="create-tabs"><button data-action="version-close" aria-selected="${!versionOpen}">${COPY.uiApp272}</button><button data-action="version-open" aria-selected="${versionOpen}">${COPY.uiApp248}</button></div>` : ''}` +
       `${mode === 'UI' && !settings ? `<div class="create-tabs"><button data-action="text-close" aria-selected="${!textOpen}">${COPY.uiApp302}</button><button data-action="text-open" aria-selected="${textOpen}">${COPY.uiApp303}</button></div>` : ''}` +
       `<span class="who" title="${COPY.uiApp005}">${esc(actor?.name ?? '')}</span>` +
@@ -760,40 +873,61 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       : '';
     const scrollTop = box.scrollTop;
     const shown = new Map(model.groups.map(g => [g.key, g]));
-    const groups = arrangement().filter(g => shown.has(g.key) || g.items.some(isNewKey));
+    const moving = new Set(movedFlipbooks.map(m => m.key));
+    const rows = new Map(model.groups.flatMap(g => g.rows).map(r => [r.entry.key, r]));
+    const groups = arrangement().filter(g => shown.has(g.key) || g.items.some(item => isNewKey(item) || moving.has(item)));
     if (!groups.length) {
       box.innerHTML = `<p class="empty">${!made ? COPY.uiApp218 : query.UI ? COPY.uiApp028 : changedOnly.UI ? COPY.uiApp222 : COPY.uiApp029}</p>`;
       return;
     }
     const byKey = new Map(newFlipbooks.map(n => [n.key, n]));
+    // 목록에서 제목을 고치는 중이면 다시 그려도 입력 중인 값과 커서를 유지한다.
+    const typing = box.querySelector<HTMLInputElement>('.title-input');
+    const typed = typing ? { id: typing.dataset.key ?? typing.dataset.id, value: typing.value, focused: document.activeElement === typing, start: typing.selectionStart, end: typing.selectionEnd } : null;
     box.innerHTML = groups.map(g => {
       const listed = shown.get(g.key);
-      const rows = new Map((listed?.rows ?? []).map(r => [r.entry.key, r]));
       const drafts = g.items.filter(isNewKey).length;
+      // 기존 플립북을 드래그해 놓을 수 있는 그룹: 설정에서 지정한 플립북 페이지의 Section
+      const droppable = !!g.pageId && flipbookPageOptions().some(p => p.id === g.pageId);
       // 새 플립북만 있는 그룹(새 Section 등)은 접지 않았으면 펼친다.
       const open = listed ? listed.expanded || !!query.UI : expanded.UI.has(g.key);
       const items = open ? g.items.filter(item => rows.has(item) || byKey.has(item)) : [];
+      // 접힌 그룹에 확인이 필요한 플립북이 있으면 머리 맨 오른쪽에 빨간 점을 둔다(2026-10-22 사용자 요청). 펼치면 행마다 보인다.
+      const flagged = !open && g.items.some(item => !isNewKey(item) && needsReview(state!, item));
       return `<div class="group">
-        <div class="group-bar" data-group="${esc(g.key)}"><button class="group-head" data-action="group" data-group="${esc(g.key)}" aria-expanded="${open}">
-          <span class="caret">${open ? '▾' : '▸'}</span> ${esc(g.name)}
-          <span class="count">${listed?.total ?? 0}${drafts ? ` <b class="new-count" title="만들 플립북">+${drafts}</b>` : ''}</span>
+        <div class="group-bar" data-group="${esc(g.key)}"><button class="group-head flipbook-head" data-action="group" data-group="${esc(g.key)}" aria-expanded="${open}">
+          <span class="caret">${open ? '▾' : '▸'}</span><span class="group-name">${esc(g.name)}</span>
+          <span class="count">${g.items.length - drafts}${drafts ? ` <b class="new-count" title="만들 플립북">+${drafts}</b>` : ''}</span>
+          ${flagged ? `<span class="review-dot group-review" role="img" title="${COPY.uiApp192}" aria-label="${COPY.uiApp192}"></span>` : ''}
         </button></div>
         ${items.map(item => {
           const n = byKey.get(item);
           if (n) {
             const sel = selectedNew === n.key;
             const title = newTitle(n);
-            return `<div class="row new-row${sel ? ' selected' : ''}" data-action="new-select" data-key="${esc(n.key)}" data-group="${esc(g.key)}" draggable="true" tabindex="0" aria-selected="${sel}" title="끌거나 Alt+↑↓로 자리를 옮깁니다.">
+            const editing = editingAt(n.key, 'list');
+            const name = editing
+              ? `<input class="title-input" data-input="new-title" data-key="${esc(n.key)}" value="${esc(n.title)}" placeholder="${esc(defaultTitle(newKind(n), newScreens(n)))}" aria-label="${COPY.uiApp203}">`
+              : `<span class="name" data-edit-title="${esc(n.key)}" title="${COPY.uiApp314}">${esc(title)}</span>`;
+            return `<div class="row new-row${sel ? ' selected' : ''}" data-action="new-select" data-key="${esc(n.key)}" data-group="${esc(g.key)}" draggable="${!editing}" tabindex="0" aria-selected="${sel}" title="드래그하거나 Alt+↑↓로 자리를 옮깁니다.">
               <span class="drag-handle" aria-hidden="true">⠿</span>
-              <span class="name${title ? '' : ' placeholder'}">${esc(title || '새 플립북')}</span>
-              <button class="icon-button" data-action="new-remove" data-key="${esc(n.key)}" title="${COPY.uiApp105}" aria-label="${esc(title || '새 플립북')} ${COPY.uiApp105}">${X_ICON}</button>
+              ${name}
+              <button class="icon-button" data-action="new-edit-title" data-key="${esc(n.key)}" title="제목 수정" aria-label="${esc(title)} 제목 수정" aria-pressed="${editing}">${PENCIL_ICON}</button>
+              <button class="icon-button" data-action="new-remove" data-key="${esc(n.key)}" title="${COPY.uiApp105}" aria-label="${esc(title)} ${COPY.uiApp105}">${X_ICON}</button>
             </div>`;
           }
           const r = rows.get(item)!;
           const sel = selection.UI.has(r.entry.key);
           const flagged = !!r.entry.flipbookId && needsReview(state!, r.entry.flipbookId);
-          return `<div class="row${sel ? ' selected' : ''}" data-action="select" data-key="${esc(r.entry.key)}" data-group="${esc(g.key)}" tabindex="0" aria-selected="${sel}">
-            <span class="name">${esc(r.name)}</span>
+          // 연결이 끊긴 플립북은 반영하면 프레임을 새로 만들게 되므로 제목을 고치지 않는다(오른쪽 영역의 연필과 같다).
+          const fb = r.entry.flipbookId && r.entry.estimate !== 'missing' ? state!.flipbooks.get(r.entry.flipbookId) : undefined;
+          const name = fb && editingAt(fb.id, 'list')
+            ? `<input class="title-input" data-input="fb-title" data-id="${esc(fb.id)}" value="${esc(fb.title)}" placeholder="${esc(defaultTitle(fb.kind, fb.screens))}" aria-label="${COPY.uiApp203}">`
+            : `<span class="name"${fb ? ` data-edit-title="${esc(fb.id)}" title="${COPY.uiApp314}"` : ''}>${esc(r.name)}</span>`;
+          // 기존 플립북도 드래그하거나 Alt+↑↓로 자리를 옮긴다(2026-10-22 사용자 요청). 연결이 끊긴 플립북은 캔버스에 프레임이 없어 옮기지 않는다.
+          const movable = !!fb && droppable && !editingAt(fb.id, 'list') && !newSubmitting;
+          return `<div class="row${sel ? ' selected' : ''}" data-action="select" data-key="${esc(r.entry.key)}" data-group="${esc(g.key)}" draggable="${movable}" tabindex="0" aria-selected="${sel}">
+            ${name}
             ${r.entry.estimate === 'missing' ? unlinkedBadge() : ''}
             ${flagged ? `<span class="review-dot" role="img" title="${COPY.uiApp193}" aria-label="${COPY.uiApp193}"></span>` : ''}
           </div>`;
@@ -802,16 +936,29 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     }).join('');
     box.scrollTop = scrollTop;
     if (revealSelection) { revealSelection = false; box.querySelector<HTMLElement>('.row.selected')?.scrollIntoView({ block: 'nearest' }); }
+    const input = box.querySelector<HTMLInputElement>('.title-input');
+    if (input && typed && typed.id === (input.dataset.key ?? input.dataset.id)) {
+      input.value = typed.value;
+      if (typed.focused) { input.focus(); input.setSelectionRange(typed.start, typed.end); }
+    } else if (input && focusListTitle) {
+      input.focus(); input.select();
+      input.closest('.row')?.scrollIntoView({ block: 'nearest' });
+    }
+    if (input) focusListTitle = false;
   }
 
   // 새 플립북: 고른 항목의 화면 선택·페이지·Section, 만들기 전 미리보기를 정한다(2026-10-21 사용자 요청).
   function paintNewFooter() {
     const footer = $('.footer');
-    if (!newFlipbooks.length) { footer.innerHTML = ''; return; }
+    const actions = root.querySelector<HTMLElement>('.detail .new-actions');
+    if (actions) actions.innerHTML = newActions();
+    const error = root.querySelector<HTMLElement>('.detail .new-error');
+    if (error) error.innerHTML = createError ? `<p class="bad" role="alert">${esc(createError)}</p>` : '';
+    if ((!newFlipbooks.length && !movedFlipbooks.length) || editingNewShown()) { footer.innerHTML = ''; return; }
+    // 구현 기본값(확인 필요): 기존 플립북을 보고 있거나 순서만 바꿔 「플립북 편집」이 없으면 하단에 개수와 버튼을 둔다.
+    const counts = [newFlipbooks.length ? `만들 플립북 <b>${newFlipbooks.length}</b>${COPY.uiApp015}` : '', movedFlipbooks.length ? `${COPY.uiApp315} <b>${movedFlipbooks.length}</b>${COPY.uiApp015}` : ''].filter(Boolean).join(' · ');
     footer.innerHTML = `${createError ? `<p class="bad footer-note" role="alert">${esc(createError)}</p>` : ''}<div class="footer-line">
-      <span>만들 플립북 <b>${newFlipbooks.length}</b>${COPY.uiApp015}</span>
-      <button data-action="new-clear" ${newSubmitting ? 'disabled' : ''}>${clearNewArmed ? '한 번 더 누르면 모두 지웁니다' : '모두 취소'}</button>
-      <button class="primary" data-action="create-submit" ${newSubmitting || !flipbookPageOptions().length ? 'disabled' : ''}>${newSubmitting ? '만드는 중…' : `플립북 ${newFlipbooks.length}개 만들기`}</button></div>`;
+      <span>${counts}</span><span class="footer-actions">${newActions()}</span></div>`;
   }
 
   function paintFooter(sharedModel?: ListModel) {
@@ -1059,10 +1206,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     // 연결이 끊긴 플립북은 반영하면 프레임을 새로 만들게 되므로 바꾸지 않는다.
     const fb = state.flipbooks.get(entry.flipbookId);
     const renamable = !multi && !!fb && entry.estimate !== 'missing';
-    const heading = !multi && editingTitle === entry.flipbookId && fb
-      ? `<input class="title-input" data-input="fb-title" data-id="${esc(fb.id)}" value="${esc(fb.title)}" placeholder="${esc(fb.kind === 'policy' ? COPY.uiApp199 : defaultTitle(fb.kind, fb.screens))}" aria-label="${COPY.uiApp203}">`
-      : `<h2>${esc(entryName(state, entry))}${multi ? ` ${COPY.uiApp046} ${chosen.length - 1}${COPY.uiApp015}` : ''}</h2>`;
-    let top = `<div class="detail-head title-head">${heading}${renamable ? `<button class="icon-button" data-action="fb-edit-title" data-id="${esc(entry.flipbookId)}" title="제목 수정" aria-label="플립북 제목 수정" aria-pressed="${editingTitle === entry.flipbookId}">${PENCIL_ICON}</button>` : ''}</div>`;
+    const heading = renamable && editingAt(fb.id, 'detail')
+      ? `<input class="title-input" data-input="fb-title" data-id="${esc(fb.id)}" value="${esc(fb.title)}" placeholder="${esc(defaultTitle(fb.kind, fb.screens))}" aria-label="${COPY.uiApp203}">`
+      : `<h2${renamable ? ` data-edit-title="${esc(fb.id)}" title="${COPY.uiApp314}"` : ''}>${esc(entryName(state, entry))}${multi ? ` ${COPY.uiApp046} ${chosen.length - 1}${COPY.uiApp015}` : ''}</h2>`;
+    let top = `<div class="detail-head title-head">${heading}${renamable ? `<button class="icon-button" data-action="fb-edit-title" data-id="${esc(entry.flipbookId)}" title="제목 수정" aria-label="플립북 제목 수정" aria-pressed="${editingAt(fb.id, 'detail')}">${PENCIL_ICON}</button>` : ''}</div>`;
     // 연결이 끊긴 플립북은 목록에서 삭제할 수 있다. 한 번 누르면 삭제한다(2026-10-20 사용자 결정).
     const unlinked = chosen.filter(e => e.estimate === 'missing');
     if (unlinked.length) {
@@ -1260,10 +1407,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       group.screens.push(screen);
       grouped.set(key, group);
     }
-    const selectedCategories = new Set(selectedScreens.map(screen => screen.category?.id ?? ''));
-    const groups = [...grouped.entries()].sort(([aKey, a], [bKey, b]) =>
-      Number(selectedCategories.has(bKey)) - Number(selectedCategories.has(aKey))
-      || a.order - b.order || a.name.localeCompare(b.name, 'ko'));
+    const groups = [...grouped.entries()].sort(([, a], [, b]) => a.order - b.order || a.name.localeCompare(b.name, 'ko'));
     const scrollTop = list.scrollTop;
     list.innerHTML = !groups.length ? `<p class="note">${COPY.uiApp190}</p>`
       : groups.map(([key, group]) => `<div class="create-screen-group"><button class="create-category-heading" data-action="create-category-toggle" data-key="${esc(key)}" aria-expanded="${!createCollapsedCategories.has(key)}"><span class="category-chevron" aria-hidden="true">${createCollapsedCategories.has(key) ? '▸' : '▾'}</span>${esc(group.name)}<span class="create-category-count">${group.screens.length}</span></button>${createCollapsedCategories.has(key) ? '' : group.screens.sort((a, b) => a.code.localeCompare(b.code, 'ko', { numeric: true }) || a.name.localeCompare(b.name, 'ko')).map(screenOption).join('')}</div>`).join('');
@@ -1282,28 +1426,29 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const pageOptions = flipbookPageOptions();
     const chosen = newScreens(n);
     const title = newTitle(n);
-    const auto = chosen.length ? defaultTitle(newKind(n), chosen) : COPY.uiApp199;
-    const automatic = defaultSection(newKind(n), chosen[0]);
+    const auto = defaultTitle(newKind(n), chosen);
+    const automatic = autoSection(n);
     const choices = sectionChoices(n.pageId).filter(s => s.key !== automatic.key);
     const scales = n.uids.map(uid => n.scales[uid] ?? n.scale);
     const bulkScale = scales.length && scales.every(scale => scale === scales[0]) ? scales[0] : scales.length ? null : n.scale;
-    const heading = editingTitle === n.key
-      ? `<input class="title-input" data-input="new-title" data-key="${esc(n.key)}" value="${esc(n.title)}" placeholder="${esc(auto)}" aria-label="${COPY.uiApp203}">`
-      : `<h2 class="${title ? '' : 'placeholder'}" title="${esc(title || auto)}">${esc(title || '새 플립북')}</h2>`;
+    // 제목은 페이지·섹션처럼 늘 입력란이다(2026-10-22 사용자 요청). 지금 쓸 제목(첫 화면 이름 또는 「새 플립북」)을 채워 두며,
+    // 직접 고치기 전까지는 화면을 바꾸면 따라 바뀐다. 입력 중에 다시 그려도 값과 커서를 유지한다.
+    const typing = detail.querySelector<HTMLInputElement>(`[data-input="new-title"][data-key="${CSS.escape(n.key)}"]`);
+    const typed = typing && document.activeElement === typing ? { value: typing.value, start: typing.selectionStart, end: typing.selectionEnd } : null;
     const sectionField = addingSection
       ? `<div class="addable"><input data-input="new-section-name" placeholder="새 섹션 이름" aria-label="새 섹션 이름"><button data-action="new-section-confirm">${COPY.uiApp101}</button><button data-action="new-section-cancel">${COPY.uiApp149}</button></div>`
       : `<div class="addable"><select data-input="new-section" aria-label="섹션 선택">
-          ${option('', `${automatic.name} (화면 카테고리)`, !n.section || n.section.key === automatic.key)}
+          ${option('', chosen.length ? `${automatic.name} (화면 카테고리)` : automatic.name, !n.section || n.section.key === automatic.key)}
           ${choices.map(s => option(s.key, s.name, !!n.section && n.section.key === s.key)).join('')}
         </select><button class="add-button" data-action="new-section-add">${ADD_LABEL}</button></div>`;
-    detail.innerHTML = `<div class="detail-head title-head">${heading}
-        <button class="icon-button" data-action="new-edit-title" data-key="${esc(n.key)}" title="제목 수정" aria-label="새 플립북 제목 수정" aria-pressed="${editingTitle === n.key}">${PENCIL_ICON}</button>
-        <button class="icon-button" data-action="new-remove" data-key="${esc(n.key)}" title="${COPY.uiApp105}" aria-label="새 플립북 ${COPY.uiApp105}">${X_ICON}</button></div>
-      ${chosen.length ? `<div class="create-plan-ids">${chosen.map(screen => `<span class="id-tag">${esc(screen.code)}</span>`).join('')}</div>` : ''}
-      <p class="note">만들기를 누르기 전에는 저장하지 않습니다. 목록에서 끌거나 Alt+↑↓로 자리를 옮깁니다.</p>
+    // 머리는 「플립북 편집」이고, 그 아래 페이지 → 섹션 → 제목을 한 줄씩 둔다(2026-10-22 사용자 요청).
+    detail.innerHTML = `<div class="detail-head edit-head"><div class="edit-title"><h2>${COPY.uiApp311}</h2><p class="note">${COPY.uiApp313}</p></div>
+        <div class="new-actions">${newActions()}</div></div>
+      <div class="new-error">${createError ? `<p class="bad" role="alert">${esc(createError)}</p>` : ''}</div>
       <div class="new-place">
         <div class="field"><div class="field-head"><span>${COPY.uiApp204}</span><button class="link" data-action="create-page-manage" aria-label="페이지 관리">관리${CHEVRON_RIGHT_ICON}</button></div><select data-input="new-page" aria-label="페이지 선택" ${pageOptions.length ? '' : 'disabled'}>${pageOptions.length ? pageOptions.map(pg => option(pg.id, pg.name, pg.id === n.pageId)).join('') : option('', COPY.uiApp106, true)}</select></div>
         <label>섹션${sectionField}</label>
+        <label>${COPY.uiApp312}<input class="title-input" data-input="new-title" data-key="${esc(n.key)}" value="${esc(title)}" placeholder="${esc(auto)}" aria-label="${COPY.uiApp203}"></label>
       </div>
       <div class="create-browser">
         <section class="create-selected-box"><header><strong>선택된 화면</strong><label class="create-bulk-scale">화면 크기 <select data-input="create-bulk-scale" data-key="${esc(n.key)}" aria-label="화면 크기 일괄 선택" ${n.uids.length ? '' : 'disabled'}>${scaleOptions(bulkScale)}</select></label></header><div class="create-selected-list"></div></section>
@@ -1312,6 +1457,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     renderCreateScreenList();
     detail.querySelector<HTMLElement>('.create-screen-list')!.scrollTop = listScroll;
     detail.querySelector<HTMLElement>('.create-selected-list')!.scrollTop = selectedScroll;
+    const field = detail.querySelector<HTMLInputElement>('[data-input="new-title"]');
+    if (field && typed) { field.value = typed.value; field.focus(); field.setSelectionRange(typed.start, typed.end); }
   }
 
   // 일괄 만들기 후보: 플립북이 없고 생성 목록에도 고르지 않은 화면
@@ -1862,7 +2009,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   function select(key: string, modifiers?: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }) {
     const t = team();
     // 기존 플립북을 고르면 새 플립북 선택과 제목 입력을 닫는다.
-    if (t === 'UI') { selectedNew = null; editingTitle = null; addingSection = false; clearNewArmed = false; }
+    if (t === 'UI') { selectedNew = null; editingTitle = null; addingSection = false; renderFooter(); }
     if (modifiers?.shiftKey && anchor[t]) {
       const visible = listModel(t).groups.flatMap(g => g.rows.map(r => r.entry.key));
       const start = visible.indexOf(anchor[t]!);
@@ -2001,7 +2148,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     if (!state) return;
     const s = state;
     const items = entries.filter(entry => drafts.GUI[entry.key]).map(entry => ({ entry, draft: drafts.GUI[entry.key] }));
-    items.sort((a, b) => draftName(s, a.entry, a.draft).localeCompare(draftName(s, b.entry, b.draft), 'ko'));
     renumberAutoCodes(s, items);
   }
 
@@ -2040,6 +2186,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
 
   root.addEventListener('click', ev => {
     const target = ev.target as HTMLElement;
+    // 목록 행 안의 제목 입력을 누르면 행을 다시 고르지 않는다(다시 그리면 입력이 사라진다).
+    if (target.closest('.list-box .title-input')) return;
     const el = target.closest('[data-action]') as HTMLElement | null;
     if (!el) return;
     const action = el.dataset.action!;
@@ -2065,11 +2213,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       case 'new-add': detailCollapsed = false; if (addNew()) { revealSelection = true; renderList(); } applyCollapse(); break;
       case 'new-select': if (target.closest('button')) break; selectNew(el.dataset.key!); break;
       case 'new-remove': ev.stopPropagation(); removeNew(el.dataset.key!); break;
+      // 새 플립북 행의 연필: 그 행에서 제목을 고친다. 고치는 중에 다시 누르면 닫는다(입력은 바로 반영되어 있다).
       case 'new-edit-title': {
         const key = el.dataset.key!;
-        editingTitle = editingTitle === key ? null : key;
-        renderDetail();
-        root.querySelector<HTMLInputElement>('[data-input="new-title"]')?.focus();
+        if (editingAt(key, 'list')) { editingTitle = null; renderList(); renderDetail(); break; }
+        if (selectedNew !== key) selectNew(key);
+        editTitle(key, 'list');
         break;
       }
       case 'new-section-add':
@@ -2093,18 +2242,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       }
       case 'new-clear':
         if (newSubmitting) break;
-        if (!clearNewArmed) { clearNewArmed = true; renderFooter(); break; }
-        finishNew();
-        renderList(); renderDetail(); renderFooter();
+        newDialog = 'cancel';
+        renderNewDialog();
         break;
       case 'fb-edit-title': {
         const id = el.dataset.id!;
-        const open = root.querySelector<HTMLInputElement>('[data-input="fb-title"]');
-        if (editingTitle === id && open) { renameExisting(id, open.value); break; }
-        editingTitle = id;
-        renderDetail();
-        const input = root.querySelector<HTMLInputElement>('[data-input="fb-title"]');
-        input?.focus(); input?.select();
+        const open = root.querySelector<HTMLInputElement>('.detail [data-input="fb-title"]');
+        if (editingAt(id, 'detail') && open) { renameExisting(id, open.value); break; }
+        editTitle(id, 'detail');
         break;
       }
       case 'create-category-toggle': {
@@ -2128,6 +2273,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         renderDetail(); renderList(); renderFooter(); break;
       }
       case 'create-submit': submitNew(); break;
+      case 'arrange-skip': submitNew(false); break;
+      case 'arrange-apply': submitNew(true); break;
+      case 'new-dialog-close': newDialog = null; renderNewDialog(); break;
+      case 'new-cancel-confirm': finishNew(); renderList(); renderDetail(); renderFooter(); break;
       case 'bulk-open': {
         if (!state) break;
         if (!createScreens.length) bridge.send({ type: 'guiScreens' });
@@ -2492,7 +2641,19 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     if (editingTitle && (ev.target as HTMLElement).closest('[data-action="fb-edit-title"], [data-action="new-edit-title"]')) ev.preventDefault();
   });
 
-  // 새 플립북 끌어 옮기기: 행 위쪽 절반이면 그 행 앞, 아래쪽 절반이면 뒤, 그룹 머리면 그 Section 맨 앞에 놓는다.
+  // 플립북 이름을 더블클릭하면 그 자리(목록 행·오른쪽 영역)에서 제목을 고친다(2026-10-22 사용자 요청).
+  // 연결이 끊긴 플립북과 여러 개를 고른 상세 제목에는 data-edit-title을 붙이지 않는다.
+  root.addEventListener('dblclick', ev => {
+    const name = (ev.target as HTMLElement).closest<HTMLElement>('[data-edit-title]');
+    if (!name || busyLabel || newSubmitting) return;
+    ev.preventDefault();
+    window.getSelection()?.removeAllRanges();
+    const id = name.dataset.editTitle!;
+    if (isNewKey(id) && selectedNew !== id) selectNew(id);
+    editTitle(id, name.closest('.list-box') ? 'list' : 'detail');
+  });
+
+  // 새 플립북 드래그로 옮기기: 행 위쪽 절반이면 그 행 앞, 아래쪽 절반이면 뒤, 그룹 머리면 그 Section 맨 앞에 놓는다.
   const clearDrop = () => { for (const node of root.querySelectorAll('.drop-before, .drop-after, .drop-into')) node.classList.remove('drop-before', 'drop-after', 'drop-into'); };
   const dropTarget = (ev: DragEvent): { node: HTMLElement; groupKey: string; to: { before?: string; after?: string; start?: boolean } } | null => {
     const node = (ev.target as HTMLElement).closest<HTMLElement>('.list-box .row[data-group], .list-box .group-bar[data-group]');
@@ -2505,7 +2666,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     return { node, groupKey, to: ev.clientY < rect.top + rect.height / 2 ? { before: key } : { after: key } };
   };
   root.addEventListener('dragstart', ev => {
-    const row = (ev.target as HTMLElement).closest<HTMLElement>('.new-row');
+    const row = (ev.target as HTMLElement).closest<HTMLElement>('.list-box .row[data-group][draggable="true"]');
     if (!row || busyLabel || newSubmitting) { if (row) ev.preventDefault(); return; }
     draggingNew = row.dataset.key!;
     ev.dataTransfer?.setData('text/plain', draggingNew);
@@ -2527,8 +2688,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     ev.preventDefault();
     const key = draggingNew;
     draggingNew = null;
-    moveNew(key, target.groupKey, target.to);
-    selectNew(key);
+    moveItem(key, target.groupKey, target.to);
+    if (isNewKey(key)) selectNew(key); else { revealSelection = true; renderList(); }
     renderFooter();
   });
   root.addEventListener('dragend', () => {
@@ -2555,13 +2716,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   root.addEventListener('keydown', ev => {
     const el = ev.target as HTMLElement;
     if (bulk && ev.key === 'Escape' && !bulk.submitting) { ev.preventDefault(); bulk = null; renderBulk(); return; }
+    if (newDialog && ev.key === 'Escape') { ev.preventDefault(); newDialog = null; renderNewDialog(); return; }
     // 새 플립북 행: Enter·Space로 고르고, Alt+↑↓로 자리를 옮기며, Delete로 지운다.
     if (el.classList.contains('new-row')) {
       const key = el.dataset.key!;
       if (ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown')) {
         ev.preventDefault();
         if (newSubmitting) return;
-        stepNew(key, ev.key === 'ArrowUp' ? -1 : 1);
+        stepItem(key, ev.key === 'ArrowUp' ? -1 : 1);
         selectNew(key);
         renderFooter();
         root.querySelector<HTMLElement>(`.new-row[data-key="${CSS.escape(key)}"]`)?.focus();
@@ -2569,13 +2731,25 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       else if (ev.key === 'Delete' && !newSubmitting) { ev.preventDefault(); removeNew(key); }
       return;
     }
+    // 기존 플립북 행: Alt+↑↓로 자리를 옮긴다. Enter·Space는 아래 공통 처리로 고른다.
+    if (ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown') && el.matches('.list-box .row[data-group][draggable="true"]') && !isNewKey(el.dataset.key ?? '')) {
+      ev.preventDefault();
+      const key = el.dataset.key!;
+      stepItem(key, ev.key === 'ArrowUp' ? -1 : 1);
+      renderFooter();
+      requestAnimationFrame(() => requestAnimationFrame(() => root.querySelector<HTMLElement>(`.list-box .row[data-key="${CSS.escape(key)}"]`)?.focus()));
+      return;
+    }
     // 제목 입력: Enter로 확정, Esc로 취소한다. 한글 조합 중의 Enter는 무시한다.
     if ((el.dataset.input === 'new-title' || el.dataset.input === 'fb-title') && !ev.isComposing && ev.keyCode !== 229) {
-      if (ev.key === 'Enter') {
+      if (ev.key === 'Enter' || ev.key === 'Escape') {
         ev.preventDefault();
-        if (el.dataset.input === 'fb-title') renameExisting(el.dataset.id!, (el as HTMLInputElement).value);
-        else { editingTitle = null; renderDetail(); renderList(); }
-      } else if (ev.key === 'Escape') { ev.preventDefault(); editingTitle = null; renderDetail(); }
+        if (ev.key === 'Enter' && el.dataset.input === 'fb-title') { renameExisting(el.dataset.id!, (el as HTMLInputElement).value); return; }
+        // 오른쪽 새 플립북 제목은 늘 입력란이므로 포커스만 뺀다.
+        if (!el.closest('.list-box') && el.dataset.input === 'new-title') el.blur();
+        else editingTitle = null;
+        renderDetail(); renderList();
+      }
       return;
     }
     if (el.dataset.input === 'new-section-name' && ev.key === 'Escape') { ev.preventDefault(); addingSection = false; renderDetail(); return; }
@@ -2617,9 +2791,15 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       const n = newFlipbooks.find(x => x.key === el.dataset.key);
       if (n) {
         n.title = el.value;
-        const name = [...root.querySelectorAll<HTMLElement>('.list-box .new-row')].find(row => row.dataset.key === n.key)?.querySelector<HTMLElement>('.name');
-        if (name) name.textContent = newTitle(n) || '새 플립북';
-        deferListRebuild();
+        // 목록에서 고치면 오른쪽 제목 입력을, 오른쪽에서 고치면 목록 행 이름을 맞춘다.
+        if (el.closest('.list-box')) {
+          const field = root.querySelector<HTMLInputElement>(`.detail [data-input="new-title"][data-key="${CSS.escape(n.key)}"]`);
+          if (field) field.value = newTitle(n);
+        } else {
+          const name = [...root.querySelectorAll<HTMLElement>('.list-box .new-row')].find(row => row.dataset.key === n.key)?.querySelector<HTMLElement>('.name');
+          if (name) name.textContent = newTitle(n);
+          deferListRebuild();
+        }
       }
       return;
     }
@@ -2679,6 +2859,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     else if (field === 'excludeReason') { for (const selectedEntry of selectedEntries(t)) draftOf(t, selectedEntry).excludeReason = el.value; refreshAfterInput(); }
   });
 
+  // 오른쪽 새 플립북 제목: 자동 제목이 채워져 있으면 눌렀을 때 전체를 골라 바로 새로 입력하게 한다.
+  root.addEventListener('focusin', ev => {
+    const el = ev.target as HTMLInputElement;
+    if (el.dataset.input !== 'new-title' || el.closest('.list-box')) return;
+    const n = newFlipbooks.find(x => x.key === el.dataset.key);
+    if (n && !n.title.trim()) setTimeout(() => { if (document.activeElement === el) el.select(); }, 0);
+  });
+
   root.addEventListener('focusout', ev => {
     const control = ev.target as HTMLElement;
     // 제목 입력에서 벗어나면 확정한다. 새 플립북 제목은 입력할 때마다 반영되어 있다.
@@ -2688,7 +2876,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       setTimeout(() => {
         if (editingTitle !== id || root.querySelector(`[data-input="${control.dataset.input}"]:focus`)) return;
         if (control.dataset.input === 'fb-title') renameExisting(id, value);
-        else { editingTitle = null; renderDetail(); }
+        else { editingTitle = null; renderDetail(); renderList(); }
       }, 0);
       return;
     }
@@ -3040,7 +3228,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         if (bulk?.submitting) { bulk = null; renderBulk(); }
         else if (newSubmitting) { newSubmitting = false; finishNew(); }
         // 만든 플립북이 보이도록 필터를 풀고 그 Section을 펼친다.
-        if (state) for (const id of msg.ids) {
+        if (state) for (const id of [...msg.ids, ...(msg.moved ?? [])]) {
           const fb = state.flipbooks.get(id);
           if (fb) expanded.UI.add(`${fb.pageId ?? state.project.flipbookPageId ?? ''}|${fb.category.key}`);
         }
