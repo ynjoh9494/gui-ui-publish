@@ -1,6 +1,7 @@
 import { COPY } from '../core/copy.ts';
 import type { ScannedFrame } from '../core/compare.ts';
 import { legacyFingerprint } from '../core/fingerprint.ts';
+import { canvasOrder } from '../core/screenCode.ts';
 import type { KV } from '../core/store.ts';
 import { clampWindow } from '../core/wire.ts';
 import type { Host } from '../host.ts';
@@ -73,12 +74,19 @@ export function figmaHost(mode: Host['mode']): Host {
     async listFrames(pageIds, sectionIds, isCurrent = () => true) {
       const sections = new Set(sectionIds);
       const frames: ScannedFrame[] = [];
-      for (const pageId of pageIds) {
+      const pageOrder = new Map(root.children.map((page, index) => [page.id, index]));
+      for (const pageId of [...pageIds].sort((a, b) => (pageOrder.get(a) ?? Infinity) - (pageOrder.get(b) ?? Infinity))) {
         if (!isCurrent()) return frames;
         const page = await figma.getNodeByIdAsync(pageId);
         if (!page || page.type !== 'PAGE') continue;
         await page.loadAsync();
-        for (const node of screenRoots(page, sections)) {
+        const roots = [...screenRoots(page, sections)];
+        const placed = roots.filter(node => !!node.absoluteBoundingBox);
+        const unplaced = roots.filter(node => !node.absoluteBoundingBox);
+        for (const node of [...canvasOrder(placed, item => {
+          const box = item.absoluteBoundingBox!;
+          return { page: 0, x: box.x, y: box.y, height: box.height };
+        }), ...unplaced]) {
           if (!isCurrent()) return frames;
           frames.push({
             nodeId: node.id, pageId: page.id, name: node.name, width: node.width, height: node.height,

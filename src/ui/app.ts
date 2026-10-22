@@ -1988,7 +1988,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     }
   }
 
-  // 신규 화면의 Screen ID 자동 입력. 카테고리·케이스·포함을 바꿀 때마다 자동 입력한 ID를 목록(이름) 순서대로 다시 매겨
+  // 신규 화면의 Screen ID 자동 입력. 카테고리·케이스·포함을 바꿀 때마다 자동 입력한 ID를 캔버스 위치 순서대로 다시 매겨
   // 카테고리마다 번호가 비지 않게 한다. 직접 입력한 ID는 유지하고 그 번호는 건너뛴다.
   function renumberCodes() {
     if (!state) return;

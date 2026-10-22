@@ -168,7 +168,7 @@ export function fillAutoCode(state: State, entry: Entry, draft: Draft, reserved:
   draft.autoCode = next || undefined;
 }
 
-// 자동 입력한 Screen ID를 목록 순서대로 다시 매긴다(2026-10-21 사용자 요청). 카테고리(케이스는 기본 화면)마다 배포 화면의 다음 번호부터
+// 자동 입력한 Screen ID를 스캔한 캔버스 위치 순서대로 다시 매긴다. 카테고리(케이스는 기본 화면)마다 배포 화면의 다음 번호부터
 // 배포에 포함한 화면 순서대로 이어 붙이므로, 앞 화면의 카테고리를 바꾸거나 포함을 풀어도 번호가 비지 않는다.
 // 직접 입력한 ID와 프레임 이름의 대괄호 ID는 그대로 두고 그 번호는 건너뛴다. 포함하지 않은 화면은 포함한 화면 다음 번호를 보여 준다.
 export function renumberAutoCodes(state: State, items: { entry: Entry; draft: Draft }[]): void {

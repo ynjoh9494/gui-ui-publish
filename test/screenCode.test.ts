@@ -91,7 +91,7 @@ test('신규 독립 화면은 카테고리를 고르면 {Prefix}_{코드}_{번�
   assert.equal(draftCode(store.state, bracketed, kept), 'MY_ID');
 });
 
-test('자동 입력한 ID는 카테고리마다 배포 화면 다음 번호부터 목록 순서대로 다시 매긴다', () => {
+test('자동 입력한 ID는 카테고리마다 배포 화면 다음 번호부터 캔버스 순서대로 다시 매긴다', () => {
   const store = new Store(memoryKV());
   setScreenIdPrefix(store, 'STB', actor);
   category(store, 'home', '홈', 'HO');
@@ -100,7 +100,7 @@ test('자동 입력한 ID는 카테고리마다 배포 화면 다음 번호부�
   screen(store, 'h1', 'STB_HO_001', 'home');
   screen(store, 'h2', 'STB_HO_002', 'home');
   screen(store, 'l1', 'STB_LI_001', 'live');
-  const news = classify(store.state, [frame('n1', 'A'), frame('n2', 'B'), frame('n3', 'C'), frame('n4', '[STB_HO_009] D')]).filter(e => e.estimate === 'new');
+  const news = classify(store.state, [frame('n1', 'Z'), frame('n2', 'A'), frame('n3', 'C'), frame('n4', '[STB_HO_009] D')]).filter(e => e.estimate === 'new');
   const items = news.map(entry => ({ entry, draft: { ...defaultDraft('GUI', store.state, entry), included: true } }));
   const [a, b, c, d] = items.map(item => item.draft);
   const codes = () => items.map(item => item.draft.code ?? '');

@@ -85,12 +85,12 @@ function groupKey(state: State, entry: Entry, place: (entry: Entry) => GuiPlace)
   return guiGroupKey(state, place(entry).categoryId);
 }
 
-// 배포된 화면은 표시 중인 Screen ID 순으로, 신규 후보는 이름 순으로 정렬한다.
+// 배포된 화면은 표시 중인 Screen ID 순으로, 신규 후보는 스캔한 캔버스 위치 순으로 정렬한다.
 // 케이스는 같은 그룹에 있는 기본 화면 바로 아래에 둔다. 기본 화면이 다른 그룹에 있으면 들여쓰지 않는다.
 function ordered(entries: Entry[], display: (entry: Entry) => { name: string; code: string }, place: (entry: Entry) => GuiPlace): { entry: Entry; depth: 0 | 1 }[] {
   const byName = (a: Entry, b: Entry) => nameCollator.compare(display(a).name, display(b).name);
   const byCode = (a: Entry, b: Entry) => codeCollator.compare(display(a).code, display(b).code) || byName(a, b);
-  const sorted = (list: Entry[]) => [...list.filter(e => !!e.screenId).sort(byCode), ...list.filter(e => !e.screenId).sort(byName)];
+  const sorted = (list: Entry[]) => [...list.filter(e => !!e.screenId).sort(byCode), ...list.filter(e => !e.screenId)];
   const roots = new Set(entries.filter(e => e.screenId && !place(e).baseScreenId).map(e => e.screenId!));
   const baseOf = (e: Entry) => {
     const base = place(e).baseScreenId;
