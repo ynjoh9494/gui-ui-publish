@@ -8,7 +8,7 @@ import type { Host } from '../host.ts';
 import { ensureDataPage, renderDataPage } from './data.ts';
 import { createFingerprintReader } from './fingerprints.ts';
 import { findFlipbook, flipbookSpots, inspectFlipbooks, listFlipbooks, moveFlipbookFrame, uiAreaSnapshot, syncFlipbook, templateFromSelection, templateIssues, flipbookSession, type FlipbookSession } from './flipbook.ts';
-import { fillDescription, readDescription, selectedDescriptionRoot } from './description.ts';
+import { fillDescription, readDescription, selectedDescriptionRoot, selectionTarget } from './description.ts';
 import { readRichText, selectedTextNode, writeRichText } from './richText.ts';
 import { makeThumbnail, placeThumbnails, renameThumbnails, thumbnailBytes } from './thumbs.ts';
 import { Snapshotter } from './snapshot.ts';
@@ -233,6 +233,7 @@ export function figmaHost(mode: Host['mode']): Host {
       return false;
     },
 
+    selectionTarget,
     readSelection() {
       const root = selectedDescriptionRoot();
       return root ? readDescription(root) : readRichText(selectedTextNode());

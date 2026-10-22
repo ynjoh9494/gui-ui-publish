@@ -110,6 +110,7 @@ export class Controller {
           if (ensureScreenIdRules(this.store, this.host.actor)) this.store.reload();
           this.host.post({ type: 'init', mode: this.host.mode, state: toUiWire(this.store.state), actor: this.host.actor, pages: this.host.pages(), issues: this.store.issues.map(i => `${i.key}: ${i.message}`) });
           this.postEntries();
+          if (this.host.mode === 'UI') this.postTextTarget();
           // UI Flipbook 목록은 프레임이 캔버스에 있는지 바로 보여 준다(연결 끊김 표시).
           if (this.host.mode === 'UI') { await this.checkTemplate(); await this.linkFlipbooks(); }
           break;
@@ -582,7 +583,16 @@ export class Controller {
     if (latest()) await this.host.reveal(lastId, latest);
   }
 
+  // 텍스트 편집 대상(2026-10-22 사용자 요청: 어느 플립북을 골랐는지 알려 준다). 플립북 표식이 있으면 기록의 제목을 쓴다.
+  private postTextTarget(): void {
+    const target = this.host.selectionTarget?.();
+    if (!target) return;
+    const title = target.kind === 'description' && target.flipbookId ? this.store.state.flipbooks.get(target.flipbookId)?.title : undefined;
+    this.host.post({ type: 'textTarget', target: target.kind === 'description' && title ? { ...target, name: title } : target });
+  }
+
   async canvasSelectionChanged(): Promise<void> {
+    if (this.host.mode === 'UI') this.postTextTarget();
     const nodes = this.host.selectionNodeIds();
     if (nodes === null) return;
     const canvasSeq = ++this.canvasSelectionSeq;

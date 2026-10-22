@@ -3248,6 +3248,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         showHoverThumb();
         break;
       case 'textImported': editor.setParagraphs(msg.paragraphs); break;
+      case 'textTarget': editor.setTarget(msg.target); break;
       case 'notice': notify('info', msg.message); break;
       case 'busy': busyLabel = msg.label; renderBusy(); break;
       case 'error':

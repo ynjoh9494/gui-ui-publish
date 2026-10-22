@@ -231,6 +231,7 @@ export function createDemo(options: DemoOptions): Demo {
       log(`${COPY.uiPreview030} ${frames.find(f => f.nodeId === nodeId)?.name ?? nodeId}`);
       return true;
     },
+    selectionTarget: () => ({ kind: 'text', name: text.name }),
     readSelection: () => text.paragraphs.map(p => ({ ...p, bold: p.bold.map(b => ({ ...b })) })),
     async writeSelection(paragraphs) {
       text.paragraphs = paragraphs;

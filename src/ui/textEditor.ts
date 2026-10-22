@@ -1,4 +1,5 @@
 import { COPY } from '../core/copy.ts';
+import type { SelectionTarget } from '../core/description.ts';
 import {
   backspaceAtStart, deleteRange, insertParagraphs, orderPos, outdentDepth, parseRichText, serializeRichText, setDepth, sliceParagraph,
   splitParagraph, toggleBold, toggleList, type RichParagraph, type RichPos,
@@ -14,6 +15,8 @@ export interface TextEditor {
   render(open: boolean): void;
   paragraphs(): RichParagraph[];
   setParagraphs(paragraphs: RichParagraph[]): void;
+  // 지금 선택의 불러오기·적용 대상
+  setTarget(target: SelectionTarget): void;
 }
 
 type Selection2 = { anchor: RichPos; focus: RichPos };
@@ -307,17 +310,29 @@ export function textEditor(root: HTMLElement): TextEditor {
     root.querySelector('[data-action="text-apply"]')?.toggleAttribute('disabled', !hasText(doc));
   }
 
+  // 대상: 플립북 「제목」 / 텍스트 레이어 「이름」. 대상이 없으면 무엇을 골라야 하는지, 오류면 그 이유를 보여 준다.
+  let target: SelectionTarget = { kind: 'none' };
+  function paintTarget() {
+    const note = root.querySelector<HTMLElement>('.text-view .text-target');
+    if (!note) return;
+    note.classList.toggle('bad', target.kind === 'error');
+    note.textContent = target.kind === 'description' ? `${COPY.uiApp327} ${COPY.uiApp328} 「${target.name}」`
+      : target.kind === 'text' ? `${COPY.uiApp327} ${COPY.uiApp329} 「${target.name}」`
+      : target.kind === 'error' ? target.message : COPY.uiApp307;
+  }
+
   function build(view: HTMLElement) {
     view.innerHTML = `<div class="text-tools">
         <button class="text-tool" data-rt="bold" aria-pressed="false" title="${COPY.uiApp309} (Ctrl+B)" aria-label="${COPY.uiApp309}"><b>B</b></button>
         <button class="text-tool" data-rt="list" aria-pressed="false" title="${COPY.uiApp310}" aria-label="${COPY.uiApp310}">${LIST_ICON}</button>
         <span class="note">${COPY.uiApp304}</span></div>
       <div class="rich-editor" contenteditable="true" role="textbox" aria-multiline="true" spellcheck="false" aria-label="${COPY.uiApp308}"></div>
-      <div class="text-actions"><span class="note">${COPY.uiApp307}</span>
+      <div class="text-actions"><span class="note text-target" aria-live="polite"></span>
         <button data-action="text-import">${COPY.uiApp305}</button>
         <button class="primary" data-action="text-apply">${COPY.uiApp306}</button></div>`;
     const el = view.querySelector<HTMLElement>('.rich-editor')!;
     paint(el);
+    paintTarget();
     // 버튼을 눌러도 편집기의 선택을 잃지 않게 한다.
     for (const button of view.querySelectorAll<HTMLElement>('[data-rt]')) {
       button.addEventListener('mousedown', ev => ev.preventDefault());
@@ -356,6 +371,7 @@ export function textEditor(root: HTMLElement): TextEditor {
       if (el) sync(el);
       return clone(doc);
     },
+    setTarget(next) { target = next; paintTarget(); },
     // 불러오기: 지금 내용은 되돌리기 단계로 남긴다.
     setParagraphs(paragraphs) {
       const el = editorEl();

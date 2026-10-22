@@ -4,7 +4,7 @@ import type { FlipbookView } from './core/flipbook.ts';
 import type { CanvasPosition } from './core/screenCode.ts';
 import type { KV } from './core/store.ts';
 import type { Actor, GuiThumb, Team } from './core/types.ts';
-import type { SelectionWrite } from './core/description.ts';
+import type { SelectionTarget, SelectionWrite } from './core/description.ts';
 import type { RichParagraph } from './core/richText.ts';
 import type { PageInfo, ToUi } from './core/wire.ts';
 
@@ -50,5 +50,7 @@ export interface Host extends FingerprintReader {
   reveal(nodeId: string, isLatest: () => boolean): Promise<boolean>;
   // 텍스트 편집: Description을 고르면 본문 슬롯의 텍스트 전체를 읽고 쓰며, 아니면 고른 텍스트 레이어 하나를 읽고 쓴다.
   readSelection(): RichParagraph[];
+  // 지금 선택에서 불러오기·적용할 대상(플립북의 Description, 텍스트 레이어 하나, 없음, 오류)
+  selectionTarget?(): SelectionTarget;
   writeSelection(paragraphs: RichParagraph[]): Promise<SelectionWrite>;
 }

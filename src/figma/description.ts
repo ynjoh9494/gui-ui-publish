@@ -1,18 +1,77 @@
 import { COPY } from '../core/copy.ts';
-import type { SelectionWrite } from '../core/description.ts';
+import type { SelectionTarget, SelectionWrite } from '../core/description.ts';
 import type { RichParagraph } from '../core/richText.ts';
 import { applyRichText, readRichText, textFonts } from './richText.ts';
 
-const BODY_MARKER = 'guiUiPublishDescriptionBody';
+// 굵은 제목 줄마다 만든 제목·본문 묶음 표식. 레이어 하나로 넣었던 본문(OLD_BODY_MARKER)도 불러오기에서 읽는다.
+const GROUP_MARKER = 'guiUiPublishDescriptionGroup';
+const OLD_BODY_MARKER = 'guiUiPublishDescriptionBody';
+const NS = 'guiuipublish';
+const FLIPBOOK_KEY = 'flipbookOf';
+const GUI_AREA = 'GUI Image Slot';
 
-// The selected Description is the boundary. Text inside it is user content, not a template to classify.
-export function selectedDescriptionRoot(): SceneNode | null {
-  const selection = figma.currentPage.selection;
-  if (selection.length !== 1) return null;
-  for (let node: BaseNode | null = selection[0]; node && node.type !== 'PAGE' && node.type !== 'DOCUMENT'; node = node.parent) {
-    if (node.name === 'Description' && (node.type === 'FRAME' || node.type === 'INSTANCE' || node.type === 'GROUP')) return node;
+const isDescription = (node: BaseNode): boolean =>
+  node.name === 'Description' && (node.type === 'FRAME' || node.type === 'INSTANCE' || node.type === 'GROUP');
+// GUI 영역 안은 원본 화면의 복사본이다. 그 안에 Description이라는 이름의 레이어가 있어도 플립북의 Description이 아니다.
+function inGuiArea(node: BaseNode): boolean {
+  for (let n: BaseNode | null = node; n && n.type !== 'PAGE' && n.type !== 'DOCUMENT'; n = n.parent) if (n.name === GUI_AREA) return true;
+  return false;
+}
+function descriptionsIn(node: BaseNode, out: SceneNode[] = []): SceneNode[] {
+  if (!('children' in node)) return out;
+  for (const child of node.children) {
+    if (child.name === GUI_AREA) continue;
+    if (isDescription(child)) out.push(child as SceneNode); else descriptionsIn(child, out);
+  }
+  return out;
+}
+function flipbookFrameOf(node: BaseNode): SceneNode | null {
+  for (let n: BaseNode | null = node; n && n.type !== 'PAGE' && n.type !== 'DOCUMENT'; n = n.parent) if ('getSharedPluginData' in n && n.getSharedPluginData(NS, FLIPBOOK_KEY)) return n as SceneNode;
+  return null;
+}
+
+type Found = { root: SceneNode; flipbook: SceneNode | null };
+// 고른 요소가 속한 플립북의 Description(2026-10-22 사용자 요청: 플립북 안의 무엇을 골라도 그 플립북의 Description에 넣는다).
+// Description 안이면 그 Description, 아니면 위로 올라가며 Description이 하나뿐인 가장 가까운 묶음(플립북)에서 찾는다. Section·페이지까지는 올라가지 않는다.
+// Description이 여럿인 묶음에 닿으면 정할 수 없다. 플립북 표식이 있는 프레임에 Description이 없으면 오류다.
+function descriptionOf(node: SceneNode): Found | null {
+  for (let n: BaseNode | null = node; n && n.type !== 'PAGE' && n.type !== 'DOCUMENT' && n.type !== 'SECTION'; n = n.parent) {
+    if (inGuiArea(n)) continue;
+    if (isDescription(n)) return { root: n as SceneNode, flipbook: flipbookFrameOf(n) };
+    const found = descriptionsIn(n);
+    if (found.length === 1) return { root: found[0], flipbook: flipbookFrameOf(found[0]) };
+    if (found.length > 1) return null;
+    if ('getSharedPluginData' in n && n.getSharedPluginData(NS, FLIPBOOK_KEY)) throw new Error(COPY.figmaText006);
   }
   return null;
+}
+
+// 고른 요소들(여러 개 가능)이 모두 한 플립북의 Description을 가리키면 그 Description. 정할 수 없는 요소가 섞이면 null(텍스트 레이어 하나로 본다),
+// 서로 다른 플립북이면 오류다.
+function selectedDescription(): Found | null {
+  const selection = figma.currentPage.selection;
+  if (!selection.length) return null;
+  const found = selection.map(descriptionOf);
+  if (found.some(f => !f)) return null;
+  if (new Set(found.map(f => f!.root.id)).size > 1) throw new Error(COPY.figmaText007);
+  return found[0];
+}
+
+export function selectedDescriptionRoot(): SceneNode | null {
+  return selectedDescription()?.root ?? null;
+}
+
+// 텍스트 편집 탭에 보여 줄 지금 선택의 대상
+export function selectionTarget(): SelectionTarget {
+  try {
+    const found = selectedDescription();
+    if (found) return { kind: 'description', flipbookId: found.flipbook?.getSharedPluginData(NS, FLIPBOOK_KEY) || null, name: (found.flipbook ?? found.root).name };
+    const selection = figma.currentPage.selection;
+    if (selection.length === 1 && selection[0].type === 'TEXT') return { kind: 'text', name: selection[0].name };
+    return { kind: 'none' };
+  } catch (e) {
+    return { kind: 'error', message: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 function bodyArea(root: SceneNode): SlotNode {
@@ -21,21 +80,55 @@ function bodyArea(root: SceneNode): SlotNode {
   return area;
 }
 
-function managedBody(area: SlotNode): TextNode | null {
-  for (let index = area.children.length - 1; index >= 0; index--) {
-    const node = area.children[index];
-    if (node.type === 'TEXT' && node.visible && node.getPluginData(BODY_MARKER) === '1') return node;
-  }
-  return null;
-}
-
 function blank(): RichParagraph { return { text: '', depth: null, bold: [] }; }
 
-// Reading the initial slot is a plain text read in canvas order. No heading or section names are inferred.
+function isHeading(p: RichParagraph): boolean {
+  return p.depth === null && !!p.text.trim() && p.bold.some(range => range.start === 0 && range.end === p.text.length);
+}
+
+interface DescriptionGroup { title: RichParagraph | null; body: RichParagraph[] }
+
+// A fully bold standalone line is an explicit grouping mark supplied by the editor.
+// Its words are never compared with Policy, Navigation, numbered items, or layer names.
+function splitGroups(doc: RichParagraph[]): DescriptionGroup[] {
+  const groups: DescriptionGroup[] = [];
+  let current: DescriptionGroup = { title: null, body: [] };
+  for (const paragraph of doc) {
+    if (isHeading(paragraph)) {
+      while (current.body[current.body.length - 1]?.text === '') current.body.pop();
+      if (current.title || current.body.some(p => p.text)) groups.push(current);
+      current = { title: paragraph, body: [] };
+    } else current.body.push(paragraph);
+  }
+  while (current.body[current.body.length - 1]?.text === '') current.body.pop();
+  if (current.title || current.body.some(p => p.text)) groups.push(current);
+  for (const group of groups) while (group.body[0]?.text === '') group.body.shift();
+  return groups;
+}
+
+function managedGroups(area: SlotNode): FrameNode[] {
+  return area.children.filter((node): node is FrameNode =>
+    node.type === 'FRAME' && node.visible && node.getPluginData(GROUP_MARKER) === '1');
+}
+
 export function readDescription(root: SceneNode): RichParagraph[] {
   const area = bodyArea(root);
-  const managed = managedBody(area);
-  if (managed) return readRichText(managed);
+  const groups = managedGroups(area);
+  if (groups.length) {
+    const result: RichParagraph[] = [];
+    for (const group of groups) {
+      const texts = group.children.filter((node): node is TextNode => node.type === 'TEXT' && node.visible);
+      if (result.length) result.push(blank());
+      for (const node of texts) {
+        if (result.length && node !== texts[0]) result.push(blank());
+        result.push(...readRichText(node));
+      }
+    }
+    return result;
+  }
+  const oldBody = area.children.find((node): node is TextNode =>
+    node.type === 'TEXT' && node.visible && node.getPluginData(OLD_BODY_MARKER) === '1');
+  if (oldBody) return readRichText(oldBody);
   const texts = area.findAllWithCriteria({ types: ['TEXT'] })
     .filter(node => {
       for (let current: BaseNode | null = node; current && current.id !== area.id; current = current.parent) {
@@ -53,28 +146,62 @@ export function readDescription(root: SceneNode): RichParagraph[] {
   return result;
 }
 
+async function makeText(paragraphs: RichParagraph[], name: string, width: number): Promise<TextNode> {
+  const node = figma.createText();
+  try {
+    const fonts = await textFonts(node);
+    node.name = name;
+    node.fontSize = 16;
+    node.lineHeight = { unit: 'PERCENT', value: 130 };
+    node.fills = [{ type: 'SOLID', color: { r: 0.12, g: 0.12, b: 0.12 } }];
+    node.resize(width, Math.max(1, node.height));
+    node.textAutoResize = 'HEIGHT';
+    applyRichText(node, paragraphs, fonts);
+    return node;
+  } catch (error) {
+    node.remove();
+    throw error;
+  }
+}
+
+async function makeGroup(group: DescriptionGroup, width: number): Promise<FrameNode> {
+  const frame = figma.createFrame();
+  try {
+    frame.name = group.title?.text ?? '본문';
+    frame.setPluginData(GROUP_MARKER, '1');
+    frame.resize(width, 1);
+    frame.layoutMode = 'VERTICAL';
+    frame.primaryAxisSizingMode = 'AUTO';
+    frame.counterAxisSizingMode = 'FIXED';
+    frame.itemSpacing = 3;
+    frame.fills = [];
+    frame.clipsContent = false;
+    if (group.title) frame.appendChild(await makeText([group.title], group.title.text, width));
+    if (group.body.length) frame.appendChild(await makeText(group.body, '본문', width));
+    return frame;
+  } catch (error) {
+    frame.remove();
+    throw error;
+  }
+}
+
 export async function fillDescription(root: SceneNode, doc: RichParagraph[]): Promise<SelectionWrite> {
   const area = bodyArea(root);
-  const prior = managedBody(area);
-  // Prepare a replacement before touching the visible content. Figma Undo can restore the previous slot.
-  const next = prior ? prior.clone() : figma.createText();
+  const width = Math.max(1, area.width - area.paddingLeft - area.paddingRight);
+  const prepared: FrameNode[] = [];
   try {
-    next.name = 'Description text';
-    next.setPluginData(BODY_MARKER, '1');
-    if (!prior) {
-      next.fontSize = 14;
-      next.lineHeight = { unit: 'PERCENT', value: 130 };
-      next.fills = [{ type: 'SOLID', color: { r: 0.12, g: 0.12, b: 0.12 } }];
+    for (const group of splitGroups(doc)) prepared.push(await makeGroup(group, width));
+    const old = [...area.children];
+    for (const group of prepared) {
+      area.appendChild(group);
+      group.layoutSizingHorizontal = 'FILL';
+      for (const node of group.children) if (node.type === 'TEXT') node.layoutSizingHorizontal = 'FILL';
     }
-    next.resize(Math.max(1, area.width - 24), Math.max(1, next.height));
-    next.textAutoResize = 'HEIGHT';
-    applyRichText(next, doc, await textFonts(next));
-    area.appendChild(next);
-    for (const node of area.children) if (node.id !== next.id) node.visible = false;
+    for (const node of old) if (!node.removed) node.remove();
     figma.currentPage.selection = [root];
     return { kind: 'description' };
   } catch (error) {
-    if (!next.removed) next.remove();
+    for (const group of prepared) if (!group.removed) group.remove();
     throw error;
   }
 }

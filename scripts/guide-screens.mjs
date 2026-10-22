@@ -91,7 +91,8 @@ try {
   await page.locator(`#tools [data-edit="${nodeId}"]`).click();
   await scan();
   await expandGroups();
-  const changed = app.locator('.row').filter({ hasText: name }).first();
+  // 이름이 같은 행만 고른다(「홈 메인 - 프로필 선택」처럼 이름이 이어지는 다른 화면이 먼저 올 수 있다).
+  const changed = app.locator('.row').filter({ has: page.locator('.name').getByText(name, { exact: true }) }).first();
   await changed.click();
   await shot('gui-changed');
   await changed.locator('[data-action=include]').check();

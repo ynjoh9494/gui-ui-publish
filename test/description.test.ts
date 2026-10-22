@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { COPY } from '../src/core/copy.ts';
 import { parseRichText, serializeRichText } from '../src/core/richText.ts';
-import { fillDescription, readDescription, selectedDescriptionRoot } from '../src/figma/description.ts';
+import { fillDescription, readDescription, selectedDescriptionRoot, selectionTarget } from '../src/figma/description.ts';
 
 type Font = { family: string; style: string };
 type Char = { font: Font; list: string; indent: number };
@@ -193,6 +193,24 @@ test('굵은 제목 줄마다 제목·본문 레이어를 묶고 문구는 검�
   assert.equal(groups[0].removed, true);
   assert.equal(area.children.filter(node => node.visible).length, 1);
   assert.equal(serializeRichText(readDescription(root as unknown as SceneNode)), serializeRichText(second));
+});
+
+test('텍스트 편집 대상: 플립북 안의 요소는 그 플립북, 플립북 밖 텍스트 하나는 그 레이어, 서로 다른 플립북은 오류', () => {
+  const { root } = fixture();
+  const header = new Node('TEXT', 'Page title');
+  const flipbook = new Node('FRAME', '홈 메인', [header, root]);
+  flipbook.setSharedPluginData('guiuipublish', 'flipbookOf', 'f1');
+  setup([header]);
+  assert.deepEqual(selectionTarget(), { kind: 'description', flipbookId: 'f1', name: '홈 메인' });
+  const loose = new Text('메모', '아무 글');
+  setup([loose]);
+  assert.deepEqual(selectionTarget(), { kind: 'text', name: '메모' });
+  setup([]);
+  assert.deepEqual(selectionTarget(), { kind: 'none' });
+  const other = new Node('FRAME', '검색', [fixture().root]);
+  other.setSharedPluginData('guiuipublish', 'flipbookOf', 'f2');
+  setup([header, other]);
+  assert.deepEqual(selectionTarget(), { kind: 'error', message: COPY.figmaText007 });
 });
 
 test('기존 내용 불러오기는 임의 텍스트를 읽고, 본문 슬롯이 없으면 수정하지 않는다', async () => {
