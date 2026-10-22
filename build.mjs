@@ -30,6 +30,7 @@ body.preview { display: flex; gap: 16px; padding: 16px; height: auto; min-height
 .preview .frame { display: flex; gap: 4px; align-items: center; padding: 3px 0; }
 .preview .frame span { flex: 1; }
 .preview .frame small { color: #868e96; }
+.preview .preview-text { tab-size: 2; font: 11px/1.5 ui-monospace, monospace; background: #fff; border-radius: 6px; padding: 8px; margin: 0; white-space: pre-wrap; }
 .preview #log { font: 11px/1.5 ui-monospace, monospace; background: #fff; border-radius: 6px; padding: 8px; max-height: 260px; overflow: auto; }
 @media (max-width: 520px) { .preview #app { width: 100%; } }`;
 await writeFile('dist/preview.html', page('GUI·UI Publish 미리보기',

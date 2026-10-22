@@ -348,6 +348,16 @@ export const COPY = {
   uiApp299: '프레임 이름이 기존 원본과 같습니다. 이름이 같으면 유사도가 낮아도 먼저 연결합니다.',
   uiApp300: '이전 배포 썸네일',
   uiApp301: '업데이트된 화면만 보기',
+  // 텍스트 편집 탭(UI Flipbook) — src/ui/textEditor.ts
+  uiApp302: "플립북 목록",
+  uiApp303: "텍스트 편집",
+  uiApp304: "Tab/Shift+Tab: 목록 깊이 · Ctrl+B: 굵게",
+  uiApp305: "선택 영역 불러오기",
+  uiApp306: "선택 영역에 적용",
+  uiApp307: "플립북 또는 텍스트 선택",
+  uiApp308: "텍스트 입력",
+  uiApp309: "굵게",
+  uiApp310: "목록",
   // 튜토리얼 — src/ui/tutorial.ts. 단계마다 말풍선 제목·설명 순서다.
   uiTutorial001: '도움말',
   uiTutorial002: '튜토리얼 종료',
@@ -419,6 +429,8 @@ export const COPY = {
   uiTutorial067: '케이스 화면 추가',
   uiTutorial068: 'VOD 상세 버튼 위치 수정',
   uiTutorial069: '검색 결과 화면 추가',
+  uiTutorial070: "텍스트 편집",
+  uiTutorial071: "플립북이나 텍스트를 골라 불러오고 적용합니다.",
   // 변경 상태의 설명·툴팁 — src/ui/estimate.ts
   uiEstimate001: '플립북 UI 작성 영역', // 26
   uiEstimate003: '아직 등록되지 않은 프레임입니다. 신규 등록 또는 기존 화면 교체를 선택하세요.', // 28
@@ -625,6 +637,9 @@ export const COPY = {
   controller116: '크기를 맞출 플립북이 없습니다.',
   controller118: '플립북 제목 바꾸는 중',
   controller119: '플립북 제목을 바꿨습니다:',
+  controller120: "텍스트 적용 중",
+  controller135: "선택한 Description에 텍스트를 적용했습니다.",
+  controller121: "텍스트를 적용했습니다:",
   controller117: '플립북 크기 맞추는 중',
   controller068: '플립북 삭제 중',
   controller069: '개 플립북을 목록에서 삭제했습니다.',
@@ -637,6 +652,15 @@ export const COPY = {
   figmaHost005: '프레임을 찾을 수 없습니다.', // 109
   figmaHost006: "지문 계산 실패:", // 112
   figmaHost007: '플립북 프레임을 찾을 수 없습니다.', // 168
+  // 텍스트 편집 — src/figma/richText.ts
+  figmaText001: "플립북이나 텍스트를 선택하세요.",
+  figmaText002: "선택한 텍스트에 없는 글꼴이 있습니다. 글꼴을 바꾼 뒤 다시 시도하세요.",
+  figmaText003: "글꼴을 불러오지 못했습니다:",
+  figmaText004: "굵은 글씨로 쓸 Bold 스타일이 없는 글꼴입니다:",
+  // Description 채우기 — src/figma/description.ts
+  figmaText005: "선택한 Description에서 본문 영역을 찾지 못했습니다.",
+  figmaText006: "플립북에서 Description을 찾지 못했습니다.",
+  figmaText007: "한 플립북만 선택하세요.",
   // 생성되는 플립북 문구 — src/figma/flipbook.ts
   figmaFlipbook001: '플립북 페이지를 찾을 수 없습니다.', // 37
   figmaFlipbook002: '플립북 템플릿 프레임을 찾을 수 없습니다. 설정에서 다시 지정하세요.', // 49
@@ -749,6 +773,9 @@ export const COPY = {
   uiPreview048: "복제 (화면 ID까지 복사됨)", // 130
   uiPreview049: "플립북 Description 수정 (", // 132
   uiPreview050: "회)", // 132
+  // 가짜 캔버스에서 골라 둔 텍스트 레이어의 처음 내용(텍스트 편집 탭)
+  uiPreview051: "**Policy**\n- 채널 목록은 번호 순서로 보여 줍니다.\n\t- 시청 중인 채널에 **포커스**를 둡니다.\n- 좌우 키로 날짜를 바꿉니다.",
+  uiPreview052: "가짜 텍스트 레이어",
 } as const;
 
 // 화면·안내·오류 문구. 원본 파일과 행은 추출 당시 위치다.

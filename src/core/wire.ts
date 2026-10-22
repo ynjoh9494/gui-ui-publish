@@ -3,6 +3,7 @@ import type { Entry, UiScan } from './compare.ts';
 import type { Draft } from './drafts.ts';
 import { unreviewed, type FlipbookRequest, type ReviewRequest } from './flipbooks.ts';
 import type { HistoryRow } from './history.ts';
+import type { RichParagraph } from './richText.ts';
 import type { BatchComment, Blocker, Plan } from './publish.ts';
 import type { GuiScreenInfo } from './guiScreens.ts';
 import type { State } from './store.ts';
@@ -139,6 +140,9 @@ export type ToMain =
   // 프레임 미리보기 이미지(새 버전 페이지의 기존 원본·새 프레임 비교)
   | { type: 'framePreviews'; nodeIds: string[] }
   | { type: 'revealNode'; nav: number; nodeId: string }
+  // 텍스트 편집: 캔버스에서 고른 텍스트 레이어 하나의 문단(본문·목록 단계·굵기)을 읽거나, 편집한 문단을 그 레이어에 쓴다.
+  | { type: 'textImport' }
+  | { type: 'textApply'; paragraphs: RichParagraph[] }
   // save: 손잡이를 놓았을 때. 다음 실행 때 이 크기로 연다.
   | { type: 'resize'; width: number; height: number; save?: boolean; compact?: boolean };
 
@@ -174,6 +178,7 @@ export type ToUi =
   | { type: 'framePreviews'; items: { nodeId: string; bytes: Uint8Array | null }[] }
   | { type: 'pages'; pages: PageInfo[] }
   | { type: 'thumbnails'; items: { hash: string; bytes: Uint8Array | null }[] }
+  | { type: 'textImported'; paragraphs: RichParagraph[] }
   | { type: 'notice'; message: string }
   // 진행 중인 작업. null이면 끝났다.
   | { type: 'busy'; label: string | null }

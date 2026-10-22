@@ -5,6 +5,7 @@ import { dataModel } from './core/data.ts';
 import { flipbookView, guiKey, validGuiWidth } from './core/flipbook.ts';
 import { importGuiUpdates, markReviewed, planFlipbooks, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookRequest, type ReviewRequest } from './core/flipbooks.ts';
 import type { Draft } from './core/drafts.ts';
+import type { SelectionWrite } from './core/description.ts';
 import { flipbookHistoryRows, guiHistoryRows } from './core/history.ts';
 import { guiRecordInfos, guiScreens } from './core/guiScreens.ts';
 import { acknowledgeChange, addDelivery, upgradeBaseline, buildPlan, commitPlan, setDeliveryState, type BatchComment, unfinishedDeliveries, type CommitInput, type Plan } from './core/publish.ts';
@@ -39,7 +40,14 @@ const BUSY_LABEL: Partial<Record<ToMain['type'], string>> = {
   prepare: COPY.controller001, commit: COPY.controller002, resetData: COPY.controller003, retry: COPY.controller004, refreshData: COPY.controller005,
   admin: COPY.controller006, createFlipbooks: COPY.controller038, markReviewed: COPY.controller066, removeFlipbooks: COPY.controller068,
   matchVersion: COPY.controller106, switchVersion: COPY.controller107, resizeFlipbooks: COPY.controller117, renameFlipbook: COPY.controller118,
+  textApply: COPY.controller120,
 };
+
+// 텍스트 편집 적용 결과 안내.
+function writeMessage(result: SelectionWrite): string {
+  if (result.kind === 'text') return `${COPY.controller121} ${result.name}`;
+  return COPY.controller135;
+}
 
 const spotOf = (spots: Record<string, FlipbookSpot>, nodeId: string | null): FlipbookSpot | null => (nodeId ? spots[nodeId] ?? null : null);
 const sameSpot = (a: FlipbookSpot | null | undefined, b: FlipbookSpot | null | undefined) =>
@@ -174,6 +182,11 @@ export class Controller {
           const latest = () => msg.nav === this.navSeq;
           const ok = await this.host.reveal(msg.nodeId, latest);
           if (latest()) this.host.post({ type: 'nav', nav: msg.nav, ok, message: ok ? '' : COPY.controller016 });
+          break;
+        }
+        case 'textImport': this.host.post({ type: 'textImported', paragraphs: this.host.readSelection() }); break;
+        case 'textApply': {
+          this.host.post({ type: 'notice', message: writeMessage(await this.host.writeSelection(msg.paragraphs)) });
           break;
         }
         case 'resize': this.host.resize(msg.width, msg.height, msg.save, msg.compact); break;

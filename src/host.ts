@@ -4,6 +4,8 @@ import type { FlipbookView } from './core/flipbook.ts';
 import type { CanvasPosition } from './core/screenCode.ts';
 import type { KV } from './core/store.ts';
 import type { Actor, GuiThumb, Team } from './core/types.ts';
+import type { SelectionWrite } from './core/description.ts';
+import type { RichParagraph } from './core/richText.ts';
 import type { PageInfo, ToUi } from './core/wire.ts';
 
 // Controller가 사용하는 환경 경계. Figma 호스트와 브라우저 미리보기가 각각 구현한다.
@@ -44,4 +46,7 @@ export interface Host extends FingerprintReader {
   beginDelivery?(): void;
   endDelivery?(): void;
   reveal(nodeId: string, isLatest: () => boolean): Promise<boolean>;
+  // 텍스트 편집: Description을 고르면 본문 슬롯의 텍스트 전체를 읽고 쓰며, 아니면 고른 텍스트 레이어 하나를 읽고 쓴다.
+  readSelection(): RichParagraph[];
+  writeSelection(paragraphs: RichParagraph[]): Promise<SelectionWrite>;
 }

@@ -3,6 +3,7 @@ import { COPY } from '../core/copy.ts';
 // core 로직은 그대로 쓰고 Figma에 닿는 부분(프레임 목록·지문·레이어 복사·캔버스 이동)만 가짜 데이터로 바꾼다.
 import type { ScannedFrame } from '../core/compare.ts';
 import { sha256 } from '../core/hash.ts';
+import { parseRichText, type RichParagraph } from '../core/richText.ts';
 import { memoryKV, type KV } from '../core/store.ts';
 import type { Actor, Team } from '../core/types.ts';
 import type { PageInfo, ToUi } from '../core/wire.ts';
@@ -52,6 +53,8 @@ export interface Demo {
   pasteVersionPage(): number;
   // 원본 내용을 고친다(지문이 바뀐다).
   editFrame(frame: DemoFrame): void;
+  // 캔버스에서 골라 둔 텍스트 레이어(텍스트 편집 탭). 미리보기 도구에서 내용을 확인한다.
+  text: { name: string; paragraphs: RichParagraph[] };
 }
 
 // 지문은 화면마다 다르고(body), 이름·노드와 관계없이 내용이 같으면 같다.
@@ -77,6 +80,7 @@ export function createDemo(options: DemoOptions): Demo {
   const placed: { flipbookId: string; pageId: string; section: string }[] = [];
   const uiEdits = new Map<string, number>();
   let deliver: (message: ToUi) => void = () => {};
+  const text = { name: 'Description', paragraphs: parseRichText(COPY.uiPreview051) };
 
   // 검정 배경에 화면 이름을 쓴 1/4 크기 썸네일을 흉내 낸다.
   async function fakeThumb(label: string, version: string): Promise<Uint8Array> {
@@ -211,10 +215,16 @@ export function createDemo(options: DemoOptions): Demo {
       log(`${COPY.uiPreview030} ${frames.find(f => f.nodeId === nodeId)?.name ?? nodeId}`);
       return true;
     },
+    readSelection: () => text.paragraphs.map(p => ({ ...p, bold: p.bold.map(b => ({ ...b })) })),
+    async writeSelection(paragraphs) {
+      text.paragraphs = paragraphs;
+      changed();
+      return { kind: 'text', name: text.name };
+    },
   };
 
   return {
-    host, kv, frames, flipbooks, uiEdits,
+    host, kv, frames, flipbooks, uiEdits, text,
     listen(handler) { deliver = handler; },
     hasVersionPage: () => versionPageMade,
     pasteVersionPage() {

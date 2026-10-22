@@ -26,13 +26,18 @@ flowchart LR
 | `src/core/types.ts`, `store.ts` | 파일 기록의 타입, 키 구성, 역직렬화, 메모리 상태와 저장소 동기화 |
 | `src/core/compare.ts`, `fingerprint.ts`, `versionMatch.ts` | GUI 변경 판정, 지문 정규화, 새 버전 페이지의 화면 연결 제안 |
 | `src/core/drafts.ts`, `publish.ts`, `registry.ts` | 입력 검증, GUI 배포 계획·확정, 카테고리·작업자·태그·화면 레지스트리 |
+| `src/core/richText.ts` | 텍스트 편집 탭의 문서 모델(문단·목록 단계·굵은 범위), 편집 동작(줄 나누기·합치기·붙여 넣기·굵게·목록 단계), 붙여 넣기·복사용 텍스트 형식 |
 | `src/core/flipbooks.ts`, `flipbook.ts`, `guiScreens.ts`, `history.ts`, `data.ts` | 플립북 기록·확인 상태, 캔버스 반영용 뷰, 화면 목록·이력·DATA 모델 |
 | `src/controller.ts` | 메시지 처리, 스캔·배포·플립북·관리 작업의 순서와 실패 보고 |
 | `src/host.ts` | Controller가 요구하는 Figma 기능의 인터페이스. 코어에 Figma 노드 타입을 들이지 않는 경계 |
 | `src/figma/host.ts` | `Host` 구현, 페이지·노드 탐색, 파일 저장소와 캔버스 API 연결 |
 | `src/figma/snapshot.ts`, `fingerprints.ts` | 노드의 시각 속성·해석된 변수 값을 스냅샷으로 수집하고 지문·유사도 특징 생성 |
+| `src/core/description.ts` | 텍스트 편집 적용 결과 타입 |
+| `src/figma/description.ts` | 고른 Description의 본문 슬롯에 굵은 제목 줄마다 제목·본문 레이어 묶음을 적용·불러오기. 제목 문구는 판정하지 않음 |
+| `src/figma/richText.ts` | 고른 텍스트 레이어 하나의 본문·굵기·목록 단계 읽기와 쓰기(레이어 글꼴 유지) |
 | `src/figma/flipbook.ts`, `layers.ts`, `thumbs.ts`, `data.ts` | 템플릿 복제, GUI 레이어 복사·배치, JPG 썸네일, DATA 페이지 렌더링 |
 | `src/ui/app.ts`, `styles.css` | UI 상태·입력 초안·목록과 상세 렌더링 |
+| `src/ui/textEditor.ts` | UI Flipbook 텍스트 편집 탭의 서식 편집기(contenteditable). 글자 입력은 브라우저, 구조 변경·되돌리기는 core 편집 동작으로 처리 |
 | `src/ui/demo.ts`, `tutorial.ts`, `preview.ts` | 가짜 Figma 환경(`Host`), 튜토리얼의 예시 화면 조작과 말풍선, 브라우저 미리보기 도구 |
 
 의존성의 중심은 `core`다. `Controller`는 코어 함수를 호출하고 환경 작업을 `Host`에 맡긴다. Figma API를 쓰는 새 기능은 `figma` 어댑터에, 저장 기록의 규칙은 `core`에 두는 것이 기존 경계와 맞는다.

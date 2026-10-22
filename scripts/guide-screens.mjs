@@ -112,6 +112,13 @@ try {
   await app.locator('.fb-bottom [data-field=description]').fill('콜아웃 위치 확인');
   await shot('ui-review');
 
+  // 텍스트 편집 탭: 가짜 캔버스에서 골라 둔 텍스트 레이어를 불러온 모습
+  await app.locator('[data-action=text-open]').click();
+  await app.locator('[data-action=text-import]').click();
+  await page.waitForFunction(() => document.querySelector('#app .text-view .rich-editor')?.textContent);
+  await shot('ui-text');
+  await app.locator('[data-action=text-close]').click();
+
   // 튜토리얼 첫 단계
   await app.locator('[data-action=tutorial]').click();
   await page.waitForFunction(() => document.querySelector('.tutorial-layer')?.dataset.step === '1', null, { timeout: 15000 });

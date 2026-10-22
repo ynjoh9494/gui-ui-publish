@@ -3,6 +3,7 @@ import { changeDetected, entryName, ignoreBlock, uiEntries as buildUiEntries, ui
 import type { GuiScreenInfo } from '../core/guiScreens.ts';
 import { guiStateBadge, unlinkedBadge } from './estimate.ts';
 import { startTutorial } from './tutorial.ts';
+import { textEditor } from './textEditor.ts';
 import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScreen, isDeletion, isPrevious, needsLink, OPTIONAL_FIELDS, renumberAutoCodes, STATUS_LABEL, validateDraft, type Draft, type DraftIndex, type InputStatus, type Validation } from '../core/drafts.ts';
 import { formatTime, type HistoryRow } from '../core/history.ts';
 import { arrangeFlipbooks, buildList, guiGroupKey, placeDrafts, savedGuiDisplay, savedGuiPlace, UNCATEGORIZED, type ArrangedGroup, type GuiPlace, type ListModel } from '../core/list.ts';
@@ -37,9 +38,10 @@ type Tab = Team | 'ADMIN';
 const NODE_PREVIEW = 'node:';
 
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
-const WHILE_BUSY = new Set(['tab', 'settings', 'group', 'select', 'changed-only', 'cancel-scan', 'toggle-detail', 'tutorial']);
+const WHILE_BUSY = new Set(['tab', 'settings', 'group', 'select', 'changed-only', 'cancel-scan', 'toggle-detail', 'tutorial', 'text-open', 'text-close']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
 const BEFORE_CHECK = new Set([...WHILE_BUSY, 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'fb-edit-title', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
+  'text-import', 'text-apply',
   'version-open', 'version-close', 'version-match', 'version-select', 'version-review-only', 'version-reveal', 'version-switch', 'version-cancel']);
 
 import { WORK_LABEL } from '../core/copy.ts';
@@ -168,6 +170,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   // 새 버전 페이지 탭(2026-10-21 사용자 요청: 설정 안이 아니라 GUI Publish 머리의 탭으로 연다).
   // 비교할 페이지, 비교 결과, 사용자가 고친 연결(화면 ID → 노드 ID, ''는 연결 안 함), 전환을 한 번 눌렀는가
   let versionOpen = false;
+  // UI Flipbook의 텍스트 편집 탭(2026-10-22 사용자 요청). 관리를 다녀와도 열린 탭을 유지한다.
+  let textOpen = false;
   // GUI 화면정보의 이전 배포 썸네일을 펼쳐 두었는가
   let prevThumbOpen = false;
   let sizeBeforeVersion: { width: number; height: number } | null = null;
@@ -206,6 +210,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     <div class="overlay bulk-overlay" hidden></div>
     <div class="resize-handle" title="${COPY.uiApp208}" aria-label="${COPY.uiApp208}"></div>`;
   const $ = (sel: string) => root.querySelector(sel) as HTMLElement;
+  const editor = textEditor(root);
 
   // 두 영역 구분선: 현재 창 너비에서 목록 260px, 화면정보 320px을 확보한다.
   {
@@ -539,6 +544,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const settings = tab === 'ADMIN';
     $('.tabs').innerHTML = `<span class="app-title">${mode === 'UI' ? 'UI Flipbook' : 'GUI Publish'}${settings ? ` · ${COPY.uiApp004}` : ''}</span>` +
       `${mode === 'GUI' && !settings ? `<div class="create-tabs"><button data-action="version-close" aria-selected="${!versionOpen}">${COPY.uiApp272}</button><button data-action="version-open" aria-selected="${versionOpen}">${COPY.uiApp248}</button></div>` : ''}` +
+      `${mode === 'UI' && !settings ? `<div class="create-tabs"><button data-action="text-close" aria-selected="${!textOpen}">${COPY.uiApp302}</button><button data-action="text-open" aria-selected="${textOpen}">${COPY.uiApp303}</button></div>` : ''}` +
       `<span class="who" title="${COPY.uiApp005}">${esc(actor?.name ?? '')}</span>` +
       `<button class="icon-button" data-action="settings" aria-pressed="${settings}" title="${COPY.uiApp004}" aria-label="${COPY.uiApp004}">${GEAR}</button>` +
       `<button class="icon-button help-button" data-action="tutorial" title="${COPY.uiTutorial001}" aria-label="${COPY.uiTutorial001}">${HELP}</button>`;
@@ -1818,13 +1824,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
 
   function renderAll() {
     renderTabs(); renderToolbar(); renderList(); renderDetail(); renderFooter(); renderConfirm(); renderVersion(); renderToast();
+    editor.render(textOpen && mode === 'UI' && tab !== 'ADMIN' && !!state);
     root.classList.toggle('admin-mode', tab === 'ADMIN');
     applyCollapse();
   }
 
-  // 오른쪽 영역 접기: 창 너비를 목록 너비로 줄이고, 펼치면 접기 전 너비로 되돌린다. 설정 화면에서는 펼친 너비로 보여 준다.
+  // 오른쪽 영역 접기: 창 너비를 목록 너비로 줄이고, 펼치면 접기 전 너비로 되돌린다. 설정 화면과 텍스트 편집 탭에서는 펼친 너비로 보여 준다.
   function applyCollapse() {
-    const want = detailCollapsed && tab !== 'ADMIN' && team() === 'UI';
+    const want = detailCollapsed && tab !== 'ADMIN' && team() === 'UI' && !textOpen;
     if (want && !compactFrom) {
       const listWidth = $('.list').getBoundingClientRect().width;
       compactFrom = { width: root.offsetWidth };
@@ -2312,6 +2319,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         admin({ op: 'renumberScreenIds' });
         break;
       case 'renumber-cancel': renumberArmed = false; renderDetail(); break;
+      case 'text-open': textOpen = true; renderAll(); root.querySelector<HTMLElement>('.text-view .rich-editor')?.focus(); break;
+      case 'text-close': textOpen = false; renderAll(); break;
+      case 'text-import': bridge.send({ type: 'textImport' }); break;
+      case 'text-apply': { const paragraphs = editor.paragraphs(); if (paragraphs.some(p => p.text.trim())) bridge.send({ type: 'textApply', paragraphs }); break; }
       case 'version-open': openVersion(); break;
       case 'version-close': closeVersion(); break;
       case 'version-match':
@@ -3048,6 +3059,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         else if (!currentNew() && tab !== 'ADMIN') renderDetailKeepingFocus();
         showHoverThumb();
         break;
+      case 'textImported': editor.setParagraphs(msg.paragraphs); break;
       case 'notice': notify('info', msg.message); break;
       case 'busy': busyLabel = msg.label; renderBusy(); break;
       case 'error':

@@ -284,6 +284,15 @@ const UI_STEPS: Step[] = [
     title: COPY.uiTutorial058, body: COPY.uiTutorial059,
     spots: d => [d.q('.detail .fb-bottom')],
   },
+  {
+    title: COPY.uiTutorial070, body: COPY.uiTutorial071,
+    async prepare(d) {
+      await d.click('.tabs [data-action="text-open"]');
+      await d.click('.text-view [data-action="text-import"]');
+      await d.until(() => d.q('.text-view .rich-editor')?.textContent);
+    },
+    spots: d => [d.q('.tabs .create-tabs'), d.q('.text-view')],
+  },
 ];
 
 // ── 예시 데이터 ──────────────────────────────────────────
