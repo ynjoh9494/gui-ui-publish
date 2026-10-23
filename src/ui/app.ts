@@ -678,8 +678,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
 
   function renderToolbar() {
     if (tab === 'ADMIN' || team() === 'UI') {
-      $('.toolbar').innerHTML = tab !== 'ADMIN' && templateIssues.length
-        ? `<div class="template-warning" role="alert"><b class="bad">${COPY.uiApp239}</b>${templateIssues.map(i => `<span class="bad">${esc(i)}</span>`).join('')}</div>` : '';
+      $('.toolbar').innerHTML = (tab !== 'ADMIN' && templateIssues.length
+        ? `<div class="template-warning" role="alert"><b class="bad">${COPY.uiApp239}</b>${templateIssues.map(i => `<span class="bad">${esc(i)}</span>`).join('')}</div>` : '')
+        + (tab !== 'ADMIN' && state ? pendingLine() : '');
       return;
     }
     const t = team();
@@ -980,11 +981,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     if (actions) actions.innerHTML = newActions();
     const error = root.querySelector<HTMLElement>('.detail .new-error');
     if (error) error.innerHTML = createError ? `<p class="bad" role="alert">${esc(createError)}</p>` : '';
-    if ((!newFlipbooks.length && !movedFlipbooks.length) || editingNewShown()) { footer.innerHTML = ''; return; }
-    // 구현 기본값(확인 필요): 기존 플립북을 보고 있거나 순서만 바꿔 「플립북 편집」이 없으면 하단에 개수와 버튼을 둔다.
+    footer.innerHTML = '';
+    renderToolbar();
+  }
+
+  // 기존 플립북을 보고 있거나 순서만 바꿔 「플립북 편집」이 없으면 목록 위 줄 오른쪽에 개수와 버튼을 둔다
+  // (2026-10-23 사용자 요청: 하단 오른쪽 버튼을 「플립북 편집」처럼 위 오른쪽으로).
+  function pendingLine(): string {
+    if ((!newFlipbooks.length && !movedFlipbooks.length) || editingNewShown()) return '';
     const counts = [newFlipbooks.length ? `${COPY.uiApp333} <b>${newFlipbooks.length}</b>${COPY.uiApp015}` : '', movedFlipbooks.length ? `${COPY.uiApp315} <b>${movedFlipbooks.length}</b>${COPY.uiApp015}` : ''].filter(Boolean).join(' · ');
-    footer.innerHTML = `${createError ? `<p class="bad footer-note" role="alert">${esc(createError)}</p>` : ''}<div class="footer-line">
-      <span>${counts}</span><span class="footer-actions">${newActions()}</span></div>`;
+    return `<div class="pending-line"><span class="pending-counts">${counts}</span>${createError ? `<span class="bad" role="alert">${esc(createError)}</span>` : ''}<span class="new-actions">${newActions()}</span></div>`;
   }
 
   function paintFooter(sharedModel?: ListModel) {
@@ -1710,9 +1716,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     view.innerHTML = `<div class="version-dialog" aria-label="${COPY.uiApp248}">
       <div class="version-page-line">${candidates.length
         ? `<label>${COPY.uiApp251}<select data-input="version-page" aria-label="${COPY.uiApp251}">${candidates.map(p => option(p.id, p.name, p.id === versionPageId)).join('')}</select></label>
-          <button class="${match ? '' : 'primary'}" data-action="version-match">${match ? COPY.uiApp273 : COPY.uiApp252}</button>`
+          <button class="${match ? '' : 'primary'}" data-action="version-match">${match ? COPY.uiApp273 : COPY.uiApp252}</button>
+          ${match && match.links.length ? '<div class="version-actions"></div>' : ''}`
         : `<p class="note">${COPY.uiApp263}</p>`}</div>
       <p class="note">${COPY.uiApp249}</p>
+      ${match && match.links.length ? '<div class="version-notes"></div>' : ''}
       ${match && match.links.length ? `<div class="version-workspace">
         <section class="version-list">
           <header><span class="version-counts"></span></header>
@@ -1721,8 +1729,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
           <div class="version-list-box"></div>
         </section>
         <section class="version-detail"></section>
-      </div>
-      <div class="version-actions"></div>`
+      </div>`
         : `<p class="empty version-empty">${match ? COPY.uiApp264 : candidates.length ? COPY.uiApp274 : ''}</p>`}
     </div>`;
     paintVersionList();
@@ -1849,12 +1856,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const duplicate = [...uses.values()].some(n => n > 1);
     const unlinkedScreens = match.links.length - versionLinks(match).length;
     const unlinkedFrames = match.frames.filter(f => !uses.has(f.nodeId)).length;
-    box.innerHTML = `<div class="version-notes">
-        ${unlinkedScreens ? `<span class="note">${COPY.uiApp257} <b>${unlinkedScreens}</b>${COPY.uiApp258}</span>` : ''}
+    // 버튼은 페이지 줄 오른쪽, 안내는 그 아래 줄(2026-10-23 사용자 요청: 하단 오른쪽 버튼을 위 오른쪽으로)
+    box.innerHTML = `<div class="dialog-actions">${versionArmed ? `<button data-action="version-cancel">${COPY.uiApp132}</button>` : ''}<button class="danger" data-action="version-switch" ${duplicate ? 'disabled' : ''}>${versionArmed ? COPY.uiApp262 : COPY.uiApp261}</button></div>`;
+    const notes = root.querySelector<HTMLElement>('.version-notes');
+    if (notes) notes.innerHTML = `${unlinkedScreens ? `<span class="note">${COPY.uiApp257} <b>${unlinkedScreens}</b>${COPY.uiApp258}</span>` : ''}
         ${unlinkedFrames ? `<span class="note">${COPY.uiApp259} <b>${unlinkedFrames}</b>${COPY.uiApp260}</span>` : ''}
         ${duplicate ? `<span class="bad" role="status">${COPY.coreVersion003}</span>` : ''}
-        <span class="note">${COPY.uiApp250}</span></div>
-      <div class="dialog-actions">${versionArmed ? `<button data-action="version-cancel">${COPY.uiApp132}</button>` : ''}<button class="danger" data-action="version-switch" ${duplicate ? 'disabled' : ''}>${versionArmed ? COPY.uiApp262 : COPY.uiApp261}</button></div>`;
+        <span class="note">${COPY.uiApp250}</span>`;
   }
 
   // 연결을 바꾸면 목록·화면정보·하단을 함께 고친다.
@@ -2637,7 +2645,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     if (!box) { box = document.createElement('div'); box.className = 'thumb-hover'; root.appendChild(box); }
     const hash = hoverThumb.hash;
     const rect = root.getBoundingClientRect();
-    box.style.width = `${Math.min(240, rect.width - 16)}px`;
+    // 플로우 탭은 작은 카드 위에서 보므로 미리보기를 작게 띄운다(2026-10-23 사용자 요청).
+    box.style.width = `${Math.min(root.classList.contains('flowing-mode') ? 160 : 240, rect.width - 16)}px`;
     const img = document.createElement('img');
     img.alt = '';
     img.style.maxHeight = `${Math.max(80, rect.height - 24)}px`;

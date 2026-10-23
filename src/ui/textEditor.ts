@@ -322,14 +322,15 @@ export function textEditor(root: HTMLElement): TextEditor {
   }
 
   function build(view: HTMLElement) {
-    view.innerHTML = `<div class="text-tools">
+    // 머리 줄: 왼쪽에 대상, 오른쪽에 불러오기·적용(2026-10-23 사용자 요청: 하단 오른쪽 버튼을 위 오른쪽으로)
+    view.innerHTML = `<div class="text-actions"><span class="note text-target" aria-live="polite"></span>
+        <button data-action="text-import">${COPY.uiApp305}</button>
+        <button class="primary" data-action="text-apply">${COPY.uiApp306}</button></div>
+      <div class="text-tools">
         <button class="text-tool" data-rt="bold" aria-pressed="false" title="${COPY.uiApp309} (Ctrl+B)" aria-label="${COPY.uiApp309}"><b>B</b></button>
         <button class="text-tool" data-rt="list" aria-pressed="false" title="${COPY.uiApp310}" aria-label="${COPY.uiApp310}">${LIST_ICON}</button>
         <span class="note">${COPY.uiApp304}</span></div>
-      <div class="rich-editor" contenteditable="true" role="textbox" aria-multiline="true" spellcheck="false" aria-label="${COPY.uiApp308}"></div>
-      <div class="text-actions"><span class="note text-target" aria-live="polite"></span>
-        <button data-action="text-import">${COPY.uiApp305}</button>
-        <button class="primary" data-action="text-apply">${COPY.uiApp306}</button></div>`;
+      <div class="rich-editor" contenteditable="true" role="textbox" aria-multiline="true" spellcheck="false" aria-label="${COPY.uiApp308}"></div>`;
     const el = view.querySelector<HTMLElement>('.rich-editor')!;
     paint(el);
     paintTarget();

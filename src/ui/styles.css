@@ -247,6 +247,9 @@ button.link.danger { color: var(--danger); }
 .footer-line .primary { margin-left: auto; }
 /* 「플립북 편집」이 없을 때의 하단: 개수와 취소·만들기 */
 .footer-line .footer-actions { display: flex; gap: 8px; margin-left: auto; }
+/* UI Flipbook: 「플립북 편집」이 보이지 않을 때 목록 위 줄에 만들 플립북 수와 버튼(오른쪽) */
+.pending-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; width: 100%; }
+.pending-line .new-actions { display: flex; gap: 6px; margin-left: auto; }
 /* 플립북: 화면이 수정되었습니다 */
 .review-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
 .review-dot.none { background: var(--border); }
@@ -429,7 +432,7 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .version-dialog { width: 100%; height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .version-dialog > .note { flex: none; margin: 6px 0 0; }
 .version-page-line { display: flex; align-items: end; gap: 8px; flex: none; }
-.version-page-line label { flex: 1; margin: 0; }
+.version-page-line label { flex: 0 1 320px; min-width: 140px; margin: 0; }
 .version-page-line button { flex: none; }
 .version-empty { margin: auto; max-width: 360px; text-align: center; }
 .version-workspace { display: grid; grid-template-columns: minmax(240px, 40%) minmax(320px, 1fr); gap: 12px; flex: 1; min-height: 0; margin-top: 10px; }
@@ -461,8 +464,9 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .version-parts td { font-variant-numeric: tabular-nums; }
 .version-texts span { color: var(--muted); }
 .version-texts q { quotes: none; display: inline-block; max-width: 100%; margin: 1px 2px; padding: 0 4px; border-radius: 3px; background: var(--bg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
-.version-actions { flex: none; display: flex; align-items: end; gap: 12px; padding-top: 10px; }
-.version-notes { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+/* 「전환」은 페이지 줄 오른쪽 끝, 연결 안내는 그 아래 줄 */
+.version-actions { flex: none; display: flex; align-items: end; margin-left: auto; }
+.version-notes { flex: none; display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
 .version-actions .dialog-actions { margin: 0; flex: none; }
 /* 텍스트 편집 탭: 새 버전 페이지 탭처럼 툴바 아래 영역 전체를 쓴다. 들여쓰기를 맞춰 보도록 고정폭 글꼴로 입력한다. */
 .texting-mode :is(.toolbar, .list, .pane-divider, .detail, .footer) { display: none; }
@@ -486,23 +490,27 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .flowing-mode :is(.toolbar, .list, .pane-divider, .detail, .footer) { display: none; }
 .flow-view { grid-column: 1 / -1; grid-row: 2 / 5; min-height: 0; padding: 10px; display: grid; grid-template-columns: minmax(170px, 1fr) minmax(280px, 2.4fr); gap: 10px; }
 .flow-pick, .flow-order { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
-.flow-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 24px; }
+.flow-head { flex: none; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; min-height: 24px; }
+.flow-head-title { flex: 1; min-width: 0; }
+.flow-head-title .note { margin: 2px 0 0; }
 .flow-search { flex: none; }
 .flow-screens { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 5px; }
 .flow-screen { display: flex; align-items: center; gap: 6px; padding: 5px 8px; cursor: grab; user-select: none; }
 .flow-screen:hover { background: var(--bg2); }
 .flow-screen .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .flow-screens .empty { margin: 0; padding: 12px; }
-.flow-board { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--bg2); }
-.flow-grid { position: relative; }
-.flow-slot { position: absolute; width: 136px; height: 48px; border: 1px dashed color-mix(in srgb, var(--border) 80%, transparent); border-radius: 8px; }
-.flow-slot.drop { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, transparent); }
-.flow-links { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+/* 판: 끝없는 격자를 Figma 캔버스처럼 움직인다(스크롤 막대 없음). 칸 틀 대신 칸 사이 통로 가운데에 옅은 선을 긋는다(간격·위치는 flowView.ts가 넣는다). */
+.flow-board { flex: 1; min-height: 0; overflow: hidden; position: relative; touch-action: none; border: 1px solid var(--border); border-radius: 6px; background-color: var(--bg2); --grid-line: color-mix(in srgb, var(--border) 55%, transparent); background-image: linear-gradient(to right, var(--grid-line) 1px, transparent 1px), linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px); }
+.flow-board.space-pan, .flow-board.space-pan * { cursor: grab !important; }
+.flow-board.panning, .flow-board.panning * { cursor: grabbing !important; }
+.flow-grid { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; }
+.flow-drop { position: absolute; width: 136px; height: 48px; border-radius: 8px; background: color-mix(in srgb, var(--brand) 12%, transparent); }
+.flow-links { position: absolute; pointer-events: none; overflow: visible; }
 .flow-link { fill: none; stroke: var(--muted); stroke-width: 1.5; }
 .flow-link.selected { stroke: var(--brand); stroke-width: 2; }
 .flow-link.preview { stroke: var(--brand); stroke-dasharray: 4 3; }
-.flow-head { fill: var(--muted); }
-.flow-head.on { fill: var(--brand); }
+.flow-arrowhead { fill: var(--muted); }
+.flow-arrowhead.on { fill: var(--brand); }
 .flow-link-hit { fill: none; stroke: transparent; stroke-width: 10; pointer-events: stroke; cursor: pointer; }
 /* 카드: 모두 같은 크기. 윗줄 Screen ID, 아랫줄 화면 이름(길면 …) */
 .flow-card { position: absolute; box-sizing: border-box; width: 136px; height: 48px; padding: 6px 10px; display: flex; flex-direction: column; justify-content: center; gap: 1px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,.08); cursor: grab; user-select: none; }
@@ -526,7 +534,6 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .flow-form { flex: none; display: flex; gap: 8px; }
 .flow-form label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; color: var(--muted); }
 .flow-actions { flex: none; display: flex; align-items: center; gap: 6px; }
-.flow-actions .note { flex: 1; min-width: 0; margin: 0; }
 .flow-actions button { flex: none; }
 /* 튜토리얼: 실제 창 위에 예시 화면을 겹치고, 설명하는 영역만 밝게 남긴 어두운 막과 말풍선을 올린다. */
 .tutorial { position: fixed; z-index: 1000; overflow: hidden; }

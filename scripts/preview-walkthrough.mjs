@@ -204,7 +204,7 @@ try {
   await newRows(1, '새 플립북을 목록에 바로 넣는다');
   assert.ok(await app.locator('.list .new-row').evaluate(el => el.classList.contains('selected')), '넣은 새 플립북을 고른다');
   assert.equal(await app.locator('.detail .new-actions [data-action=create-submit]').innerText(), '플립북 1개 만들기', '플립북 편집 머리에서 한 번에 만든다');
-  assert.equal(await app.locator('.footer').innerText(), '', '플립북 편집이 보이면 하단 줄은 없다');
+  assert.equal(await app.locator('.toolbar .pending-line').count(), 0, '플립북 편집이 보이면 목록 위 줄은 없다');
   assert.equal(await app.locator('.detail .edit-head [data-action=new-remove]').count(), 0, '플립북 편집 머리에 X가 없다');
   assert.equal(await app.locator('[data-action=create-page-manage] svg').count(), 1, '페이지 관리 화살표는 아이콘이다');
   assert.ok(await app.locator('.new-place .field-head').evaluate(head => {
@@ -350,8 +350,9 @@ try {
       .dragTo(app.locator('.list .section-label').filter({ hasText: /^홈$/ }));
     await dragToHome();
     await inGroup('정책 안내', '홈');
-    assert.match(await app.locator('.footer .footer-line').innerText(), /옮긴 플립북 1개/, '옮긴 기존 플립북 수를 보여 준다');
+    assert.match(await app.locator('.toolbar .pending-line').innerText(), /옮긴 플립북 1개/, '옮긴 기존 플립북 수를 목록 위 줄에 보여 준다');
     assert.equal(await app.locator('[data-action=create-submit]').innerText(), '배치 반영', '새 플립북이 없으면 배치 반영 버튼이다');
+    await shot('03c2-pending-line');
     await app.locator('[data-action=create-submit]').click();
     await app.locator('.arrange-overlay:not([hidden]) .arrange-dialog').waitFor();
     await shot('03d-arrange-ask');
@@ -359,7 +360,7 @@ try {
     await app.locator('[data-action=arrange-skip]').click();
     await inGroup('정책 안내', '안내');
     assert.equal(await app.locator('.arrange-overlay').isHidden(), true);
-    assert.equal(await app.locator('.footer').innerText(), '', '옮긴 플립북이 없으면 하단을 비운다');
+    assert.equal(await app.locator('.toolbar .pending-line').count(), 0, '옮긴 플립북이 없으면 목록 위 줄을 비운다');
     // 반영하면 캔버스에서도 옮긴다.
     await dragToHome();
     await inGroup('정책 안내', '홈');
@@ -448,6 +449,28 @@ try {
     assert.ok(await cards.first().getAttribute('data-thumb'), '카드에도 마우스를 올리면 썸네일을 보여 준다');
     const sizes = await cards.evaluateAll(els => els.map(el => `${el.offsetWidth}x${el.offsetHeight}`));
     assert.equal(new Set(sizes).size, 1, '카드 크기는 모두 같다');
+    assert.equal(await app.locator('.flow-view .flow-board').evaluate(el => getComputedStyle(el).overflow), 'hidden', '판에는 스크롤 막대가 없다');
+    // 판은 Figma 캔버스처럼 움직인다: 가운데 버튼으로 끌기, 휠
+    {
+      const boardBox = await app.locator('.flow-view .flow-board').boundingBox();
+      const empty = { x: boardBox.x + boardBox.width - 10, y: boardBox.y + boardBox.height - 10 };
+      const before = await cards.nth(0).boundingBox();
+      await page.mouse.move(empty.x, empty.y);
+      await page.mouse.down({ button: 'middle' });
+      await page.mouse.move(empty.x - 40, empty.y - 20, { steps: 4 });
+      await page.mouse.up({ button: 'middle' });
+      const panned = await cards.nth(0).boundingBox();
+      assert.deepEqual([Math.round(panned.x - before.x), Math.round(panned.y - before.y)], [-40, -20], '가운데 버튼으로 끌면 판이 움직인다');
+      await page.mouse.wheel(0, -20);
+      await page.waitForFunction(y => Math.round(document.querySelector('#app .flow-card').getBoundingClientRect().y) === y, Math.round(before.y));
+      // 처음 자리로 되돌린다.
+      await page.mouse.move(empty.x, empty.y);
+      await page.mouse.down({ button: 'middle' });
+      await page.mouse.move(empty.x + 40, empty.y, { steps: 4 });
+      await page.mouse.up({ button: 'middle' });
+      const back = await cards.nth(0).boundingBox();
+      assert.deepEqual([Math.round(back.x), Math.round(back.y)], [Math.round(before.x), Math.round(before.y)], '휠로 세로로 움직인다');
+    }
     const drag = async (from, to) => {
       await page.mouse.move(from.x, from.y);
       await page.mouse.down();
@@ -463,7 +486,11 @@ try {
     assert.equal(await links.count(), 1, '점을 끌어 다른 카드에 놓으면 화살표로 잇는다');
     const straight = await links.first().getAttribute('d');
     // 둘째 카드를 아래 줄 둘째 칸으로 옮기면 화살표가 통로로 꺾인다.
-    await drag(await center(cards.nth(1)), await center(app.locator('.flow-view .flow-slot').nth(4)));
+    {
+      // 첫 카드에서 한 칸 오른쪽·한 줄 아래 칸의 가운데(카드 136×48, 통로 28·22)
+      const first = await center(cards.nth(0));
+      await drag(await center(cards.nth(1)), { x: first.x + 164, y: first.y + 70 });
+    }
     assert.equal(await links.count(), 1);
     assert.ok((await links.first().getAttribute('d')).split('L').length > straight.split('L').length, '다른 줄로 옮기면 꺾인 화살표가 된다');
     // 화살표를 골라 Delete로 지우고 다시 잇는다.
