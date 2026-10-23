@@ -1,7 +1,6 @@
 import { COPY } from '../core/copy.ts';
 import { FLOW_DEFAULT_TITLE, routeLink, sidePoint, type FlowCard, type FlowGrid, type FlowLink, type FlowRequest, type FlowSide } from '../core/flow.ts';
 import type { GuiScreenInfo } from '../core/guiScreens.ts';
-import type { PageInfo } from '../core/wire.ts';
 
 // 플로우 탭(2026-10-23 사용자 결정): 배포된 화면을 격자에 카드로 놓고 FigJam처럼 잇는다. 텍스트 편집처럼 부가 기능이다.
 // - 왼쪽 배포 화면을 누르면 첫 빈 칸에, 끌어 놓으면 그 칸에 카드를 놓는다(같은 화면을 여러 번 놓을 수 있다).
@@ -9,11 +8,11 @@ import type { PageInfo } from '../core/wire.ts';
 // - 카드 상하좌우 점을 끌어 다른 카드에 놓으면 꺾인 화살표로 잇는다. 점 위에 놓으면 그 변, 카드 위에 놓으면 마주 보는 변에 닿는다.
 // - 고른 카드·화살표는 Delete(Backspace)로 지운다. 라벨은 없다(글은 캔버스의 빨간 더미 글자 칸에 쓴다).
 // - 판은 끝없는 격자이고 Figma 캔버스처럼 움직인다: 가운데 버튼·Space+끌기, 휠(Shift+휠은 가로)·트랙패드. 스크롤 막대는 없다.
-// 화살표 경로는 캔버스와 같은 규칙(core/flow.ts routeLink)이라 창에서 본 모양 그대로 그려진다. 내용은 탭을 오가도 남는다(플러그인을 닫으면 지워짐).
+// 화살표 경로는 캔버스와 같은 규칙(core/flow.ts routeLink)이라 빈 칸 직선 통과를 포함해 창에서 본 모양 그대로 그려진다. 내용은 탭을 오가도 남는다(플러그인을 닫으면 지워짐).
 
 export interface FlowView {
   render(open: boolean): void;
-  setScreens(screens: GuiScreenInfo[], pages: PageInfo[]): void;
+  setScreens(screens: GuiScreenInfo[]): void;
   // 플로우 탭의 버튼(data-action="flow-…"). 처리했으면 true
   handle(action: string, el: HTMLElement): boolean;
 }
@@ -58,12 +57,11 @@ type Drag =
 
 export function flowView(root: HTMLElement, send: (request: FlowRequest) => void): FlowView {
   let screens: GuiScreenInfo[] = [];
-  let pages: PageInfo[] = [];
   let cards: FlowCard[] = [];
   let links: FlowLink[] = [];
   let selected: { kind: 'card' | 'link'; id: string } | null = null;
   let query = '';
-  const collapsedPages = new Set<string>();
+  const collapsedCategories = new Set<string>();
   let title = '';
   let seq = 0;
   let drag: Drag | null = null;
@@ -124,23 +122,19 @@ export function flowView(root: HTMLElement, send: (request: FlowRequest) => void
     const q = query.trim().toLocaleLowerCase();
     const shown = q ? all.filter(s => `${s.code} ${s.name}`.toLocaleLowerCase().includes(q)) : all;
     if (!shown.length) { box.innerHTML = `<p class="empty">${all.length ? COPY.flow036 : COPY.flow035}</p>`; return; }
-    const pageOrder = new Map(pages.map((page, index) => [page.id, index]));
-    const grouped = new Map<string, Map<string, { name: string; order: number; items: GuiScreenInfo[] }>>();
+    const grouped = new Map<string, { name: string; order: number; items: GuiScreenInfo[] }>();
     for (const screen of shown) {
-      const pageId = screen.sourcePageId ?? '';
-      let sections = grouped.get(pageId);
-      if (!sections) { sections = new Map(); grouped.set(pageId, sections); }
-      const section = screen.sourceSection;
-      const sectionId = section?.id ?? '';
-      let group = sections.get(sectionId);
-      if (!group) { group = { name: section?.name?.trim() || COPY.coreFlipbooks013, order: section?.order ?? -1, items: [] }; sections.set(sectionId, group); }
+      const key = screen.category?.id ?? '';
+      let group = grouped.get(key);
+      if (!group) { group = { name: screen.category?.name ?? COPY.coreList001, order: screen.category?.order ?? -1, items: [] }; grouped.set(key, group); }
       group.items.push(screen);
     }
     const row = (s: GuiScreenInfo) => `<div class="flow-screen" data-uid="${esc(s.uid)}"${s.thumb ? ` data-thumb="${esc(s.thumb.hash)}"` : ''} title="${esc(s.name)}"><span class="id-tag">${esc(s.code)}</span><span class="label">${esc(s.name)}</span></div>`;
-    box.innerHTML = [...grouped].sort(([a], [b]) => (pageOrder.get(a) ?? Infinity) - (pageOrder.get(b) ?? Infinity) || a.localeCompare(b, 'ko'))
-      .map(([pageId, sections]) => `<details class="flow-page" data-page-id="${esc(pageId)}" ${q || !collapsedPages.has(pageId) ? 'open' : ''}><summary class="flow-page-label"><span>${esc(pages.find(p => p.id === pageId)?.name ?? COPY.flow039)}</span><span class="flow-page-count">${[...sections.values()].reduce((n, section) => n + section.items.length, 0)}</span></summary>
-        ${[...sections].sort(([keyA, a], [keyB, b]) => a.order - b.order || a.name.localeCompare(b.name, 'ko') || keyA.localeCompare(keyB))
-          .map(([, section]) => `<div class="flow-section"><div class="flow-section-label">${esc(section.name)}</div>${section.items.map(row).join('')}</div>`).join('')}</details>`).join('');
+    box.innerHTML = [...grouped].sort(([keyA, a], [keyB, b]) => a.order - b.order || a.name.localeCompare(b.name, 'ko') || keyA.localeCompare(keyB))
+      .map(([key, group]) => {
+        const open = !!q || !collapsedCategories.has(key);
+        return `<div class="group flow-category" data-category-key="${esc(key)}"><div class="group-bar"><button class="group-head flow-category-label" aria-expanded="${open}"><span class="caret">${open ? '▾' : '▸'}</span><span class="group-name">${esc(group.name)}</span><span class="count">${group.items.length}</span></button></div>${open ? group.items.map(row).join('') : ''}</div>`;
+      }).join('');
   }
 
   function paintBoard() {
@@ -153,7 +147,7 @@ export function flowView(root: HTMLElement, send: (request: FlowRequest) => void
     const paths = links.flatMap(l => {
       const a = byKey.get(l.from), b = byKey.get(l.to);
       if (!a || !b) return [];
-      const d = pathData(routeLink(GRID, a, l.fromSide, b, l.toSide));
+      const d = pathData(routeLink(GRID, a, l.fromSide, b, l.toSide, cards));
       const id = esc(linkId(l));
       const on = selected?.kind === 'link' && selected.id === linkId(l);
       return [`<path class="flow-link-hit" data-link="${id}" d="${d}"/><path class="flow-link${on ? ' selected' : ''}" d="${d}" marker-end="url(#flow-head${on ? '-on' : ''})"/>`];
@@ -270,7 +264,7 @@ export function flowView(root: HTMLElement, send: (request: FlowRequest) => void
       const b = over && cards.find(c => c.key === over.dataset.key && c.key !== a.key);
       const dot = under?.closest<HTMLElement>('.flow-dot')?.dataset.side as FlowSide | undefined;
       const at = boardPoint(ev.clientX, ev.clientY);
-      preview = b ? routeLink(GRID, a, drag.side, b, dot ?? facingSide(a, b)) : at ? [sidePoint(GRID, a, drag.side), at] : null;
+      preview = b ? routeLink(GRID, a, drag.side, b, dot ?? facingSide(a, b), cards) : at ? [sidePoint(GRID, a, drag.side), at] : null;
       paintBoard();
       return;
     }
@@ -356,11 +350,13 @@ export function flowView(root: HTMLElement, send: (request: FlowRequest) => void
     });
     el.addEventListener('pointerdown', onPointerDown);
     el.addEventListener('click', ev => {
-      const pageLabel = (ev.target as HTMLElement).closest<HTMLElement>('.flow-page-label');
-      if (pageLabel && !query.trim()) {
-        const page = pageLabel.closest<HTMLDetailsElement>('.flow-page')!;
-        if (page.open) collapsedPages.add(page.dataset.pageId!);
-        else collapsedPages.delete(page.dataset.pageId!);
+      const categoryLabel = (ev.target as HTMLElement).closest<HTMLElement>('.flow-category-label');
+      if (categoryLabel && !query.trim()) {
+        const key = categoryLabel.closest<HTMLElement>('.flow-category')!.dataset.categoryKey!;
+        if (collapsedCategories.has(key)) collapsedCategories.delete(key);
+        else collapsedCategories.add(key);
+        paintScreens();
+        return;
       }
       const screen = (ev.target as HTMLElement).closest<HTMLElement>('.flow-screen');
       if (!screen || suppressClick) return;
@@ -392,9 +388,8 @@ export function flowView(root: HTMLElement, send: (request: FlowRequest) => void
       root.appendChild(el);
       build(el);
     },
-    setScreens(next, pageList) {
+    setScreens(next) {
       screens = next;
-      pages = pageList;
       paintScreens();
       paintBoard();
     },

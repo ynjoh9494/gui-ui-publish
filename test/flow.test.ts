@@ -35,6 +35,8 @@ const card = (key: string, uid: string, r: number, c: number) => ({ key, uid, r,
 test('마주 보는 변끼리는 곧은 화살표, 다른 줄로 넘어가면 칸 사이 통로로만 꺾인다', () => {
   assert.deepEqual(routeLink(G, { r: 0, c: 0 }, 'right', { r: 0, c: 1 }, 'left'), [[100, 25], [140, 25]]);
   assert.deepEqual(routeLink(G, { r: 0, c: 0 }, 'bottom', { r: 1, c: 0 }, 'top'), [[50, 50], [50, 70]]);
+  assert.deepEqual(routeLink(G, { r: 0, c: 0 }, 'right', { r: 0, c: 2 }, 'left', [{ r: 0, c: 0 }, { r: 0, c: 2 }]), [[100, 25], [280, 25]], '빈 칸은 직선으로 통과한다');
+  assert.deepEqual(routeLink(G, { r: 0, c: 0 }, 'right', { r: 0, c: 2 }, 'left', [{ r: 0, c: 0 }, { r: 0, c: 1 }, { r: 0, c: 2 }]), [[100, 25], [120, 25], [120, -10], [260, -10], [260, 25], [280, 25]], '중간 칸에 카드가 있으면 돌아간다');
   // 줄 끝에서 다음 줄 맨 앞으로: 두 칸 사이 가로 통로 가운데(y 60)로 건넌다.
   assert.deepEqual(routeLink(G, { r: 0, c: 1 }, 'right', { r: 1, c: 0 }, 'left'), [[240, 25], [260, 25], [260, 60], [-20, 60], [-20, 95], [0, 95]]);
   // 오른쪽으로 나가 아래 칸 위로 들어가면 한 번 꺾인다. 세로 통로(x 120)와 가로 통로(y 60)만 지난다.

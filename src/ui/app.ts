@@ -2519,8 +2519,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       case 'renumber-cancel': renumberArmed = false; renderDetail(); break;
       case 'text-open': textOpen = true; flowOpen = false; renderAll(); root.querySelector<HTMLElement>('.text-view .rich-editor')?.focus(); break;
       case 'text-close': textOpen = false; flowOpen = false; renderAll(); break;
-      // 플로우 목록은 원본 프레임의 현재 페이지·Section도 읽는다.
-      case 'flow-open': flowOpen = true; textOpen = false; renderAll(); bridge.send({ type: 'guiScreens', withSections: true }); break;
+      case 'flow-open': flowOpen = true; textOpen = false; renderAll(); bridge.send({ type: 'guiScreens' }); break;
       case 'text-import': bridge.send({ type: 'textImport' }); break;
       case 'text-apply': { const paragraphs = editor.paragraphs(); if (paragraphs.some(p => p.text.trim())) bridge.send({ type: 'textApply', paragraphs }); break; }
       case 'version-open': openVersion(); break;
@@ -3222,7 +3221,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       case 'history': history = { id: msg.id, rows: msg.rows }; renderHistory(); break;
       case 'guiScreens':
         createScreens = msg.screens;
-        flows.setScreens(createScreens, pages);
+        flows.setScreens(createScreens);
         // 화면 목록을 받기 전에 연 일괄 만들기는 카테고리를 모두 고른 상태로 채운다.
         if (bulk && !bulk.submitting && !bulk.categories.size) bulk.categories = new Set(bulkCandidates().map(screenCategoryKey));
         renderBulk();
@@ -3240,7 +3239,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       case 'pages':
         if (pages.length === msg.pages.length && pages.every((p, i) => p.id === msg.pages[i].id && p.name === msg.pages[i].name)) break;
         pages = msg.pages;
-        if (flowOpen) flows.setScreens(createScreens, pages);
         if (tab === 'ADMIN') renderDetail();
         else if (versionOpen) renderVersion();
         break;

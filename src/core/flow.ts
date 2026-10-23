@@ -23,7 +23,7 @@ export const FLOW_LAYOUT = {
   gapX: 80, gapY: 120, line: 2, labelSize: 16, labelGap: 6, labelMargin: 8,
 };
 export const FLOW_DEFAULT_TITLE = COPY.flow001;
-// 더미 글자 색(2026-10-23 사용자 결정: 더미 글자는 무조건 #ff0000)
+// 더미 글자 바탕색. Figma 예시처럼 텍스트 채움에서 불투명도 50%를 적용한다.
 export const FLOW_DUMMY = { r: 1, g: 0, b: 0 };
 
 const SIDES: FlowSide[] = ['top', 'right', 'bottom', 'left'];
@@ -60,7 +60,7 @@ export function flowRecord(plan: FlowPlan, placed: { nodeId: string; pageId: str
 
 // ── 격자와 화살표 경로 ─────────────────────────────────────
 
-// 칸(0, 0)의 왼쪽 위가 (x0, y0)이고 모든 칸의 크기가 같다. 칸 사이 통로(gap)의 가운데 선으로만 화살표가 지나므로 카드와 겹치지 않는다.
+// 칸(0, 0)의 왼쪽 위가 (x0, y0)이고 모든 칸의 크기가 같다. 빈 칸은 직선으로 통과하고, 꺾이는 경로는 칸 사이 통로를 쓴다.
 export interface FlowGrid { x0: number; y0: number; cellW: number; cellH: number; gapX: number; gapY: number }
 export type FlowPoint = [number, number];
 
@@ -90,10 +90,13 @@ function exit(g: FlowGrid, p: FlowPoint, side: FlowSide): FlowPoint {
   }
 }
 
-// 꺾인 화살표 경로: 출발 칸 가장자리 → 통로 가운데 → (통로 선을 따라) → 도착 칸 앞 통로 가운데 → 도착 칸 가장자리.
-// 양쪽이 모두 세로 통로(좌우로 나감)면 두 칸 사이 가로 통로 중 가장 가까운 선으로 건너고, 가로 통로끼리면 세로 통로로 건넌다.
-export function routeLink(g: FlowGrid, from: { r: number; c: number }, fromSide: FlowSide, to: { r: number; c: number }, toSide: FlowSide): FlowPoint[] {
+// 마주 보는 변 사이의 칸이 비었으면 직선으로 잇고, 막혔거나 방향이 다르면 칸 사이 통로를 따른다.
+export function routeLink(g: FlowGrid, from: { r: number; c: number }, fromSide: FlowSide, to: { r: number; c: number }, toSide: FlowSide, occupied: readonly { r: number; c: number }[] = []): FlowPoint[] {
   const s = sidePoint(g, from, fromSide), t = sidePoint(g, to, toSide);
+  const clearRow = from.r === to.r && occupied.every(at => at.r !== from.r || at.c <= Math.min(from.c, to.c) || at.c >= Math.max(from.c, to.c));
+  if (clearRow && ((from.c < to.c && fromSide === 'right' && toSide === 'left') || (from.c > to.c && fromSide === 'left' && toSide === 'right'))) return [s, t];
+  const clearColumn = from.c === to.c && occupied.every(at => at.c !== from.c || at.r <= Math.min(from.r, to.r) || at.r >= Math.max(from.r, to.r));
+  if (clearColumn && ((from.r < to.r && fromSide === 'bottom' && toSide === 'top') || (from.r > to.r && fromSide === 'top' && toSide === 'bottom'))) return [s, t];
   const s1 = exit(g, s, fromSide), t1 = exit(g, t, toSide);
   const mid: FlowPoint[] = [];
   const sh = horizontal(fromSide), th = horizontal(toSide);
@@ -157,7 +160,7 @@ export function layoutFlow(cells: { key: string; r: number; c: number }[], links
   const arrows = links.flatMap(link => {
     const a = at.get(link.from), b = at.get(link.to);
     if (!a || !b) return [];
-    const points = routeLink(grid, a, link.fromSide, b, link.toSide);
+    const points = routeLink(grid, a, link.fromSide, b, link.toSide, cells);
     return [{ link, points, label: labelSpot(grid, points[0], link.fromSide) }];
   });
   return {
