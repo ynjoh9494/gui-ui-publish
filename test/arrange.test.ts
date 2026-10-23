@@ -191,11 +191,11 @@ test('캔버스 위치는 페이지의 플러그인 Section을 위에서부터, 
   const data = (values: Record<string, string>) => (_ns: string, key: string) => values[key] ?? '';
   const frame = (id: string, flipbook: string, x: number, y: number) => ({ id, type: 'FRAME', x, y,
     getSharedPluginData: data({ flipbookOf: flipbook }), setSharedPluginData: () => {} });
-  const section = (key: string, y: number, children: unknown[]) => ({ type: 'SECTION', x: 0, y, children, getSharedPluginData: data({ categoryOf: key }) });
+  const section = (key: string, y: number, children: unknown[], name = key) => ({ type: 'SECTION', name, x: 0, y, children, getSharedPluginData: data({ categoryOf: key }) });
   const page = {
     type: 'PAGE', loadAsync: async () => {},
     children: [
-      section('home', 5000, [frame('2:2', 'fb2', 900, 300), frame('2:1', 'fb1', 300, 300), frame('2:3', 'fb3', 300, 1200)]),
+      section('home', 5000, [frame('2:2', 'fb2', 900, 300), frame('2:1', 'fb1', 300, 300), frame('2:3', 'fb3', 300, 1200)], '홈 화면'),
       section('section:banner', 0, [frame('1:1', 'fb4', 300, 300)]),
       // 사용자가 직접 만든 Section과 그 안의 프레임은 세지 않는다.
       { type: 'SECTION', x: 0, y: 9000, children: [frame('9:9', 'fb9', 0, 0)], getSharedPluginData: data({}) },
@@ -204,9 +204,9 @@ test('캔버스 위치는 페이지의 플러그인 Section을 위에서부터, 
   };
   (globalThis as unknown as { figma: unknown }).figma = { getNodeByIdAsync: async (id: string) => (id === 'p' ? page : null) };
   assert.deepEqual(await flipbookSpots('guiuipublish', ['p', 'missing']), {
-    '1:1': { section: 'section:banner', sectionIndex: 0, index: 0 },
-    '2:1': { section: 'home', sectionIndex: 1, index: 0 },
-    '2:2': { section: 'home', sectionIndex: 1, index: 1 },
-    '2:3': { section: 'home', sectionIndex: 1, index: 2 },
+    '1:1': { section: 'section:banner', sectionName: 'section:banner', sectionIndex: 0, index: 0 },
+    '2:1': { section: 'home', sectionName: '홈 화면', sectionIndex: 1, index: 0 },
+    '2:2': { section: 'home', sectionName: '홈 화면', sectionIndex: 1, index: 1 },
+    '2:3': { section: 'home', sectionName: '홈 화면', sectionIndex: 1, index: 2 },
   });
 });

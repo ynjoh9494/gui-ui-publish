@@ -387,6 +387,9 @@ export const COPY = {
   uiApp335: "제목 수정",
   uiApp336: "플립북 제목 수정",
   uiApp337: "(화면 카테고리)",
+  uiApp338: "섹션",
+  uiApp339: "새 섹션 이름",
+  uiApp340: "섹션 선택",
   // 튜토리얼 — src/ui/tutorial.ts. 단계마다 말풍선 제목·설명 순서다.
   uiTutorial001: '도움말',
   uiTutorial002: '튜토리얼 종료',

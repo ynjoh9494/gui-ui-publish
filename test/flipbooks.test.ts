@@ -833,3 +833,52 @@ test('플립북 만들기에서 새 행이 잘못되면 기존 플립북도 옮�
   assert.equal(controller.store.state.flipbooks.get('fb1')?.category.key, 'custom', 'the frame that moved keeps its new record');
   assert.notEqual(controller.store.state.flipbooks.get('fb2')?.category.key, 'custom', 'the frame that did not move keeps its old record');
 });
+
+test('새 플립북의 기본 Section은 그 페이지에 같은 카테고리 Section이 있으면 그 Section 이름을 쓴다(카테고리 이름과 독립)', () => {
+  const screens = new Map([['s1', screen('s1', 'STB_HO_001')]]);
+  const existing = { key: 'home', name: '메인 화면', order: 1 };
+  const [kept] = planFlipbooks({ pageId: 'ui', rows: [row(['s1'])] }, screens, actor, 1000, () => 'fb1', pageId => (pageId === 'ui' ? [existing] : []));
+  assert.deepEqual(kept.category, existing);
+  const [fresh] = planFlipbooks({ pageId: 'other', rows: [row(['s1'])] }, screens, actor, 1000, () => 'fb2', pageId => (pageId === 'ui' ? [existing] : []));
+  assert.equal(fresh.category.name, '홈', 'a page without that Section starts from the category name');
+});
+
+test('캔버스에서 바꾼 Section 이름을 플러그인을 열 때 그 Section 플립북의 기록과 Chapter에 반영하고, 캔버스 이름은 덮어쓰지 않는다', async () => {
+  const posted: ToUi[] = [];
+  const store = new Store(memoryKV());
+  store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['ui'], flipbookPageId: 'ui' });
+  let n = 0;
+  for (const fb of planFlipbooks({ pageId: 'ui', rows: [row([], false, '정책 A'), row([], false, '정책 B')] }, new Map(), actor, 1000, () => `fb${++n}`)) {
+    store.put(keys.flipbook(fb.id), { ...fb, category: fb.id === 'fb1' ? { key: 'home', name: '홈', order: 1 } : { key: 'epg', name: 'EPG', order: 2 } });
+  }
+  let canvasName = '홈 메인';
+  const chapters: [string, string][] = [];
+  const host = {
+    kv: store.kv, mode: 'UI', actor,
+    post: (message: ToUi) => posted.push(message),
+    pages: () => [{ id: 'ui', name: 'UI' }],
+    templateIssues: async () => [],
+    inspectFlipbooks: async () => ({
+      found: new Map([['fb1', '1:1'], ['fb2', '1:2']]),
+      spots: { '1:1': { section: 'home', sectionName: canvasName, sectionIndex: 0, index: 0 }, '1:2': { section: 'epg', sectionName: 'EPG', sectionIndex: 1, index: 0 } },
+    }),
+    listFlipbooks: async () => new Map([['fb1', '1:1'], ['fb2', '1:2']]),
+    syncFlipbook: async (_: unknown, view: { flipbookId: string; category: { name: string } }) => { chapters.push([view.flipbookId, view.category.name]); return { nodeId: view.flipbookId === 'fb1' ? '1:1' : '1:2', notes: [] }; },
+    ensureDataPage: async () => 'data',
+    renderData: async () => {},
+  } as unknown as Host;
+  const controller = new Controller(host);
+  await controller.handle({ type: 'ready' });
+  assert.equal(controller.store.state.flipbooks.get('fb1')?.category.name, '홈 메인');
+  assert.equal(controller.store.state.flipbooks.get('fb2')?.category.name, 'EPG');
+  assert.deepEqual(chapters, [['fb1', '홈 메인']], 'only the renamed Section is delivered again (Chapter)');
+  assert.equal(posted.some(m => m.type === 'error'), false);
+
+  chapters.length = 0;
+  await controller.canvasSelectionChanged().catch(() => {});
+  await controller.syncSectionNames();
+  assert.deepEqual(chapters, [], 'nothing to do when the names already match');
+  canvasName = '  ';
+  await controller.handle({ type: 'ready' });
+  assert.equal(controller.store.state.flipbooks.get('fb1')?.category.name, '홈 메인', 'an empty canvas name is not followed');
+});

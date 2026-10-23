@@ -401,7 +401,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   // canvas: 이미 계산한 캔버스 배치. 목록 전체를 배치할 때 새 플립북마다 다시 계산하지 않도록 넘긴다.
   function autoSection(n: NewFlipbook, canvas?: ArrangedGroup[]): FlipbookSection {
     const first = newScreens(n)[0];
-    if (first || !state) return defaultSection(first);
+    if (!state) return defaultSection(first);
+    if (first) return defaultSection(first, canvas ? canvas.filter(g => g.pageId === n.pageId).map(g => g.section) : pageSections(state, n.pageId));
     const onPage = (canvas ?? canvasArrangement()).filter(g => g.pageId === n.pageId);
     return onPage.length ? onPage[onPage.length - 1].section : defaultSection(undefined);
   }
@@ -1440,8 +1441,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const typing = detail.querySelector<HTMLInputElement>(`[data-input="new-title"][data-key="${CSS.escape(n.key)}"]`);
     const typed = typing && document.activeElement === typing ? { value: typing.value, start: typing.selectionStart, end: typing.selectionEnd } : null;
     const sectionField = addingSection
-      ? `<div class="addable"><input data-input="new-section-name" placeholder="새 섹션 이름" aria-label="새 섹션 이름"><button data-action="new-section-confirm">${COPY.uiApp101}</button><button data-action="new-section-cancel">${COPY.uiApp149}</button></div>`
-      : `<div class="addable"><select data-input="new-section" aria-label="섹션 선택">
+      ? `<div class="addable"><input data-input="new-section-name" placeholder="${COPY.uiApp339}" aria-label="${COPY.uiApp339}"><button data-action="new-section-confirm">${COPY.uiApp101}</button><button data-action="new-section-cancel">${COPY.uiApp149}</button></div>`
+      : `<div class="addable"><select data-input="new-section" aria-label="${COPY.uiApp340}">
           ${option('', chosen.length ? `${automatic.name} ${COPY.uiApp337}` : automatic.name, !n.section || n.section.key === automatic.key)}
           ${choices.map(s => option(s.key, s.name, !!n.section && n.section.key === s.key)).join('')}
         </select><button class="add-button" data-action="new-section-add">${ADD_LABEL}</button></div>`;
@@ -1451,7 +1452,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       <div class="new-error">${createError ? `<p class="bad" role="alert">${esc(createError)}</p>` : ''}</div>
       <div class="new-place">
         <div class="field"><div class="field-head"><span>${COPY.uiApp204}</span><button class="link" data-action="create-page-manage" aria-label="페이지 관리">관리${CHEVRON_RIGHT_ICON}</button></div><select data-input="new-page" aria-label="페이지 선택" ${pageOptions.length ? '' : 'disabled'}>${pageOptions.length ? pageOptions.map(pg => option(pg.id, pg.name, pg.id === n.pageId)).join('') : option('', COPY.uiApp106, true)}</select></div>
-        <label>섹션${sectionField}</label>
+        <label>${COPY.uiApp338}${sectionField}</label>
         <label>${COPY.uiApp312}<input class="title-input" data-input="new-title" data-key="${esc(n.key)}" value="${esc(title)}" placeholder="${esc(auto)}" aria-label="${COPY.uiApp203}"></label>
       </div>
       <div class="create-browser">

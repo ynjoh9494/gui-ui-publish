@@ -275,10 +275,8 @@ function flipbookFrames(container: ChildrenMixin, ns: string): FrameNode[] {
 function categorySection(ns: string, page: PageNode, category: { key: string; name: string }): SectionNode {
   const sections = page.children.filter((n): n is SectionNode => n.type === 'SECTION');
   const found = sections.find(s => s.getSharedPluginData(ns, CATEGORY_KEY) === category.key);
-  if (found) {
-    if (found.name !== category.name) found.name = category.name;
-    return found;
-  }
+  // 있는 Section의 이름은 바꾸지 않는다. Section 이름은 캔버스에서 바꾸고 기록이 따라간다(2026-10-22 사용자 결정).
+  if (found) return found;
   const section = figma.createSection();
   section.name = category.name;
   section.setSharedPluginData(ns, CATEGORY_KEY, category.key);
@@ -415,11 +413,6 @@ async function createFlipbook(ns: string, page: PageNode, template: FrameNode, v
   return frame;
 }
 
-export async function renameSection(ns: string, pageId: string, categoryId: string, name: string): Promise<void> {
-  const page = await loadedPage(pageId);
-  for (const s of page.children) if (s.type === 'SECTION' && s.getSharedPluginData(ns, CATEGORY_KEY) === categoryId) s.name = name;
-}
-
 // 카테고리가 바뀐 화면의 플립북을 새 카테고리 Section으로 옮긴다. 프레임 안의 UI 작성 내용은 함께 옮겨진다.
 function moveToCategory(ns: string, page: PageNode, frame: FrameNode, view: FlipbookView): void {
   const target = categorySection(ns, page, view.category);
@@ -498,7 +491,7 @@ function pageFlipbookSpots(ns: string, page: PageNode, spots: Record<string, Fli
     .sort((a, b) => a.y - b.y || a.x - b.x);
   sections.forEach((section, sectionIndex) => {
     const key = section.getSharedPluginData(ns, CATEGORY_KEY);
-    flipbookFrames(section, ns).forEach((frame, index) => { spots[frame.id] = { section: key, sectionIndex, index }; });
+    flipbookFrames(section, ns).forEach((frame, index) => { spots[frame.id] = { section: key, sectionName: section.name, sectionIndex, index }; });
   });
 }
 

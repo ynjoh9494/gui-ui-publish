@@ -48,9 +48,12 @@ export function rowKind(row: FlipbookRowRequest): FlipbookKind {
 }
 
 // 따로 고르지 않았을 때의 Section: 첫 화면의 카테고리. 화면이 없다고 「정책」에 넣지 않는다(2026-10-22 사용자 요청).
-export function defaultSection(first: GuiScreenInfo | undefined): FlipbookSection {
+// 카테고리·Section·페이지 이름은 서로 독립이다(2026-10-22 사용자 결정). 카테고리 이름은 새 Section을 만들 때만 참고하고,
+// 그 페이지에 같은 카테고리의 Section이 이미 있으면(existing) 그 Section의 이름을 쓴다.
+export function defaultSection(first: GuiScreenInfo | undefined, existing: readonly FlipbookSection[] = []): FlipbookSection {
   const c = first?.category;
-  return c ? { key: c.id, name: c.name, order: c.order } : { key: NO_CATEGORY_KEY, name: COPY.coreFlipbook003, order: Number.MAX_SAFE_INTEGER };
+  const base = c ? { key: c.id, name: c.name, order: c.order } : { key: NO_CATEGORY_KEY, name: COPY.coreFlipbook003, order: Number.MAX_SAFE_INTEGER };
+  return existing.find(s => s.key === base.key) ?? base;
 }
 
 // 새 Section. 키는 페이지에서 Section을 다시 찾는 표식이고, 이름은 Section·Chapter에 쓴다.
@@ -69,15 +72,17 @@ export function pageSections(state: State, pageId: string): FlipbookSection[] {
 }
 
 // 표의 행마다 플립북 기록 하나를 만든다. 잘못된 행이 있으면 행 번호와 함께 알리고 아무것도 만들지 않는다.
-export function planFlipbooks(request: FlipbookRequest, screens: Map<string, GuiScreenInfo>, actor: Actor, now: number, newId: () => string): Flipbook[] {
+// sections: 페이지에 이미 있는 Section(기본 Section을 고를 때 그 이름을 쓴다)
+export function planFlipbooks(request: FlipbookRequest, screens: Map<string, GuiScreenInfo>, actor: Actor, now: number, newId: () => string, sections: (pageId: string) => readonly FlipbookSection[] = () => []): Flipbook[] {
   if (!request.rows.length) throw new Error(COPY.coreFlipbooks005);
   return request.rows.map((row, index) => {
-    try { return planRow(row, row.pageId || request.pageId, screens, actor, now, newId); }
+    const pageId = row.pageId || request.pageId;
+    try { return planRow(row, pageId, screens, actor, now, newId, sections(pageId)); }
     catch (e) { throw new Error(`${index + 1}${COPY.coreFlipbooks009} ${e instanceof Error ? e.message : String(e)}`); }
   });
 }
 
-function planRow(row: FlipbookRowRequest, pageId: string, screens: Map<string, GuiScreenInfo>, actor: Actor, now: number, newId: () => string): Flipbook {
+function planRow(row: FlipbookRowRequest, pageId: string, screens: Map<string, GuiScreenInfo>, actor: Actor, now: number, newId: () => string, existing: readonly FlipbookSection[]): Flipbook {
   const kind = rowKind(row);
   const chosen = row.uids.map(uid => {
     const s = screens.get(uid);
@@ -96,15 +101,15 @@ function planRow(row: FlipbookRowRequest, pageId: string, screens: Map<string, G
   const title = typed || auto;
   const autoTitle = title === auto;
   return {
-    id: newId(), rev: 1, kind, title, autoTitle, titleNames: autoTitle ? [title] : [], scale, category: sectionOf(row, chosen[0]),
+    id: newId(), rev: 1, kind, title, autoTitle, titleNames: autoTitle ? [title] : [], scale, category: sectionOf(row, chosen[0], existing),
     screens: chosen.map(s => ({ uid: s.uid, code: s.code, name: s.name, version: s.version, scale: row.scales?.[s.uid] ?? scale })),
     pageId, status: 'active', createdAt: now, actor,
   };
 }
 
 // 고른 Section이 있으면 그 Section, 없으면 첫 화면의 카테고리
-function sectionOf(row: FlipbookRowRequest, first: GuiScreenInfo | undefined): FlipbookSection {
-  if (!row.section) return defaultSection(first);
+function sectionOf(row: FlipbookRowRequest, first: GuiScreenInfo | undefined, existing: readonly FlipbookSection[]): FlipbookSection {
+  if (!row.section) return defaultSection(first, existing);
   const name = row.section.name.trim();
   if (!row.section.key || !name) throw new Error(COPY.coreFlipbooks011);
   return { key: row.section.key, name, order: Number.isFinite(row.section.order) ? row.section.order : CUSTOM_SECTION_ORDER };
@@ -133,6 +138,34 @@ export function moveFlipbooks(store: Store, moves: FlipbookMove[], pageIds: read
     const after: Flipbook = same ? before : { ...before, rev: before.rev + 1, pageId: move.pageId, category };
     if (!same) store.put(keys.flipbook(before.id), after);
     store.audit(actor, 'flipbook.move', before.id, { pageId: fromPage, section: before.category.key }, { pageId: move.pageId, section: category.key, after: move.after });
+    out.push(after);
+  }
+  return out;
+}
+
+// Section 이름은 캔버스에서 바꾸고 플러그인이 따라간다(2026-10-22 사용자 결정). 플립북 프레임이 기록과 같은 키의 Section 안에 있는데
+// 그 Section 이름이 기록과 다르면 바꿀 이름을 돌려준다. 빈 이름은 따르지 않는다.
+// frames: 플립북 ID → 프레임 노드 ID, spots: 프레임 노드 ID → 캔버스 위치(Section 키·이름)
+export function canvasSectionNames(state: State, frames: Map<string, string>, spots: Record<string, { section: string; sectionName?: string }>): { flipbookId: string; name: string }[] {
+  const out: { flipbookId: string; name: string }[] = [];
+  for (const fb of state.flipbooks.values()) {
+    const nodeId = frames.get(fb.id);
+    const spot = nodeId ? spots[nodeId] : undefined;
+    const name = spot?.sectionName?.trim();
+    if (fb.status === 'active' && spot?.section === fb.category.key && name && name !== fb.category.name) out.push({ flipbookId: fb.id, name });
+  }
+  return out;
+}
+
+// 캔버스에서 바꾼 Section 이름을 기록에 옮기고 바뀐 플립북을 돌려준다. Chapter는 반영할 때 이 이름으로 바뀐다.
+export function renameSectionsFromCanvas(store: Store, renames: { flipbookId: string; name: string }[], actor: Actor): Flipbook[] {
+  const out: Flipbook[] = [];
+  for (const { flipbookId, name } of renames) {
+    const before = store.state.flipbooks.get(flipbookId);
+    if (!before || before.status !== 'active' || before.category.name === name) continue;
+    const after: Flipbook = { ...before, rev: before.rev + 1, category: { ...before.category, name } };
+    store.put(keys.flipbook(flipbookId), after);
+    store.audit(actor, 'flipbook.section', flipbookId, before.category.name, name);
     out.push(after);
   }
   return out;

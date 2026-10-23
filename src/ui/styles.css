@@ -326,7 +326,8 @@ button.link.danger { color: var(--danger); }
 .new-place .field-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .new-place .field-head .link { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; line-height: inherit; }
 .new-place .field-head .link svg { width: 12px; height: 12px; }
-.new-place .addable { margin-top: 2px; }
+/* 필드 이름의 흐린 글자색을 버튼이 물려받으면 비활성처럼 보인다. */
+.new-place .addable { margin-top: 2px; color: var(--text); }
 .create-browser { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1 1 auto; }
 .create-browser section { min-width: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 6px; }
 .create-browser header { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 34px; min-height: 34px; padding: 2px 8px; border-bottom: 1px solid var(--border); flex: none; }
