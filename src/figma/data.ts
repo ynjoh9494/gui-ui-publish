@@ -264,12 +264,21 @@ function roleFrames(ns: string, page: PageNode, role: FrameRole): FrameNode[] {
   return page.children.filter((n): n is FrameNode => n.type === 'FRAME' && n.getSharedPluginData(ns, ROLE_KEY) === role);
 }
 
-export async function renderDataPage(ns: string, pageId: string, model: DataModel, rebuild = false): Promise<void> {
+// 원본 프레임이 지워진 화면(삭제로 배포한 화면 등)은 링크를 비운다. 없는 노드에 링크를 걸면 Figma가 예외를 던져 표 전체가 갱신되지 않는다.
+async function withLiveSources(model: DataModel): Promise<DataModel> {
+  const screens = await Promise.all(model.screens.map(async s =>
+    s.sourceNodeId && !(await figma.getNodeByIdAsync(s.sourceNodeId)) ? { ...s, sourceNodeId: null } : s));
+  return { ...model, screens };
+}
+
+export async function renderDataPage(ns: string, pageId: string, source: DataModel, rebuild = false): Promise<void> {
   const page = await loadedPage(pageId);
   const fonts = await loadFonts();
+  const model = await withLiveSources(source);
   const summary = summaryTable(ns, page, fonts, model, rebuild);
   const history = historyTable(ns, page, fonts, model, rebuild);
 
+  // 두 표 모두 행이 많아 길어지므로 위아래가 아니라 옆으로 놓는다.
   summary.x = 0; summary.y = 0;
-  history.x = 0; history.y = summary.height + GAP;
+  history.x = summary.width + GAP; history.y = 0;
 }

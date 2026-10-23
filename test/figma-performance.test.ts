@@ -33,7 +33,7 @@ class Node {
     this.parent = null; this.removed = true;
   }
   resize(w: number, h: number) { this.width = w; this.height = h; }
-  setRangeHyperlink() {}
+  setRangeHyperlink(_start: number, _end: number, _link: { value: string }) {}
   setSharedPluginData(ns: string, key: string, value: string) { this.data.set(ns + ':' + key, value); }
   getSharedPluginData(ns: string, key: string) { return this.data.get(ns + ':' + key) ?? ''; }
   findChild(fn: (n: Node) => boolean) { return this.children.find(fn) ?? null; }
@@ -124,6 +124,35 @@ test('DATA 증분 갱신은 같은 행을 유지하고 변경·삭제·수동 �
   assert.notEqual(table(), before);
   await renderDataPage(ns, m.page.id, { ...model, screens: [] });
   assert.equal(table().children[2].characters, '기록 없음');
+});
+
+test('원본 프레임이 지워진 화면은 링크 없이 그리고 나머지 행은 링크를 건다', async () => {
+  const m = mockFigma();
+  const ns = 'test';
+  const source = m.make('FRAME', 'source');
+  const linked: string[] = [];
+  const live = (id: string) => m.all.find(n => n.id === id && !n.removed) ?? null;
+  Object.assign((globalThis as unknown as { figma: object }).figma, { getNodeByIdAsync: async (id: string) => live(id) });
+  // 실제 Figma처럼 없는 노드에 링크를 걸면 예외를 던진다.
+  Node.prototype.setRangeHyperlink = (_s: number, _e: number, link: { value: string }) => {
+    if (!live(link.value)) throw new Error('in setRangeHyperlink: Invalid hyperlink target node specified');
+    linked.push(link.value);
+  };
+  try {
+    const model: DataModel = {
+      generatedAt: 'now', actor: { id: 'u', name: 'User' }, history: [],
+      screens: [['kept', source.id], ['gone', '999:1']].map(([id, nodeId]) => ({ id, name: id, category: 'Category', base: '', status: '사용',
+        sourceNodeId: nodeId, gui: 'GUI v1', guiTag: null, ui: '-', uiTag: null, delivery: '-' })),
+    };
+    await renderDataPage(ns, m.page.id, model);
+    assert.deepEqual(linked, [source.id]);
+    const table = m.page.children.find(n => n.getSharedPluginData(ns, 'role') === 'data-summary')!;
+    assert.equal(table.children.length, 4);
+    const history = m.page.children.find(n => n.getSharedPluginData(ns, 'role') === 'data-history')!;
+    assert.deepEqual([history.x, history.y], [table.width + 120, 0], 'history sits beside the summary');
+  } finally {
+    Node.prototype.setRangeHyperlink = () => {};
+  }
 });
 
 test('플립북 최신 행 이동·정정·재시도에서 기존 이력과 시스템 행을 재사용한다', async () => {
