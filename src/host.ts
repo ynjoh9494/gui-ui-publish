@@ -32,6 +32,8 @@ export interface Host extends FingerprintReader {
   thumbnailBytes(hash: string): Promise<Uint8Array | null>;
   renameThumbnails(labels: Map<string, string>): Promise<void>;
   canvasPositions(nodeIds: string[]): Promise<Map<string, CanvasPosition>>;
+  // 원본 화면의 현재 Section. 플로우 목록에서 페이지·Section별로 묶는다.
+  screenSections?(sources: { nodeId: string; pageId: string }[]): Promise<Map<string, { id: string; name: string; order: number } | null>>;
   ensureDataPage(pageId: string | null): Promise<string>;
   clearMarkers(): Promise<number>;
   renderData(pageId: string, model: DataModel, rebuild?: boolean): Promise<void>;

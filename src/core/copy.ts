@@ -723,6 +723,8 @@ export const COPY = {
   flow036: '찾는 화면이 없습니다.',
   flow037: '카드를 끌어 칸을 옮기고, 고른 카드·화살표는 Delete로 지웁니다.',
   flow038: '화살표',
+  flow039: '원본 페이지 없음',
+  flow040: '홈 화면',
   // 텍스트 편집 — src/figma/richText.ts
   figmaText001: "플립북이나 텍스트를 선택하세요.",
   figmaText002: "선택한 텍스트에 없는 글꼴이 있습니다. 글꼴을 바꾼 뒤 다시 시도하세요.",

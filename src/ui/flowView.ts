@@ -1,6 +1,7 @@
 import { COPY } from '../core/copy.ts';
 import { FLOW_DEFAULT_TITLE, routeLink, sidePoint, type FlowCard, type FlowGrid, type FlowLink, type FlowRequest, type FlowSide } from '../core/flow.ts';
 import type { GuiScreenInfo } from '../core/guiScreens.ts';
+import type { PageInfo } from '../core/wire.ts';
 
 // 플로우 탭(2026-10-23 사용자 결정): 배포된 화면을 격자에 카드로 놓고 FigJam처럼 잇는다. 텍스트 편집처럼 부가 기능이다.
 // - 왼쪽 배포 화면을 누르면 첫 빈 칸에, 끌어 놓으면 그 칸에 카드를 놓는다(같은 화면을 여러 번 놓을 수 있다).
@@ -12,7 +13,7 @@ import type { GuiScreenInfo } from '../core/guiScreens.ts';
 
 export interface FlowView {
   render(open: boolean): void;
-  setScreens(screens: GuiScreenInfo[]): void;
+  setScreens(screens: GuiScreenInfo[], pages: PageInfo[]): void;
   // 플로우 탭의 버튼(data-action="flow-…"). 처리했으면 true
   handle(action: string, el: HTMLElement): boolean;
 }
@@ -57,6 +58,7 @@ type Drag =
 
 export function flowView(root: HTMLElement, send: (request: FlowRequest) => void): FlowView {
   let screens: GuiScreenInfo[] = [];
+  let pages: PageInfo[] = [];
   let cards: FlowCard[] = [];
   let links: FlowLink[] = [];
   let selected: { kind: 'card' | 'link'; id: string } | null = null;
@@ -120,9 +122,24 @@ export function flowView(root: HTMLElement, send: (request: FlowRequest) => void
     const all = published();
     const q = query.trim().toLocaleLowerCase();
     const shown = q ? all.filter(s => `${s.code} ${s.name}`.toLocaleLowerCase().includes(q)) : all;
-    box.innerHTML = shown.length
-      ? shown.map(s => `<div class="flow-screen" data-uid="${esc(s.uid)}"${s.thumb ? ` data-thumb="${esc(s.thumb.hash)}"` : ''} title="${esc(s.name)}"><span class="id-tag">${esc(s.code)}</span><span class="label">${esc(s.name)}</span></div>`).join('')
-      : `<p class="empty">${all.length ? COPY.flow036 : COPY.flow035}</p>`;
+    if (!shown.length) { box.innerHTML = `<p class="empty">${all.length ? COPY.flow036 : COPY.flow035}</p>`; return; }
+    const pageOrder = new Map(pages.map((page, index) => [page.id, index]));
+    const grouped = new Map<string, Map<string, { name: string; order: number; items: GuiScreenInfo[] }>>();
+    for (const screen of shown) {
+      const pageId = screen.sourcePageId ?? '';
+      let sections = grouped.get(pageId);
+      if (!sections) { sections = new Map(); grouped.set(pageId, sections); }
+      const section = screen.sourceSection;
+      const sectionId = section?.id ?? '';
+      let group = sections.get(sectionId);
+      if (!group) { group = { name: section?.name?.trim() || COPY.coreFlipbooks013, order: section?.order ?? -1, items: [] }; sections.set(sectionId, group); }
+      group.items.push(screen);
+    }
+    const row = (s: GuiScreenInfo) => `<div class="flow-screen" data-uid="${esc(s.uid)}"${s.thumb ? ` data-thumb="${esc(s.thumb.hash)}"` : ''} title="${esc(s.name)}"><span class="id-tag">${esc(s.code)}</span><span class="label">${esc(s.name)}</span></div>`;
+    box.innerHTML = [...grouped].sort(([a], [b]) => (pageOrder.get(a) ?? Infinity) - (pageOrder.get(b) ?? Infinity) || a.localeCompare(b, 'ko'))
+      .map(([pageId, sections]) => `<div class="flow-page"><div class="flow-page-label">${esc(pages.find(p => p.id === pageId)?.name ?? COPY.flow039)}</div>
+        ${[...sections].sort(([keyA, a], [keyB, b]) => a.order - b.order || a.name.localeCompare(b.name, 'ko') || keyA.localeCompare(keyB))
+          .map(([, section]) => `<div class="flow-section"><div class="flow-section-label">${esc(section.name)}</div>${section.items.map(row).join('')}</div>`).join('')}</div>`).join('');
   }
 
   function paintBoard() {
@@ -368,8 +385,9 @@ export function flowView(root: HTMLElement, send: (request: FlowRequest) => void
       root.appendChild(el);
       build(el);
     },
-    setScreens(next) {
+    setScreens(next, pageList) {
       screens = next;
+      pages = pageList;
       paintScreens();
       paintBoard();
     },

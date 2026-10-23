@@ -123,7 +123,7 @@ export type ToMain =
   // GUI: 화면 ID, UI: 플립북 ID
   | { type: 'history'; team: Team; id: string }
   // 플립북 만들기: GUI 배포한 화면 목록을 받고, 고른 화면으로 만든다.
-  | { type: 'guiScreens' }
+  | { type: 'guiScreens'; withSections?: boolean }
   | { type: 'createFlipbooks'; request: FlipbookRequest }
   // 플립북 제목 변경. 비우면 첫 화면 이름(자동 제목)으로 돌아간다.
   | { type: 'renameFlipbook'; id: string; title: string }

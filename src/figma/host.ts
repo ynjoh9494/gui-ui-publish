@@ -72,6 +72,29 @@ export function figmaHost(mode: Host['mode']): Host {
     // 썸네일 페이지는 플러그인이 관리하므로 페이지 선택지에서 뺀다.
     pages: () => root.children.filter(p => p.getSharedPluginData(NS, 'role') !== 'thumbs').map(p => ({ id: p.id, name: p.name })),
 
+    async screenSections(sources) {
+      const sections = new Map<string, { id: string; name: string; order: number } | null>();
+      const orders = new Map<string, number>();
+      for (const pageId of new Set(sources.map(s => s.pageId))) {
+        const page = await figma.getNodeByIdAsync(pageId);
+        if (!page || page.type !== 'PAGE') continue;
+        await page.loadAsync();
+        page.children.filter((n): n is SectionNode => n.type === 'SECTION')
+          .sort((a, b) => a.y - b.y || a.x - b.x)
+          .forEach((section, index) => orders.set(section.id, index));
+      }
+      for (const { nodeId, pageId } of sources) {
+        const node = await figma.getNodeByIdAsync(nodeId);
+        if (!node || pageOf(node)?.id !== pageId) continue;
+        let section: { id: string; name: string; order: number } | null = null;
+        for (let parent = node.parent; parent && parent.type !== 'PAGE'; parent = parent.parent) {
+          if (parent.type === 'SECTION') section = { id: parent.id, name: parent.name, order: orders.get(parent.id) ?? Infinity };
+        }
+        sections.set(nodeId, section);
+      }
+      return sections;
+    },
+
     async listFrames(pageIds, sectionIds, isCurrent = () => true) {
       const sections = new Set(sectionIds);
       const frames: ScannedFrame[] = [];

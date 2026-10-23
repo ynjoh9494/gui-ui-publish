@@ -162,10 +162,18 @@ export class Controller {
           this.host.post({ type: 'history', id: msg.id, rows });
           break;
         }
-        case 'guiScreens':
+        case 'guiScreens': {
           this.store.reload();
-          this.host.post({ type: 'guiScreens', screens: [...guiScreens(this.store.state).values()] });
+          const screens = [...guiScreens(this.store.state).values()];
+          if (msg.withSections && this.host.screenSections) {
+            const sources = screens.filter(s => s.status === 'active' && s.version > 0 && s.sourceNodeId && s.sourcePageId)
+              .map(s => ({ nodeId: s.sourceNodeId!, pageId: s.sourcePageId! }));
+            const sections = await this.host.screenSections(sources).catch(() => new Map<string, { id: string; name: string; order: number } | null>());
+            for (const screen of screens) if (screen.sourceNodeId) screen.sourceSection = sections.get(screen.sourceNodeId) ?? null;
+          }
+          this.host.post({ type: 'guiScreens', screens });
           break;
+        }
         case 'createFlipbooks': await this.createFlipbooks(msg.request); break;
         case 'renameFlipbook': await this.renameFlipbook(msg.id, msg.title); break;
         case 'markReviewed': await this.markReviewed(msg.requests); break;

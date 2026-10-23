@@ -495,6 +495,8 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .flow-head-title .note { margin: 2px 0 0; }
 .flow-search { flex: none; }
 .flow-screens { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 5px; }
+.flow-page-label { padding: 7px 8px 4px; font-weight: 700; }
+.flow-section-label { padding: 3px 8px 3px 16px; background: var(--bg2); color: var(--muted); font-size: 11px; }
 .flow-screen { display: flex; align-items: center; gap: 6px; padding: 5px 8px; cursor: grab; user-select: none; }
 .flow-screen:hover { background: var(--bg2); }
 .flow-screen .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
