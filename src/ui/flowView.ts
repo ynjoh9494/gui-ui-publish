@@ -329,7 +329,7 @@ export function flowView(root: HTMLElement, send: (request: FlowRequest) => void
           <div class="flow-actions"><button data-action="flow-clear">${COPY.flow033}</button><button class="primary" data-action="flow-create">${COPY.flow032}</button></div></div>
         <div class="flow-form"><label>${COPY.flow030}<input data-flow="title" value="${esc(title)}" placeholder="${esc(FLOW_DEFAULT_TITLE)}"></label></div>
         <div class="flow-board"></div>
-        <p class="note flow-hint">${COPY.flow024} ${COPY.flow037}</p>
+        <p class="note flow-hint">${COPY.flow024}<br>${COPY.flow037}</p>
       </section>`;
     el.addEventListener('input', ev => {
       const input = ev.target as HTMLInputElement;
