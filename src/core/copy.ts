@@ -390,6 +390,10 @@ export const COPY = {
   uiApp338: "섹션",
   uiApp339: "새 섹션 이름",
   uiApp340: "섹션 선택",
+  uiApp341: '마지막 동기화',
+  uiApp342: '목록 새로고침',
+  uiApp343: '동기화 중',
+  uiApp344: '동기화',
   // 튜토리얼 — src/ui/tutorial.ts. 단계마다 말풍선 제목·설명 순서다.
   uiTutorial001: '도움말',
   uiTutorial002: '튜토리얼 종료',

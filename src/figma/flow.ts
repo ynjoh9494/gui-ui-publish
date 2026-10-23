@@ -4,8 +4,9 @@ import { formatFrameName } from '../core/screenName.ts';
 import type { FlowRecord } from '../core/types.ts';
 import { loadThumbnailPage } from './thumbs.ts';
 
-// 플로우 프레임(2026-10-23 사용자 결정). 썸네일은 GUI 배포 때 만든 이미지를 그대로 채우고, 다시 배포되면 그 채움만 바꾼다.
-// 예시의 화면·연결선별 레이어 구조와 Inter·반투명 빨간 안내 글자를 따른다. 플러그인은 만든 뒤 내용을 고치지 않는다.
+// 플로우(2026-10-23 사용자 결정). 썸네일은 GUI 배포 때 만든 이미지를 그대로 채우고, 다시 배포되면 그 채움만 바꾼다.
+// 예시의 레이어 구조를 따른다: 플로우·화면·Connector 모두 그룹이고(배경 없음, 크기를 바꾸면 화살표도 함께 늘어난다),
+// Inter·반투명 빨간 안내 글자를 쓴다. 플러그인은 만든 뒤 내용을 고치지 않는다.
 
 const FLOW_KEY = 'flowOf';
 const SCREEN_KEY = 'flowScreen';
@@ -18,7 +19,7 @@ const INK: RGB = { r: 0.2, g: 0.2, b: 0.2 };
 const gray = (l: number): SolidPaint[] => [{ type: 'SOLID', color: { r: l, g: l, b: l } }];
 const imageFill = (hash: string): ImagePaint[] => [{ type: 'IMAGE', imageHash: hash, scaleMode: 'FIT' }];
 
-function text(parent: FrameNode, font: FontName, chars: string, size: number, name: string, width?: number, align: 'LEFT' | 'CENTER' | 'RIGHT' = 'LEFT', color: RGB = INK, opacity = 1): TextNode {
+function text(parent: ChildrenMixin, font: FontName, chars: string, size: number, name: string, width?: number, align: 'LEFT' | 'CENTER' | 'RIGHT' = 'LEFT', color: RGB = INK, opacity = 1): TextNode {
   const t = figma.createText();
   parent.appendChild(t);
   t.fontName = font;
@@ -36,7 +37,7 @@ function text(parent: FrameNode, font: FontName, chars: string, size: number, na
 }
 
 // Figma Stroke End Point의 Triangle arrow(ARROW_EQUILATERAL)를 도착점에만 설정한다.
-async function arrowLine(parent: FrameNode, points: [number, number][]): Promise<VectorNode> {
+async function arrowLine(parent: ChildrenMixin, points: [number, number][]): Promise<VectorNode> {
   const minX = Math.min(...points.map(p => p[0])), minY = Math.min(...points.map(p => p[1]));
   const v = figma.createVector();
   parent.appendChild(v);
@@ -63,98 +64,92 @@ export async function createFlow(ns: string, plan: FlowPlan): Promise<{ nodeId: 
     return ok ? cell.thumb! : null;
   });
   const page = figma.currentPage;
-  const frame = figma.createFrame();
+  // 그룹은 자식이 있어야 만들 수 있으므로 페이지에 절대 위치로 놓은 뒤 화면·Connector·플로우 순서로 묶는다.
+  // 레이어 순서도 예시와 같게 위에서부터 Connector, 화면, 플로우 제목이다(나중에 만든 노드가 위).
+  const made: SceneNode[] = [];
+  let root: GroupNode | null = null;
   try {
-    frame.name = plan.title;
-    frame.fills = gray(1);
-    frame.clipsContent = false;
-    frame.setSharedPluginData(ns, FLOW_KEY, plan.id);
-    page.appendChild(frame);
     const sizes = thumbs.map(t => t ? { w: t.width, h: t.height } : { w: PLACEHOLDER.width, h: PLACEHOLDER.height });
     const cellW = Math.max(...sizes.map(s => s.w));
     const imageH = Math.max(...sizes.map(s => s.h));
-    const measure = text(frame, fonts.regular, COPY.flow013, L.captionSize, COPY.flow042, undefined, 'LEFT', FLOW_DUMMY, 0.5);
+    const measure = text(page, fonts.regular, COPY.flow013, L.captionSize, COPY.flow042, undefined, 'LEFT', FLOW_DUMMY, 0.5);
     const cellH = L.cellTitle + imageH + L.captionGap + measure.height;
     measure.remove();
-    const layout = layoutFlow(plan.cells, plan.links, { w: cellW, h: cellH });
-    frame.resize(layout.width, layout.height);
+    const layout = layoutFlow(plan.cells, plan.links, { w: cellW, h: cellH, imgTop: L.cellTitle, imgH: imageH });
     const g = layout.grid;
-    plan.cells.forEach((cell, i) => {
-      const x = g.x0 + cell.c * (g.cellW + g.gapX), y = g.y0 + cell.r * (g.cellH + g.gapY);
-      const card = figma.createFrame();
-      frame.appendChild(card);
-      card.name = formatFrameName(cell.code, cell.name);
-      card.resize(cellW, cellH);
-      card.x = x;
-      card.y = y;
-      card.fills = [];
-      card.clipsContent = false;
-      const title = text(card, fonts.bold, COPY.flow012, L.cellTitleSize, COPY.flow041, undefined, 'LEFT', FLOW_DUMMY, 0.5);
-      title.x = 0;
-      title.y = 0;
+    // 지금 보고 있는 곳 가운데에 놓는다.
+    const center = figma.viewport.center;
+    const ox = Math.round(center.x - layout.width / 2), oy = Math.round(center.y - layout.height / 2);
+    const heading = text(page, fonts.bold, plan.title, L.titleSize, COPY.flow045);
+    heading.x = ox + L.pad;
+    heading.y = oy + L.pad;
+    made.push(heading);
+    const cards = plan.cells.map((cell, i) => {
+      const x = ox + g.x0 + cell.c * (g.cellW + g.gapX), y = oy + g.y0 + cell.r * (g.cellH + g.gapY);
+      const parts: SceneNode[] = [];
+      const title = text(page, fonts.bold, COPY.flow012, L.cellTitleSize, COPY.flow041, undefined, 'LEFT', FLOW_DUMMY, 0.5);
+      title.x = x;
+      title.y = y;
+      parts.push(title);
       const rect = figma.createRectangle();
-      card.appendChild(rect);
+      page.appendChild(rect);
       rect.name = COPY.flow016;
       rect.resize(sizes[i].w, sizes[i].h);
-      rect.x = 0;
-      rect.y = L.cellTitle;
+      rect.x = x;
+      rect.y = y + L.cellTitle;
       rect.strokes = gray(0.475);
       rect.strokeWeight = 1;
       rect.setSharedPluginData(ns, SCREEN_KEY, cell.uid);
+      parts.push(rect);
       const thumb = thumbs[i];
       if (thumb) {
         rect.fills = imageFill(thumb.hash);
         rect.setSharedPluginData(ns, VERSION_KEY, String(cell.version));
       } else {
         rect.fills = gray(0.86);
-        const note = text(card, fonts.regular, COPY.flow005, L.captionSize, COPY.flow005, sizes[i].w, 'CENTER');
-        note.x = 0;
+        const note = text(page, fonts.regular, COPY.flow005, L.captionSize, COPY.flow005, sizes[i].w, 'CENTER');
+        note.x = x;
         note.y = rect.y + (sizes[i].h - note.height) / 2;
         note.setSharedPluginData(ns, EMPTY_KEY, rect.id);
+        parts.push(note);
       }
-      const caption = text(card, fonts.regular, COPY.flow013, L.captionSize, COPY.flow042, undefined, 'LEFT', FLOW_DUMMY, 0.5);
-      caption.x = 0;
+      const caption = text(page, fonts.regular, COPY.flow013, L.captionSize, COPY.flow042, undefined, 'LEFT', FLOW_DUMMY, 0.5);
+      caption.x = x;
       caption.y = rect.y + sizes[i].h + L.captionGap;
+      parts.push(caption);
+      made.push(...parts);
+      const card = figma.group(parts, page);
+      card.name = formatFrameName(cell.code, cell.name);
+      return card;
     });
+    const connectors: GroupNode[] = [];
     for (const arrow of layout.arrows) {
-      const connector = figma.createFrame();
-      frame.appendChild(connector);
-      connector.name = COPY.flow044;
-      connector.fills = [];
-      connector.clipsContent = false;
-      const line = await arrowLine(connector, arrow.points);
+      const line = await arrowLine(page, arrow.points.map(([px, py]) => [ox + px, oy + py]));
+      made.push(line);
       line.fills = [];
       line.strokes = [{ type: 'SOLID', color: INK }];
       line.strokeWeight = L.line;
       line.name = COPY.flow015;
       const spot = arrow.label;
-      const label = text(connector, fonts.regular, COPY.flow014, L.labelSize, COPY.flow043, undefined, 'LEFT', FLOW_DUMMY, 0.5);
-      label.x = spot.align === 'right' ? spot.x + spot.width - label.width : spot.x;
-      label.y = spot.anchor === 'bottom' ? spot.y - label.height : spot.y;
-      const left = Math.min(line.x, label.x), top = Math.min(line.y, label.y);
-      const right = Math.max(line.x + line.width, label.x + label.width), bottom = Math.max(line.y + line.height, label.y + label.height);
-      connector.resize(Math.max(1, right - left), Math.max(1, bottom - top));
-      connector.x = left;
-      connector.y = top;
-      line.x -= left;
-      line.y -= top;
-      label.x -= left;
-      label.y -= top;
+      const label = text(page, fonts.regular, COPY.flow014, L.labelSize, COPY.flow043, undefined, 'LEFT', FLOW_DUMMY, 0.5);
+      made.push(label);
+      label.x = ox + (spot.align === 'right' ? spot.x + spot.width - label.width : spot.x);
+      label.y = oy + (spot.anchor === 'bottom' ? spot.y - label.height : spot.y);
+      const connector = figma.group([line, label], page);
+      connector.name = COPY.flow044;
+      connectors.push(connector);
     }
-    const heading = text(frame, fonts.bold, plan.title, L.titleSize, COPY.flow045);
-    heading.x = L.pad;
-    heading.y = L.pad;
-    // 지금 보고 있는 곳 가운데에 놓는다.
-    const center = figma.viewport.center;
-    frame.x = Math.round(center.x - frame.width / 2);
-    frame.y = Math.round(center.y - frame.height / 2);
+    root = figma.group([heading, ...cards, ...connectors], page);
+    root.name = plan.title;
+    root.setSharedPluginData(ns, FLOW_KEY, plan.id);
   } catch (e) {
-    if (!frame.removed) frame.remove();
+    if (root && !root.removed) root.remove();
+    for (const node of made) if (!node.removed) node.remove();
     throw e;
   }
-  figma.currentPage.selection = [frame];
-  figma.viewport.scrollAndZoomIntoView([frame]);
-  return { nodeId: frame.id, pageId: page.id, notes: missing.length ? [`${COPY.flow011} ${missing.join(', ')}`] : [] };
+  figma.currentPage.selection = [root];
+  figma.viewport.scrollAndZoomIntoView([root]);
+  return { nodeId: root.id, pageId: page.id, notes: missing.length ? [`${COPY.flow011} ${missing.join(', ')}`] : [] };
 }
 
 function pageOf(node: BaseNode): PageNode | null {
@@ -167,7 +162,8 @@ function pageOf(node: BaseNode): PageNode | null {
 // 칸 크기와 화살표는 그대로 두고, 비율이 바뀐 이미지는 칸 안에 맞춘다(FIT).
 export async function updateFlow(ns: string, flow: FlowRecord, thumbs: FlowThumb[]): Promise<number | null> {
   const node = await figma.getNodeByIdAsync(flow.nodeId);
-  if (!node || node.removed || node.type !== 'FRAME' || node.getSharedPluginData(ns, FLOW_KEY) !== flow.id) return null;
+  // 이 변경 전에 만든 플로우는 프레임이다.
+  if (!node || node.removed || (node.type !== 'GROUP' && node.type !== 'FRAME') || node.getSharedPluginData(ns, FLOW_KEY) !== flow.id) return null;
   await pageOf(node)?.loadAsync();
   await loadThumbnailPage(ns);
   const latest = new Map(thumbs.map(t => [t.uid, t]));

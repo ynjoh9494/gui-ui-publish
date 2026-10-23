@@ -203,6 +203,12 @@ export class Controller {
           if (latest()) this.host.post({ type: 'nav', nav: msg.nav, ok, message: ok ? '' : COPY.controller016 });
           break;
         }
+        case 'refreshList':
+          if (this.host.mode !== 'UI') break;
+          await this.checkTemplate();
+          await this.linkFlipbooks();
+          await this.syncCanvasSections();
+          break;
         case 'textTab':
           this.textTabOpen = msg.open;
           if (msg.open && this.host.mode === 'UI') this.postTextTarget();
@@ -341,7 +347,10 @@ export class Controller {
     this.scanStatus('UI', 'done', targets.length, targets.length);
   }
 
-  private postUiScans() { this.host.post({ type: 'uiScan', scans: this.uiScans }); }
+  private postUiScans() {
+    this.host.post({ type: 'uiScan', scans: this.uiScans });
+    this.host.post({ type: 'listSynced', at: this.store.now() });
+  }
 
   // 템플릿을 다시 확인하고 결과가 바뀌면 UI에 알린다. 템플릿 컴포넌트는 플러그인 밖에서 바뀌므로 만들기·반영 직전에도 확인한다.
   private async checkTemplate(): Promise<string[]> {
@@ -689,11 +698,8 @@ export class Controller {
       ? entryByNode.get(lastId)?.key
       : lastNode?.flipbookId ?? undefined;
     this.host.post({ type: 'canvasSelection', team, entryKeys: keys, lastKey: lastKey && keys.includes(lastKey) ? lastKey : keys[keys.length - 1] ?? null });
-    // 플립북 프레임을 지우거나 되돌리면 선택이 바뀐다. 이때 연결 끊김 표시를 맞추고, 찾지 못하면 이전 표시를 둔다.
-    if (this.host.mode === 'UI') {
-      await this.checkTemplate().catch(() => {});
-      await this.linkFlipbooks(() => canvasSeq === this.canvasSelectionSeq).catch(() => {});
-    }
+    // UI Flipbook은 캔버스 선택마다 플립북 페이지를 다시 읽지 않는다(캔버스 작업이 느려져서, 2026-10-23 사용자 요청).
+    // 연결 상태·순서·Section은 목록 새로고침(refreshList)과 플러그인 작업 뒤에 맞춘다.
   }
 
   // 캔버스에서 옮기거나 이름을 바꾼 Section을 그 플립북의 기록과 Chapter에 반영한다(플립북의 페이지·Section은 캔버스가 원본).
@@ -765,7 +771,8 @@ export class Controller {
       if (before && before.nodeId === nodeId) return sameSpot(before.spot, spot) ? before : { ...before, spot };
       return { flipbookId: fb.id, nodeId, fingerprint: null, error: null, spot };
     });
-    if (next.length === this.uiScans.length && next.every((u, i) => u === this.uiScans[i])) return;
+    // 바뀐 것이 없어도 다시 읽은 시각은 알린다(목록 새로고침이 끝났다는 신호이기도 하다).
+    if (next.length === this.uiScans.length && next.every((u, i) => u === this.uiScans[i])) { this.host.post({ type: 'listSynced', at: this.store.now() }); return; }
     this.uiScans = next;
     this.postUiScans();
   }

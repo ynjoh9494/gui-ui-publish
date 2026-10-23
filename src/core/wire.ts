@@ -147,6 +147,8 @@ export type ToMain =
   | { type: 'textImport' }
   // 텍스트 편집 탭이 보이는지. 보이는 동안만 캔버스 선택이 바뀔 때 대상(textTarget)을 보낸다.
   | { type: 'textTab'; open: boolean }
+  // UI Flipbook 목록 새로고침: 플립북 페이지를 다시 읽어 연결 상태·순서·Section을 맞춘다. 캔버스 선택마다 하지 않는다(2026-10-23 사용자 요청).
+  | { type: 'refreshList' }
   | { type: 'textApply'; paragraphs: RichParagraph[] }
   // 플로우: 고른 배포 화면으로 지금 보고 있는 페이지에 플로우 프레임을 만든다.
   | { type: 'createFlow'; request: FlowRequest }
@@ -177,6 +179,8 @@ export type ToUi =
   | { type: 'flipbooksRemoved'; ids: string[]; message: string }
   // 플립북 템플릿의 문제(없으면 빈 목록). UI Flipbook 목록 위에 경고로 보여 준다.
   | { type: 'templateIssues'; issues: string[] }
+  // 플립북 페이지를 다시 읽어 목록을 맞춘 시각
+  | { type: 'listSynced'; at: number }
   // 새 버전 페이지 비교 결과. 전환했거나 비교 결과가 맞지 않게 되면 null
   | { type: 'versionMatch'; match: VersionMatchView | null }
   | { type: 'versionSwitched' }

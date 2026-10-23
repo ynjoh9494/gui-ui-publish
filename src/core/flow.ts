@@ -17,10 +17,12 @@ export interface FlowRequest { title: string; cards: FlowCard[]; links: FlowLink
 export interface FlowCell extends FlowCard { code: string; name: string; version: number; thumb: GuiThumb | null }
 export interface FlowPlan { id: string; title: string; cells: FlowCell[]; links: FlowLink[] }
 
-// 캔버스 배치 값. 제목 → 이미지 → 설명은 참고 플로우 프레임의 구조를 따르고 화면 간격은 80×120이다.
+// 캔버스 배치 값. 제목 → 이미지 → 설명은 참고 플로우 프레임의 구조를 따른다.
+// 화면 간격 80×120은 이미지 사이 간격이다(참고 프레임: 이미지 가로 80·세로 120, 카드 틀 세로 70). 화살표는 이미지 가장자리에서 나가
+// 도착 이미지 8px 앞에서 끝나고(arrowGap), 조건 글자는 출발점에서 8px 떨어진다.
 export const FLOW_LAYOUT = {
   pad: 0, titleSize: 16, titleGap: 56, cellTitle: 25, cellTitleSize: 16, captionGap: 4, captionSize: 16,
-  gapX: 80, gapY: 120, line: 2, labelSize: 16, labelGap: 6, labelMargin: 8,
+  gapX: 80, gapY: 120, line: 2, arrowGap: 8, labelSize: 16, labelGap: 8, labelMargin: 8,
 };
 export const FLOW_DEFAULT_TITLE = COPY.flow001;
 // 더미 글자 바탕색. Figma 예시처럼 텍스트 채움에서 불투명도 50%를 적용한다.
@@ -60,16 +62,22 @@ export function flowRecord(plan: FlowPlan, placed: { nodeId: string; pageId: str
 
 // ── 격자와 화살표 경로 ─────────────────────────────────────
 
-// 칸(0, 0)의 왼쪽 위가 (x0, y0)이고 모든 칸의 크기가 같다. 빈 칸은 직선으로 통과하고, 꺾이는 경로는 칸 사이 통로를 쓴다.
-export interface FlowGrid { x0: number; y0: number; cellW: number; cellH: number; gapX: number; gapY: number }
+// 칸(0, 0)의 왼쪽 위가 (x0, y0)이고 모든 칸의 크기가 같다. gapX·gapY는 칸 틀 사이 간격이다. 빈 칸은 직선으로 통과하고, 꺾이는 경로는 칸 사이 통로를 쓴다.
+// 화살표는 칸 안의 이미지(위에서 imgTop, 높이 imgH, 없으면 칸 전체)에 붙고, 도착점은 endGap만큼 앞에서 멈춘다.
+export interface FlowGrid { x0: number; y0: number; cellW: number; cellH: number; gapX: number; gapY: number; imgTop?: number; imgH?: number; endGap?: number }
 export type FlowPoint = [number, number];
 
 export function cellBox(g: FlowGrid, at: { r: number; c: number }): { x: number; y: number; w: number; h: number } {
   return { x: g.x0 + at.c * (g.cellW + g.gapX), y: g.y0 + at.r * (g.cellH + g.gapY), w: g.cellW, h: g.cellH };
 }
 
-export function sidePoint(g: FlowGrid, at: { r: number; c: number }, side: FlowSide): FlowPoint {
+function imageBox(g: FlowGrid, at: { r: number; c: number }): { x: number; y: number; w: number; h: number } {
   const b = cellBox(g, at);
+  return { x: b.x, y: b.y + (g.imgTop ?? 0), w: b.w, h: g.imgH ?? b.h };
+}
+
+export function sidePoint(g: FlowGrid, at: { r: number; c: number }, side: FlowSide): FlowPoint {
+  const b = imageBox(g, at);
   switch (side) {
     case 'top': return [b.x + b.w / 2, b.y];
     case 'right': return [b.x + b.w, b.y + b.h / 2];
@@ -80,29 +88,62 @@ export function sidePoint(g: FlowGrid, at: { r: number; c: number }, side: FlowS
 
 const horizontal = (side: FlowSide) => side === 'left' || side === 'right';
 
-// 칸 가장자리에서 통로 가운데까지 나간 점
-function exit(g: FlowGrid, p: FlowPoint, side: FlowSide): FlowPoint {
+// 이미지 사이 통로 폭: 가로는 칸 사이 간격, 세로는 위 이미지 아래 끝에서 아래 이미지 위 끝까지
+const laneX = (g: FlowGrid) => g.gapX;
+const laneY = (g: FlowGrid) => g.gapY + g.cellH - (g.imgH ?? g.cellH);
+
+// 변 바깥으로 d만큼 나간 점
+function outward(p: FlowPoint, side: FlowSide, d: number): FlowPoint {
   switch (side) {
-    case 'top': return [p[0], p[1] - g.gapY / 2];
-    case 'right': return [p[0] + g.gapX / 2, p[1]];
-    case 'bottom': return [p[0], p[1] + g.gapY / 2];
-    case 'left': return [p[0] - g.gapX / 2, p[1]];
+    case 'top': return [p[0], p[1] - d];
+    case 'right': return [p[0] + d, p[1]];
+    case 'bottom': return [p[0], p[1] + d];
+    case 'left': return [p[0] - d, p[1]];
   }
 }
 
-// 마주 보는 변 사이의 칸이 비었으면 직선으로 잇고, 막혔거나 방향이 다르면 칸 사이 통로를 따른다.
+// 가장자리(출발점·화살촉 끝)에서 통로 가운데까지 나간 점. 출발점과 화살촉 끝 사이의 가운데에서 꺾이게 한다(참고 프레임).
+function exit(g: FlowGrid, p: FlowPoint, side: FlowSide): FlowPoint {
+  return outward(p, side, ((horizontal(side) ? laneX(g) : laneY(g)) - (g.endGap ?? 0)) / 2);
+}
+
+// 한 번만 꺾는 경로의 꺾이는 점. 위아래 변과 좌우 변을 잇고, 지나는 칸(꺾이는 칸 포함)이 모두 비었을 때만 쓴다(2026-10-23 사용자 요청).
+function corner(from: { r: number; c: number }, fromSide: FlowSide, to: { r: number; c: number }, toSide: FlowSide, s: FlowPoint, t: FlowPoint, occupied: readonly { r: number; c: number }[]): FlowPoint | null {
+  if (horizontal(fromSide) === horizontal(toSide)) return null;
+  const vertical = !horizontal(fromSide);
+  const p: FlowPoint = vertical ? [s[0], t[1]] : [t[0], s[1]];
+  const ahead = (side: FlowSide, a: FlowPoint, b: FlowPoint) =>
+    side === 'top' ? b[1] < a[1] : side === 'bottom' ? b[1] > a[1] : side === 'left' ? b[0] < a[0] : b[0] > a[0];
+  // 꺾이는 점이 출발 변 바깥쪽에 있고, 도착 변 바깥쪽에서 들어와야 한다.
+  if (!ahead(fromSide, s, p) || !ahead(toSide, t, p)) return null;
+  const cells: { r: number; c: number }[] = [];
+  const dr = Math.sign(to.r - from.r), dc = Math.sign(to.c - from.c);
+  if (vertical) {
+    for (let r = from.r + dr; r !== to.r + dr; r += dr) cells.push({ r, c: from.c });
+    for (let c = from.c + dc; c !== to.c; c += dc) cells.push({ r: to.r, c });
+  } else {
+    for (let c = from.c + dc; c !== to.c + dc; c += dc) cells.push({ r: from.r, c });
+    for (let r = from.r + dr; r !== to.r; r += dr) cells.push({ r, c: to.c });
+  }
+  return cells.some(cell => occupied.some(at => at.r === cell.r && at.c === cell.c)) ? null : p;
+}
+
+// 마주 보는 변 사이의 칸이 비었으면 직선으로, 위아래 변과 좌우 변 사이는 빈 칸을 지나 한 번 꺾어 잇는다. 막혔거나 방향이 다르면 칸 사이 통로를 따른다.
 export function routeLink(g: FlowGrid, from: { r: number; c: number }, fromSide: FlowSide, to: { r: number; c: number }, toSide: FlowSide, occupied: readonly { r: number; c: number }[] = []): FlowPoint[] {
-  const s = sidePoint(g, from, fromSide), t = sidePoint(g, to, toSide);
+  const s = sidePoint(g, from, fromSide), edge = sidePoint(g, to, toSide);
+  const t = outward(edge, toSide, g.endGap ?? 0);
   const clearRow = from.r === to.r && occupied.every(at => at.r !== from.r || at.c <= Math.min(from.c, to.c) || at.c >= Math.max(from.c, to.c));
   if (clearRow && ((from.c < to.c && fromSide === 'right' && toSide === 'left') || (from.c > to.c && fromSide === 'left' && toSide === 'right'))) return [s, t];
   const clearColumn = from.c === to.c && occupied.every(at => at.c !== from.c || at.r <= Math.min(from.r, to.r) || at.r >= Math.max(from.r, to.r));
   if (clearColumn && ((from.r < to.r && fromSide === 'bottom' && toSide === 'top') || (from.r > to.r && fromSide === 'top' && toSide === 'bottom'))) return [s, t];
+  const bend = corner(from, fromSide, to, toSide, s, edge, occupied);
+  if (bend) return [s, bend, t];
   const s1 = exit(g, s, fromSide), t1 = exit(g, t, toSide);
   const mid: FlowPoint[] = [];
   const sh = horizontal(fromSide), th = horizontal(toSide);
   if (sh && th) {
     if (s1[0] !== t1[0]) {
-      const y = nearestLine(s1[1], t1[1], Math.min(from.r, to.r), Math.max(from.r, to.r) + 1, k => g.y0 - g.gapY / 2 + k * (g.cellH + g.gapY));
+      const y = nearestLine(s1[1], t1[1], Math.min(from.r, to.r), Math.max(from.r, to.r) + 1, k => g.y0 + (g.imgTop ?? 0) - laneY(g) / 2 + k * (g.cellH + g.gapY));
       mid.push([s1[0], y], [t1[0], y]);
     }
   } else if (!sh && !th) {
@@ -151,11 +192,14 @@ export function labelSpot(g: FlowGrid, start: FlowPoint, fromSide: FlowSide): Fl
 }
 
 // 캔버스 배치: 모든 칸은 크기가 같다(가장 넓은 썸네일 폭 × 가장 높은 제목·썸네일·설명 높이).
+// cell.imgTop·imgH: 칸 안의 이미지 자리. 세로 간격 120은 이미지 사이이므로 칸 틀 사이는 제목·설명 높이만큼 좁다.
 export interface FlowLayout { width: number; height: number; grid: FlowGrid; arrows: { link: FlowLink; points: FlowPoint[]; label: FlowLabelSpot }[] }
-export function layoutFlow(cells: { key: string; r: number; c: number }[], links: FlowLink[], cell: { w: number; h: number }): FlowLayout {
+export function layoutFlow(cells: { key: string; r: number; c: number }[], links: FlowLink[], cell: { w: number; h: number; imgTop?: number; imgH?: number }): FlowLayout {
   const L = FLOW_LAYOUT;
   const nrow = Math.max(1, ...cells.map(c => c.r + 1)), ncol = Math.max(1, ...cells.map(c => c.c + 1));
-  const grid: FlowGrid = { x0: L.pad, y0: L.pad + L.titleGap, cellW: cell.w, cellH: cell.h, gapX: L.gapX, gapY: L.gapY };
+  const imgH = cell.imgH ?? cell.h;
+  const gapY = Math.max(0, L.gapY - (cell.h - imgH));
+  const grid: FlowGrid = { x0: L.pad, y0: L.pad + L.titleGap, cellW: cell.w, cellH: cell.h, gapX: L.gapX, gapY, imgTop: cell.imgTop ?? 0, imgH, endGap: L.arrowGap };
   const at = new Map(cells.map(c => [c.key, c]));
   const arrows = links.flatMap(link => {
     const a = at.get(link.from), b = at.get(link.to);
@@ -165,7 +209,7 @@ export function layoutFlow(cells: { key: string; r: number; c: number }[], links
   });
   return {
     width: grid.x0 + ncol * cell.w + (ncol - 1) * L.gapX + L.pad,
-    height: grid.y0 + nrow * cell.h + (nrow - 1) * L.gapY + L.pad,
+    height: grid.y0 + nrow * cell.h + (nrow - 1) * gapY + L.pad,
     grid, arrows,
   };
 }

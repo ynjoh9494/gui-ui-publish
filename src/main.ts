@@ -10,7 +10,7 @@ const controller = new Controller(figmaHost(mode));
 // 같은 파일을 바꾸는 요청은 순서대로 실행한다. 스캔·취소·탐색은 최신 요청이 앞선 요청을 중단할 수 있게 둔다.
 const writes = new Set<ToMain['type']>([
   'ready', 'prepare', 'commit', 'cancelPlan', 'retry', 'refreshData', 'resetData', 'admin', 'ignoreChanges',
-  'createFlipbooks', 'renameFlipbook', 'markReviewed', 'removeFlipbooks', 'resizeFlipbooks', 'switchVersion', 'textApply', 'createFlow',
+  'refreshList', 'createFlipbooks', 'renameFlipbook', 'markReviewed', 'removeFlipbooks', 'resizeFlipbooks', 'switchVersion', 'textApply', 'createFlow',
 ]);
 let writeQueue: Promise<void> = Promise.resolve();
 figma.ui.onmessage = (msg: ToMain) => {
@@ -26,9 +26,6 @@ figma.on('selectionchange', () => {
     void writeQueue.then(() => {
       if (seq !== selectionSeq) return;
       return controller.canvasSelectionChanged();
-    }).then(() => {
-      // 캔버스에서 옮기거나 이름을 바꾼 Section은 기록·Chapter를 바꾸므로 다른 쓰기와 겹치지 않게 쓰기 순서에 넣는다.
-      writeQueue = writeQueue.then(() => controller.syncCanvasSections(), () => controller.syncCanvasSections());
     }).catch(error => {
       figma.ui.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) });
     });

@@ -39,9 +39,13 @@ test('마주 보는 변끼리는 곧은 화살표, 다른 줄로 넘어가면 �
   assert.deepEqual(routeLink(G, { r: 0, c: 0 }, 'right', { r: 0, c: 2 }, 'left', [{ r: 0, c: 0 }, { r: 0, c: 1 }, { r: 0, c: 2 }]), [[100, 25], [120, 25], [120, -10], [260, -10], [260, 25], [280, 25]], '중간 칸에 카드가 있으면 돌아간다');
   // 줄 끝에서 다음 줄 맨 앞으로: 두 칸 사이 가로 통로 가운데(y 60)로 건넌다.
   assert.deepEqual(routeLink(G, { r: 0, c: 1 }, 'right', { r: 1, c: 0 }, 'left'), [[240, 25], [260, 25], [260, 60], [-20, 60], [-20, 95], [0, 95]]);
-  // 오른쪽으로 나가 아래 칸 위로 들어가면 한 번 꺾인다. 세로 통로(x 120)와 가로 통로(y 60)만 지난다.
-  assert.deepEqual(routeLink(G, { r: 0, c: 0 }, 'right', { r: 1, c: 1 }, 'top'), [[100, 25], [120, 25], [120, 60], [190, 60], [190, 70]]);
-  assert.deepEqual(routeLink(G, { r: 0, c: 0 }, 'bottom', { r: 1, c: 1 }, 'left'), [[50, 50], [50, 60], [120, 60], [120, 95], [140, 95]]);
+  // 위아래 변과 좌우 변 사이에서 지나는 칸이 비었으면 피해 가지 않고 한 번만 꺾는다(2026-10-23 사용자 요청).
+  assert.deepEqual(routeLink(G, { r: 0, c: 0 }, 'right', { r: 1, c: 1 }, 'top'), [[100, 25], [190, 25], [190, 70]]);
+  assert.deepEqual(routeLink(G, { r: 0, c: 0 }, 'bottom', { r: 1, c: 1 }, 'left'), [[50, 50], [50, 95], [140, 95]]);
+  assert.deepEqual(routeLink(G, { r: 0, c: 0 }, 'bottom', { r: 2, c: 2 }, 'left'), [[50, 50], [50, 165], [280, 165]], '여러 칸을 건너도 빈 칸이면 한 번 꺾는다');
+  // 꺾이는 칸에 카드가 있으면 세로 통로(x 120)와 가로 통로(y 60)로 돌아간다.
+  assert.deepEqual(routeLink(G, { r: 0, c: 0 }, 'right', { r: 1, c: 1 }, 'top', [{ r: 0, c: 1 }]), [[100, 25], [120, 25], [120, 60], [190, 60], [190, 70]]);
+  assert.deepEqual(routeLink(G, { r: 0, c: 0 }, 'bottom', { r: 1, c: 1 }, 'left', [{ r: 1, c: 0 }]), [[50, 50], [50, 60], [120, 60], [120, 95], [140, 95]]);
 });
 
 test('조건 칸은 출발 화면 가까이: 좌우로 나가면 화살표 위, 위아래로 나가면 화살표 오른쪽', () => {
@@ -52,13 +56,25 @@ test('조건 칸은 출발 화면 가까이: 좌우로 나가면 화살표 위, 
   assert.deepEqual(labelSpot(G, [50, 0], 'top'), { x: 50 + m, y: -m, width: 50 - m, align: 'left', anchor: 'bottom' });
 });
 
-test('캔버스 배치는 참고 화면의 제목·이미지·설명 구조와 가로 80·세로 120 간격을 따른다', () => {
+test('캔버스 배치는 참고 프레임과 같은 자리에 화면·화살표·조건을 놓는다(이미지 사이 80·120, 화살촉은 8px 앞)', () => {
   const L = FLOW_LAYOUT;
-  const layout = layoutFlow([{ key: 'a', r: 0, c: 0 }, { key: 'b', r: 1, c: 2 }], [{ from: 'a', fromSide: 'right', to: 'b', toSide: 'top' }], { w: 480, h: 320 });
-  assert.deepEqual([L.gapX, L.gapY, L.cellTitle, L.captionGap], [80, 120, 25, 4]);
-  assert.deepEqual([layout.grid.x0, layout.grid.y0, layout.width, layout.height], [0, 56, 1600, 816]);
-  assert.equal(layout.arrows.length, 1);
-  assert.deepEqual(layout.arrows[0].points[0], [480, 216]);
+  assert.deepEqual([L.gapX, L.gapY, L.cellTitle, L.captionGap, L.arrowGap], [80, 120, 25, 4, 8]);
+  // 참고 프레임(TIM_UI Scenario_STB 3178:215687)의 좌표를 프레임 기준으로 옮긴 값: 위·가운데·아래 화면과 아래 오른쪽 화면
+  const cells = [{ key: 'top', r: 0, c: 0 }, { key: 'mid', r: 1, c: 0 }, { key: 'bottom', r: 2, c: 0 }, { key: 'right', r: 2, c: 1 }];
+  const links = [
+    { from: 'mid', fromSide: 'top' as const, to: 'top', toSide: 'bottom' as const },
+    { from: 'mid', fromSide: 'bottom' as const, to: 'bottom', toSide: 'top' as const },
+    { from: 'mid', fromSide: 'right' as const, to: 'right', toSide: 'left' as const },
+  ];
+  const layout = layoutFlow(cells, links, { w: 480, h: 320, imgTop: 25, imgH: 270 });
+  assert.deepEqual([layout.grid.y0, layout.grid.gapY, layout.width, layout.height], [56, 70, 1040, 1156], '카드 틀 사이 세로 70(이미지 사이 120)');
+  const [up, down, right] = layout.arrows;
+  assert.deepEqual(up.points, [[240, 471], [240, 359]], 'Up: 이미지 위 끝에서 위 이미지 아래 끝 8px 앞까지');
+  assert.deepEqual(down.points, [[240, 741], [240, 853]]);
+  assert.deepEqual(right.points, [[480, 606], [516, 606], [516, 996], [552, 996]], 'Right: 출발점과 화살촉 끝 가운데(x 516)에서 꺾인다');
+  assert.deepEqual([up.label.x, up.label.y, up.label.anchor], [248, 463, 'bottom']);
+  assert.deepEqual([down.label.x, down.label.y, down.label.anchor], [248, 749, 'top']);
+  assert.deepEqual([right.label.x, right.label.y, right.label.anchor], [488, 598, 'bottom']);
 });
 
 test('플로우 계획: 배포된 화면만, 왼쪽 위 칸을 (0, 0)으로 옮기고 잘못된 화살표는 뺀다', () => {

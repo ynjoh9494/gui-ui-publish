@@ -219,6 +219,14 @@ button.link.danger { color: var(--danger); }
 /* 「변경된 화면만 보기」 토글 스위치 */
 /* 「모두 배포하기」(왼쪽)와 「변경된 화면만 보기」(오른쪽) 한 줄 */
 .filter-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+/* 플립북 목록: 왼쪽에 회색 새로고침 아이콘과 마지막 동기화 시각, 오른쪽 끝에 업데이트된 화면만 보기 */
+.filter-line .sync-status { display: flex; flex: 1 1 auto; align-items: center; gap: 4px; min-width: 0; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.filter-line .sync-status span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.filter-line .sync-status + .switch { flex: none; white-space: nowrap; }
+.filter-line .sync-status .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); flex: none; }
+.filter-line .sync-status .icon-button:hover { color: var(--text); }
+.filter-line .sync-status .icon-button.spinning svg { animation: sync-spin .8s linear infinite; }
+@keyframes sync-spin { to { transform: rotate(360deg); } }
 .filter-line .all-include { position: static; display: flex; gap: 6px; margin: 0; padding: 0; border: 0; background: none; font-weight: 400; color: var(--text); }
 .filter-line .all-include input { margin: 0; }
 .filter-line.disabled { opacity: .45; }

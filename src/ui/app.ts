@@ -39,7 +39,7 @@ type Tab = Team | 'ADMIN';
 const NODE_PREVIEW = 'node:';
 
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
-const WHILE_BUSY = new Set(['tab', 'settings', 'group', 'page-group', 'select', 'changed-only', 'cancel-scan', 'toggle-detail', 'tutorial', 'text-open', 'text-close', 'flow-open']);
+const WHILE_BUSY = new Set(['tab', 'settings', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'toggle-detail', 'tutorial', 'text-open', 'text-close', 'flow-open']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
 const BEFORE_CHECK = new Set([...WHILE_BUSY, 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'text-import', 'text-apply',
@@ -55,6 +55,7 @@ function esc(value: unknown): string {
 const X_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>';
 const CHEVRON_RIGHT_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
 // 가운데 세로선이 있는 직사각형: UI Flipbook 오른쪽 영역 접기·펼치기
+const REFRESH_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>';
 const PANELS_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>';
 const PENCIL_ICON ='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5 4 4M4 20l4.5-1 10-10a2.8 2.8 0 0 0-4-4l-10 10L4 20Z"/></svg>';
 
@@ -141,6 +142,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   // 플립북 없는 화면 일괄 만들기 모달. 범위 안의 화면마다 단일 플립북을 하나씩 만든다.
   // excluded: 범위 안에서 체크를 푼 화면. submitting: 만들기 요청 중(완료·오류 메시지를 이 모달이 받는다).
   let bulk: (ScreenFilter & { pageId: string; categories: Set<string>; excluded: Set<string>; submitting: boolean; error: string | null }) | null = null;
+  // 목록을 플립북 페이지와 마지막으로 맞춘 시각과, 새로고침을 누른 뒤 응답을 기다리는 중인지
+  let listSyncedAt: number | null = null;
+  let refreshingList = false;
   // 썸네일 이미지: 해시 → blob URL(불러오는 중이면 '')
   const thumbUrls = new Map<string, string>();
   // 읽지 못한 썸네일(해시)과 내보내지 못한 프레임 미리보기(`node:` 키). 다시 요청하지 않고 「썸네일 없음」으로 보여 준다.
@@ -865,7 +869,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const list = $('.list');
     if (list.dataset.team !== 'UI' || !list.querySelector('.list-body')) {
       list.dataset.team = 'UI';
-      list.innerHTML = `<div class="list-filters"><div class="review-line"><p class="review-count" aria-live="polite"></p><button class="icon-button" data-action="toggle-detail">${PANELS_ICON}</button></div><div class="list-actions"><button class="add-button" data-action="new-add" title="고른 플립북 다음에 새 플립북을 넣습니다. 만들기를 누르기 전에는 저장하지 않습니다.">${ADD_LABEL.replace(COPY.uiApp101, '새 플립북')}</button><button data-action="bulk-open">플립북 없는 화면 일괄 만들기</button></div><input type="search" placeholder="${COPY.uiApp020}" value="${esc(query.UI)}" data-input="query" aria-label="${COPY.uiApp021}"><div class="filter-line"><label class="switch"><span>${COPY.uiApp301}</span><input type="checkbox" role="switch" data-action="changed-only" ${changedOnly.UI ? 'checked' : ''}></label></div></div><div class="list-body"><div class="list-box"></div><div class="unlinked-all"></div></div>`;
+      list.innerHTML = `<div class="list-filters"><div class="review-line"><p class="review-count" aria-live="polite"></p><button class="icon-button" data-action="toggle-detail">${PANELS_ICON}</button></div><div class="list-actions"><button class="add-button" data-action="new-add" title="고른 플립북 다음에 새 플립북을 넣습니다. 만들기를 누르기 전에는 저장하지 않습니다.">${ADD_LABEL.replace(COPY.uiApp101, '새 플립북')}</button><button data-action="bulk-open">플립북 없는 화면 일괄 만들기</button></div><input type="search" placeholder="${COPY.uiApp020}" value="${esc(query.UI)}" data-input="query" aria-label="${COPY.uiApp021}"><div class="filter-line"><span class="sync-status"></span><label class="switch"><span>${COPY.uiApp301}</span><input type="checkbox" role="switch" data-action="changed-only" ${changedOnly.UI ? 'checked' : ''}></label></div></div><div class="list-body"><div class="list-box"></div><div class="unlinked-all"></div></div>`;
     }
     const canCreate = flipbookPageOptions().length > 0;
     for (const button of list.querySelectorAll<HTMLButtonElement>('.list-actions button')) {
@@ -875,6 +879,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const reviews = [...state!.flipbooks.keys()].filter(id => needsReview(state!, id)).length;
     list.querySelector<HTMLElement>('.review-count')!.innerHTML = `<span class="review-dot${reviews ? '' : ' none'}" aria-hidden="true"></span><span>${COPY.uiApp192} <b>${reviews}</b>${COPY.uiApp015}</span>`;
     list.querySelector<HTMLInputElement>('[data-action="changed-only"]')!.checked = changedOnly.UI;
+    paintSyncStatus();
     const toggle = list.querySelector<HTMLButtonElement>('[data-action="toggle-detail"]')!;
     const toggleLabel = detailCollapsed ? '오른쪽 영역 펼치기' : '오른쪽 영역 접기';
     toggle.title = toggleLabel;
@@ -976,6 +981,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       input.closest('.row')?.scrollIntoView({ block: 'nearest' });
     }
     if (input) focusListTitle = false;
+  }
+
+  // 목록 새로고침(2026-10-23 사용자 요청): 캔버스 선택마다 목록을 맞추지 않으므로 회색 새로고침 아이콘과 마지막 동기화 시각을 보여 준다.
+  function paintSyncStatus() {
+    const el = root.querySelector<HTMLElement>('.list .sync-status');
+    if (!el) return;
+    // 좁은 목록에서도 한 줄에 들어가게 시:분만 쓰고, 날짜까지는 마우스를 올리면 보인다.
+    const full = listSyncedAt && state ? formatTime(listSyncedAt, state.project.utcOffsetMinutes) : '';
+    const time = full.slice(11, 16);
+    el.innerHTML = `<button class="icon-button${refreshingList ? ' spinning' : ''}" data-action="refresh-list" title="${COPY.uiApp342}" aria-label="${COPY.uiApp342}">${REFRESH_ICON}</button><span${full ? ` title="${COPY.uiApp341} ${esc(full)}"` : ''}>${refreshingList ? COPY.uiApp343 : time ? `${COPY.uiApp344} ${esc(time)}` : ''}</span>`;
   }
 
   // 새 플립북: 고른 항목의 화면 선택·페이지·Section, 만들기 전 미리보기를 정한다(2026-10-21 사용자 요청).
@@ -2379,6 +2394,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         bridge.send({ type: 'cancelScan', team: t });
         break;
       case 'changed-only': changedOnly[t] = (el as HTMLInputElement).checked; renderList(); break;
+      case 'refresh-list':
+        if (refreshingList) break;
+        refreshingList = true;
+        paintSyncStatus();
+        bridge.send({ type: 'refreshList' });
+        break;
       case 'group': {
         const g = el.dataset.group!;
         if (expanded[t].has(g)) expanded[t].delete(g); else expanded[t].add(g);
@@ -3132,6 +3153,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         if (tab !== 'ADMIN') { renderList(); renderFooter(); if (cleared) renderDetail(); else if (estimateChanged) renderDetailKeepingFocus(); else renderValidation(); }
         break;
       }
+      case 'listSynced':
+        listSyncedAt = msg.at;
+        refreshingList = false;
+        paintSyncStatus();
+        break;
       case 'uiScan': {
         const previousScans = uiScans;
         const previousEstimate = selected.UI && state ? uiEstimate(state, selected.UI, previousScans.get(selected.UI)) : null;
@@ -3305,6 +3331,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       case 'busy': busyLabel = msg.label; renderBusy(); break;
       case 'error':
         pendingCategory = null; pendingTag = null; pendingWorker = null;
+        // 목록 새로고침이 실패해도 아이콘이 계속 돌지 않게 한다.
+        if (refreshingList) { refreshingList = false; paintSyncStatus(); }
         if (bulk?.submitting) { bulk.submitting = false; bulk.error = msg.message; renderBulk(); }
         else if (newSubmitting) { newSubmitting = false; createError = msg.message; renderFooter(); }
         notify('error', msg.message);
