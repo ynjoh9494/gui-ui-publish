@@ -198,6 +198,7 @@ export function createDemo(options: DemoOptions): Demo {
       // GUI는 원본에서 바로 복사한다. 원본 프레임이 없으면 실패한다.
       const missing = view.gui.find(gui => !frames.some(f => f.nodeId === gui.sourceNodeId));
       if (missing) throw new Error(`${COPY.figmaFlipbook023} ${missing.code}`);
+      if (!flipbooks.has(view.flipbookId) && !view.create) throw new Error(COPY.figmaFlipbook027);
       if (!flipbooks.has(view.flipbookId)) {
         flipbooks.set(view.flipbookId, `fb:${view.flipbookId}`);
         // 정한 자리(그 플립북 바로 다음, null이면 Section 맨 앞, 없으면 맨 뒤)에 놓는다.

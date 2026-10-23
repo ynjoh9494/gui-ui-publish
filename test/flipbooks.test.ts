@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { parseFrameName, formatFrameName } from '../src/core/screenName.ts';
 import { guiRecordInfos, guiScreens, type GuiRecordInfo, type GuiScreenInfo } from '../src/core/guiScreens.ts';
 import { canvasSections, checkMoves, filterScreens, followCanvasSections, noSection, planFlipbooks, importGuiUpdates, markReviewed, needsReview, removeFlipbooks, retireFlipbooks, uncreatedScreens, unreviewed } from '../src/core/flipbooks.ts';
-import { flipbookView } from '../src/core/flipbook.ts';
+import { chapterName, flipbookView } from '../src/core/flipbook.ts';
 import { flipbookHistoryRows } from '../src/core/history.ts';
 import { acknowledgeChange, buildPlan, commitPlan } from '../src/core/publish.ts';
 import { keys, memoryKV, Store } from '../src/core/store.ts';
@@ -891,6 +891,8 @@ test('Section 밖으로 옮긴 플립북은 「(섹션 없음)」이 되어 그 
   const spots = { '1:1': { pageId: 'ui', section: 'home', sectionName: '홈', sectionIndex: 0, index: 0 }, '1:2': { pageId: 'ui', section: '__nosection__', sectionIndex: -1, index: 0 } };
   const changed = followCanvasSections(store, canvasSections(store.state, found, spots), actor);
   assert.deepEqual(changed.map(fb => [fb.id, fb.category]), [['fb2', noSection()]]);
+  assert.equal(chapterName(changed[0]), '-', 'Section 밖 플립북의 Chapter는 「-」다');
+  assert.equal(chapterName(store.state.flipbooks.get('fb1')!), '홈', 'Section 안이면 Section 이름이다');
   assert.deepEqual(canvasSections(store.state, found, spots), [], '다시 읽어도 바꿀 것이 없다');
   const groups = arrangeFlipbooks(store.state, [{ id: 'ui', name: 'UI' }], id => spots[found.get(id)! as keyof typeof spots]);
   assert.deepEqual(groups.map(g => [g.section.key, g.items]), [['__nosection__', ['fb2']], ['home', ['fb1']]], '페이지 맨 위에 둔다');

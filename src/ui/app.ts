@@ -950,7 +950,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
           const r = rows.get(item)!;
           const sel = selection.UI.has(r.entry.key);
           const flagged = !!r.entry.flipbookId && needsReview(state!, r.entry.flipbookId);
-          // 연결이 끊긴 플립북은 반영하면 프레임을 새로 만들게 되므로 제목을 고치지 않는다(오른쪽 영역의 연필과 같다).
+          // 연결이 끊긴 플립북은 프레임이 없어 반영할 수 없으므로 제목을 고치지 않는다(오른쪽 영역의 연필과 같다).
           const fb = r.entry.flipbookId && r.entry.estimate !== 'missing' ? state!.flipbooks.get(r.entry.flipbookId) : undefined;
           const name = fb && editingAt(fb.id, 'list')
             ? `<input class="title-input" data-input="fb-title" data-id="${esc(fb.id)}" value="${esc(fb.title)}" placeholder="${esc(defaultTitle(fb.kind, fb.screens))}" aria-label="${COPY.uiApp203}">`
@@ -1239,7 +1239,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const changed = new Map<string, ImportedGuiRecord>();
     if (!multi) for (const r of unreviewed(state, entry.flipbookId)) if ((changed.get(r.uid)?.version ?? -1) < r.version) changed.set(r.uid, r);
     // 제목 변경(2026-10-21 사용자 요청): 연필을 눌러 고치고 Enter·포커스 이동으로 바꾼다. 비우면 첫 화면 이름으로 돌아간다.
-    // 연결이 끊긴 플립북은 반영하면 프레임을 새로 만들게 되므로 바꾸지 않는다.
+    // 연결이 끊긴 플립북은 프레임이 없어 반영할 수 없으므로 바꾸지 않는다.
     const fb = state.flipbooks.get(entry.flipbookId);
     const renamable = !multi && !!fb && entry.estimate !== 'missing';
     const heading = renamable && editingAt(fb.id, 'detail')

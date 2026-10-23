@@ -429,14 +429,6 @@ async function createFlipbook(ns: string, page: PageNode, template: FrameNode, v
   const gui = parts(frame).gui;
   if (gui) for (const child of [...gui.children]) child.remove();
 
-  // Section 밖 플립북의 프레임을 다시 만들 때는 Section을 만들지 않고 페이지 내용 맨 아래 왼쪽에 둔다(구현 기본값, 확인 필요).
-  if (view.category.key === NO_SECTION_KEY) {
-    const others = page.children.slice();
-    page.appendChild(frame);
-    frame.x = others.length ? Math.min(...others.map(n => n.x)) : 0;
-    frame.y = others.length ? Math.max(...others.map(n => n.y + n.height)) + SECTION_GAP : 0;
-    return frame;
-  }
   const section = categorySection(ns, page, view.category);
   const frames = flipbookFrames(section, ns);
   section.appendChild(frame);
@@ -808,7 +800,8 @@ async function setOwnedText(ns: string, node: TextNode | null, value: string, kn
   const written = node.getSharedPluginData(ns, key);
   if (!force && node.characters !== written && !known.includes(node.characters)) return;
   await setText(node, value, kit.fonts);
-  node.setSharedPluginData(ns, key, value);
+  // 빈 값은 공백 한 칸으로 쓰므로 실제 글자를 적어 둔다. 그래야 다음에도 플러그인이 쓴 값으로 알아본다.
+  node.setSharedPluginData(ns, key, node.characters);
 }
 
 // Chapter만 다시 쓴다. 캔버스에서 옮기거나 이름을 바꾼 Section을 따라갈 때 플립북 전체(GUI·이력)를 다시 반영하지 않는다.
@@ -842,6 +835,8 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
   if (!kit) { kit = await tagKit(settings.templateId); session.kits.set(settings.templateId, kit); }
   const existing = frames.get(view.flipbookId);
   // 기록과 다른 Section에 있어도 옮기지 않는다. 기록이 캔버스를 따라간다(2026-10-23 사용자 결정).
+  // 프레임은 새로 만드는 플립북에만 만든다. 지워진 프레임은 다시 만들지 않고 목록에서 삭제하게 한다(2026-10-23 사용자 결정).
+  if (!existing && !view.create) throw new Error(COPY.figmaFlipbook027);
   const frame = existing ?? await createFlipbook(ns, page, kit.template, view);
   frames.set(view.flipbookId, frame);
   const p = parts(frame);
@@ -860,7 +855,7 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
   await setOwnedText(ns, p.titleText, view.name, [...view.titleNames, ...defaults((titleMain?.findChild(n => n.type === 'TEXT') ?? null) as TextNode | null)], kit, 'flipbookTitle', view.retitle);
   await setOwnedText(ns, p.page, view.name, [...view.titleNames, '-', ...defaults(cellText(headerMain, 'input-cell-page'))], kit, 'flipbookTitle', view.retitle);
   if (view.retitle && frame.name !== view.name) frame.name = view.name;
-  await setOwnedText(ns, p.chapter, view.category.name, ['-', ...defaults(cellText(headerMain, 'input-cell-chapter'))], kit, CHAPTER_KEY);
+  await setOwnedText(ns, p.chapter, view.chapter, ['-', ...defaults(cellText(headerMain, 'input-cell-chapter'))], kit, CHAPTER_KEY);
   if (view.status) await applyTag(p.status, kit.big, kit, view.status.tag.name, view.status.colorKey);
   if (p.ids) await syncIds(ns, p.ids, view.gui.map(g => g.code), kit);
   const overlays = frame.children.filter(n => 'layoutPositioning' in n && n.layoutPositioning === 'ABSOLUTE');

@@ -2,7 +2,7 @@ import { COPY } from './core/copy.ts';
 import { baseline, changeDetected, classify, ignoreBlock, uiEstimate, uncheckedEntries, uiEntries, UI_FINGERPRINT_VERSION, type Entry, type FlipbookSpot, type ScannedFrame, type UiScan } from './core/compare.ts';
 import { LEGACY_FINGERPRINT_VERSION } from './core/fingerprint.ts';
 import { dataModel } from './core/data.ts';
-import { flipbookView, guiKey, validGuiWidth } from './core/flipbook.ts';
+import { chapterName, flipbookView, guiKey, validGuiWidth } from './core/flipbook.ts';
 import { canvasSections, checkMoves, followCanvasSections, importGuiUpdates, markReviewed, moveFlipbooks, pageSections, planFlipbooks, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookMove, type FlipbookRequest, type ReviewRequest } from './core/flipbooks.ts';
 import type { Draft } from './core/drafts.ts';
 import type { SelectionWrite } from './core/description.ts';
@@ -711,7 +711,7 @@ export class Controller {
         await this.host.syncChapters(changed.flatMap(id => {
           const fb = s.flipbooks.get(id);
           const pageId = fb?.pageId ?? s.project.flipbookPageId;
-          return fb && pageId ? [{ pageId, flipbookId: id, name: fb.category.name }] : [];
+          return fb && pageId ? [{ pageId, flipbookId: id, name: chapterName(fb) }] : [];
         }));
       } else {
         delivered = true;
@@ -786,7 +786,7 @@ export class Controller {
   }
 
   // 고른 플립북을 설정한 1x 화면 크기로 다시 반영한다(2026-10-21 사용자 요청: 전체가 아니라 골라서).
-  // 프레임이 없는 플립북은 반영하면 새로 만들어지므로 건너뛴다. 이미 그 크기인 플립북은 GUI를 다시 복사하지 않는다.
+  // 프레임이 없는 플립북은 반영할 수 없으므로 건너뛴다. 이미 그 크기인 플립북은 GUI를 다시 복사하지 않는다.
   private async resizeFlipbooks(ids: string[]): Promise<void> {
     const s = this.store;
     s.reload();
@@ -1001,7 +1001,7 @@ export class Controller {
       addDelivery(s, batchId, 'flipbook', 'UI', fb.id, 0);
     }
     // 새 플립북은 아직 프레임이 없고 옮긴 플립북은 방금 기록을 맞췄으므로 캔버스를 다시 읽지 않는다.
-    const report = await this.deliverFlipbooks({ batchId }, { targets: made.map(fb => fb.id), baseline: new Set(made.map(fb => fb.id)), after, canvasFollowed: true });
+    const report = await this.deliverFlipbooks({ batchId }, { targets: made.map(fb => fb.id), baseline: new Set(made.map(fb => fb.id)), create: new Set(made.map(fb => fb.id)), after, canvasFollowed: true });
     await this.refreshData();
     this.postState();
     // 새 플립북은 UI 목록에서 「비교 전」이다. 만든 직후 지문을 기준으로 저장했으므로 바로 차이 없음으로 보이게 한다.
@@ -1082,7 +1082,7 @@ export class Controller {
   // 반영이 끝나지 않은 플립북을 현재 기록으로 맞춘다. 플립북 단위로 실패를 기록하고 나머지는 계속한다.
   // baseline: 새로 만든 플립북. 만든 직후의 UI 작성 영역을 첫 UI Publish 전 비교 기준으로 저장한다.
   // after: 새로 만들 플립북을 Section 안에 놓을 자리. retitle: 플러그인에서 제목을 바꾼 플립북.
-  async deliverFlipbooks(filter: { batchId?: string } = {}, options: { force?: boolean; targets?: string[]; baseline?: Set<string>; after?: Map<string, string | null>; retitle?: Set<string>; canvasFollowed?: boolean; canvas?: { found: Map<string, string>; spots: Record<string, FlipbookSpot> } } = {}): Promise<DeliveryReport> {
+  async deliverFlipbooks(filter: { batchId?: string } = {}, options: { force?: boolean; targets?: string[]; baseline?: Set<string>; create?: Set<string>; after?: Map<string, string | null>; retitle?: Set<string>; canvasFollowed?: boolean; canvas?: { found: Map<string, string>; spots: Record<string, FlipbookSpot> } } = {}): Promise<DeliveryReport> {
     const s = this.store;
     s.reload();
     const active = (id: string) => s.state.flipbooks.get(id)?.status === 'active';
@@ -1113,6 +1113,7 @@ export class Controller {
           if (!view.pageId) throw new Error(COPY.controller063);
           if (options.after?.has(flipbookId)) view.after = options.after.get(flipbookId);
           if (options.retitle?.has(flipbookId)) view.retitle = true;
+          if (options.create?.has(flipbookId)) view.create = true;
           const result = await this.host.syncFlipbook({ pageId: view.pageId, templateId: templateNodeId, force: options.force }, view);
           for (const d of pending) setDeliveryState(s, d.batchId, d.targetId, 'done');
           // 반영한 1x 화면 크기를 남겨 플립북 목록에서 설정 크기와 다른 플립북을 알 수 있게 한다.

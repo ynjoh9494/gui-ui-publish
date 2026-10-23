@@ -99,7 +99,7 @@ test('항목마다 페이지·Section·자리를 정해 만들고, 같은 요청
   store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['ui', 'ui2'], flipbookPageId: 'ui' });
   const [existing] = planFlipbooks({ pageId: 'ui', rows: [row([], '기존')] }, new Map(), actor, 100, () => 'old');
   store.put(keys.flipbook(existing.id), existing);
-  const views: { flipbookId: string; pageId: string; section: string; after: string | null | undefined; retitle?: boolean }[] = [];
+  const views: { flipbookId: string; pageId: string; section: string; after: string | null | undefined; retitle?: boolean; create?: boolean }[] = [];
   const host = {
     kv: store.kv, mode: 'UI', actor,
     post: (message: ToUi) => posted.push(message),
@@ -107,8 +107,8 @@ test('항목마다 페이지·Section·자리를 정해 만들고, 같은 요청
     templateIssues: async () => [],
     listFlipbooks: async () => new Map(views.map(v => [v.flipbookId, `n:${v.flipbookId}`])),
     flipbookSpots: async () => Object.fromEntries(views.map((v, i) => [`n:${v.flipbookId}`, { section: v.section, sectionIndex: 0, index: i }])),
-    syncFlipbook: async (settings: { pageId: string }, view: { flipbookId: string; category: { key: string }; after?: string | null; retitle?: boolean }) => {
-      views.push({ flipbookId: view.flipbookId, pageId: settings.pageId, section: view.category.key, after: view.after, retitle: view.retitle });
+    syncFlipbook: async (settings: { pageId: string }, view: { flipbookId: string; category: { key: string }; after?: string | null; retitle?: boolean; create?: boolean }) => {
+      views.push({ flipbookId: view.flipbookId, pageId: settings.pageId, section: view.category.key, after: view.after, retitle: view.retitle, create: view.create });
       return { nodeId: `n:${view.flipbookId}`, notes: [] };
     },
     uiFingerprint: async () => ({ fingerprint: null, error: null }),
@@ -124,6 +124,7 @@ test('항목마다 페이지·Section·자리를 정해 만들고, 같은 요청
   assert.equal(posted.some(m => m.type === 'error'), false, JSON.stringify(posted.filter(m => m.type === 'error')));
   const made = [...controller.store.state.flipbooks.values()].filter(fb => fb.id !== 'old');
   assert.deepEqual(views.map(v => [v.pageId, v.section, v.after]), [['ui', POLICY_CATEGORY_KEY, 'old'], ['ui', POLICY_CATEGORY_KEY, made[0].id], ['ui2', 'section:b', null]]);
+  assert.ok(views.every(v => v.create), '「만들기」로 반영할 때만 프레임을 만든다');
   const scans = (posted.filter(m => m.type === 'uiScan').pop() as Extract<ToUi, { type: 'uiScan' }>).scans;
   assert.ok(scans.filter(s => s.flipbookId !== 'old').every(s => s.spot), '만든 뒤 캔버스 위치를 함께 보낸다');
   // 지정하지 않은 페이지에는 만들지 않는다.
@@ -133,6 +134,7 @@ test('항목마다 페이지·Section·자리를 정해 만들고, 같은 요청
   assert.equal(controller.store.state.flipbooks.size, before);
   views.length = 0;
   await controller.handle({ type: 'renameFlipbook', id: made[0].id, title: '첫 정책' });
+  assert.ok(views.every(v => !v.create), '기존 플립북을 반영할 때는 지워진 프레임을 다시 만들지 않는다');
   assert.deepEqual(views.map(v => [v.flipbookId, v.retitle]), [[made[0].id, true]]);
   assert.equal(controller.store.state.flipbooks.get(made[0].id)?.title, '첫 정책');
 });
