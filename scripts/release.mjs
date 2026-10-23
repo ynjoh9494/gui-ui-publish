@@ -4,6 +4,7 @@
 // 사용: npm run release                     검사 후 다음 패치 버전 태그를 만들어 push(첫 배포는 1.0.0)
 //       npm run release -- 1.2.0            버전 지정
 //       npm run release -- --notes "설명"   릴리스 설명(태그 메시지로 남아 Release 본문에 들어간다)
+//       npm run release -- --notes-file notes.md   여러 줄 설명은 파일로 넘긴다(Windows의 npm은 인자의 첫 줄만 넘긴다)
 //       npm run release -- --dry-run        zip만 만들고 올리지 않음(커밋 안 된 변경도 허용)
 import { execFileSync, execSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -18,13 +19,23 @@ const LATEST = `https://github.com/${REPO}/releases/latest/download/${ASSET}`;
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
 const inActions = process.env.GITHUB_ACTIONS === 'true';
-const notesAt = args.indexOf('--notes');
-const notesArg = notesAt >= 0 ? args[notesAt + 1] : undefined;
-const versionArg = args.find((a, i) => !a.startsWith('--') && (notesAt < 0 || i !== notesAt + 1));
+const valueOf = flag => { const at = args.indexOf(flag); return at >= 0 ? args[at + 1] : undefined; };
+const valueAt = new Set(['--notes', '--notes-file'].map(flag => args.indexOf(flag)).filter(at => at >= 0).map(at => at + 1));
+const versionArg = args.find((a, i) => !a.startsWith('--') && !valueAt.has(i));
 
-const run = (file, list, options = {}) => execFileSync(file, list, { encoding: 'utf8', ...options }).trim();
+// stdio: 'inherit'로 실행하면 출력을 돌려받지 않아 null이다.
+const run = (file, list, options = {}) => (execFileSync(file, list, { encoding: 'utf8', ...options }) ?? '').trim();
 const fail = message => { console.error(`\n배포 중단: ${message}`); process.exit(1); };
 const check = () => execSync('npm run check', { stdio: 'inherit' });
+const notesArg = notes();
+
+// 릴리스 설명. 파일은 UTF-8로 읽고 줄바꿈을 LF로 맞춘다.
+function notes() {
+  const file = valueOf('--notes-file');
+  if (file === undefined) return valueOf('--notes');
+  try { return readFileSync(file, 'utf8').replace(/^﻿/, '').replace(/\r\n?/g, '\n').trim(); }
+  catch { fail(`설명 파일을 읽지 못했습니다: ${file}`); }
+}
 
 if (inActions) await publish();
 else if (dryRun) { check(); build(versionArg ? `v${versionArg.replace(/^v/, '')}` : 'v0.0.0-dev'); }

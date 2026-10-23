@@ -83,7 +83,8 @@ npm run check
 ```sh
 npm run release -- --dry-run          # 검사·빌드 후 dist/GUIUIPublish.zip만 만들어 확인
 npm run release                       # 다음 패치 버전(v1.0.1 …) 태그를 만들어 push
-npm run release -- 1.2.0 --notes "…"  # 버전과 릴리스 설명 지정
+npm run release -- 1.2.0 --notes "…"  # 버전과 한 줄 릴리스 설명 지정
+npm run release -- 1.2.0 --notes-file notes.md  # 여러 줄 설명은 파일로(Windows의 npm은 인자의 첫 줄만 넘깁니다)
 ```
 
 `npm run release`는 main이 깨끗하고 origin과 같은지 확인하고 `npm run check`를 통과하면 버전 태그를 push합니다. 그러면 GitHub Actions가 그 태그의 코드로 다시 검사·빌드해 zip(`manifest.json`, `dist/code.js`, `dist/ui.html`, 사용 안내 HTML)을 Release에 올립니다. 팀원용 링크(`releases/latest/download/GUIUIPublish.zip`)는 바뀌지 않습니다.
