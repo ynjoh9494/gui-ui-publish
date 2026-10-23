@@ -56,10 +56,10 @@ test('조건 칸은 출발 화면 가까이: 좌우로 나가면 화살표 위, 
   assert.deepEqual(labelSpot(G, [50, 0], 'top'), { x: 50 + m, y: -m, width: 50 - m, align: 'left', anchor: 'bottom' });
 });
 
-test('캔버스 배치는 참고 프레임과 같은 자리에 화면·화살표·조건을 놓는다(이미지 사이 80·120, 화살촉은 8px 앞)', () => {
+test('캔버스 배치는 참고 프레임의 화살표·조건 규칙을 따르고 이미지 사이를 가로·세로 80으로 둔다(화살촉은 8px 앞)', () => {
   const L = FLOW_LAYOUT;
-  assert.deepEqual([L.gapX, L.gapY, L.cellTitle, L.captionGap, L.arrowGap], [80, 120, 25, 4, 8]);
-  // 참고 프레임(TIM_UI Scenario_STB 3178:215687)의 좌표를 프레임 기준으로 옮긴 값: 위·가운데·아래 화면과 아래 오른쪽 화면
+  assert.deepEqual([L.gapX, L.gapY, L.cellTitle, L.captionGap, L.arrowGap], [80, 80, 25, 4, 8]);
+  // 참고 프레임(TIM_UI Scenario_STB 3178:215687)의 배치: 위·가운데·아래 화면과 아래 오른쪽 화면. 가로는 참고와 같고 세로 간격만 80이다.
   const cells = [{ key: 'top', r: 0, c: 0 }, { key: 'mid', r: 1, c: 0 }, { key: 'bottom', r: 2, c: 0 }, { key: 'right', r: 2, c: 1 }];
   const links = [
     { from: 'mid', fromSide: 'top' as const, to: 'top', toSide: 'bottom' as const },
@@ -67,14 +67,14 @@ test('캔버스 배치는 참고 프레임과 같은 자리에 화면·화살표
     { from: 'mid', fromSide: 'right' as const, to: 'right', toSide: 'left' as const },
   ];
   const layout = layoutFlow(cells, links, { w: 480, h: 320, imgTop: 25, imgH: 270 });
-  assert.deepEqual([layout.grid.y0, layout.grid.gapY, layout.width, layout.height], [56, 70, 1040, 1156], '카드 틀 사이 세로 70(이미지 사이 120)');
+  assert.deepEqual([layout.grid.y0, layout.grid.gapY, layout.width, layout.height], [56, 30, 1040, 1076], '카드 틀 사이 세로 30(이미지 사이 80)');
   const [up, down, right] = layout.arrows;
-  assert.deepEqual(up.points, [[240, 471], [240, 359]], 'Up: 이미지 위 끝에서 위 이미지 아래 끝 8px 앞까지');
-  assert.deepEqual(down.points, [[240, 741], [240, 853]]);
-  assert.deepEqual(right.points, [[480, 606], [516, 606], [516, 996], [552, 996]], 'Right: 출발점과 화살촉 끝 가운데(x 516)에서 꺾인다');
-  assert.deepEqual([up.label.x, up.label.y, up.label.anchor], [248, 463, 'bottom']);
-  assert.deepEqual([down.label.x, down.label.y, down.label.anchor], [248, 749, 'top']);
-  assert.deepEqual([right.label.x, right.label.y, right.label.anchor], [488, 598, 'bottom']);
+  assert.deepEqual(up.points, [[240, 431], [240, 359]], 'Up: 이미지 위 끝에서 위 이미지 아래 끝 8px 앞까지');
+  assert.deepEqual(down.points, [[240, 701], [240, 773]]);
+  assert.deepEqual(right.points, [[480, 566], [516, 566], [516, 916], [552, 916]], 'Right: 출발점과 화살촉 끝 가운데(x 516)에서 꺾인다');
+  assert.deepEqual([up.label.x, up.label.y, up.label.anchor], [248, 423, 'bottom']);
+  assert.deepEqual([down.label.x, down.label.y, down.label.anchor], [248, 709, 'top']);
+  assert.deepEqual([right.label.x, right.label.y, right.label.anchor], [488, 558, 'bottom']);
 });
 
 test('플로우 계획: 배포된 화면만, 왼쪽 위 칸을 (0, 0)으로 옮기고 잘못된 화살표는 뺀다', () => {

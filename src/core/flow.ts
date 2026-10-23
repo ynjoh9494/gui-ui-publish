@@ -18,11 +18,11 @@ export interface FlowCell extends FlowCard { code: string; name: string; version
 export interface FlowPlan { id: string; title: string; cells: FlowCell[]; links: FlowLink[] }
 
 // 캔버스 배치 값. 제목 → 이미지 → 설명은 참고 플로우 프레임의 구조를 따른다.
-// 화면 간격 80×120은 이미지 사이 간격이다(참고 프레임: 이미지 가로 80·세로 120, 카드 틀 세로 70). 화살표는 이미지 가장자리에서 나가
+// 화면 간격 80×80은 이미지 사이 간격이다(2026-10-23 사용자 요청: 세로도 80. 참고 프레임의 세로는 120). 카드 틀 사이 세로는 제목·설명 높이만큼 좁다. 화살표는 이미지 가장자리에서 나가
 // 도착 이미지 8px 앞에서 끝나고(arrowGap), 조건 글자는 출발점에서 8px 떨어진다.
 export const FLOW_LAYOUT = {
   pad: 0, titleSize: 16, titleGap: 56, cellTitle: 25, cellTitleSize: 16, captionGap: 4, captionSize: 16,
-  gapX: 80, gapY: 120, line: 2, arrowGap: 8, labelSize: 16, labelGap: 8, labelMargin: 8,
+  gapX: 80, gapY: 80, line: 2, arrowGap: 8, labelSize: 16, labelGap: 8, labelMargin: 8,
 };
 export const FLOW_DEFAULT_TITLE = COPY.flow001;
 // 더미 글자 바탕색. Figma 예시처럼 텍스트 채움에서 불투명도 50%를 적용한다.
@@ -192,7 +192,7 @@ export function labelSpot(g: FlowGrid, start: FlowPoint, fromSide: FlowSide): Fl
 }
 
 // 캔버스 배치: 모든 칸은 크기가 같다(가장 넓은 썸네일 폭 × 가장 높은 제목·썸네일·설명 높이).
-// cell.imgTop·imgH: 칸 안의 이미지 자리. 세로 간격 120은 이미지 사이이므로 칸 틀 사이는 제목·설명 높이만큼 좁다.
+// cell.imgTop·imgH: 칸 안의 이미지 자리. 세로 간격은 이미지 사이이므로 칸 틀 사이는 제목·설명 높이만큼 좁다.
 export interface FlowLayout { width: number; height: number; grid: FlowGrid; arrows: { link: FlowLink; points: FlowPoint[]; label: FlowLabelSpot }[] }
 export function layoutFlow(cells: { key: string; r: number; c: number }[], links: FlowLink[], cell: { w: number; h: number; imgTop?: number; imgH?: number }): FlowLayout {
   const L = FLOW_LAYOUT;
