@@ -10,7 +10,7 @@ import { formatTime, type HistoryRow } from '../core/history.ts';
 import { arrangeFlipbooks, buildList, guiGroupKey, placeDrafts, savedGuiDisplay, savedGuiPlace, UNCATEGORIZED, type ArrangedGroup, type GuiPlace, type ListModel } from '../core/list.ts';
 import { emptyComment, type BatchComment, type Plan } from '../core/publish.ts';
 import { customSection, defaultSection, filterScreens, needsReview, pageSections, rowKind, screenCategoryKey, uncreatedScreens, unreviewed, type FlipbookMove, type FlipbookRowRequest, type FlipbookSection, type ScreenFilter, type ScreenKind } from '../core/flipbooks.ts';
-import { defaultTitle, guiTargetWidth, GUI_WIDTH_MAX, GUI_WIDTH_MIN, validGuiWidth } from '../core/flipbook.ts';
+import { defaultTitle, guiTargetWidth, GUI_WIDTH_MAX, GUI_WIDTH_MIN, NO_SECTION_KEY, validGuiWidth } from '../core/flipbook.ts';
 import { TAG_PALETTE } from '../core/palette.ts';
 import { findCategoryByName, systemTagId, workerLabel } from '../core/registry.ts';
 import { formatFrameName, parseFrameName } from '../core/screenName.ts';
@@ -39,7 +39,7 @@ type Tab = Team | 'ADMIN';
 const NODE_PREVIEW = 'node:';
 
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
-const WHILE_BUSY = new Set(['tab', 'settings', 'group', 'select', 'changed-only', 'cancel-scan', 'toggle-detail', 'tutorial', 'text-open', 'text-close', 'flow-open']);
+const WHILE_BUSY = new Set(['tab', 'settings', 'group', 'page-group', 'select', 'changed-only', 'cancel-scan', 'toggle-detail', 'tutorial', 'text-open', 'text-close', 'flow-open']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
 const BEFORE_CHECK = new Set([...WHILE_BUSY, 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'text-import', 'text-apply',
@@ -373,7 +373,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   }
 
   // UI 플립북 목록은 페이지별로 접는다(2026-10-23 사용자 요청). 「페이지|Section」 키 중 그 페이지의 키가 하나라도 있으면 펼친다.
-  const pageOfGroup = (groupKey: string) => groupKey.slice(0, groupKey.indexOf('|'));
+  const pageOfGroup = (groupKey: string) => { const at = groupKey.indexOf('|'); return at < 0 ? groupKey : groupKey.slice(0, at); };
   const pageOpen = (pageId: string) => [...expanded.UI].some(key => pageOfGroup(key) === pageId);
 
   function listModel(t: Team): ListModel {
@@ -397,6 +397,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
 
   // ── 새 플립북(만들기 전 미리보기) ──
   const flipbookPageOptions = () => pages.filter(pg => state?.project.flipbookPageIds.includes(pg.id) && pg.id !== state.project.dataPageId);
+  const onFlipbookPage = (g: ArrangedGroup) => !!g.pageId && flipbookPageOptions().some(p => p.id === g.pageId);
+  // 새 플립북을 넣거나 기존 플립북을 놓을 수 있는 그룹: 플립북 페이지의 Section. 「(섹션 없음)」에는 넣지 않는다(2026-10-23 사용자 결정).
+  const placeable = (g: ArrangedGroup) => onFlipbookPage(g) && g.section.key !== NO_SECTION_KEY;
   const activeScreens = () => createScreens.filter(x => x.status === 'active' && x.sourceNodeId);
   const currentNew = (): NewFlipbook | null => newFlipbooks.find(n => n.key === selectedNew) ?? null;
   function newScreens(n: NewFlipbook): GuiScreenInfo[] {
@@ -410,8 +413,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   function autoSection(n: NewFlipbook, canvas?: ArrangedGroup[]): FlipbookSection {
     const first = newScreens(n)[0];
     if (!state) return defaultSection(first);
-    if (first) return defaultSection(first, canvas ? canvas.filter(g => g.pageId === n.pageId).map(g => g.section) : pageSections(state, n.pageId));
-    const onPage = (canvas ?? canvasArrangement()).filter(g => g.pageId === n.pageId);
+    if (first) return defaultSection(first, canvas ? canvas.filter(g => g.pageId === n.pageId && g.section.key !== NO_SECTION_KEY).map(g => g.section) : pageSections(state, n.pageId));
+    const onPage = (canvas ?? canvasArrangement()).filter(g => g.pageId === n.pageId && g.section.key !== NO_SECTION_KEY);
     return onPage.length ? onPage[onPage.length - 1].section : defaultSection(undefined);
   }
   const newSection = (n: NewFlipbook, canvas?: ArrangedGroup[]): FlipbookSection => n.section ?? autoSection(n, canvas);
@@ -477,7 +480,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   function moveItem(key: string, groupKey: string, to: { before?: string; after?: string; start?: boolean }) {
     const groups = arrangement();
     const target = groups.find(g => g.key === groupKey);
-    if (!target || !target.pageId || (to.before === key || to.after === key)) return;
+    if (!target?.pageId || !placeable(target) || (to.before === key || to.after === key)) return;
     const n = isNewKey(key) ? newFlipbooks.find(x => x.key === key) : undefined;
     let m = n ? undefined : movedFlipbooks.find(x => x.key === key);
     if (!n && !m) {
@@ -506,7 +509,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   }
   // Alt+↑↓: 한 칸 옮긴다. 그룹 끝에서는 이웃 그룹의 맨 끝·맨 앞으로 넘어간다.
   function stepItem(key: string, step: -1 | 1) {
-    const groups = arrangement().filter(g => g.pageId && flipbookPageOptions().some(p => p.id === g.pageId));
+    const groups = arrangement().filter(placeable);
     const gi = groups.findIndex(g => g.items.includes(key));
     if (gi < 0) return;
     const items = groups[gi].items;
@@ -537,7 +540,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const n: NewFlipbook = { key: `${NEW_PREFIX}${++newSeq}`, uids, scale: 1, scales: {}, title: '', pageId, section: null, seq: ++floatSeq };
     const anchorKey = quiet ? null : selectedNew ?? (selection.UI.size ? selected.UI : null);
     const group = anchorKey ? arrangement().find(g => g.items.includes(anchorKey)) : null;
-    if (anchorKey && group?.pageId && options.some(p => p.id === group.pageId)) { n.pageId = group.pageId; n.section = group.section; n.after = anchorKey; }
+    if (anchorKey && group?.pageId && placeable(group)) { n.pageId = group.pageId; n.section = group.section; n.after = anchorKey; }
     newFlipbooks.push(n);
     normalizeNew();
     expanded.UI.add(`${n.pageId}|${newSection(n).key}`);
@@ -922,11 +925,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     }).join('');
     // Section 라벨 행과 그 Section의 플립북 행. 라벨에 놓으면 그 Section 맨 앞으로 옮긴다.
     function sectionRows(g: ArrangedGroup): string {
-      // 기존 플립북을 드래그해 놓을 수 있는 그룹: 설정에서 지정한 플립북 페이지의 Section
-      const droppable = !!g.pageId && flipbookPageOptions().some(p => p.id === g.pageId);
+      // Section 밖 플립북은 라벨 행 없이 페이지 맨 위에 모은다. 끌어서 Section으로 옮길 수는 있다.
+      const outside = g.section.key === NO_SECTION_KEY;
+      const movablePage = onFlipbookPage(g);
       const items = g.items.filter(item => rows.has(item) || byKey.has(item));
       return `<div class="section-group">
-        <div class="section-label" data-group="${esc(g.key)}" title="${esc(g.section.name)}">${esc(g.section.name)}</div>
+        ${outside ? '' : `<div class="section-label" data-group="${esc(g.key)}" title="${esc(g.section.name)}">${esc(g.section.name)}</div>`}
         ${items.map(item => {
           const n = byKey.get(item);
           if (n) {
@@ -952,7 +956,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
             ? `<input class="title-input" data-input="fb-title" data-id="${esc(fb.id)}" value="${esc(fb.title)}" placeholder="${esc(defaultTitle(fb.kind, fb.screens))}" aria-label="${COPY.uiApp203}">`
             : `<span class="name"${fb ? ` data-edit-title="${esc(fb.id)}" title="${COPY.uiApp314}"` : ''}>${esc(r.name)}</span>`;
           // 기존 플립북도 드래그하거나 Alt+↑↓로 자리를 옮긴다(2026-10-22 사용자 요청). 연결이 끊긴 플립북은 캔버스에 프레임이 없어 옮기지 않는다.
-          const movable = !!fb && droppable && !editingAt(fb.id, 'list') && !newSubmitting;
+          const movable = !!fb && movablePage && !editingAt(fb.id, 'list') && !newSubmitting;
           return `<div class="row${sel ? ' selected' : ''}" data-action="select" data-key="${esc(r.entry.key)}" data-group="${esc(g.key)}" draggable="${movable}" tabindex="0" aria-selected="${sel}">
             ${name}
             ${r.entry.estimate === 'missing' ? unlinkedBadge() : ''}
@@ -2707,7 +2711,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const node = (ev.target as HTMLElement).closest<HTMLElement>('.list-box .row[data-group], .list-box .section-label[data-group]');
     if (!node || !draggingNew) return null;
     const groupKey = node.dataset.group!;
-    if (!arrangement().some(g => g.key === groupKey && g.pageId && flipbookPageOptions().some(p => p.id === g.pageId))) return null;
+    if (!arrangement().some(g => g.key === groupKey && placeable(g))) return null;
     if (node.classList.contains('section-label')) return { node, groupKey, to: { start: true } };
     const rect = node.getBoundingClientRect();
     const key = node.dataset.key!;

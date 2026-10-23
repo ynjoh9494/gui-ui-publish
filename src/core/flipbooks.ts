@@ -1,6 +1,7 @@
 // 플립북 만들기와 GUI 갱신 반영. Figma에 닿지 않는 기록 부분만 다룬다.
 import { COPY } from './copy.ts';
-import { defaultTitle, NO_CATEGORY_KEY } from './flipbook.ts';
+import type { FlipbookSpot } from './compare.ts';
+import { defaultTitle, NO_CATEGORY_KEY, NO_SECTION_KEY } from './flipbook.ts';
 import { importedRecord, recordsToImport, type GuiRecordInfo, type GuiScreenInfo } from './guiScreens.ts';
 import { keys, type State, type Store } from './store.ts';
 import type { Actor, Flipbook, FlipbookKind, FlipbookReview, FlipbookScale, ImportedGuiRecord, TagSnapshot, UiRecord, UiState } from './types.ts';
@@ -56,6 +57,10 @@ export function defaultSection(first: GuiScreenInfo | undefined, existing: reado
   return existing.find(s => s.key === base.key) ?? base;
 }
 
+// Section 밖에 둔 플립북의 자리. 새 플립북을 만들거나 목록에서 옮길 때는 고를 수 없고, 캔버스에서 Section 밖으로 옮기면 이 자리가 된다.
+// 이름은 Section 드롭다운과 Chapter에 쓴다. 목록에서는 그 페이지 맨 위에 둔다.
+export const noSection = (): FlipbookSection => ({ key: NO_SECTION_KEY, name: COPY.coreFlipbooks013, order: -1 });
+
 export const newSectionKey = (): string => `${CUSTOM_SECTION_PREFIX}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 // 새 Section. 키는 페이지에서 Section을 다시 찾는 표식이고, 이름은 Section·Chapter에 쓴다.
@@ -67,7 +72,7 @@ export function customSection(name: string, key = newSectionKey()): FlipbookSect
 export function pageSections(state: State, pageId: string): FlipbookSection[] {
   const out = new Map<string, FlipbookSection>();
   for (const fb of state.flipbooks.values()) {
-    if (fb.status !== 'active' || (fb.pageId ?? state.project.flipbookPageId) !== pageId || out.has(fb.category.key)) continue;
+    if (fb.status !== 'active' || (fb.pageId ?? state.project.flipbookPageId) !== pageId || out.has(fb.category.key) || fb.category.key === NO_SECTION_KEY) continue;
     out.set(fb.category.key, fb.category);
   }
   return [...out.values()];
@@ -114,6 +119,7 @@ function sectionOf(row: FlipbookRowRequest, first: GuiScreenInfo | undefined, ex
   if (!row.section) return defaultSection(first, existing);
   const name = row.section.name.trim();
   if (!row.section.key || !name) throw new Error(COPY.coreFlipbooks011);
+  if (row.section.key === NO_SECTION_KEY) throw new Error(COPY.coreFlipbooks014);
   return { key: row.section.key, name, order: Number.isFinite(row.section.order) ? row.section.order : CUSTOM_SECTION_ORDER };
 }
 
@@ -125,6 +131,7 @@ export function checkMoves(state: State, moves: FlipbookMove[], pageIds: readonl
     if (state.flipbooks.get(move.flipbookId)?.status !== 'active') throw new Error(COPY.coreFlipbook002);
     if (!pageIds.includes(move.pageId)) throw new Error(COPY.coreFlipbooks012);
     if (!move.section.key || !move.section.name.trim()) throw new Error(COPY.coreFlipbooks011);
+    if (move.section.key === NO_SECTION_KEY) throw new Error(COPY.coreFlipbooks014);
   }
 }
 
@@ -150,18 +157,19 @@ export function moveFlipbooks(store: Store, moves: FlipbookMove[], pageIds: read
 // 플립북 프레임이 놓인 페이지·Section(키·이름)이 기록과 다르면 바꿀 자리를 돌려준다. 빈 이름의 Section은 따르지 않는다.
 // frames: 플립북 ID → 프레임 노드 ID, spots: 프레임 노드 ID → 캔버스 위치(페이지, Section 키·이름)
 export interface CanvasSection { flipbookId: string; pageId: string; section: FlipbookSection }
-export function canvasSections(state: State, frames: Map<string, string>, spots: Record<string, { pageId?: string; section: string; sectionName?: string }>): CanvasSection[] {
+export function canvasSections(state: State, frames: Map<string, string>, spots: Record<string, FlipbookSpot>): CanvasSection[] {
   const out: CanvasSection[] = [];
   for (const fb of state.flipbooks.values()) {
     const nodeId = frames.get(fb.id);
     const spot = nodeId ? spots[nodeId] : undefined;
-    const name = spot?.sectionName?.trim();
+    const outside = spot?.section === NO_SECTION_KEY;
+    const name = outside ? noSection().name : spot?.sectionName?.trim();
     if (fb.status !== 'active' || !spot?.section || !name) continue;
     const recorded = fb.pageId ?? state.project.flipbookPageId ?? '';
     const pageId = spot.pageId ?? recorded;
     if (pageId === recorded && spot.section === fb.category.key && name === fb.category.name) continue;
     // 같은 페이지·키의 Section에 놓인 다른 플립북이 있으면 그 정렬 순서를 쓴다.
-    const order = spot.section === fb.category.key ? fb.category.order
+    const order = outside ? noSection().order : spot.section === fb.category.key ? fb.category.order
       : pageSections(state, pageId).find(s => s.key === spot.section)?.order ?? CUSTOM_SECTION_ORDER;
     out.push({ flipbookId: fb.id, pageId, section: { key: spot.section, name, order } });
   }

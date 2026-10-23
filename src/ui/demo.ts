@@ -1,7 +1,7 @@
 import { COPY } from '../core/copy.ts';
 // Figma 없이 실제 Controller와 UI를 돌리는 가짜 환경. 브라우저 미리보기와 튜토리얼의 예시 화면이 함께 쓴다.
 // core 로직은 그대로 쓰고 Figma에 닿는 부분(프레임 목록·지문·레이어 복사·캔버스 이동)만 가짜 데이터로 바꾼다.
-import type { ScannedFrame } from '../core/compare.ts';
+import type { FlipbookSpot, ScannedFrame } from '../core/compare.ts';
 import { sha256 } from '../core/hash.ts';
 import { parseRichText, type RichParagraph } from '../core/richText.ts';
 import { memoryKV, type KV } from '../core/store.ts';
@@ -77,7 +77,7 @@ export function createDemo(options: DemoOptions): Demo {
   let thumbSeq = 0;
   const flipbooks = new Map<string, string>();
   // 플립북 프레임의 캔버스 배치. 같은 페이지·Section끼리 배열 순서가 Section 안 순서이고, Section은 처음 나온 순서다.
-  const placed: { flipbookId: string; pageId: string; section: string }[] = [];
+  const placed: { flipbookId: string; pageId: string; section: string; sectionName: string }[] = [];
   const uiEdits = new Map<string, number>();
   // 플로우 프레임 → 화면별 썸네일 버전
   const flows = new Map<string, Map<string, number>>();
@@ -176,12 +176,12 @@ export function createDemo(options: DemoOptions): Demo {
     async findFlipbook(_pageId, screenId) { return flipbooks.get(screenId) ?? null; },
     async listFlipbooks() { return new Map(flipbooks); },
     async flipbookSpots(pageIds) {
-      const out: Record<string, { section: string; sectionIndex: number; index: number }> = {};
+      const out: Record<string, FlipbookSpot> = {};
       for (const pageId of pageIds) {
         const onPage = placed.filter(p => p.pageId === pageId);
         const sections = [...new Set(onPage.map(p => p.section))];
         for (const [sectionIndex, section] of sections.entries())
-          onPage.filter(p => p.section === section).forEach((p, index) => { const nodeId = flipbooks.get(p.flipbookId); if (nodeId) out[nodeId] = { section, sectionIndex, index }; });
+          onPage.filter(p => p.section === section).forEach((p, index) => { const nodeId = flipbooks.get(p.flipbookId); if (nodeId) out[nodeId] = { pageId, section, sectionName: p.sectionName, sectionIndex, index }; });
       }
       return out;
     },
@@ -201,7 +201,7 @@ export function createDemo(options: DemoOptions): Demo {
         const same = placed.filter(p => p.pageId === settings.pageId && p.section === view.category.key);
         const anchor = view.after ? same.findIndex(p => p.flipbookId === view.after) : -1;
         const before = view.after === null ? same[0] : anchor >= 0 ? same[anchor + 1] : undefined;
-        const item = { flipbookId: view.flipbookId, pageId: settings.pageId, section: view.category.key };
+        const item = { flipbookId: view.flipbookId, pageId: settings.pageId, section: view.category.key, sectionName: view.category.name };
         if (before) placed.splice(placed.indexOf(before), 0, item);
         else if (same.length) placed.splice(placed.indexOf(same[same.length - 1]) + 1, 0, item);
         else placed.push(item);
@@ -211,12 +211,15 @@ export function createDemo(options: DemoOptions): Demo {
       log(`${COPY.uiPreview025} ${view.category.name} / ${view.name} ${COPY.uiPreview026} ${view.status ? `${view.status.tag.name}(${view.status.colorKey})` : '-'} ${COPY.uiPreview027} ${view.rows[0]?.at ?? '-'} ${COPY.uiPreview028} ${Math.max(0, view.rows.length - 1)}${COPY.uiPreview029}`);
       return { nodeId: flipbooks.get(view.flipbookId)!, notes: [] };
     },
+    async syncChapters(items) {
+      for (const item of items) log(`${COPY.uiPreview025} ${item.name} / ${item.flipbookId}`);
+    },
     // 기존 플립북 옮기기: 정한 플립북 바로 다음(null이면 Section 맨 앞, 없으면 맨 뒤)으로 옮긴다.
     async moveFlipbook(move) {
       const from = placed.findIndex(p => p.flipbookId === move.flipbookId);
       if (from < 0) return false;
       const [item] = placed.splice(from, 1);
-      const moved = { ...item, pageId: move.pageId, section: move.category.key };
+      const moved = { ...item, pageId: move.pageId, section: move.category.key, sectionName: move.category.name };
       const same = placed.filter(p => p.pageId === move.pageId && p.section === move.category.key);
       const anchor = move.after ? same.findIndex(p => p.flipbookId === move.after) : -1;
       const before = move.after === null ? same[0] : anchor >= 0 ? same[anchor + 1] : undefined;

@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseFrameName, formatFrameName } from '../src/core/screenName.ts';
 import { guiRecordInfos, guiScreens, type GuiRecordInfo, type GuiScreenInfo } from '../src/core/guiScreens.ts';
-import { filterScreens, planFlipbooks, importGuiUpdates, markReviewed, needsReview, removeFlipbooks, retireFlipbooks, uncreatedScreens, unreviewed } from '../src/core/flipbooks.ts';
+import { canvasSections, checkMoves, filterScreens, followCanvasSections, noSection, planFlipbooks, importGuiUpdates, markReviewed, needsReview, removeFlipbooks, retireFlipbooks, uncreatedScreens, unreviewed } from '../src/core/flipbooks.ts';
 import { flipbookView } from '../src/core/flipbook.ts';
 import { flipbookHistoryRows } from '../src/core/history.ts';
 import { acknowledgeChange, buildPlan, commitPlan } from '../src/core/publish.ts';
 import { keys, memoryKV, Store } from '../src/core/store.ts';
 import { dataModel } from '../src/core/data.ts';
-import { buildList } from '../src/core/list.ts';
+import { arrangeFlipbooks, buildList } from '../src/core/list.ts';
 import { changeDetected, classify, entryName, ignoreBlock, uncheckedEntries, uiEntries, type Entry } from '../src/core/compare.ts';
 import { clearAutoCaseCode, clearFill, defaultDraft, draftCode, draftName, fillCaseCode, fillFromScreen, isPrevious, suggestedCaseCode, validateDraft, type Draft } from '../src/core/drafts.ts';
 import { ensureSystemTags, removeExclusion, systemTagId, updateTag } from '../src/core/registry.ts';
@@ -877,7 +877,25 @@ test('캔버스에서 다른 Section·페이지로 옮긴 플립북은 기록이
   const fb3 = controller.store.state.flipbooks.get('fb3')!;
   assert.deepEqual([fb2.pageId, fb2.category], ['ui', { key: 'epg', name: 'EPG', order: 2 }], 'EPG Section의 정렬 순서를 따른다');
   assert.deepEqual([fb3.pageId, fb3.category.key, fb3.category.name], ['ui2', 'section:new', '새 묶음']);
-  assert.deepEqual(synced.sort(), [['fb2', 'ui', 'epg', 'EPG'], ['fb3', 'ui2', 'section:new', '새 묶음']], 'Chapter만 다시 반영하며 캔버스의 페이지에서 찾는다');
+  assert.deepEqual(synced.sort(), [['fb2', 'ui', 'epg', 'EPG'], ['fb3', 'ui2', 'section:new', '새 묶음']], 'Host에 Chapter 전용 반영이 없으면 전체 반영으로 Chapter를 맞추며, 캔버스의 페이지에서 찾는다');
+});
+
+test('Section 밖으로 옮긴 플립북은 「(섹션 없음)」이 되어 그 페이지 맨 위에 모이고, 새로 넣거나 옮길 자리로는 고를 수 없다', () => {
+  const store = new Store(memoryKV());
+  store.saveProject({ ...store.state.project, flipbookPageIds: ['ui'], flipbookPageId: 'ui' });
+  let n = 0;
+  for (const fb of planFlipbooks({ pageId: 'ui', rows: [row([], false, 'A'), row([], false, 'B')] }, new Map(), actor, 1000, () => `fb${++n}`)) {
+    store.put(keys.flipbook(fb.id), { ...fb, category: { key: 'home', name: '홈', order: 1 } });
+  }
+  const found = new Map([['fb1', '1:1'], ['fb2', '1:2']]);
+  const spots = { '1:1': { pageId: 'ui', section: 'home', sectionName: '홈', sectionIndex: 0, index: 0 }, '1:2': { pageId: 'ui', section: '__nosection__', sectionIndex: -1, index: 0 } };
+  const changed = followCanvasSections(store, canvasSections(store.state, found, spots), actor);
+  assert.deepEqual(changed.map(fb => [fb.id, fb.category]), [['fb2', noSection()]]);
+  assert.deepEqual(canvasSections(store.state, found, spots), [], '다시 읽어도 바꿀 것이 없다');
+  const groups = arrangeFlipbooks(store.state, [{ id: 'ui', name: 'UI' }], id => spots[found.get(id)! as keyof typeof spots]);
+  assert.deepEqual(groups.map(g => [g.section.key, g.items]), [['__nosection__', ['fb2']], ['home', ['fb1']]], '페이지 맨 위에 둔다');
+  assert.throws(() => checkMoves(store.state, [{ flipbookId: 'fb1', pageId: 'ui', section: noSection(), after: null }], ['ui']), /섹션 없음/);
+  assert.throws(() => planFlipbooks({ pageId: 'ui', rows: [{ ...row([], false, 'C'), section: noSection() }] }, new Map(), actor, 1000, () => 'fb3'), /섹션 없음/);
 });
 
 test('캔버스 선택으로 찾은 Section 이름 변경은 Chapter만 다시 쓰고, 전체 반영으로 대신하면 반영 중 표시를 닫는다', async () => {

@@ -186,13 +186,14 @@ test('목록에서 옮긴 기존 플립북을 목록 순서대로 캔버스에�
   assert.deepEqual([done.ids, done.moved], [[], ['fb2', 'fb3']]);
 });
 
-test('캔버스 위치는 페이지의 루트 Section을 위에서부터, 안의 Section은 없는 것으로 보고 루트 Section 기준으로 센다', async () => {
+test('캔버스 위치는 페이지의 루트 Section을 위에서부터, 안의 Section은 없는 것으로 보고 루트 Section 기준으로 세며, Section 밖 플립북은 「(섹션 없음)」으로 센다', async () => {
   const { flipbookSpots } = await import('../src/figma/flipbook.ts');
   const node = (values: Record<string, string>) => ({
     getSharedPluginData: (_ns: string, key: string) => values[key] ?? '',
     setSharedPluginData: (_ns: string, key: string, value: string) => { values[key] = value; },
   });
-  const frame = (id: string, flipbook: string, x: number, y: number) => ({ id, type: 'FRAME', x, y, ...node({ flipbookOf: flipbook }) });
+  // 위치(absoluteTransform)는 Section 밖 플립북의 순서에만 쓴다.
+  const frame = (id: string, flipbook: string, x: number, y: number) => ({ id, type: 'FRAME', x, y, parent: null as unknown, absoluteTransform: [[1, 0, x], [0, 1, y]], ...node({ flipbookOf: flipbook }) });
   const section = (key: string, x: number, y: number, children: unknown[], name = key) => ({ type: 'SECTION', name, x, y, children, ...node(key ? { categoryOf: key } : {}) });
   const drawn = section('', 0, 9000, [frame('9:1', 'fb9', 3000, 0), section('', 0, 1000, [frame('9:2', 'fb8', 100, 0)])], '직접 만든 Section');
   const copy = section('home', 0, 7000, [frame('7:1', 'fb7', 0, 0)], '홈 복사본');
@@ -204,9 +205,18 @@ test('캔버스 위치는 페이지의 루트 Section을 위에서부터, 안의
       section('home', 0, 5000, [frame('2:2', 'fb2', 900, 300), frame('2:1', 'fb1', 300, 300), section('', 0, 900, [frame('2:3', 'fb3', 300, 300)])], '홈 화면'),
       section('section:banner', 0, 0, [frame('1:1', 'fb4', 300, 300)]),
       drawn, copy, empty,
+      // Section 밖(페이지 바로 아래)에 둔 플립북
+      frame('5:2', 'fb11', 500, 30000), frame('5:1', 'fb10', 0, 30000),
     ],
+    findAllWithCriteria() {
+      const out: any[] = [];
+      const walk = (parent: any) => { for (const n of parent.children ?? []) { n.parent = parent; if (n.type === 'FRAME') out.push(n); else walk(n); } };
+      walk(this);
+      return out;
+    },
   };
   (globalThis as unknown as { figma: unknown }).figma = { getNodeByIdAsync: async (id: string) => (id === 'p' ? page : null) };
+  (page as any).type = 'PAGE';
   const spots = await flipbookSpots('guiuipublish', ['p', 'missing']);
   const drawnKey = drawn.getSharedPluginData('guiuipublish', 'categoryOf');
   const copyKey = copy.getSharedPluginData('guiuipublish', 'categoryOf');
@@ -221,5 +231,7 @@ test('캔버스 위치는 페이지의 루트 Section을 위에서부터, 안의
     '7:1': { pageId: 'p', section: copyKey, sectionName: '홈 복사본', sectionIndex: 2, index: 0 },
     '9:1': { pageId: 'p', section: drawnKey, sectionName: '직접 만든 Section', sectionIndex: 3, index: 0 },
     '9:2': { pageId: 'p', section: drawnKey, sectionName: '직접 만든 Section', sectionIndex: 3, index: 1 },
+    '5:1': { pageId: 'p', section: '__nosection__', sectionIndex: -1, index: 0 },
+    '5:2': { pageId: 'p', section: '__nosection__', sectionIndex: -1, index: 1 },
   });
 });

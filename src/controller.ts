@@ -719,11 +719,11 @@ export class Controller {
     }
   }
 
-  // 기록을 캔버스의 페이지·Section으로 맞추고 바뀐 플립북 ID를 돌려준다.
-  private async followCanvas(): Promise<string[]> {
+  // 기록을 캔버스의 페이지·Section으로 맞추고 바뀐 플립북 ID를 돌려준다. canvas: 같은 작업에서 이미 읽은 캔버스(다시 읽지 않는다).
+  private async followCanvas(canvas?: { found: Map<string, string>; spots: Record<string, FlipbookSpot> }): Promise<string[]> {
     const s = this.store;
     s.reload();
-    const { found, spots } = await this.inspectFlipbooks();
+    const { found, spots } = canvas ?? await this.inspectFlipbooks();
     return followCanvasSections(s, canvasSections(s.state, found, spots), this.host.actor).map(fb => fb.id);
   }
 
@@ -782,9 +782,10 @@ export class Controller {
   private async resizeFlipbooks(ids: string[]): Promise<void> {
     const s = this.store;
     s.reload();
-    const found = await this.host.listFlipbooks(this.flipbookPages());
+    const canvas = await this.inspectFlipbooks();
+    const { found } = canvas;
     const targets = ids.filter(id => s.state.flipbooks.get(id)?.status === 'active' && found.has(id));
-    const report = targets.length ? await this.deliverFlipbooks({}, { targets }) : emptyReport();
+    const report = targets.length ? await this.deliverFlipbooks({}, { targets, canvas }) : emptyReport();
     this.postState();
     // 크기를 맞추면 프레임 크기가 바뀌어 Section 안 배치가 달라질 수 있다.
     this.applyLinks(found, await this.spots());
@@ -991,7 +992,8 @@ export class Controller {
       s.audit(this.host.actor, 'flipbook.create', fb.id, null, { kind: fb.kind, title: fb.title, screens: fb.screens.map(x => x.code) });
       addDelivery(s, batchId, 'flipbook', 'UI', fb.id, 0);
     }
-    const report = await this.deliverFlipbooks({ batchId }, { targets: made.map(fb => fb.id), baseline: new Set(made.map(fb => fb.id)), after });
+    // 새 플립북은 아직 프레임이 없고 옮긴 플립북은 방금 기록을 맞췄으므로 캔버스를 다시 읽지 않는다.
+    const report = await this.deliverFlipbooks({ batchId }, { targets: made.map(fb => fb.id), baseline: new Set(made.map(fb => fb.id)), after, canvasFollowed: true });
     await this.refreshData();
     this.postState();
     // 새 플립북은 UI 목록에서 「비교 전」이다. 만든 직후 지문을 기준으로 저장했으므로 바로 차이 없음으로 보이게 한다.
@@ -1031,7 +1033,7 @@ export class Controller {
     }
     const changed = moveFlipbooks(s, done, s.state.project.flipbookPageIds, this.host.actor);
     const retitled = changed.filter(fb => sections.get(fb.id) !== fb.category.key || fromPage.get(fb.id) !== fb.pageId).map(fb => fb.id);
-    if (retitled.length) await this.deliverFlipbooks({}, { targets: retitled });
+    if (retitled.length) await this.deliverFlipbooks({}, { targets: retitled, canvasFollowed: true });
     if (done.length) {
       await this.refreshData();
       this.postState();
@@ -1072,7 +1074,7 @@ export class Controller {
   // 반영이 끝나지 않은 플립북을 현재 기록으로 맞춘다. 플립북 단위로 실패를 기록하고 나머지는 계속한다.
   // baseline: 새로 만든 플립북. 만든 직후의 UI 작성 영역을 첫 UI Publish 전 비교 기준으로 저장한다.
   // after: 새로 만들 플립북을 Section 안에 놓을 자리. retitle: 플러그인에서 제목을 바꾼 플립북.
-  async deliverFlipbooks(filter: { batchId?: string } = {}, options: { force?: boolean; targets?: string[]; baseline?: Set<string>; after?: Map<string, string | null>; retitle?: Set<string>; canvasFollowed?: boolean } = {}): Promise<DeliveryReport> {
+  async deliverFlipbooks(filter: { batchId?: string } = {}, options: { force?: boolean; targets?: string[]; baseline?: Set<string>; after?: Map<string, string | null>; retitle?: Set<string>; canvasFollowed?: boolean; canvas?: { found: Map<string, string>; spots: Record<string, FlipbookSpot> } } = {}): Promise<DeliveryReport> {
     const s = this.store;
     s.reload();
     const active = (id: string) => s.state.flipbooks.get(id)?.status === 'active';
@@ -1080,8 +1082,9 @@ export class Controller {
     const report = emptyReport();
     if (!requested.length) return report;
     // 플립북을 기록의 페이지에서 찾으므로 캔버스에서 옮긴 플립북의 기록부터 맞춘다. 맞춘 플립북은 Chapter도 다시 반영한다.
-    // 읽지 못하면 기록대로 반영한다.
-    const followed = options.canvasFollowed ? [] : await this.followCanvas().catch(() => []);
+    // canvasFollowed: 부른 쪽이 방금 기록을 캔버스와 맞췄다(목록에서 옮기기·새 플립북·Section 따라가기). canvas: 이미 읽은 캔버스.
+    // 읽지 못하면 기록대로 반영한다(2026-10-23 사용자 승인).
+    const followed = options.canvasFollowed ? [] : await this.followCanvas(options.canvas).catch(() => []);
     const targets = [...new Set([...requested, ...followed])].filter(active);
     const { templateNodeId } = s.state.project;
     if (!templateNodeId) return { ...report, skipped: `${COPY.controller027} ${targets.length}${COPY.controller028}` };

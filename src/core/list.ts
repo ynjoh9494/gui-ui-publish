@@ -2,6 +2,7 @@ import { COPY } from './copy.ts';
 import { changeDetected, entryName, type Entry, type FlipbookSpot } from './compare.ts';
 import type { FlipbookSection } from './flipbooks.ts';
 import type { InputStatus } from './drafts.ts';
+import { NO_SECTION_KEY } from './flipbook.ts';
 import { parseFrameName } from './screenName.ts';
 import type { State } from './store.ts';
 import type { Team } from './types.ts';
@@ -153,7 +154,8 @@ export function arrangeFlipbooks(state: State, pages: { id: string; name: string
     return codeCollator.compare(code(a), code(b)) || nameCollator.compare(title(a), title(b));
   });
   return [...groups.values()]
-    .sort((a, b) => a.page - b.page || a.canvas - b.canvas || a.section.order - b.section.order || a.name.localeCompare(b.name, 'ko'))
+    // Section 밖 플립북은 그 페이지 맨 위에 둔다.
+    .sort((a, b) => a.page - b.page || Number(b.section.key === NO_SECTION_KEY) - Number(a.section.key === NO_SECTION_KEY) || a.canvas - b.canvas || a.section.order - b.section.order || a.name.localeCompare(b.name, 'ko'))
     .map(({ key, pageId, section, name, items }) => ({ key, pageId, section, name, items }));
 }
 

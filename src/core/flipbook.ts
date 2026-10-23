@@ -61,6 +61,8 @@ export function validGuiWidth(width: number): boolean {
 
 export const NO_CATEGORY_KEY = '__none__';
 export const POLICY_CATEGORY_KEY = '__policy__';
+// Section 밖(페이지 바로 아래)에 둔 플립북의 Section 키(2026-10-23 사용자 결정). 목록에서는 그 페이지 맨 위에 라벨 행 없이 모은다.
+export const NO_SECTION_KEY = '__nosection__';
 // 템플릿 원본 컴포넌트의 제목 기본값
 export const TEMPLATE_TITLE = COPY.coreFlipbook001;
 

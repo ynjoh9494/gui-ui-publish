@@ -1,6 +1,6 @@
 import { COPY } from '../core/copy.ts';
 import type { FlipbookSpot } from '../core/compare.ts';
-import { GUI_GAP, guiTargetWidth, type FlipbookGui, type FlipbookRow, type FlipbookView } from '../core/flipbook.ts';
+import { GUI_GAP, guiTargetWidth, NO_SECTION_KEY, type FlipbookGui, type FlipbookRow, type FlipbookView } from '../core/flipbook.ts';
 import { newSectionKey } from '../core/flipbooks.ts';
 import { TAG_PALETTE } from '../core/palette.ts';
 import type { NodeSnapshot } from '../core/fingerprint.ts';
@@ -372,8 +372,9 @@ export function makeRoom(frames: readonly Box[], frame: Box, before: { width: nu
   if (dy > 0) for (const f of below) f.y += dy;
 }
 
+// 안쪽 Section 크기는 바꾸지 않으므로(2026-10-23 사용자 결정) 그 안의 플립북 프레임도 루트 Section 기준 위치로 함께 잰다.
 export function fitSection(ns: string, section: SectionNode, exact = false): void {
-  const kids = section.children;
+  const kids: readonly Box[] = [...section.children, ...flipbookFrames(section, ns)];
   if (!kids.length) return;
   const right = Math.max(...kids.map(n => n.x + n.width)) + PAD;
   const bottom = Math.max(...kids.map(n => n.y + n.height)) + PAD;
@@ -428,6 +429,14 @@ async function createFlipbook(ns: string, page: PageNode, template: FrameNode, v
   const gui = parts(frame).gui;
   if (gui) for (const child of [...gui.children]) child.remove();
 
+  // Section 밖 플립북의 프레임을 다시 만들 때는 Section을 만들지 않고 페이지 내용 맨 아래 왼쪽에 둔다(구현 기본값, 확인 필요).
+  if (view.category.key === NO_SECTION_KEY) {
+    const others = page.children.slice();
+    page.appendChild(frame);
+    frame.x = others.length ? Math.min(...others.map(n => n.x)) : 0;
+    frame.y = others.length ? Math.max(...others.map(n => n.y + n.height)) + SECTION_GAP : 0;
+    return frame;
+  }
   const section = categorySection(ns, page, view.category);
   const frames = flipbookFrames(section, ns);
   section.appendChild(frame);
@@ -501,7 +510,11 @@ export async function listFlipbooks(ns: string, pageIds: string[]): Promise<Map<
 // 플립북이 든 루트 Section에 표식이 없으면(캔버스에서 직접 만든 Section) 새 키를 붙여 플러그인 Section으로 본다. 같은 페이지에
 // 같은 키의 루트 Section이 여럿이면(복제한 Section) 위쪽(같으면 왼쪽) Section만 그 키를 두고 나머지에 새 키를 붙인다(2026-10-23 사용자 결정).
 // 표식만 붙이고 캔버스 배치는 바꾸지 않는다.
-function pageFlipbookSpots(ns: string, page: PageNode, spots: Record<string, FlipbookSpot>): void {
+// Section 밖(어느 루트 Section에도 들지 않은) 플립북은 「(섹션 없음)」 자리로, 페이지 위치 순서로 센다.
+function pageFlipbookSpots(ns: string, page: PageNode, spots: Record<string, FlipbookSpot>, candidates = flipbookCandidates(ns, page)): void {
+  const at = (n: SceneNode) => ({ x: n.absoluteTransform[0][2], y: n.absoluteTransform[1][2] });
+  candidates.filter(frame => !rootSection(frame)).map(node => ({ node, ...at(node) })).sort((a, b) => a.y - b.y || a.x - b.x)
+    .forEach(({ node }, index) => { spots[node.id] = { pageId: page.id, section: NO_SECTION_KEY, sectionIndex: -1, index }; });
   const seen = new Set<string>();
   let sectionIndex = 0;
   const roots = page.children.filter((n): n is SectionNode => n.type === 'SECTION').sort((a, b) => a.y - b.y || a.x - b.x);
@@ -527,8 +540,9 @@ export async function inspectFlipbooks(ns: string, pageIds: string[]): Promise<{
     const page = await figma.getNodeByIdAsync(pageId);
     if (!page || page.type !== 'PAGE') continue;
     await page.loadAsync();
-    frames.push(...flipbookCandidates(ns, page));
-    pageFlipbookSpots(ns, page, spots);
+    const candidates = flipbookCandidates(ns, page);
+    frames.push(...candidates);
+    pageFlipbookSpots(ns, page, spots, candidates);
   }
   return { found: new Map([...pickFlipbookFrames(ns, frames)].map(([id, frame]) => [id, frame.id])), spots };
 }
@@ -854,13 +868,13 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
   await syncRows(ns, p.history, settings, view.rows, kit, notes);
 
   // 이미지·이력 길이에 따라 크기가 바뀐다. 크기가 바뀌면 이웃 화면과 겹치지 않게 필요한 만큼만 민다.
-  // 이웃은 루트 Section 전체(안의 Section 포함)에서 찾고, 프레임을 담은 Section부터 루트 Section까지 크기를 맞춘다.
+  // 이웃은 루트 Section 전체(안의 Section 포함)에서 찾고, 루트 Section 크기만 맞춘다. 안쪽 Section 크기는 그대로 둔다(2026-10-23 사용자 결정).
   const root = rootSection(frame);
   if (root) {
     const frames = flipbookFrames(root, ns);
     const self = frames.find(f => f.node === frame);
     if (self && (frame.width !== before.width || frame.height !== before.height)) makeRoom(frames, self, before);
-    for (let s = frame.parent; s?.type === 'SECTION'; s = s.parent) fitSection(ns, s);
+    fitSection(ns, root);
   }
   return { nodeId: frame.id, notes: [...notes] };
 }

@@ -601,6 +601,8 @@ export const COPY = {
   coreFlipbooks010: '상태를 고르세요.',
   coreFlipbooks011: '섹션 이름을 입력하세요.',
   coreFlipbooks012: '설정에서 지정한 플립북 페이지로만 옮길 수 있습니다.',
+  coreFlipbooks013: '(섹션 없음)',
+  coreFlipbooks014: '「(섹션 없음)」에는 만들거나 옮길 수 없습니다. 캔버스에서 Section 밖으로 옮기세요.',
   // 실행 중 안내·결과 알림 — src/controller.ts
   controller001: '최종 확인 준비 중', // 56
   controller002: '배포 중', // 56
