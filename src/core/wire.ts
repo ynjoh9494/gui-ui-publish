@@ -4,6 +4,7 @@ import type { Draft } from './drafts.ts';
 import { unreviewed, type FlipbookRequest, type ReviewRequest } from './flipbooks.ts';
 import type { HistoryRow } from './history.ts';
 import type { SelectionTarget } from './description.ts';
+import type { FlowRequest } from './flow.ts';
 import type { RichParagraph } from './richText.ts';
 import type { BatchComment, Blocker, Plan } from './publish.ts';
 import type { GuiScreenInfo } from './guiScreens.ts';
@@ -21,7 +22,7 @@ export function toWire(state: State): WireState {
     project: state.project, categories: [...state.categories], workers: [...state.workers], tags: [...state.tags],
     screens: [...state.screens], gui: [...state.gui], flipbooks: [...state.flipbooks], imported: [...state.imported],
     uiStates: [...state.uiStates], uiBaselines: [...state.uiBaselines], ui: [...state.ui], reviews: [...state.reviews],
-    batches: [...state.batches], deliveries: [...state.deliveries], exclusions: [...state.exclusions], audit: state.audit,
+    batches: [...state.batches], deliveries: [...state.deliveries], exclusions: [...state.exclusions], flows: [...state.flows], audit: state.audit,
     dataStatus: state.dataStatus,
   };
 }
@@ -31,7 +32,7 @@ export function fromWire(w: WireState): State {
     project: w.project, categories: new Map(w.categories), workers: new Map(w.workers), tags: new Map(w.tags),
     screens: new Map(w.screens), gui: new Map(w.gui), flipbooks: new Map(w.flipbooks), imported: new Map(w.imported),
     uiStates: new Map(w.uiStates), uiBaselines: new Map(w.uiBaselines), ui: new Map(w.ui), reviews: new Map(w.reviews),
-    batches: new Map(w.batches), deliveries: new Map(w.deliveries), exclusions: new Map(w.exclusions), audit: w.audit,
+    batches: new Map(w.batches), deliveries: new Map(w.deliveries), exclusions: new Map(w.exclusions), flows: new Map(w.flows), audit: w.audit,
     dataStatus: w.dataStatus,
   };
 }
@@ -48,7 +49,8 @@ export function toUiWire(state: State): WireState {
     uiStates: [...state.uiStates], uiBaselines: [...state.uiBaselines],
     ui: [...state.ui].map(([id, rows]) => [id, rows.slice(-1)]), reviews: [...state.reviews],
     batches: [], deliveries: [...state.deliveries].filter(([, d]) => d.state !== 'done'),
-    exclusions: [...state.exclusions], audit: state.audit.slice(-15), dataStatus: state.dataStatus,
+    // 플로우 위치는 본체만 쓴다.
+    exclusions: [...state.exclusions], flows: [], audit: state.audit.slice(-15), dataStatus: state.dataStatus,
   };
 }
 
@@ -146,6 +148,8 @@ export type ToMain =
   // 텍스트 편집 탭이 보이는지. 보이는 동안만 캔버스 선택이 바뀔 때 대상(textTarget)을 보낸다.
   | { type: 'textTab'; open: boolean }
   | { type: 'textApply'; paragraphs: RichParagraph[] }
+  // 플로우: 고른 배포 화면으로 지금 보고 있는 페이지에 플로우 프레임을 만든다.
+  | { type: 'createFlow'; request: FlowRequest }
   // save: 손잡이를 놓았을 때. 다음 실행 때 이 크기로 연다.
   | { type: 'resize'; width: number; height: number; save?: boolean; compact?: boolean };
 

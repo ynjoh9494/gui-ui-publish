@@ -202,6 +202,10 @@ export interface ImportedGuiRecord {
 // UI Flipbook은 배포하지 않고 수정된 화면만 알린다. 확인 완료를 누르면 그 버전까지의 「화면이 수정되었습니다」를 푼다(2026-10-20 사용자 결정).
 export interface FlipbookReview { flipbookId: string; versions: Record<string, number>; actor: Actor; reviewedAt: number }
 
+// 플로우의 위치. GUI를 다시 배포하면 그 화면의 썸네일을 바꾸려고 찾는 데만 쓰며 이력은 남기지 않는다(2026-10-23 사용자 결정).
+// uids: 들어 있는 화면(겹치지 않게). 썸네일마다의 화면·버전은 프레임 안 이미지의 표식에 둔다.
+export interface FlowRecord { id: string; nodeId: string; pageId: string; title: string; uids: string[]; createdAt: number; actor: Actor }
+
 export interface Exclusion { id: string; nodeId: string; name: string; reason: string; createdAt: number; active: boolean }
 
 export interface AuditEntry { id: string; at: number; actor: Actor; action: string; target: string; before: unknown; after: unknown; reason: string }

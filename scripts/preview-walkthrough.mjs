@@ -426,6 +426,62 @@ try {
   assert.equal(await app.locator('.fb-bottom [data-action=mark-reviewed]').isEnabled(), true);
   await shot('04-ui-list');
 
+  // 플로우 탭: 배포된 화면을 격자 칸에 카드로 놓고, 카드 점을 끌어 다른 카드에 이어 플로우를 만든다(FigJam처럼).
+  {
+    await app.locator('.tabs [data-action=flow-open]').click();
+    const screens = app.locator('.flow-view .flow-screen');
+    await screens.first().waitFor();
+    const cards = app.locator('.flow-view .flow-card');
+    const links = app.locator('.flow-view .flow-link:not(.preview)');
+    const create = app.locator('.flow-view [data-action=flow-create]');
+    assert.equal(await app.locator('.list').isVisible(), false, '플로우 탭은 목록 대신 보인다');
+    assert.ok(await screens.first().getAttribute('data-thumb'), '배포된 화면에 마우스를 올리면 썸네일을 보여 준다');
+    await screens.nth(0).click();
+    assert.equal(await create.isDisabled(), true, '화면 2개부터 만든다');
+    // 이 시점에는 배포된 화면이 하나다. 같은 화면을 여러 번 놓을 수 있다.
+    await screens.nth(0).click();
+    assert.equal(await cards.count(), 2);
+    assert.equal(await create.isEnabled(), true);
+    const spots = await cards.evaluateAll(els => els.map(el => [el.offsetLeft, el.offsetTop]));
+    assert.ok(spots[1][0] > spots[0][0] && spots[1][1] === spots[0][1], '누르면 첫 빈 칸(같은 줄 다음 칸)에 놓는다');
+    assert.equal(await cards.nth(0).locator('.flow-card-id').innerText(), 'STB_HO_001', '카드 윗줄은 Screen ID');
+    assert.ok(await cards.first().getAttribute('data-thumb'), '카드에도 마우스를 올리면 썸네일을 보여 준다');
+    const sizes = await cards.evaluateAll(els => els.map(el => `${el.offsetWidth}x${el.offsetHeight}`));
+    assert.equal(new Set(sizes).size, 1, '카드 크기는 모두 같다');
+    const drag = async (from, to) => {
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 4 });
+      await page.mouse.move(to.x, to.y, { steps: 4 });
+      await page.mouse.up();
+    };
+    const center = async locator => { const b = await locator.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+    const rightDot = async i => { const b = await cards.nth(i).boundingBox(); return { x: b.x + b.width, y: b.y + b.height / 2 }; };
+    // 첫 카드의 오른쪽 점을 끌어 둘째 카드에 놓는다.
+    await cards.nth(0).hover();
+    await drag(await rightDot(0), await center(cards.nth(1)));
+    assert.equal(await links.count(), 1, '점을 끌어 다른 카드에 놓으면 화살표로 잇는다');
+    const straight = await links.first().getAttribute('d');
+    // 둘째 카드를 아래 줄 둘째 칸으로 옮기면 화살표가 통로로 꺾인다.
+    await drag(await center(cards.nth(1)), await center(app.locator('.flow-view .flow-slot').nth(4)));
+    assert.equal(await links.count(), 1);
+    assert.ok((await links.first().getAttribute('d')).split('L').length > straight.split('L').length, '다른 줄로 옮기면 꺾인 화살표가 된다');
+    // 화살표를 골라 Delete로 지우고 다시 잇는다.
+    await app.locator('.flow-view .flow-link-hit').first().dispatchEvent('pointerdown', { button: 0, pointerId: 1, isPrimary: true });
+    await page.keyboard.press('Delete');
+    assert.equal(await links.count(), 0, '고른 화살표는 Delete로 지운다');
+    await cards.nth(0).hover();
+    await drag(await rightDot(0), await center(cards.nth(1)));
+    assert.equal(await links.count(), 1);
+    await app.locator('.flow-view [data-flow=title]').fill('홈 진입 플로우');
+    await shot('04b-flow-tab');
+    await create.click();
+    await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('플로우를 만들었습니다'));
+    await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('플로우: 홈 진입 플로우') && x.textContent.includes('(0,0).right→STB_HO_001(1,1).left')));
+    await app.locator('.tabs [data-action=text-close]').click();
+    assert.equal(await app.locator('.list').isVisible(), true);
+  }
+
   await mode('GUI');
   await page.locator(`#tools [data-edit="${initialNodeId}"]`).click();
   await scan();
@@ -460,6 +516,7 @@ try {
   // 같은 파일이므로 GUI Publish 직후 그 화면을 쓰는 플립북에 바로 반영한다.
   await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('GUI 갱신'));
   await shot('05-gui-updated');
+  assert.match(await app.locator('.toast').innerText(), /플로우 1개의 썸네일을 바꿨습니다/, '다시 배포한 화면이 든 플로우의 썸네일을 바꾼다');
 
   await mode('UI');
   // 플립북에 「화면이 수정되었습니다」 빨간 점과 목록 위에 확인이 필요한 개수를 표시한다. 변경사항 확인을 누르지 않아도 보인다.

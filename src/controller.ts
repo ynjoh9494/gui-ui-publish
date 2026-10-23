@@ -6,6 +6,7 @@ import { flipbookView, guiKey, validGuiWidth } from './core/flipbook.ts';
 import { canvasSections, checkMoves, followCanvasSections, importGuiUpdates, markReviewed, moveFlipbooks, pageSections, planFlipbooks, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookMove, type FlipbookRequest, type ReviewRequest } from './core/flipbooks.ts';
 import type { Draft } from './core/drafts.ts';
 import type { SelectionWrite } from './core/description.ts';
+import { flowRecord, flowUpdates, planFlow, type FlowRequest } from './core/flow.ts';
 import { flipbookHistoryRows, guiHistoryRows } from './core/history.ts';
 import { guiRecordInfos, guiScreens } from './core/guiScreens.ts';
 import { acknowledgeChange, addDelivery, upgradeBaseline, buildPlan, commitPlan, setDeliveryState, type BatchComment, unfinishedDeliveries, type CommitInput, type Plan } from './core/publish.ts';
@@ -40,7 +41,7 @@ const BUSY_LABEL: Partial<Record<ToMain['type'], string>> = {
   prepare: COPY.controller001, commit: COPY.controller002, resetData: COPY.controller003, retry: COPY.controller004, refreshData: COPY.controller005,
   admin: COPY.controller006, createFlipbooks: COPY.controller038, markReviewed: COPY.controller066, removeFlipbooks: COPY.controller068,
   matchVersion: COPY.controller106, switchVersion: COPY.controller107, resizeFlipbooks: COPY.controller117, renameFlipbook: COPY.controller118,
-  textApply: COPY.controller120,
+  textApply: COPY.controller120, createFlow: COPY.flow006,
 };
 
 // 텍스트 편집 적용 결과 안내.
@@ -203,6 +204,7 @@ export class Controller {
           this.host.post({ type: 'notice', message: writeMessage(await this.host.writeSelection(msg.paragraphs)) });
           break;
         }
+        case 'createFlow': await this.createFlow(msg.request); break;
         case 'resize': this.host.resize(msg.width, msg.height, msg.save, msg.compact); break;
         case 'pages': this.host.post({ type: 'pages', pages: this.host.pages() }); break;
       }
@@ -373,6 +375,38 @@ export class Controller {
     ].filter(Boolean);
     if (!parts.length) return null;
     return { message: parts.join(' '), failed: report.failed.length > 0 || !!report.skipped };
+  }
+
+  // GUI를 다시 배포하면 그 화면이 든 플로우의 썸네일만 바꾼다(2026-10-23 사용자 결정). 프레임이 지워진 플로우는 위치 기록도 지운다.
+  // 플로우 실패는 배포 결과와 따로 알린다.
+  private async updateFlows(uids: Set<string>): Promise<string | null> {
+    if (!this.host.updateFlow || !uids.size) return null;
+    const s = this.store;
+    s.reload();
+    const { flows, thumbs } = flowUpdates(s.state, uids);
+    let updated = 0;
+    const failed: string[] = [];
+    for (const flow of flows) {
+      try {
+        const changed = await this.host.updateFlow(flow, thumbs);
+        if (changed === null) s.remove(keys.flow(flow.id));
+        else if (changed) updated++;
+      } catch (e) {
+        failed.push(`${flow.title}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    return [updated ? `${COPY.flow008} ${updated}${COPY.flow009}` : '', failed.length ? `${COPY.flow010} ${failed.join('; ')}` : ''].filter(Boolean).join(' ') || null;
+  }
+
+  // 플로우 만들기: 배포된 화면만 넣는다. 위치만 기록하고 이력은 남기지 않는다.
+  private async createFlow(request: FlowRequest): Promise<void> {
+    if (!this.host.createFlow) return;
+    const s = this.store;
+    s.reload();
+    const plan = planFlow(s.state, request, s.newId);
+    const placed = await this.host.createFlow(plan);
+    s.put(keys.flow(plan.id), flowRecord(plan, placed, this.host.actor, s.now()));
+    this.host.post({ type: 'notice', message: [`${COPY.flow007} ${plan.title}`, ...placed.notes].join(' ') });
   }
 
   // 선택 화면 확인(GUI): 원본 목록은 전체를 다시 읽고(신규 후보·복제 의심·원본 없음 판단) 지문은 고른 화면만 계산한다.
@@ -862,7 +896,7 @@ export class Controller {
     let report: string | null = null;
     if (result.ok && items.length) {
       report = plan.team === 'GUI'
-        ? (await this.pullGui())?.message ?? null
+        ? [(await this.pullGui())?.message, await this.updateFlows(new Set(items.filter(i => i.workType !== 'deleted').map(i => i.screenId)))].filter(Boolean).join(' ') || null
         : deliveryMessage(await this.deliverFlipbooks({ batchId }));
       await this.progress(COPY.controller005);
     }

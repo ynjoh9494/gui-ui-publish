@@ -120,6 +120,27 @@ try {
   await shot('ui-text');
   await app.locator('[data-action=text-close]').click();
 
+  // 플로우 탭: 카드 두 장을 놓고 점을 끌어 이은 모습(이 예시에는 배포된 화면이 하나라 같은 화면을 두 번 놓는다)
+  await app.locator('[data-action=flow-open]').click();
+  await app.locator('.flow-view .flow-screen').first().waitFor();
+  await app.locator('.flow-view .flow-screen').first().click();
+  await app.locator('.flow-view .flow-screen').first().click();
+  {
+    const cards = app.locator('.flow-view .flow-card');
+    const a = await cards.nth(0).boundingBox();
+    const b = await cards.nth(1).boundingBox();
+    await cards.nth(0).hover();
+    await page.mouse.move(a.x + a.width, a.y + a.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 6 });
+    await page.mouse.up();
+  }
+  await app.locator('.flow-view [data-flow=title]').fill('홈 진입 플로우');
+  // 썸네일 미리보기가 판을 가리지 않게 마우스를 안내 문구로 옮긴다.
+  await app.locator('.flow-view .flow-hint').hover();
+  await shot('ui-flow');
+  await app.locator('[data-action=text-close]').click();
+
   // 튜토리얼 첫 단계
   await app.locator('[data-action=tutorial]').click();
   await page.waitForFunction(() => document.querySelector('.tutorial-layer')?.dataset.step === '1', null, { timeout: 15000 });

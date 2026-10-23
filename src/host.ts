@@ -3,7 +3,8 @@ import type { DataModel } from './core/data.ts';
 import type { FlipbookView } from './core/flipbook.ts';
 import type { CanvasPosition } from './core/screenCode.ts';
 import type { KV } from './core/store.ts';
-import type { Actor, GuiThumb, Team } from './core/types.ts';
+import type { FlowPlan, FlowThumb } from './core/flow.ts';
+import type { Actor, FlowRecord, GuiThumb, Team } from './core/types.ts';
 import type { SelectionTarget, SelectionWrite } from './core/description.ts';
 import type { RichParagraph } from './core/richText.ts';
 import type { PageInfo, ToUi } from './core/wire.ts';
@@ -55,4 +56,8 @@ export interface Host extends FingerprintReader {
   // 지금 선택에서 불러오기·적용할 대상(플립북의 Description, 텍스트 레이어 하나, 없음, 오류)
   selectionTarget?(): SelectionTarget;
   writeSelection(paragraphs: RichParagraph[]): Promise<SelectionWrite>;
+  // 플로우: 지금 보고 있는 페이지에 프레임을 만든다. notes: 썸네일을 찾지 못한 화면 등 알릴 내용
+  createFlow?(plan: FlowPlan): Promise<{ nodeId: string; pageId: string; notes: string[] }>;
+  // 다시 배포된 화면의 썸네일만 바꾼다. 프레임을 찾지 못하면 null
+  updateFlow?(flow: FlowRecord, thumbs: FlowThumb[]): Promise<number | null>;
 }

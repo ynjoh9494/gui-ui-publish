@@ -79,6 +79,8 @@ export function createDemo(options: DemoOptions): Demo {
   // 플립북 프레임의 캔버스 배치. 같은 페이지·Section끼리 배열 순서가 Section 안 순서이고, Section은 처음 나온 순서다.
   const placed: { flipbookId: string; pageId: string; section: string }[] = [];
   const uiEdits = new Map<string, number>();
+  // 플로우 프레임 → 화면별 썸네일 버전
+  const flows = new Map<string, Map<string, number>>();
   let deliver: (message: ToUi) => void = () => {};
   const text = { name: 'Description', paragraphs: parseRichText(COPY.uiPreview051) };
 
@@ -237,6 +239,21 @@ export function createDemo(options: DemoOptions): Demo {
       text.paragraphs = paragraphs;
       changed();
       return { kind: 'text', name: text.name };
+    },
+    async createFlow(plan) {
+      const nodeId = `flow:${plan.id}`;
+      flows.set(nodeId, new Map(plan.cells.map(c => [c.uid, c.version])));
+      const at = new Map(plan.cells.map(c => [c.key, `${c.code}(${c.r},${c.c})`]));
+      log(`${COPY.flow001}: ${plan.title} / ${[...at.values()].join(' ')} / ${plan.links.map(l => `${at.get(l.from)}.${l.fromSide}→${at.get(l.to)}.${l.toSide}`).join(' ')}`);
+      return { nodeId, pageId: DEMO_FLIPBOOK_PAGE.id, notes: [] };
+    },
+    async updateFlow(flow, latest) {
+      const versions = flows.get(flow.nodeId);
+      if (!versions) return null;
+      let n = 0;
+      for (const t of latest) if (versions.has(t.uid) && versions.get(t.uid)! < t.version) { versions.set(t.uid, t.version); n++; }
+      if (n) log(`${COPY.flow001} ${flow.title}: ${n}`);
+      return n;
     },
   };
 

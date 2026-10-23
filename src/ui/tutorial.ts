@@ -293,6 +293,16 @@ const UI_STEPS: Step[] = [
     },
     spots: d => [d.q('.tabs .create-tabs'), d.q('.text-view')],
   },
+  {
+    title: COPY.uiTutorial072, body: COPY.uiTutorial073,
+    async prepare(d) {
+      await d.click('.tabs [data-action="flow-open"]');
+      await d.until(() => d.all('.flow-view .flow-screen').length >= 2);
+      for (const screen of d.all('.flow-view .flow-screen').slice(0, 2)) await d.click(() => screen);
+      await d.until(() => d.all('.flow-view .flow-card').length === 2);
+    },
+    spots: d => [d.q('.tabs .create-tabs'), d.q('.flow-view')],
+  },
 ];
 
 // ── 예시 데이터 ──────────────────────────────────────────

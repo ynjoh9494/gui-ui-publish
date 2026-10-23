@@ -9,6 +9,7 @@ import { ensureDataPage, renderDataPage } from './data.ts';
 import { createFingerprintReader } from './fingerprints.ts';
 import { NS, findFlipbook, flipbookSpots, inspectFlipbooks, listFlipbooks, moveFlipbookFrame, uiAreaSnapshot, syncChapters, syncFlipbook, templateFromSelection, templateIssues, flipbookSession, type FlipbookSession } from './flipbook.ts';
 import { fillDescription, readDescription, selectedDescriptionRoot, selectionTarget } from './description.ts';
+import { createFlow, updateFlow } from './flow.ts';
 import { readRichText, selectedTextNode, writeRichText } from './richText.ts';
 import { makeThumbnail, placeThumbnails, renameThumbnails, thumbnailBytes } from './thumbs.ts';
 import { Snapshotter } from './snapshot.ts';
@@ -244,5 +245,7 @@ export function figmaHost(mode: Host['mode']): Host {
       await writeRichText(node, paragraphs);
       return { kind: 'text', name: node.name };
     },
+    createFlow: plan => createFlow(NS, plan),
+    updateFlow: (flow, thumbs) => updateFlow(NS, flow, thumbs),
   };
 }

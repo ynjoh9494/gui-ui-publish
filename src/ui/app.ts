@@ -4,6 +4,7 @@ import type { GuiScreenInfo } from '../core/guiScreens.ts';
 import { guiStateBadge, unlinkedBadge } from './estimate.ts';
 import { startTutorial } from './tutorial.ts';
 import { textEditor } from './textEditor.ts';
+import { flowView } from './flowView.ts';
 import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScreen, isDeletion, isPrevious, needsLink, OPTIONAL_FIELDS, renumberAutoCodes, STATUS_LABEL, validateDraft, type Draft, type DraftIndex, type InputStatus, type Validation } from '../core/drafts.ts';
 import { formatTime, type HistoryRow } from '../core/history.ts';
 import { arrangeFlipbooks, buildList, guiGroupKey, placeDrafts, savedGuiDisplay, savedGuiPlace, UNCATEGORIZED, type ArrangedGroup, type GuiPlace, type ListModel } from '../core/list.ts';
@@ -38,7 +39,7 @@ type Tab = Team | 'ADMIN';
 const NODE_PREVIEW = 'node:';
 
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
-const WHILE_BUSY = new Set(['tab', 'settings', 'group', 'select', 'changed-only', 'cancel-scan', 'toggle-detail', 'tutorial', 'text-open', 'text-close']);
+const WHILE_BUSY = new Set(['tab', 'settings', 'group', 'select', 'changed-only', 'cancel-scan', 'toggle-detail', 'tutorial', 'text-open', 'text-close', 'flow-open']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
 const BEFORE_CHECK = new Set([...WHILE_BUSY, 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'text-import', 'text-apply',
@@ -180,6 +181,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   let versionOpen = false;
   // UI Flipbook의 텍스트 편집 탭(2026-10-22 사용자 요청). 관리를 다녀와도 열린 탭을 유지한다.
   let textOpen = false;
+  // UI Flipbook의 플로우 탭(2026-10-23 사용자 결정). 텍스트 편집 탭과 같이 하나만 열린다.
+  let flowOpen = false;
   // 플러그인에 마지막으로 알린 텍스트 편집 탭 표시 여부
   let textTabSent = false;
   // GUI 화면정보의 이전 배포 썸네일을 펼쳐 두었는가
@@ -222,6 +225,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     <div class="resize-handle" title="${COPY.uiApp208}" aria-label="${COPY.uiApp208}"></div>`;
   const $ = (sel: string) => root.querySelector(sel) as HTMLElement;
   const editor = textEditor(root);
+  const flows = flowView(root, request => bridge.send({ type: 'createFlow', request }));
 
   // 두 영역 구분선: 현재 창 너비에서 목록 260px, 화면정보 320px을 확보한다.
   {
@@ -666,7 +670,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     // 머리에는 명령 이름(GUI Publish·UI Flipbook)을 쓰지 않고 탭만 둔다(2026-10-22 사용자 요청). 탭이 없는 관리 화면만 「관리」를 쓴다.
     $('.tabs').innerHTML = `${settings ? `<span class="app-title">${COPY.uiApp004}</span>` : ''}` +
       `${mode === 'GUI' && !settings ? `<div class="create-tabs"><button data-action="version-close" aria-selected="${!versionOpen}">${COPY.uiApp272}</button><button data-action="version-open" aria-selected="${versionOpen}">${COPY.uiApp248}</button></div>` : ''}` +
-      `${mode === 'UI' && !settings ? `<div class="create-tabs"><button data-action="text-close" aria-selected="${!textOpen}">${COPY.uiApp302}</button><button data-action="text-open" aria-selected="${textOpen}">${COPY.uiApp303}</button></div>` : ''}` +
+      `${mode === 'UI' && !settings ? `<div class="create-tabs"><button data-action="text-close" aria-selected="${!textOpen && !flowOpen}">${COPY.uiApp302}</button><button data-action="text-open" aria-selected="${textOpen}">${COPY.uiApp303}</button><button data-action="flow-open" aria-selected="${flowOpen}">${COPY.flow020}</button></div>` : ''}` +
       `<span class="who" title="${COPY.uiApp005}">${esc(actor?.name ?? '')}</span>` +
       `<button class="icon-button" data-action="settings" aria-pressed="${settings}" title="${COPY.uiApp004}" aria-label="${COPY.uiApp004}">${GEAR}</button>` +
       `<button class="icon-button help-button" data-action="tutorial" title="${COPY.uiTutorial001}" aria-label="${COPY.uiTutorial001}">${HELP}</button>`;
@@ -1994,6 +1998,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   function renderAll() {
     renderTabs(); renderToolbar(); renderList(); renderDetail(); renderFooter(); renderConfirm(); renderVersion(); renderToast();
     const textShown = textOpen && mode === 'UI' && tab !== 'ADMIN' && !!state;
+    flows.render(flowOpen && mode === 'UI' && tab !== 'ADMIN' && !!state);
     editor.render(textShown);
     if (textShown !== textTabSent) { textTabSent = textShown; bridge.send({ type: 'textTab', open: textShown }); }
     root.classList.toggle('admin-mode', tab === 'ADMIN');
@@ -2002,7 +2007,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
 
   // 오른쪽 영역 접기: 창 너비를 목록 너비로 줄이고, 펼치면 접기 전 너비로 되돌린다. 설정 화면과 텍스트 편집 탭에서는 펼친 너비로 보여 준다.
   function applyCollapse() {
-    const want = detailCollapsed && tab !== 'ADMIN' && team() === 'UI' && !textOpen;
+    const want = detailCollapsed && tab !== 'ADMIN' && team() === 'UI' && !textOpen && !flowOpen;
     if (want && !compactFrom) {
       const listWidth = $('.list').getBoundingClientRect().width;
       compactFrom = { width: root.offsetWidth };
@@ -2216,6 +2221,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     if (!el) return;
     const action = el.dataset.action!;
     if (busyLabel && !WHILE_BUSY.has(action)) return;
+    if (action.startsWith('flow-') && flows.handle(action, el)) return;
     const t = team();
     if (locked(t) && !BEFORE_CHECK.has(action)) { ev.preventDefault(); return; }
     switch (action) {
@@ -2499,8 +2505,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         admin({ op: 'renumberScreenIds' });
         break;
       case 'renumber-cancel': renumberArmed = false; renderDetail(); break;
-      case 'text-open': textOpen = true; renderAll(); root.querySelector<HTMLElement>('.text-view .rich-editor')?.focus(); break;
-      case 'text-close': textOpen = false; renderAll(); break;
+      case 'text-open': textOpen = true; flowOpen = false; renderAll(); root.querySelector<HTMLElement>('.text-view .rich-editor')?.focus(); break;
+      case 'text-close': textOpen = false; flowOpen = false; renderAll(); break;
+      // 플로우 탭은 배포된 화면 목록(guiScreens)을 쓴다.
+      case 'flow-open': flowOpen = true; textOpen = false; renderAll(); if (!createScreens.length) bridge.send({ type: 'guiScreens' }); break;
       case 'text-import': bridge.send({ type: 'textImport' }); break;
       case 'text-apply': { const paragraphs = editor.paragraphs(); if (paragraphs.some(p => p.text.trim())) bridge.send({ type: 'textApply', paragraphs }); break; }
       case 'version-open': openVersion(); break;
@@ -3201,6 +3209,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       case 'history': history = { id: msg.id, rows: msg.rows }; renderHistory(); break;
       case 'guiScreens':
         createScreens = msg.screens;
+        flows.setScreens(createScreens);
         // 화면 목록을 받기 전에 연 일괄 만들기는 카테고리를 모두 고른 상태로 채운다.
         if (bulk && !bulk.submitting && !bulk.categories.size) bulk.categories = new Set(bulkCandidates().map(screenCategoryKey));
         renderBulk();
