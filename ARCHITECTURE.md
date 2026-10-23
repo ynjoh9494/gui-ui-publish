@@ -37,9 +37,9 @@ flowchart LR
 | `src/figma/description.ts` | 플립북 안 선택(여러 개·플립북 프레임 포함)에서 그 플립북의 Description을 찾고 텍스트 편집 대상을 알려 줌. 플립북 밖에서는 본문 슬롯이 있는 Description만 대상. 본문 슬롯에 굵은 제목 줄마다 제목·본문 레이어 묶음을 적용(슬롯에 있던 텍스트 서식을 이어받음)·불러오기. 제목 문구는 판정하지 않음 |
 | `src/figma/richText.ts` | 고른 텍스트 레이어 하나의 본문·굵기·목록 단계 읽기와 쓰기(레이어 글꼴 유지) |
 | `src/figma/flipbook.ts`, `layers.ts`, `thumbs.ts`, `data.ts` | 템플릿 복제, GUI 레이어 복사·배치, JPG 썸네일, DATA 페이지 렌더링 |
-| `src/figma/flow.ts` | 플로우 프레임 그리기(격자 칸에 썸네일 이미지 채움, 빨간 더미 글자 레이어, 꺾인 화살표)와 다시 배포된 화면의 썸네일 채움 교체. 썸네일 이미지는 썸네일 페이지를 불러와 해시로 찾음 |
+| `src/figma/flow.ts` | 플로우 프레임 그리기(격자 칸에 썸네일 이미지 채움, 빨간 더미 글자 레이어, 끝점에 `TRIANGLE_FILLED`를 둔 Figma 벡터 연결선)와 다시 배포된 화면의 썸네일 채움 교체. 썸네일 이미지는 썸네일 페이지를 불러와 해시로 찾음 |
 | `src/ui/app.ts`, `styles.css` | UI 상태·입력 초안·목록과 상세 렌더링 |
-| `src/ui/flowView.ts` | UI Flipbook 플로우 탭의 배포 화면 목록(원본 페이지·루트 Section별 구분)과 FigJam식 판(격자 카드 배치·연결·삭제, 플로우 제목). Section은 `Host.screenSections()`가 플로우 탭을 열 때 캔버스에서 읽으며 저장 기록에는 넣지 않음 |
+| `src/ui/flowView.ts` | UI Flipbook 플로우 탭의 배포 화면 목록(원본 페이지별 아코디언·루트 Section 라벨)과 FigJam식 판(격자 카드 배치·연결·삭제, 플로우 제목). Section은 `Host.screenSections()`가 플로우 탭을 열 때 캔버스에서 읽으며 저장 기록에는 넣지 않음 |
 | `src/ui/textEditor.ts` | UI Flipbook 텍스트 편집 탭의 서식 편집기(contenteditable). 글자 입력은 브라우저, 구조 변경·되돌리기는 core 편집 동작으로 처리 |
 | `src/ui/demo.ts`, `tutorial.ts`, `preview.ts` | 가짜 Figma 환경(`Host`), 튜토리얼의 예시 화면 조작과 말풍선, 브라우저 미리보기 도구 |
 

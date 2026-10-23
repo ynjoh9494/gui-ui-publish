@@ -433,8 +433,13 @@ try {
     const screens = app.locator('.flow-view .flow-screen');
     await screens.first().waitFor();
     await app.locator('.flow-view .flow-section-label').getByText('홈 화면').waitFor();
-    assert.equal(await app.locator('.flow-view .flow-page-label').first().innerText(), 'GUI 원본', '배포 화면은 원본 페이지로 구분한다');
+    const flowPage = app.locator('.flow-view .flow-page').first();
+    assert.equal(await flowPage.locator('.flow-page-label span').first().innerText(), 'GUI 원본', '배포 화면은 원본 페이지로 구분한다');
     assert.equal(await app.locator('.flow-view .flow-section-label').first().innerText(), '홈 화면', '페이지 안에서 Section으로 구분한다');
+    await flowPage.locator('summary').click();
+    assert.equal(await flowPage.getAttribute('open'), null, '페이지를 접으면 안의 Section과 화면을 숨긴다');
+    await flowPage.locator('summary').click();
+    assert.notEqual(await flowPage.getAttribute('open'), null, '페이지를 다시 펼칠 수 있다');
     const cards = app.locator('.flow-view .flow-card');
     const links = app.locator('.flow-view .flow-link:not(.preview)');
     const create = app.locator('.flow-view [data-action=flow-create]');

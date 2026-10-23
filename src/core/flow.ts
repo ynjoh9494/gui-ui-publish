@@ -17,10 +17,10 @@ export interface FlowRequest { title: string; cards: FlowCard[]; links: FlowLink
 export interface FlowCell extends FlowCard { code: string; name: string; version: number; thumb: GuiThumb | null }
 export interface FlowPlan { id: string; title: string; cells: FlowCell[]; links: FlowLink[] }
 
-// 캔버스 배치 값. 간격·글자 크기는 uigui-sync 플러그인의 플로우와 같다(2026-10-23 사용자 결정: 우선 기본값을 따르고 설정으로 뺄 수 있다).
+// 캔버스 배치 값. 제목 → 이미지 → 설명은 참고 플로우 프레임의 구조를 따르고 화면 간격은 80×120이다.
 export const FLOW_LAYOUT = {
-  pad: 24, titleSize: 20, titleGap: 44, cellTitle: 40, cellTitleSize: 18, captionGap: 12, captionSize: 15,
-  gapX: 140, gapY: 90, line: 2, head: 14, labelSize: 15, labelGap: 6, labelMargin: 8,
+  pad: 0, titleSize: 16, titleGap: 56, cellTitle: 25, cellTitleSize: 16, captionGap: 4, captionSize: 16,
+  gapX: 80, gapY: 120, line: 2, labelSize: 16, labelGap: 6, labelMargin: 8,
 };
 export const FLOW_DEFAULT_TITLE = COPY.flow001;
 // 더미 글자 색(2026-10-23 사용자 결정: 더미 글자는 무조건 #ff0000)
@@ -63,7 +63,6 @@ export function flowRecord(plan: FlowPlan, placed: { nodeId: string; pageId: str
 // 칸(0, 0)의 왼쪽 위가 (x0, y0)이고 모든 칸의 크기가 같다. 칸 사이 통로(gap)의 가운데 선으로만 화살표가 지나므로 카드와 겹치지 않는다.
 export interface FlowGrid { x0: number; y0: number; cellW: number; cellH: number; gapX: number; gapY: number }
 export type FlowPoint = [number, number];
-export type FlowDir = 'up' | 'right' | 'down' | 'left';
 
 export function cellBox(g: FlowGrid, at: { r: number; c: number }): { x: number; y: number; w: number; h: number } {
   return { x: g.x0 + at.c * (g.cellW + g.gapX), y: g.y0 + at.r * (g.cellH + g.gapY), w: g.cellW, h: g.cellH };
@@ -135,19 +134,6 @@ function simplify(points: FlowPoint[]): FlowPoint[] {
   return out;
 }
 
-export function direction(a: FlowPoint, b: FlowPoint): FlowDir {
-  if (a[0] === b[0]) return b[1] > a[1] ? 'down' : 'up';
-  return b[0] > a[0] ? 'right' : 'left';
-}
-
-// 화살촉 길이만큼 끝을 줄인 경로와 화살촉 방향
-export function trimEnd(points: FlowPoint[], head: number): { points: FlowPoint[]; dir: FlowDir; tip: FlowPoint } {
-  const tip = points[points.length - 1];
-  const dir = direction(points[points.length - 2], tip);
-  const back: FlowPoint = dir === 'right' ? [tip[0] - head, tip[1]] : dir === 'left' ? [tip[0] + head, tip[1]] : dir === 'down' ? [tip[0], tip[1] - head] : [tip[0], tip[1] + head];
-  return { points: [...points.slice(0, -1), back], dir, tip };
-}
-
 // 조건 칸 자리(2026-10-23 사용자 결정): 출발 화면 가까이. 좌우로 나가면 화살표 위(칸 아래 끝이 y), 위아래로 나가면 화살표 오른쪽(아래로 나가면 칸 위 끝, 위로 나가면 칸 아래 끝이 y).
 // 칸은 출발 칸 옆 통로 안에 두므로 카드와 겹치지 않는다.
 export interface FlowLabelSpot { x: number; y: number; width: number; align: 'left' | 'right'; anchor: 'top' | 'bottom' }
@@ -161,12 +147,12 @@ export function labelSpot(g: FlowGrid, start: FlowPoint, fromSide: FlowSide): Fl
   }
 }
 
-// 캔버스 배치: 모든 칸은 크기가 같다(가장 넓은 썸네일 폭 × 가장 높은 제목·썸네일·설명 높이). 바깥에도 통로 절반을 둔다.
+// 캔버스 배치: 모든 칸은 크기가 같다(가장 넓은 썸네일 폭 × 가장 높은 제목·썸네일·설명 높이).
 export interface FlowLayout { width: number; height: number; grid: FlowGrid; arrows: { link: FlowLink; points: FlowPoint[]; label: FlowLabelSpot }[] }
 export function layoutFlow(cells: { key: string; r: number; c: number }[], links: FlowLink[], cell: { w: number; h: number }): FlowLayout {
   const L = FLOW_LAYOUT;
   const nrow = Math.max(1, ...cells.map(c => c.r + 1)), ncol = Math.max(1, ...cells.map(c => c.c + 1));
-  const grid: FlowGrid = { x0: L.pad + L.gapX / 2, y0: L.pad + L.titleGap + L.gapY / 2, cellW: cell.w, cellH: cell.h, gapX: L.gapX, gapY: L.gapY };
+  const grid: FlowGrid = { x0: L.pad, y0: L.pad + L.titleGap, cellW: cell.w, cellH: cell.h, gapX: L.gapX, gapY: L.gapY };
   const at = new Map(cells.map(c => [c.key, c]));
   const arrows = links.flatMap(link => {
     const a = at.get(link.from), b = at.get(link.to);
@@ -175,8 +161,8 @@ export function layoutFlow(cells: { key: string; r: number; c: number }[], links
     return [{ link, points, label: labelSpot(grid, points[0], link.fromSide) }];
   });
   return {
-    width: 2 * grid.x0 + ncol * cell.w + (ncol - 1) * L.gapX,
-    height: grid.y0 + nrow * cell.h + (nrow - 1) * L.gapY + L.gapY / 2 + L.pad,
+    width: grid.x0 + ncol * cell.w + (ncol - 1) * L.gapX + L.pad,
+    height: grid.y0 + nrow * cell.h + (nrow - 1) * L.gapY + L.pad,
     grid, arrows,
   };
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { flowRecord, flowUpdates, labelSpot, layoutFlow, planFlow, routeLink, trimEnd, FLOW_LAYOUT, type FlowGrid } from '../src/core/flow.ts';
+import { flowRecord, flowUpdates, labelSpot, layoutFlow, planFlow, routeLink, FLOW_LAYOUT, type FlowGrid } from '../src/core/flow.ts';
 import { keys, memoryKV, Store } from '../src/core/store.ts';
 import type { GuiRecord, Screen } from '../src/core/types.ts';
 
@@ -40,9 +40,6 @@ test('마주 보는 변끼리는 곧은 화살표, 다른 줄로 넘어가면 �
   // 오른쪽으로 나가 아래 칸 위로 들어가면 한 번 꺾인다. 세로 통로(x 120)와 가로 통로(y 60)만 지난다.
   assert.deepEqual(routeLink(G, { r: 0, c: 0 }, 'right', { r: 1, c: 1 }, 'top'), [[100, 25], [120, 25], [120, 60], [190, 60], [190, 70]]);
   assert.deepEqual(routeLink(G, { r: 0, c: 0 }, 'bottom', { r: 1, c: 1 }, 'left'), [[50, 50], [50, 60], [120, 60], [120, 95], [140, 95]]);
-  // 화살촉 길이만큼 끝을 줄이고 방향을 돌려준다.
-  const end = trimEnd([[50, 50], [50, 60], [120, 60], [120, 95], [140, 95]], 14);
-  assert.deepEqual([end.dir, end.tip, end.points[end.points.length - 1]], ['right', [140, 95], [126, 95]]);
 });
 
 test('조건 칸은 출발 화면 가까이: 좌우로 나가면 화살표 위, 위아래로 나가면 화살표 오른쪽', () => {
@@ -53,14 +50,13 @@ test('조건 칸은 출발 화면 가까이: 좌우로 나가면 화살표 위, 
   assert.deepEqual(labelSpot(G, [50, 0], 'top'), { x: 50 + m, y: -m, width: 50 - m, align: 'left', anchor: 'bottom' });
 });
 
-test('캔버스 배치는 격자 그대로: 칸 크기는 모두 같고 바깥에도 통로 절반을 둔다', () => {
+test('캔버스 배치는 참고 화면의 제목·이미지·설명 구조와 가로 80·세로 120 간격을 따른다', () => {
   const L = FLOW_LAYOUT;
-  const layout = layoutFlow([{ key: 'a', r: 0, c: 0 }, { key: 'b', r: 1, c: 2 }], [{ from: 'a', fromSide: 'right', to: 'b', toSide: 'top' }], { w: 480, h: 360 });
-  assert.equal(layout.width, 2 * (L.pad + L.gapX / 2) + 3 * 480 + 2 * L.gapX);
-  assert.equal(layout.grid.y0, L.pad + L.titleGap + L.gapY / 2);
-  assert.equal(layout.height, layout.grid.y0 + 2 * 360 + L.gapY + L.gapY / 2 + L.pad);
+  const layout = layoutFlow([{ key: 'a', r: 0, c: 0 }, { key: 'b', r: 1, c: 2 }], [{ from: 'a', fromSide: 'right', to: 'b', toSide: 'top' }], { w: 480, h: 320 });
+  assert.deepEqual([L.gapX, L.gapY, L.cellTitle, L.captionGap], [80, 120, 25, 4]);
+  assert.deepEqual([layout.grid.x0, layout.grid.y0, layout.width, layout.height], [0, 56, 1600, 816]);
   assert.equal(layout.arrows.length, 1);
-  assert.deepEqual(layout.arrows[0].points[0], [layout.grid.x0 + 480, layout.grid.y0 + 180]);
+  assert.deepEqual(layout.arrows[0].points[0], [480, 216]);
 });
 
 test('플로우 계획: 배포된 화면만, 왼쪽 위 칸을 (0, 0)으로 옮기고 잘못된 화살표는 뺀다', () => {

@@ -63,6 +63,7 @@ export function flowView(root: HTMLElement, send: (request: FlowRequest) => void
   let links: FlowLink[] = [];
   let selected: { kind: 'card' | 'link'; id: string } | null = null;
   let query = '';
+  const collapsedPages = new Set<string>();
   let title = '';
   let seq = 0;
   let drag: Drag | null = null;
@@ -137,9 +138,9 @@ export function flowView(root: HTMLElement, send: (request: FlowRequest) => void
     }
     const row = (s: GuiScreenInfo) => `<div class="flow-screen" data-uid="${esc(s.uid)}"${s.thumb ? ` data-thumb="${esc(s.thumb.hash)}"` : ''} title="${esc(s.name)}"><span class="id-tag">${esc(s.code)}</span><span class="label">${esc(s.name)}</span></div>`;
     box.innerHTML = [...grouped].sort(([a], [b]) => (pageOrder.get(a) ?? Infinity) - (pageOrder.get(b) ?? Infinity) || a.localeCompare(b, 'ko'))
-      .map(([pageId, sections]) => `<div class="flow-page"><div class="flow-page-label">${esc(pages.find(p => p.id === pageId)?.name ?? COPY.flow039)}</div>
+      .map(([pageId, sections]) => `<details class="flow-page" data-page-id="${esc(pageId)}" ${q || !collapsedPages.has(pageId) ? 'open' : ''}><summary class="flow-page-label"><span>${esc(pages.find(p => p.id === pageId)?.name ?? COPY.flow039)}</span><span class="flow-page-count">${[...sections.values()].reduce((n, section) => n + section.items.length, 0)}</span></summary>
         ${[...sections].sort(([keyA, a], [keyB, b]) => a.order - b.order || a.name.localeCompare(b.name, 'ko') || keyA.localeCompare(keyB))
-          .map(([, section]) => `<div class="flow-section"><div class="flow-section-label">${esc(section.name)}</div>${section.items.map(row).join('')}</div>`).join('')}</div>`).join('');
+          .map(([, section]) => `<div class="flow-section"><div class="flow-section-label">${esc(section.name)}</div>${section.items.map(row).join('')}</div>`).join('')}</details>`).join('');
   }
 
   function paintBoard() {
@@ -355,6 +356,12 @@ export function flowView(root: HTMLElement, send: (request: FlowRequest) => void
     });
     el.addEventListener('pointerdown', onPointerDown);
     el.addEventListener('click', ev => {
+      const pageLabel = (ev.target as HTMLElement).closest<HTMLElement>('.flow-page-label');
+      if (pageLabel && !query.trim()) {
+        const page = pageLabel.closest<HTMLDetailsElement>('.flow-page')!;
+        if (page.open) collapsedPages.add(page.dataset.pageId!);
+        else collapsedPages.delete(page.dataset.pageId!);
+      }
       const screen = (ev.target as HTMLElement).closest<HTMLElement>('.flow-screen');
       if (!screen || suppressClick) return;
       place(screen.dataset.uid!, null);

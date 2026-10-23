@@ -1,5 +1,5 @@
 import { COPY } from '../core/copy.ts';
-import { FLOW_DUMMY, FLOW_LAYOUT, layoutFlow, trimEnd, type FlowPlan, type FlowThumb } from '../core/flow.ts';
+import { FLOW_DUMMY, FLOW_LAYOUT, layoutFlow, type FlowPlan, type FlowThumb } from '../core/flow.ts';
 import { formatFrameName } from '../core/screenName.ts';
 import type { FlowRecord } from '../core/types.ts';
 import { loadFonts } from './data.ts';
@@ -35,23 +35,18 @@ function text(parent: FrameNode, font: FontName, chars: string, size: number, na
   return t;
 }
 
-function vector(parent: FrameNode, points: [number, number][], closed: boolean): VectorNode {
+// Figma Stroke End Point의 Triangle arrow를 마지막 꼭짓점에만 설정한다.
+async function arrowLine(parent: FrameNode, points: [number, number][]): Promise<VectorNode> {
   const minX = Math.min(...points.map(p => p[0])), minY = Math.min(...points.map(p => p[1]));
   const v = figma.createVector();
   parent.appendChild(v);
-  v.vectorPaths = [{ windingRule: closed ? 'NONZERO' : 'NONE', data: points.map((p, i) => `${i ? 'L' : 'M'} ${p[0] - minX} ${p[1] - minY}`).join(' ') + (closed ? ' Z' : '') }];
+  await v.setVectorNetworkAsync({
+    vertices: points.map((point, index) => ({ x: point[0] - minX, y: point[1] - minY, strokeCap: index === points.length - 1 ? 'TRIANGLE_FILLED' : 'NONE' })),
+    segments: points.slice(1).map((_, index) => ({ start: index, end: index + 1 })),
+  });
   v.x = minX;
   v.y = minY;
   return v;
-}
-
-function arrowHead(parent: FrameNode, tip: [number, number], dir: 'up' | 'right' | 'down' | 'left', s: number): VectorNode {
-  const [x, y] = tip;
-  const points: [number, number][] = dir === 'down' ? [[x, y], [x - s / 2, y - s], [x + s / 2, y - s]]
-    : dir === 'up' ? [[x, y], [x - s / 2, y + s], [x + s / 2, y + s]]
-    : dir === 'right' ? [[x, y], [x - s, y - s / 2], [x - s, y + s / 2]]
-    : [[x, y], [x + s, y - s / 2], [x + s, y + s / 2]];
-  return vector(parent, points, true);
 }
 
 // 플러그인 창에서 정한 격자 칸에 화면을 놓고, 같은 규칙(core/flow.ts)으로 통로를 따라 꺾인 화살표를 그린다.
@@ -97,8 +92,8 @@ export async function createFlow(ns: string, plan: FlowPlan): Promise<{ nodeId: 
       rect.resize(sizes[i].w, sizes[i].h);
       rect.x = x;
       rect.y = y + L.cellTitle;
-      rect.strokes = gray(0.3);
-      rect.strokeWeight = 2;
+      rect.strokes = gray(0.475);
+      rect.strokeWeight = 1;
       rect.setSharedPluginData(ns, SCREEN_KEY, cell.uid);
       const thumb = thumbs[i];
       if (thumb) {
@@ -116,16 +111,11 @@ export async function createFlow(ns: string, plan: FlowPlan): Promise<{ nodeId: 
     });
     const byKey = new Map(plan.cells.map(c => [c.key, c]));
     for (const arrow of layout.arrows) {
-      const path = trimEnd(arrow.points, L.head);
-      const line = vector(frame, path.points, false);
+      const line = await arrowLine(frame, arrow.points);
       line.fills = [];
       line.strokes = gray(0.1);
       line.strokeWeight = L.line;
-      const head = arrowHead(frame, path.tip, path.dir, L.head);
-      head.fills = gray(0.1);
-      head.strokes = [];
-      const group = figma.group([line, head], frame);
-      group.name = `${COPY.flow015} ${byKey.get(arrow.link.from)?.code ?? ''}→${byKey.get(arrow.link.to)?.code ?? ''}`;
+      line.name = `${COPY.flow015} ${byKey.get(arrow.link.from)?.code ?? ''}→${byKey.get(arrow.link.to)?.code ?? ''}`;
       const spot = arrow.label;
       const label = text(frame, fonts.regular, COPY.flow014, L.labelSize, COPY.flow014, spot.width, spot.align === 'right' ? 'RIGHT' : 'LEFT', FLOW_DUMMY);
       label.x = spot.x;
