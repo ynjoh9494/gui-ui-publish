@@ -671,6 +671,7 @@ export const COPY = {
   controller121: "텍스트를 적용했습니다:",
   controller133: '기존 플립북',
   controller134: '개를 옮겼습니다.',
+  controller136: '불러오는 중',
   controller117: '플립북 크기 맞추는 중',
   controller068: '플립북 삭제 중',
   controller069: '개 플립북을 목록에서 삭제했습니다.',

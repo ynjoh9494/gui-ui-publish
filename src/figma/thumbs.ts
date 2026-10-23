@@ -88,7 +88,9 @@ export async function renameThumbnails(ns: string, labels: Map<string, string>):
   }
 }
 
-export async function thumbnailBytes(hash: string): Promise<Uint8Array | null> {
+// 썸네일 페이지를 불러오지 않으면 그 페이지에만 있는 이미지를 찾지 못한다(dynamic-page).
+export async function thumbnailBytes(ns: string, hash: string): Promise<Uint8Array | null> {
+  await figma.root.children.find(p => p.getSharedPluginData(ns, PAGE_ROLE_KEY) === PAGE_ROLE)?.loadAsync();
   const image = figma.getImageByHash(hash);
   return image ? image.getBytesAsync() : null;
 }

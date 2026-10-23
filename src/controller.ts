@@ -114,7 +114,12 @@ export class Controller {
           this.postEntries();
           if (this.host.mode === 'UI' && this.textTabOpen) this.postTextTarget();
           // UI Flipbook 목록은 프레임이 캔버스에 있는지 바로 보여 준다(연결 끊김 표시).
-          if (this.host.mode === 'UI') { await this.checkTemplate(); await this.linkFlipbooks(); }
+          // 플립북 페이지를 불러오는 동안 Figma가 멈춘 것처럼 보이므로 첫 로딩 표시를 이어서 띄운다.
+          if (this.host.mode === 'UI') {
+            await this.progress(COPY.controller136);
+            try { await this.checkTemplate(); await this.linkFlipbooks(); }
+            finally { this.busy(null); }
+          }
           break;
         case 'scan': await this.scan(); break;
         case 'scanUi': await this.scanUi(); break;

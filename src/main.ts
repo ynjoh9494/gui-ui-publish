@@ -4,6 +4,8 @@ import { figmaHost, WINDOW_KEY } from './figma/host.ts';
 
 // 한 플러그인 안의 두 명령: GUI Publish(gui), UI Flipbook(ui). 플러그인 메뉴에서 고른다(2026-10-20 사용자 결정).
 const mode = figma.command === 'ui' ? 'UI' : 'GUI';
+// 기록을 읽기 전에 창부터 띄운다. 창은 본체가 응답할 때까지 「불러오는 중」을 보여 준다.
+figma.showUI(__html__, { width: WINDOW.width, height: WINDOW.height, themeColors: true, title: mode === 'UI' ? 'UI Flipbook' : 'GUI Publish' });
 const controller = new Controller(figmaHost(mode));
 // 같은 파일을 바꾸는 요청은 순서대로 실행한다. 스캔·취소·탐색은 최신 요청이 앞선 요청을 중단할 수 있게 둔다.
 const writes = new Set<ToMain['type']>([
@@ -29,7 +31,6 @@ figma.on('selectionchange', () => {
     });
   }, 80);
 });
-figma.showUI(__html__, { width: WINDOW.width, height: WINDOW.height, themeColors: true, title: mode === 'UI' ? 'UI Flipbook' : 'GUI Publish' });
 // 마지막으로 바꾼 창 크기로 다시 연다.
 void figma.clientStorage.getAsync(WINDOW_KEY).then((size: { width?: number; height?: number } | undefined) => {
   if (size?.width && size.height) { const s = clampWindow(size.width, size.height); figma.ui.resize(s.width, s.height); }

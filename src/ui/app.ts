@@ -142,7 +142,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   let bulk: (ScreenFilter & { pageId: string; categories: Set<string>; excluded: Set<string>; submitting: boolean; error: string | null }) | null = null;
   // 썸네일 이미지: 해시 → blob URL(불러오는 중이면 '')
   const thumbUrls = new Map<string, string>();
-  // 내보내지 못한 프레임 미리보기(`node:` 키)
+  // 읽지 못한 썸네일(해시)과 내보내지 못한 프레임 미리보기(`node:` 키). 다시 요청하지 않고 「썸네일 없음」으로 보여 준다.
   const failedPreviews = new Set<string>();
   const drafts: Record<Team, Record<string, Draft>> = { GUI: {}, UI: {} };
   // 필수 입력 테두리는 해당 입력에서 벗어난 뒤 또는 미충족 항목으로 이동한 뒤에만 표시한다.
@@ -1166,16 +1166,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     if (nodeIds.length) bridge.send({ type: 'framePreviews', nodeIds });
   }
   function clearNodePreviews() {
-    failedPreviews.clear();
     for (const [key, url] of [...thumbUrls]) {
       if (!key.startsWith(NODE_PREVIEW)) continue;
       if (url) URL.revokeObjectURL(url);
       thumbUrls.delete(key);
+      failedPreviews.delete(key);
     }
   }
   function thumbImg(hash: string | null, alt: string): string {
     const url = hash ? thumbUrls.get(hash) : null;
-    return url ? `<img src="${url}" alt="${esc(alt)}">` : `<span class="thumb-empty">${hash ? COPY.uiApp001 : COPY.uiApp195}</span>`;
+    return url ? `<img src="${url}" alt="${esc(alt)}">` : `<span class="thumb-empty">${hash && !failedPreviews.has(hash) ? COPY.uiApp001 : COPY.uiApp195}</span>`;
   }
   // changed: 확인이 필요한(다시 배포된) 화면. 캡션에 빨간 점을 붙인다.
   function flipbookThumbs(flipbookId: string, changed = new Set<string>()): string {
@@ -3246,7 +3246,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       case 'thumbnails':
         for (const item of msg.items) {
           if (item.bytes) thumbUrls.set(item.hash, URL.createObjectURL(new Blob([new Uint8Array(item.bytes)], { type: 'image/jpeg' })));
-          else thumbUrls.delete(item.hash);
+          else { thumbUrls.set(item.hash, ''); failedPreviews.add(item.hash); }
         }
         // 플립북 만들기 창은 마우스를 올린 미리보기만 쓰므로 다시 그리지 않는다(열린 화면 선택이 닫히지 않게).
         if (versionOpen) renderVersionDetail();

@@ -140,7 +140,7 @@ export function figmaHost(mode: Host['mode']): Host {
       return makeThumbnail(node, label);
     },
     placeThumbnails: updates => placeThumbnails(NS, updates),
-    thumbnailBytes,
+    thumbnailBytes: hash => thumbnailBytes(NS, hash),
     renameThumbnails: labels => renameThumbnails(NS, labels),
     // 페이지 순서와 절대 위치. 찾지 못했거나 위치가 없는 프레임은 빠진다.
     async canvasPositions(nodeIds) {
