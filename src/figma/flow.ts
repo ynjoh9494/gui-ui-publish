@@ -41,10 +41,16 @@ async function arrowLine(parent: ChildrenMixin, points: [number, number][]): Pro
   const minX = Math.min(...points.map(p => p[0])), minY = Math.min(...points.map(p => p[1]));
   const v = figma.createVector();
   parent.appendChild(v);
-  await v.setVectorNetworkAsync({
-    vertices: points.map((point, index) => ({ x: point[0] - minX, y: point[1] - minY, strokeCap: index === points.length - 1 ? 'ARROW_EQUILATERAL' : 'NONE' })),
-    segments: points.slice(1).map((_, index) => ({ start: index, end: index + 1 })),
-  });
+  // 경로를 넣지 못하면 부른 쪽의 정리 목록에 들어가기 전이므로 여기서 지운다.
+  try {
+    await v.setVectorNetworkAsync({
+      vertices: points.map((point, index) => ({ x: point[0] - minX, y: point[1] - minY, strokeCap: index === points.length - 1 ? 'ARROW_EQUILATERAL' : 'NONE' })),
+      segments: points.slice(1).map((_, index) => ({ start: index, end: index + 1 })),
+    });
+  } catch (e) {
+    v.remove();
+    throw e;
+  }
   v.x = minX;
   v.y = minY;
   return v;
@@ -158,24 +164,47 @@ function pageOf(node: BaseNode): PageNode | null {
   return current as PageNode | null;
 }
 
-// 다시 배포된 화면의 썸네일만 바꾼다. 프레임을 찾지 못하면 null(기록을 지운다), 아니면 바꾼 썸네일 수.
-// 칸 크기와 화살표는 그대로 두고, 비율이 바뀐 이미지는 칸 안에 맞춘다(FIT).
-export async function updateFlow(ns: string, flow: FlowRecord, thumbs: FlowThumb[]): Promise<number | null> {
+// 기록의 플로우 그룹. 표식이 다르면(지운 뒤 다른 노드가 같은 ID를 얻은 경우 등) 없는 것으로 본다. 복제한 플로우는 기록의 노드 ID가 아니므로 찾지 않는다.
+async function findFlow(ns: string, flow: FlowRecord): Promise<GroupNode | FrameNode | null> {
   const node = await figma.getNodeByIdAsync(flow.nodeId);
   // 이 변경 전에 만든 플로우는 프레임이다.
   if (!node || node.removed || (node.type !== 'GROUP' && node.type !== 'FRAME') || node.getSharedPluginData(ns, FLOW_KEY) !== flow.id) return null;
+  return node;
+}
+
+// 다시 배포된 화면의 썸네일만 바꾼다. 플로우 그룹을 찾지 못하면 null(기록을 지운다), 아니면 바꾼 썸네일 수.
+// 칸 크기와 화살표는 그대로 두고, 비율이 바뀐 이미지는 칸 안에 맞춘다(FIT).
+export async function updateFlow(ns: string, flow: FlowRecord, thumbs: FlowThumb[]): Promise<number | null> {
+  const node = await findFlow(ns, flow);
+  if (!node) return null;
   await pageOf(node)?.loadAsync();
   await loadThumbnailPage(ns);
   const latest = new Map(thumbs.map(t => [t.uid, t]));
+  // 「썸네일 없음」 글자는 그 글자가 가리던 사각형 ID로 찾는다. 사각형마다 플로우 전체를 다시 찾지 않는다.
+  const notes = new Map<string, TextNode[]>();
+  for (const note of node.findAllWithCriteria({ types: ['TEXT'], sharedPluginData: { namespace: ns, keys: [EMPTY_KEY] } })) {
+    const rectId = note.getSharedPluginData(ns, EMPTY_KEY);
+    notes.set(rectId, [...(notes.get(rectId) ?? []), note]);
+  }
   let changed = 0;
   for (const rect of node.findAllWithCriteria({ types: ['RECTANGLE'], sharedPluginData: { namespace: ns, keys: [SCREEN_KEY] } })) {
     const next = latest.get(rect.getSharedPluginData(ns, SCREEN_KEY));
     if (!next || Number(rect.getSharedPluginData(ns, VERSION_KEY) || 0) >= next.version || !figma.getImageByHash(next.thumb.hash)) continue;
     rect.fills = imageFill(next.thumb.hash);
     rect.setSharedPluginData(ns, VERSION_KEY, String(next.version));
-    for (const note of node.findAllWithCriteria({ types: ['TEXT'], sharedPluginData: { namespace: ns, keys: [EMPTY_KEY] } }))
-      if (note.getSharedPluginData(ns, EMPTY_KEY) === rect.id) note.remove();
+    for (const note of notes.get(rect.id) ?? []) note.remove();
     changed++;
   }
   return changed;
+}
+
+// 플로우 목록에서 누른 플로우(uid가 있으면 그 화면 칸)의 노드 ID. 화면 칸을 캔버스에서 지웠으면 플로우 그룹으로 간다.
+export async function flowNode(ns: string, flow: FlowRecord, uid?: string): Promise<string | null> {
+  const node = await findFlow(ns, flow);
+  if (!node) return null;
+  if (!uid) return node.id;
+  await pageOf(node)?.loadAsync();
+  const rect = node.findOne(n => n.type === 'RECTANGLE' && n.getSharedPluginData(ns, SCREEN_KEY) === uid);
+  // 칸은 제목·이미지·설명을 묶은 그룹이다.
+  return (rect?.parent && rect.parent !== node ? rect.parent.id : rect?.id) ?? node.id;
 }

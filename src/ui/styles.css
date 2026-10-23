@@ -177,6 +177,14 @@ summary { cursor: pointer; color: var(--muted); }
 /* 처리 중 표시. 확인 대화상자 위에도 보이도록 가장 위에 둔다. */
 .busy { position: absolute; top: 0; left: 0; right: 0; z-index: 6; display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: var(--selected); color: var(--text); border-bottom: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 .busy[hidden] { display: none; }
+.startup-overlay { position: absolute; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center; background: #fff; color: #1e1e1e; }
+.startup-overlay[hidden] { display: none; }
+.startup-content { width: min(280px, calc(100% - 48px)); text-align: center; }
+.startup-label { margin-bottom: 16px; font-size: 13px; font-weight: 600; }
+.startup-progress { height: 6px; overflow: hidden; border-radius: 3px; background: #e8e8e8; }
+.startup-progress span { display: block; width: 35%; height: 100%; border-radius: inherit; background: #0d99ff; animation: startup-progress 1.4s ease-in-out infinite alternate; }
+@keyframes startup-progress { from { transform: translateX(0); } to { transform: translateX(186%); } }
+@media (prefers-reduced-motion: reduce) { .startup-progress span { animation-duration: 3s; } }
 .spinner { flex: none; width: 12px; height: 12px; border: 2px solid var(--brand); border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
@@ -544,6 +552,16 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .flow-form label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; color: var(--muted); }
 .flow-actions { flex: none; display: flex; align-items: center; gap: 6px; }
 .flow-actions button { flex: none; }
+.flow-actions .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); }
+.flow-actions .icon-button:hover { color: var(--text); }
+/* 만든 플로우 목록 모달 */
+.flow-list-dialog { max-width: 560px; }
+.flow-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.flow-list li { border-top: 1px solid var(--border); padding: 6px 0; }
+.flow-list-title { font-weight: 600; text-align: left; }
+.flow-list-screens { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.flow-list-screen { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 6px; font-size: 11px; }
+.flow-list-screen .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 튜토리얼: 실제 창 위에 예시 화면을 겹치고, 설명하는 영역만 밝게 남긴 어두운 막과 말풍선을 올린다. */
 .tutorial { position: fixed; z-index: 1000; overflow: hidden; }
 /* 예시 화면 안의 고정 머리·대화상자(z-index)가 어두운 막 위로 올라오지 않게 쌓임 맥락을 따로 만든다. */

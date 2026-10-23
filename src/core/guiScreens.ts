@@ -14,9 +14,6 @@ export interface GuiScreenInfo {
   version: number;
   thumb: GuiThumb | null;
   sourceNodeId: string | null;
-  sourcePageId?: string | null;
-  // 플로우 목록에만 쓰는 현재 캔버스 Section. 기록에는 저장하지 않는다.
-  sourceSection?: { id: string; name: string; order: number } | null;
 }
 
 export interface GuiRecordInfo {
@@ -41,8 +38,7 @@ export function guiScreenInfo(state: State, screen: Screen): GuiScreenInfo {
   return {
     uid: screen.id, code: screen.code, name: screen.name,
     category: category && category.active ? { id: category.id, name: category.name, order: category.order } : null,
-    status: screen.status, isCase: !!screen.baseScreenId, version: screen.guiVersion, thumb: last?.thumb ?? null,
-    sourceNodeId: screen.source?.nodeId ?? null, sourcePageId: screen.source?.pageId ?? null,
+    status: screen.status, isCase: !!screen.baseScreenId, version: screen.guiVersion, thumb: last?.thumb ?? null, sourceNodeId: screen.source?.nodeId ?? null,
   };
 }
 

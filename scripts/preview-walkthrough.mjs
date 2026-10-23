@@ -426,6 +426,13 @@ try {
   assert.equal(await app.locator('.fb-bottom .tag-picker summary .chip').innerText(), '최신');
   assert.equal(await app.locator('.fb-bottom [data-action=mark-reviewed]').isEnabled(), true);
   await shot('04-ui-list');
+  // 목록 새로고침: 캔버스 선택만으로는 목록을 맞추지 않으므로 새로고침 아이콘으로 플립북 페이지를 다시 읽고 동기화 시각을 보여 준다.
+  {
+    await app.locator('.sync-status [data-action=refresh-list]').click();
+    await page.waitForFunction(() => !document.querySelector('#app .sync-status .spinning'));
+    assert.match(await app.locator('.sync-status span').innerText(), /^동기화 \d{2}:\d{2}$/, '새로고침이 끝나면 동기화 시:분을 보여 준다');
+    assert.match(await app.locator('.sync-status span').getAttribute('title'), /^마지막 동기화 \d{4}-\d{2}-\d{2} /, '마우스를 올리면 날짜까지 보인다');
+  }
 
   // 플로우 탭: 배포된 화면을 격자 칸에 카드로 놓고, 카드 점을 끌어 다른 카드에 이어 플로우를 만든다(FigJam처럼).
   {
@@ -511,6 +518,19 @@ try {
     await create.click();
     await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('플로우를 만들었습니다'));
     await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('플로우: 홈 진입 플로우') && x.textContent.includes('(0,0).right→STB_HO_001(1,1).left')));
+    // 이력 아이콘: 만든 플로우 목록을 모달로 보여 주고, 플로우·화면을 누르면 캔버스의 그 자리로 간다.
+    await app.locator('.flow-view [data-action=flow-list]').click();
+    const made = app.locator('.flow-list-overlay .flow-list li');
+    await made.first().waitFor();
+    assert.equal(await made.count(), 1);
+    assert.equal(await made.first().locator('.flow-list-title').innerText(), '홈 진입 플로우');
+    assert.deepEqual(await made.first().locator('.flow-list-screen .id-tag').allInnerTexts(), ['STB_HO_001'], '같은 화면을 여러 번 놓아도 한 번만 보인다');
+    await shot('04c-flow-list');
+    await made.first().locator('.flow-list-screen').first().click();
+    await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('캔버스 이동') && x.textContent.includes('flow:')));
+    await page.keyboard.press('Escape');
+    assert.equal(await app.locator('.flow-list-overlay').count(), 0, 'Esc로 목록을 닫는다');
+    assert.equal(await cards.count(), 2, '목록을 여닫아도 판의 카드는 그대로다');
     await app.locator('.tabs [data-action=text-close]').click();
     assert.equal(await app.locator('.list').isVisible(), true);
   }

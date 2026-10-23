@@ -1,5 +1,6 @@
 import { COPY } from '../core/copy.ts';
 import type { SelectionTarget } from '../core/description.ts';
+import { esc } from './html.ts';
 import {
   backspaceAtStart, deleteRange, insertParagraphs, orderPos, outdentDepth, parseRichText, serializeRichText, setDepth, sliceParagraph,
   splitParagraph, toggleBold, toggleList, type RichParagraph, type RichPos,
@@ -31,9 +32,6 @@ const HISTORY_LIMIT = 200;
 // 「• 목록」 버튼 아이콘
 const LIST_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></svg>';
 
-function esc(value: string): string {
-  return value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
-}
 
 function paragraphHtml(p: RichParagraph): string {
   let html = '', cursor = 0;

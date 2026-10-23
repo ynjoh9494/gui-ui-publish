@@ -5,6 +5,7 @@ import { guiStateBadge, unlinkedBadge } from './estimate.ts';
 import { startTutorial } from './tutorial.ts';
 import { textEditor } from './textEditor.ts';
 import { flowView } from './flowView.ts';
+import { esc } from './html.ts';
 import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScreen, isDeletion, isPrevious, needsLink, OPTIONAL_FIELDS, renumberAutoCodes, STATUS_LABEL, validateDraft, type Draft, type DraftIndex, type InputStatus, type Validation } from '../core/drafts.ts';
 import { formatTime, type HistoryRow } from '../core/history.ts';
 import { arrangeFlipbooks, buildList, guiGroupKey, placeDrafts, savedGuiDisplay, savedGuiPlace, UNCATEGORIZED, type ArrangedGroup, type GuiPlace, type ListModel } from '../core/list.ts';
@@ -47,9 +48,6 @@ const BEFORE_CHECK = new Set([...WHILE_BUSY, 'scan', 'scan-selected', 'nav', 'na
 
 import { WORK_LABEL } from '../core/copy.ts';
 
-function esc(value: unknown): string {
-  return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
-}
 
 // 지우기(x) 아이콘
 const X_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>';
@@ -213,8 +211,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   // 플러그인 본체가 처리 중인 작업. 처리 중에는 목록 탐색 외의 조작을 막는다.
   // 처음에는 본체의 첫 응답을 기다리는 중이다.
   let busyLabel: string | null = COPY.uiApp001;
+  let startupPending = true;
 
   root.innerHTML = `
+    <div class="startup-overlay" role="status" aria-live="polite"><div class="startup-content"><div class="startup-label">${COPY.uiApp001}</div><div class="startup-progress" role="progressbar" aria-label="${COPY.uiApp001}"><span></span></div></div></div>
     <div class="busy" role="status" aria-live="polite" hidden><span class="spinner" aria-hidden="true"></span><span class="busy-label"></span></div>
     <header class="tabs" role="tablist"></header>
     <div class="toolbar"></div>
@@ -229,7 +229,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     <div class="resize-handle" title="${COPY.uiApp208}" aria-label="${COPY.uiApp208}"></div>`;
   const $ = (sel: string) => root.querySelector(sel) as HTMLElement;
   const editor = textEditor(root);
-  const flows = flowView(root, request => bridge.send({ type: 'createFlow', request }));
+  const flows = flowView(root, {
+    create: request => bridge.send({ type: 'createFlow', request }),
+    list: () => bridge.send({ type: 'flows' }),
+    reveal: (flowId, uid) => bridge.send({ type: 'revealFlow', nav: ++navSeq, flowId, uid }),
+    time: ms => formatTime(ms, state?.project.utcOffsetMinutes ?? 0),
+  });
 
   // 두 영역 구분선: 현재 창 너비에서 목록 260px, 화면정보 320px을 확보한다.
   {
@@ -540,7 +545,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       if (expanding) compactFrom = null;
       if (expanding || sizeBeforeCreate.width < 960 || sizeBeforeCreate.height < 800) bridge.send({ type: 'resize', width: Math.max(sizeBeforeCreate.width, 960), height: Math.max(sizeBeforeCreate.height, 800) });
     }
-    const pageId = options.find(pg => pg.id === state!.project.flipbookPageId)?.id ?? options[0].id;
+    // 지금 보고 있는 플립북 페이지에 넣는다(2026-10-23 사용자 요청). 플립북 페이지가 아니면 기본 플립북 페이지다.
+    const pageId = options.find(pg => pg.current)?.id ?? options.find(pg => pg.id === state!.project.flipbookPageId)?.id ?? options[0].id;
     const n: NewFlipbook = { key: `${NEW_PREFIX}${++newSeq}`, uids, scale: 1, scales: {}, title: '', pageId, section: null, seq: ++floatSeq };
     const anchorKey = quiet ? null : selectedNew ?? (selection.UI.size ? selected.UI : null);
     const group = anchorKey ? arrangement().find(g => g.items.includes(anchorKey)) : null;
@@ -2338,7 +2344,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         if (!state) break;
         if (!createScreens.length) bridge.send({ type: 'guiScreens' });
         const options = flipbookPageOptions();
-        const pageId = currentNew()?.pageId ?? options.find(pg => pg.id === state!.project.flipbookPageId)?.id ?? options[0]?.id ?? '';
+        // 지금 보고 있는 플립북 페이지(2026-10-23 사용자 요청). 플립북 페이지가 아니면 고른 새 플립북의 페이지, 기본 플립북 페이지 순이다.
+        const pageId = options.find(pg => pg.current)?.id ?? currentNew()?.pageId ?? options.find(pg => pg.id === state!.project.flipbookPageId)?.id ?? options[0]?.id ?? '';
         const categories = new Set(bulkCandidates().map(screenCategoryKey));
         bulk = { pageId, categories, kind: 'all', query: '', excluded: new Set(), submitting: false, error: null };
         renderBulk();
@@ -3061,6 +3068,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       case 'init':
         state = fromWire(msg.state); actor = msg.actor; pages = msg.pages; issues = msg.issues;
         if (mode !== msg.mode || tab !== 'ADMIN') { mode = msg.mode; tab = mode; }
+        // GUI Publish는 플립북 페이지를 확인하지 않으므로 초기 데이터가 오면 바로 연다.
+        if (mode === 'GUI') startupPending = false;
+        renderStartup();
         comment = emptyComment();
         // 초기화 뒤에도 init이 다시 온다. 입력 초안·선택·확인 상태를 비운다.
         for (const t of ['GUI', 'UI'] as Team[]) {
@@ -3093,6 +3103,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         busyLabel = null;
         renderBusy();
         renderAll();
+        break;
+      case 'startupReady':
+        startupPending = false;
+        renderStartup();
         break;
       case 'state': {
         const previousActiveWorkers = state ? [...state.workers.values()].filter(worker => worker.active).length : 0;
@@ -3245,6 +3259,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         }
         break;
       case 'history': history = { id: msg.id, rows: msg.rows }; renderHistory(); break;
+      case 'flows': flows.setFlows(msg.flows); break;
       case 'guiScreens':
         createScreens = msg.screens;
         flows.setScreens(createScreens);
@@ -3263,7 +3278,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         break;
       case 'templateIssues': templateIssues = msg.issues; renderToolbar(); break;
       case 'pages':
-        if (pages.length === msg.pages.length && pages.every((p, i) => p.id === msg.pages[i].id && p.name === msg.pages[i].name)) break;
+        if (pages.length === msg.pages.length && pages.every((p, i) => p.id === msg.pages[i].id && p.name === msg.pages[i].name && !p.current === !msg.pages[i].current)) break;
         pages = msg.pages;
         if (tab === 'ADMIN') renderDetail();
         else if (versionOpen) renderVersion();
@@ -3347,7 +3362,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     el.hidden = !label;
     (el.querySelector('.busy-label') as HTMLElement).textContent = label ?? '';
     root.classList.toggle('is-busy', !!busyLabel);
-    root.setAttribute('aria-busy', String(!!label));
+    root.setAttribute('aria-busy', String(startupPending || !!label));
+  }
+
+  function renderStartup() {
+    const overlay = $('.startup-overlay');
+    const label = mode === 'UI' ? COPY.uiApp345 : COPY.uiApp001;
+    (overlay.querySelector('.startup-label') as HTMLElement).textContent = label;
+    (overlay.querySelector('.startup-progress') as HTMLElement).setAttribute('aria-label', label);
+    overlay.hidden = !startupPending;
+    root.setAttribute('aria-busy', String(startupPending || !!busyLabel));
   }
 
   // 작업자 추가처럼 상태가 바뀌어도 입력 중인 칸의 포커스를 되살린다.
@@ -3359,5 +3383,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   }
 
   renderBusy();
+  renderStartup();
   bridge.send({ type: 'ready' });
 }

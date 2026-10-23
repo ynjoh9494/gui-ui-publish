@@ -132,8 +132,12 @@ function table(fonts: Fonts, title: string, note: string, columns: Column[], row
 
 function linked(fonts: Fonts, value: string, width: number, nodeId: string | null): TextNode {
   const t = text(fonts, value, { width, bold: true });
-  // 원본 프레임으로 이동하는 링크. 원본이 지워졌으면 링크 없이 이름만 표시한다.
-  if (nodeId) t.setRangeHyperlink(0, t.characters.length, { type: 'NODE', value: nodeId });
+  // 원본 프레임으로 이동하는 링크. 원본이 지워졌으면(삭제로 배포한 화면 등) Figma가 예외를 던지므로 링크 없이 이름만 표시한다.
+  // 원본이 있는지 미리 찾으면 dynamic-page에서 원본 페이지를 모두 불러오게 되므로 걸다 실패한 링크만 비운다.
+  if (nodeId) {
+    try { t.setRangeHyperlink(0, t.characters.length, { type: 'NODE', value: nodeId }); }
+    catch { /* 원본 없음 */ }
+  }
   return t;
 }
 
@@ -264,17 +268,9 @@ function roleFrames(ns: string, page: PageNode, role: FrameRole): FrameNode[] {
   return page.children.filter((n): n is FrameNode => n.type === 'FRAME' && n.getSharedPluginData(ns, ROLE_KEY) === role);
 }
 
-// 원본 프레임이 지워진 화면(삭제로 배포한 화면 등)은 링크를 비운다. 없는 노드에 링크를 걸면 Figma가 예외를 던져 표 전체가 갱신되지 않는다.
-async function withLiveSources(model: DataModel): Promise<DataModel> {
-  const screens = await Promise.all(model.screens.map(async s =>
-    s.sourceNodeId && !(await figma.getNodeByIdAsync(s.sourceNodeId)) ? { ...s, sourceNodeId: null } : s));
-  return { ...model, screens };
-}
-
-export async function renderDataPage(ns: string, pageId: string, source: DataModel, rebuild = false): Promise<void> {
+export async function renderDataPage(ns: string, pageId: string, model: DataModel, rebuild = false): Promise<void> {
   const page = await loadedPage(pageId);
   const fonts = await loadFonts();
-  const model = await withLiveSources(source);
   const summary = summaryTable(ns, page, fonts, model, rebuild);
   const history = historyTable(ns, page, fonts, model, rebuild);
 

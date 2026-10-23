@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { flowRecord, flowUpdates, labelSpot, layoutFlow, planFlow, routeLink, FLOW_LAYOUT, type FlowGrid } from '../src/core/flow.ts';
+import { flowList, flowRecord, flowUpdates, labelSpot, layoutFlow, planFlow, routeLink, FLOW_LAYOUT, type FlowGrid } from '../src/core/flow.ts';
 import { keys, memoryKV, Store } from '../src/core/store.ts';
-import type { GuiRecord, Screen } from '../src/core/types.ts';
+import type { FlowRecord, GuiRecord, Screen } from '../src/core/types.ts';
+import type { ToUi } from '../src/core/wire.ts';
+import { COPY } from '../src/core/copy.ts';
+import { Controller } from '../src/controller.ts';
+import type { Host } from '../src/host.ts';
 
 // 플로우(2026-10-23): 배포된 화면을 격자 칸에 놓고, 카드 변에서 변으로 칸 사이 통로를 따라 꺾인 화살표로 잇는다.
 
@@ -110,4 +114,70 @@ test('다시 배포된 화면이 든 플로우만 고르고, 썸네일이 없거
   s.remove(keys.flow('fa'));
   assert.equal(s.state.flows.has('fa'), false);
   assert.equal(s.state.flows.has('fb'), true);
+});
+
+test('플로우 목록은 최근에 만든 것부터, 페이지 이름과 화면(Screen ID·이름)을 함께 보여 준다', () => {
+  const s = seed([{ id: '1', version: 1 }, { id: '2', version: 1 }]);
+  s.put(keys.flow('old'), { id: 'old', nodeId: 'n1', pageId: 'p', title: '처음', uids: ['1'], createdAt: 1, actor });
+  s.put(keys.flow('new'), { id: 'new', nodeId: 'n2', pageId: 'q', title: '나중', uids: ['2', 'gone'], createdAt: 2, actor });
+  const list = flowList(s.state, new Map([['p', 'Live']]));
+  assert.deepEqual(list.map(f => [f.id, f.pageName]), [['new', ''], ['old', 'Live']]);
+  assert.deepEqual(list[0].screens, [{ uid: '2', code: 'STB_HO_2', name: '화면 2' }, { uid: 'gone', code: '', name: 'gone' }], 'a screen missing from the records shows its id');
+});
+
+const last = <T>(items: T[]): T => items[items.length - 1];
+const flowsPosted = (posted: ToUi[]) => last(posted.filter((m): m is Extract<ToUi, { type: 'flows' }> => m.type === 'flows'));
+
+function flowHost(store: Store, live: Set<string>) {
+  const posted: ToUi[] = [];
+  const revealed: string[] = [];
+  const host = {
+    kv: store.kv, mode: 'UI', actor,
+    post: (message: ToUi) => posted.push(message),
+    pages: () => [{ id: 'p', name: 'Live' }],
+    flowNode: async (flow: FlowRecord, uid?: string) => (live.has(flow.nodeId) ? (uid ? `${flow.nodeId}/${uid}` : flow.nodeId) : null),
+    reveal: async (nodeId: string) => { revealed.push(nodeId); return true; },
+    createFlow: async () => ({ nodeId: 'n3', pageId: 'p', notes: [] }),
+    updateFlow: async (flow: FlowRecord) => (live.has(flow.nodeId) ? 1 : null),
+  } as unknown as Host;
+  return { host, posted, revealed };
+}
+
+test('플로우 목록을 열거나 지워진 플로우로 가려 하면 묻지 않고 기록에서 빼고, 남은 플로우는 그 그룹·화면 칸으로 간다', async () => {
+  const s = seed([{ id: '1', version: 1 }, { id: '2', version: 1 }]);
+  s.put(keys.flow('a'), { id: 'a', nodeId: 'n1', pageId: 'p', title: 'A', uids: ['1'], createdAt: 1, actor });
+  s.put(keys.flow('b'), { id: 'b', nodeId: 'n2', pageId: 'p', title: 'B', uids: ['2'], createdAt: 2, actor });
+  const live = new Set(['n1', 'n2']);
+  const { host, posted, revealed } = flowHost(s, live);
+  const controller = new Controller(host);
+
+  await controller.handle({ type: 'revealFlow', nav: 1, flowId: 'a', uid: '1' });
+  assert.deepEqual(revealed, ['n1/1']);
+  live.delete('n2');
+  await controller.handle({ type: 'flows' });
+  const listed = flowsPosted(posted);
+  assert.deepEqual(listed.flows.map(f => f.id), ['a']);
+  assert.equal(controller.store.state.flows.has('b'), false);
+  assert.ok(controller.store.state.audit.some(e => e.action === 'flow.remove' && e.target === 'b'));
+
+  live.delete('n1');
+  await controller.handle({ type: 'revealFlow', nav: 2, flowId: 'a' });
+  assert.equal(controller.store.state.flows.size, 0);
+  assert.deepEqual(revealed, ['n1/1'], 'a deleted flow is not revealed');
+  assert.deepEqual(last(posted.filter(m => m.type === 'nav')), { type: 'nav', nav: 2, ok: false, message: COPY.flow048 });
+  assert.deepEqual(flowsPosted(posted).flows, []);
+});
+
+test('플로우를 만들면 위치와 감사 기록을 남기고, 다시 배포한 뒤 그룹이 지워진 플로우는 기록에서 뺀다', async () => {
+  const s = seed([{ id: '1', version: 2 }, { id: '2', version: 1 }]);
+  const live = new Set(['n3']);
+  const { host } = flowHost(s, live);
+  const controller = new Controller(host);
+  await controller.handle({ type: 'createFlow', request: { title: 'C', cards: [card('a', '1', 0, 0), card('b', '2', 0, 1)], links: [] } });
+  const [flow] = [...controller.store.state.flows.values()];
+  assert.equal(flow.nodeId, 'n3');
+  assert.ok(controller.store.state.audit.some(e => e.action === 'flow.create' && e.target === flow.id));
+  live.delete('n3');
+  await (controller as unknown as { updateFlows(uids: Set<string>): Promise<string | null> }).updateFlows(new Set(['1']));
+  assert.equal(controller.store.state.flows.size, 0);
 });

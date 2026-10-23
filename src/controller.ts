@@ -6,7 +6,7 @@ import { chapterName, flipbookView, guiKey, validGuiWidth } from './core/flipboo
 import { canvasSections, checkMoves, followCanvasSections, importGuiUpdates, markReviewed, moveFlipbooks, pageSections, planFlipbooks, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookMove, type FlipbookRequest, type ReviewRequest } from './core/flipbooks.ts';
 import type { Draft } from './core/drafts.ts';
 import type { SelectionWrite } from './core/description.ts';
-import { flowRecord, flowUpdates, planFlow, type FlowRequest } from './core/flow.ts';
+import { flowList, flowRecord, flowUpdates, planFlow, type FlowRequest } from './core/flow.ts';
 import { flipbookHistoryRows, guiHistoryRows } from './core/history.ts';
 import { guiRecordInfos, guiScreens } from './core/guiScreens.ts';
 import { acknowledgeChange, addDelivery, upgradeBaseline, buildPlan, commitPlan, setDeliveryState, type BatchComment, unfinishedDeliveries, type CommitInput, type Plan } from './core/publish.ts';
@@ -17,7 +17,7 @@ import {
 import type { CodeRename } from './core/screenCode.ts';
 import { formatFrameName } from './core/screenName.ts';
 import { keys, lastUi, randomId, Store } from './core/store.ts';
-import type { DataStatus, ProjectConfig, Team, UiBaseline } from './core/types.ts';
+import type { DataStatus, FlowRecord, ProjectConfig, Team, UiBaseline } from './core/types.ts';
 import { explainMatch, matchVersion, versionCommon, versionLinkErrors, type VersionFrame } from './core/versionMatch.ts';
 import { toUiWire, type AdminOp, type NavTarget, type ScanState, type ToMain } from './core/wire.ts';
 import type { Host } from './host.ts';
@@ -117,11 +117,12 @@ export class Controller {
           this.postEntries();
           if (this.host.mode === 'UI' && this.textTabOpen) this.postTextTarget();
           // UI Flipbook 목록은 프레임이 캔버스에 있는지 바로 보여 준다(연결 끊김 표시).
-          // 플립북 페이지를 불러오는 동안 Figma가 멈춘 것처럼 보이므로 첫 로딩 표시를 이어서 띄운다.
+          // 플립북 페이지를 불러오는 동안은 Figma가 입력을 받지 못하므로 아무 표시가 없으면 오류처럼 보인다. 그동안 「불러오는 중」을 띄운다.
           if (this.host.mode === 'UI') {
             await this.progress(COPY.controller136);
-            try { await this.checkTemplate(); await this.linkFlipbooks(); await this.syncCanvasSections(); }
-            finally { this.busy(null); }
+            // 템플릿 페이지와 플립북 페이지는 서로 기다리지 않고 함께 불러온다.
+            const [, canvas] = await Promise.all([this.checkTemplate(), this.linkFlipbooks()]);
+            await this.syncCanvasSections(canvas);
           }
           break;
         case 'scan': await this.scan(); break;
@@ -162,18 +163,10 @@ export class Controller {
           this.host.post({ type: 'history', id: msg.id, rows });
           break;
         }
-        case 'guiScreens': {
+        case 'guiScreens':
           this.store.reload();
-          const screens = [...guiScreens(this.store.state).values()];
-          if (msg.withSections && this.host.screenSections) {
-            const sources = screens.filter(s => s.status === 'active' && s.version > 0 && s.sourceNodeId && s.sourcePageId)
-              .map(s => ({ nodeId: s.sourceNodeId!, pageId: s.sourcePageId! }));
-            const sections = await this.host.screenSections(sources).catch(() => new Map<string, { id: string; name: string; order: number } | null>());
-            for (const screen of screens) if (screen.sourceNodeId) screen.sourceSection = sections.get(screen.sourceNodeId) ?? null;
-          }
-          this.host.post({ type: 'guiScreens', screens });
+          this.host.post({ type: 'guiScreens', screens: [...guiScreens(this.store.state).values()] });
           break;
-        }
         case 'createFlipbooks': await this.createFlipbooks(msg.request); break;
         case 'renameFlipbook': await this.renameFlipbook(msg.id, msg.title); break;
         case 'markReviewed': await this.markReviewed(msg.requests); break;
@@ -205,9 +198,10 @@ export class Controller {
         }
         case 'refreshList':
           if (this.host.mode !== 'UI') break;
-          await this.checkTemplate();
-          await this.linkFlipbooks();
-          await this.syncCanvasSections();
+          {
+            const [, canvas] = await Promise.all([this.checkTemplate(), this.linkFlipbooks()]);
+            await this.syncCanvasSections(canvas);
+          }
           break;
         case 'textTab':
           this.textTabOpen = msg.open;
@@ -219,6 +213,24 @@ export class Controller {
           break;
         }
         case 'createFlow': await this.createFlow(msg.request); break;
+        case 'flows': await this.postFlows(); break;
+        case 'revealFlow': {
+          this.navSeq = msg.nav;
+          const latest = () => msg.nav === this.navSeq;
+          this.store.reload();
+          const flow = this.store.state.flows.get(msg.flowId);
+          const nodeId = flow && this.host.flowNode ? await this.host.flowNode(flow, msg.uid) : null;
+          // 캔버스에서 지운 플로우는 묻지 않고 목록에서 뺀다(2026-10-23 사용자 결정).
+          if (!nodeId) {
+            if (flow) this.forgetFlow(flow);
+            await this.postFlows(false);
+            if (latest()) this.host.post({ type: 'nav', nav: msg.nav, ok: false, message: COPY.flow048 });
+            break;
+          }
+          const ok = await this.host.reveal(nodeId, latest);
+          if (latest()) this.host.post({ type: 'nav', nav: msg.nav, ok, message: ok ? '' : COPY.controller016 });
+          break;
+        }
         case 'resize': this.host.resize(msg.width, msg.height, msg.save, msg.compact); break;
         case 'pages': this.host.post({ type: 'pages', pages: this.host.pages() }); break;
       }
@@ -226,6 +238,10 @@ export class Controller {
       this.host.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
     } finally {
       if (label) this.busy(null);
+      if (msg.type === 'ready') {
+        this.busy(null);
+        this.host.post({ type: 'startupReady' });
+      }
     }
   }
 
@@ -394,7 +410,7 @@ export class Controller {
     return { message: parts.join(' '), failed: report.failed.length > 0 || !!report.skipped };
   }
 
-  // GUI를 다시 배포하면 그 화면이 든 플로우의 썸네일만 바꾼다(2026-10-23 사용자 결정). 프레임이 지워진 플로우는 위치 기록도 지운다.
+  // GUI를 다시 배포하면 그 화면이 든 플로우의 썸네일만 바꾼다(2026-10-23 사용자 결정). 그룹이 지워진 플로우는 위치 기록도 지운다.
   // 플로우 실패는 배포 결과와 따로 알린다.
   private async updateFlows(uids: Set<string>): Promise<string | null> {
     if (!this.host.updateFlow || !uids.size) return null;
@@ -406,7 +422,7 @@ export class Controller {
     for (const flow of flows) {
       try {
         const changed = await this.host.updateFlow(flow, thumbs);
-        if (changed === null) s.remove(keys.flow(flow.id));
+        if (changed === null) this.forgetFlow(flow);
         else if (changed) updated++;
       } catch (e) {
         failed.push(`${flow.title}: ${e instanceof Error ? e.message : String(e)}`);
@@ -415,15 +431,33 @@ export class Controller {
     return [updated ? `${COPY.flow008} ${updated}${COPY.flow009}` : '', failed.length ? `${COPY.flow010} ${failed.join('; ')}` : ''].filter(Boolean).join(' ') || null;
   }
 
-  // 플로우 만들기: 배포된 화면만 넣는다. 위치만 기록하고 이력은 남기지 않는다.
+  // 플로우 만들기: 배포된 화면만 넣는다. 위치를 기록하고(플로우 목록) 이력 행은 남기지 않는다. 감사 기록은 다른 기록과 같이 남긴다.
   private async createFlow(request: FlowRequest): Promise<void> {
     if (!this.host.createFlow) return;
     const s = this.store;
     s.reload();
     const plan = planFlow(s.state, request, s.newId);
     const placed = await this.host.createFlow(plan);
-    s.put(keys.flow(plan.id), flowRecord(plan, placed, this.host.actor, s.now()));
+    const record = flowRecord(plan, placed, this.host.actor, s.now());
+    s.put(keys.flow(plan.id), record);
+    s.audit(this.host.actor, 'flow.create', plan.id, null, { title: record.title, pageId: record.pageId, screens: record.uids });
     this.host.post({ type: 'notice', message: [`${COPY.flow007} ${plan.title}`, ...placed.notes].join(' ') });
+  }
+
+  // 캔버스에서 그룹을 지운 플로우의 기록을 뺀다.
+  private forgetFlow(flow: FlowRecord): void {
+    this.store.remove(keys.flow(flow.id));
+    this.store.audit(this.host.actor, 'flow.remove', flow.id, { title: flow.title, pageId: flow.pageId }, null);
+  }
+
+  // 플로우 목록. check: 캔버스에서 그룹이 지워진 플로우를 찾아 기록에서 뺀다(그 플로우가 있는 페이지를 불러온다).
+  private async postFlows(check = true): Promise<void> {
+    const s = this.store;
+    s.reload();
+    if (check && this.host.flowNode) {
+      for (const flow of [...s.state.flows.values()]) if (!(await this.host.flowNode(flow))) this.forgetFlow(flow);
+    }
+    this.host.post({ type: 'flows', flows: flowList(s.state, new Map(this.host.pages().map(p => [p.id, p.name]))) });
   }
 
   // 선택 화면 확인(GUI): 원본 목록은 전체를 다시 읽고(신규 후보·복제 의심·원본 없음 판단) 지문은 고른 화면만 계산한다.
@@ -703,13 +737,14 @@ export class Controller {
   }
 
   // 캔버스에서 옮기거나 이름을 바꾼 Section을 그 플립북의 기록과 Chapter에 반영한다(플립북의 페이지·Section은 캔버스가 원본).
-  // 캔버스를 쓰므로 main.ts가 쓰기 순서에 넣어 부른다. 기록과 다른 플립북을 찾았을 때만 다시 읽는다.
-  async syncCanvasSections(): Promise<void> {
+  // 캔버스를 쓰므로 main.ts가 쓰기 순서에 넣어 부른다. 기록과 다른 플립북을 찾았을 때만 반영한다.
+  // canvas: 바로 앞 linkFlipbooks가 읽은 캔버스(다시 읽지 않는다). 없으면 다시 읽는다.
+  async syncCanvasSections(canvas?: { found: Map<string, string>; spots: Record<string, FlipbookSpot> }): Promise<void> {
     if (this.host.mode !== 'UI' || !this.canvasSectionsPending) return;
     this.canvasSectionsPending = false;
     let delivered = false;
     try {
-      const changed = await this.followCanvas();
+      const changed = await this.followCanvas(canvas);
       if (!changed.length) return;
       // 바뀐 것은 Section뿐이므로 Chapter만 다시 쓴다. Host가 지원하지 않으면 플립북 전체를 반영한다.
       const s = this.store.state;
@@ -742,10 +777,12 @@ export class Controller {
   }
 
   // UI Flipbook: 플립북 프레임이 캔버스에 있는지만 다시 찾는다(지문 비교 없음). 찾지 못한 플립북은 목록에 연결 끊김으로 표시한다.
-  private async linkFlipbooks(isLatest: () => boolean = () => true): Promise<void> {
-    const { found, spots } = await this.inspectFlipbooks();
-    if (!isLatest()) return;
-    this.applyLinks(found, spots);
+  // 읽은 캔버스를 돌려주어 이어지는 Section 맞추기가 다시 읽지 않게 한다.
+  private async linkFlipbooks(isLatest: () => boolean = () => true): Promise<{ found: Map<string, string>; spots: Record<string, FlipbookSpot> } | undefined> {
+    const canvas = await this.inspectFlipbooks();
+    if (!isLatest()) return undefined;
+    this.applyLinks(canvas.found, canvas.spots);
+    return canvas;
   }
 
   private async inspectFlipbooks(pageIds = this.flipbookPages()): Promise<{ found: Map<string, string>; spots: Record<string, FlipbookSpot> }> {
@@ -814,9 +851,10 @@ export class Controller {
   }
 
   // 플립북이 있는 페이지. 한 파일의 여러 페이지에 플립북을 만들 수 있다.
+  // 목록에서 삭제한 플립북만 남은 페이지는 찾을 것이 없으므로 불러오지 않는다(처음 불러오는 페이지는 시간이 오래 걸린다).
   private flipbookPages(): string[] {
     const s = this.store.state;
-    const ids = [...s.flipbooks.values()].map(fb => fb.pageId ?? s.project.flipbookPageId).filter((id): id is string => !!id);
+    const ids = [...s.flipbooks.values()].filter(fb => fb.status === 'active').map(fb => fb.pageId ?? s.project.flipbookPageId).filter((id): id is string => !!id);
     return [...new Set(ids)];
   }
 

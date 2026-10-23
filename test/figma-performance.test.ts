@@ -132,7 +132,9 @@ test('원본 프레임이 지워진 화면은 링크 없이 그리고 나머지 
   const source = m.make('FRAME', 'source');
   const linked: string[] = [];
   const live = (id: string) => m.all.find(n => n.id === id && !n.removed) ?? null;
-  Object.assign((globalThis as unknown as { figma: object }).figma, { getNodeByIdAsync: async (id: string) => live(id) });
+  // 원본 노드를 미리 찾으면 dynamic-page에서 원본 페이지를 모두 불러오므로 DATA 페이지 외에는 찾지 않는다.
+  const lookups: string[] = [];
+  Object.assign((globalThis as unknown as { figma: object }).figma, { getNodeByIdAsync: async (id: string) => { lookups.push(id); return live(id); } });
   // 실제 Figma처럼 없는 노드에 링크를 걸면 예외를 던진다.
   Node.prototype.setRangeHyperlink = (_s: number, _e: number, link: { value: string }) => {
     if (!live(link.value)) throw new Error('in setRangeHyperlink: Invalid hyperlink target node specified');
@@ -146,6 +148,7 @@ test('원본 프레임이 지워진 화면은 링크 없이 그리고 나머지 
     };
     await renderDataPage(ns, m.page.id, model);
     assert.deepEqual(linked, [source.id]);
+    assert.deepEqual(lookups.filter(id => id !== m.page.id), [], 'source frames are not looked up');
     const table = m.page.children.find(n => n.getSharedPluginData(ns, 'role') === 'data-summary')!;
     assert.equal(table.children.length, 4);
     const history = m.page.children.find(n => n.getSharedPluginData(ns, 'role') === 'data-history')!;

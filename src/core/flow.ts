@@ -3,10 +3,11 @@ import { guiScreenInfo } from './guiScreens.ts';
 import type { State } from './store.ts';
 import type { Actor, FlowRecord, GuiThumb } from './types.ts';
 
-// 플로우(2026-10-23 사용자 결정): 배포된 화면을 격자에 놓고 꺾인 화살표로 잇는 독립 프레임. UI Flipbook의 부가 기능이다.
+// 플로우(2026-10-23 사용자 결정): 배포된 화면을 격자에 놓고 꺾인 화살표로 잇는 독립 그룹. UI Flipbook의 부가 기능이다.
 // 플러그인 창에서 FigJam처럼 카드를 격자 칸에 놓고 카드 상하좌우 점을 끌어 다른 카드에 잇는다. 캔버스에는 같은 격자·경로를 그린다.
 // 화면은 레이어 복사본이 아니라 GUI 배포 때 만든 1/4 썸네일 이미지이고, 다시 배포되면 그 이미지만 바꾼다.
-// 제목·설명·조건은 빨간(#ff0000) 더미 글자 칸만 만들고 플러그인은 만든 뒤 내용을 고치지 않는다. 이력은 남기지 않는다.
+// 제목·설명·조건은 빨간 더미 글자 칸만 만들고 플러그인은 만든 뒤 내용을 고치지 않는다. 이력 행은 남기지 않고,
+// 썸네일을 맞추고 있는 플로우는 플로우 목록(2026-10-23 사용자 요청)으로 보여 준다. 캔버스에서 지운 플로우는 묻지 않고 기록에서 뺀다.
 
 export type FlowSide = 'top' | 'right' | 'bottom' | 'left';
 // key: 플러그인 창에서 카드를 구분하는 값(같은 화면을 여러 번 놓을 수 있다). r·c: 격자 칸(0부터)
@@ -25,7 +26,7 @@ export const FLOW_LAYOUT = {
   gapX: 80, gapY: 80, line: 2, arrowGap: 8, labelSize: 16, labelGap: 8, labelMargin: 8,
 };
 export const FLOW_DEFAULT_TITLE = COPY.flow001;
-// 더미 글자 바탕색. Figma 예시처럼 텍스트 채움에서 불투명도 50%를 적용한다.
+// 더미 글자 색 #ff0000. Figma 예시처럼 텍스트 채움 불투명도를 50%로 쓴다(2026-10-23 사용자 확인).
 export const FLOW_DUMMY = { r: 1, g: 0, b: 0 };
 
 const SIDES: FlowSide[] = ['top', 'right', 'bottom', 'left'];
@@ -227,4 +228,22 @@ export function flowUpdates(state: State, uids: Set<string>): { flows: FlowRecor
   }
   const wanted = new Set(thumbs.map(t => t.uid));
   return { flows: [...state.flows.values()].filter(f => f.uids.some(uid => wanted.has(uid))), thumbs };
+}
+
+// ── 플로우 목록 ───────────────────────────────────────
+
+// 썸네일을 맞추고 있는 플로우. 최근에 만든 것부터. 화면은 플로우에 넣은 순서이고, 기록에서 사라진 화면은 고정 ID로 보인다.
+export interface FlowListItem {
+  id: string; title: string; pageName: string; createdAt: number; actor: Actor;
+  screens: { uid: string; code: string; name: string }[];
+}
+export function flowList(state: State, pageNames: Map<string, string>): FlowListItem[] {
+  return [...state.flows.values()].sort((a, b) => b.createdAt - a.createdAt).map(flow => ({
+    id: flow.id, title: flow.title, pageName: pageNames.get(flow.pageId) ?? '', createdAt: flow.createdAt, actor: flow.actor,
+    screens: flow.uids.map(uid => {
+      const screen = state.screens.get(uid);
+      const info = screen ? guiScreenInfo(state, screen) : null;
+      return { uid, code: info?.code ?? '', name: info?.name ?? uid };
+    }),
+  }));
 }

@@ -487,15 +487,19 @@ function pageFlipbooks(ns: string, page: PageNode): Map<string, FrameNode> {
   return pickFlipbookFrames(ns, flipbookCandidates(ns, page));
 }
 
+// 여러 페이지를 한꺼번에 불러온다(받은 순서 유지, 없는 페이지는 뺀다). Figma를 다시 켠 뒤 처음 열 때는 페이지마다 불러오는 시간이
+// 길어 하나씩 기다리지 않는다.
+async function loadPages(pageIds: string[]): Promise<PageNode[]> {
+  const nodes = await Promise.all([...new Set(pageIds)].map(id => figma.getNodeByIdAsync(id)));
+  const pages = nodes.filter((n): n is PageNode => n?.type === 'PAGE');
+  await Promise.all(pages.map(page => page.loadAsync()));
+  return pages;
+}
+
 // 여러 페이지의 플립북 ID → 플립북 프레임. 다른 플립북 페이지에 붙여 넣은 복사본도 함께 견준다.
 export async function listFlipbooks(ns: string, pageIds: string[]): Promise<Map<string, string>> {
   const frames: FrameNode[] = [];
-  for (const pageId of new Set(pageIds)) {
-    const page = await figma.getNodeByIdAsync(pageId);
-    if (!page || page.type !== 'PAGE') continue;
-    await page.loadAsync();
-    frames.push(...flipbookCandidates(ns, page));
-  }
+  for (const page of await loadPages(pageIds)) frames.push(...flipbookCandidates(ns, page));
   return new Map([...pickFlipbookFrames(ns, frames)].map(([id, frame]) => [id, frame.id]));
 }
 
@@ -528,10 +532,7 @@ function pageFlipbookSpots(ns: string, page: PageNode, spots: Record<string, Fli
 export async function inspectFlipbooks(ns: string, pageIds: string[]): Promise<{ found: Map<string, string>; spots: Record<string, FlipbookSpot> }> {
   const frames: FrameNode[] = [];
   const spots: Record<string, FlipbookSpot> = {};
-  for (const pageId of new Set(pageIds)) {
-    const page = await figma.getNodeByIdAsync(pageId);
-    if (!page || page.type !== 'PAGE') continue;
-    await page.loadAsync();
+  for (const page of await loadPages(pageIds)) {
     const candidates = flipbookCandidates(ns, page);
     frames.push(...candidates);
     pageFlipbookSpots(ns, page, spots, candidates);
@@ -543,12 +544,7 @@ export async function inspectFlipbooks(ns: string, pageIds: string[]): Promise<{
 // Section은 위→아래(같으면 왼쪽부터), Section 안은 놓인 순서(위 행부터, 행 안에서는 왼쪽부터)다.
 export async function flipbookSpots(ns: string, pageIds: string[]): Promise<Record<string, FlipbookSpot>> {
   const spots: Record<string, FlipbookSpot> = {};
-  for (const pageId of new Set(pageIds)) {
-    const page = await figma.getNodeByIdAsync(pageId);
-    if (!page || page.type !== 'PAGE') continue;
-    await page.loadAsync();
-    pageFlipbookSpots(ns, page, spots);
-  }
+  for (const page of await loadPages(pageIds)) pageFlipbookSpots(ns, page, spots);
   return spots;
 }
 

@@ -32,8 +32,6 @@ export interface Host extends FingerprintReader {
   thumbnailBytes(hash: string): Promise<Uint8Array | null>;
   renameThumbnails(labels: Map<string, string>): Promise<void>;
   canvasPositions(nodeIds: string[]): Promise<Map<string, CanvasPosition>>;
-  // 원본 화면의 현재 Section. 플로우 목록에서 페이지·Section별로 묶는다.
-  screenSections?(sources: { nodeId: string; pageId: string }[]): Promise<Map<string, { id: string; name: string; order: number } | null>>;
   ensureDataPage(pageId: string | null): Promise<string>;
   clearMarkers(): Promise<number>;
   renderData(pageId: string, model: DataModel, rebuild?: boolean): Promise<void>;
@@ -58,8 +56,10 @@ export interface Host extends FingerprintReader {
   // 지금 선택에서 불러오기·적용할 대상(플립북의 Description, 텍스트 레이어 하나, 없음, 오류)
   selectionTarget?(): SelectionTarget;
   writeSelection(paragraphs: RichParagraph[]): Promise<SelectionWrite>;
-  // 플로우: 지금 보고 있는 페이지에 프레임을 만든다. notes: 썸네일을 찾지 못한 화면 등 알릴 내용
+  // 플로우: 지금 보고 있는 페이지에 그룹을 만든다. notes: 썸네일을 찾지 못한 화면 등 알릴 내용
   createFlow?(plan: FlowPlan): Promise<{ nodeId: string; pageId: string; notes: string[] }>;
-  // 다시 배포된 화면의 썸네일만 바꾼다. 프레임을 찾지 못하면 null
+  // 다시 배포된 화면의 썸네일만 바꾼다. 플로우 그룹을 찾지 못하면 null
   updateFlow?(flow: FlowRecord, thumbs: FlowThumb[]): Promise<number | null>;
+  // 플로우 그룹(uid가 있으면 그 화면 칸, 없으면 그룹)의 노드 ID. 그룹을 찾지 못하면 null
+  flowNode?(flow: FlowRecord, uid?: string): Promise<string | null>;
 }

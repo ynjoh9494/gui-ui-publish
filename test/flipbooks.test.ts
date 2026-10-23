@@ -18,6 +18,7 @@ import { screenRoots } from '../src/figma/host.ts';
 import { sortScreenItems } from '../src/ui/app.ts';
 import { guiState, uiListState } from '../src/ui/estimate.ts';
 import { fromWire, toUiWire, type ToUi } from '../src/core/wire.ts';
+import { COPY } from '../src/core/copy.ts';
 
 const actor = { id: 'u', name: 'Designer' };
 const tag = { id: 't', name: '변경', color: '#00ff00', colorKey: 'Green' };
@@ -977,6 +978,14 @@ test('캔버스에서 바꾼 Section 이름을 플러그인을 열 때 그 Secti
   assert.equal(controller.store.state.flipbooks.get('fb2')?.category.name, 'EPG');
   assert.deepEqual(chapters, [['fb1', '홈 메인']], 'only the renamed Section is delivered again (Chapter)');
   assert.equal(posted.some(m => m.type === 'error'), false);
+  // 열 때 플립북 페이지를 불러오는 동안은 Figma가 입력을 받지 못하므로 「불러오는 중」을 띄우고, 끝나면 닫는다.
+  const loading = posted.findIndex(m => m.type === 'busy' && m.label === COPY.controller136), synced = posted.findIndex(m => m.type === 'listSynced');
+  assert.ok(loading >= 0 && synced > loading, 'loading is shown while the flipbook pages are read');
+  const busy = posted.filter((m): m is Extract<ToUi, { type: 'busy' }> => m.type === 'busy');
+  assert.equal(busy[busy.length - 1].label, null, 'the loading indicator is closed afterwards');
+  const ready = posted.findIndex(m => m.type === 'startupReady');
+  const busyDone = posted.reduce((index, m, i) => m.type === 'busy' && m.label === null ? i : index, -1);
+  assert.ok(ready > synced && ready > busyDone, 'the startup screen closes after list and Section synchronization');
 
   chapters.length = 0;
   await controller.canvasSelectionChanged().catch(() => {});
@@ -985,4 +994,20 @@ test('캔버스에서 바꾼 Section 이름을 플러그인을 열 때 그 Secti
   canvasName = '  ';
   await controller.handle({ type: 'ready' });
   assert.equal(controller.store.state.flipbooks.get('fb1')?.category.name, '홈 메인', 'an empty canvas name is not followed');
+});
+
+test('첫 플립북 동기화가 실패해도 대기 화면을 닫고 오류를 알린다', async () => {
+  const posted: ToUi[] = [];
+  const host = {
+    kv: memoryKV(), mode: 'UI', actor,
+    post: (message: ToUi) => posted.push(message),
+    pages: () => [{ id: 'ui', name: 'UI' }],
+    templateIssues: async () => [],
+    inspectFlipbooks: async () => { throw new Error('페이지 읽기 실패'); },
+  } as unknown as Host;
+  await new Controller(host).handle({ type: 'ready' });
+  const error = posted.findIndex(m => m.type === 'error');
+  const ready = posted.findIndex(m => m.type === 'startupReady');
+  assert.ok(error >= 0 && ready > error, '오류를 알린 뒤 대기 화면을 닫는다');
+  assert.ok(posted.slice(error, ready).some(m => m.type === 'busy' && m.label === null));
 });

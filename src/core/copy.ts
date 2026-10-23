@@ -394,6 +394,7 @@ export const COPY = {
   uiApp342: '목록 새로고침',
   uiApp343: '동기화 중',
   uiApp344: '동기화',
+  uiApp345: '플립북을 동기화하고 있습니다',
   // 튜토리얼 — src/ui/tutorial.ts. 단계마다 말풍선 제목·설명 순서다.
   uiTutorial001: '도움말',
   uiTutorial002: '튜토리얼 종료',
@@ -606,7 +607,7 @@ export const COPY = {
   coreFlipbooks011: '섹션 이름을 입력하세요.',
   coreFlipbooks012: '설정에서 지정한 플립북 페이지로만 옮길 수 있습니다.',
   coreFlipbooks013: '(섹션 없음)',
-  coreFlipbooks014: '「(섹션 없음)」에는 만들거나 옮길 수 없습니다. 캔버스에서 Section 밖으로 옮기세요.',
+  coreFlipbooks014: '「(섹션 없음)」에는 만들거나 옮길 수 없습니다. 캔버스에서 섹션 밖으로 옮기세요.',
   // 실행 중 안내·결과 알림 — src/controller.ts
   controller001: '최종 확인 준비 중', // 56
   controller002: '배포 중', // 56
@@ -727,14 +728,19 @@ export const COPY = {
   flow036: '찾는 화면이 없습니다.',
   flow037: '연결: 카드 가장자리 점을 다른 카드로 드래그',
   flow046: '이동: 카드 드래그 · 삭제: 선택 후 Delete',
-  flow038: '화살표',
-  flow039: '원본 페이지 없음',
-  flow040: '홈 화면',
   flow041: 'Title',
   flow042: 'Caption',
   flow043: 'Action',
   flow044: 'Connector',
   flow045: 'Flow Title',
+  // 플로우 목록 — 썸네일을 맞추고 있는 플로우
+  flow047: '만든 플로우',
+  flow048: '캔버스에서 삭제된 플로우입니다. 목록에서 제거했습니다.',
+  flow049: '만든 플로우가 없습니다.',
+  flow050: 'GUI 재배포 시 아래 플로우의 썸네일이 업데이트됩니다. 캔버스에서 삭제된 플로우는 목록에서 제거됩니다.',
+  flow051: '닫기',
+  flow052: '화면',
+  flow053: '개',
   // 텍스트 편집 — src/figma/richText.ts
   figmaText001: "플립북이나 텍스트를 선택하세요.",
   figmaText002: "선택한 텍스트에 없는 글꼴이 있습니다. 글꼴을 바꾼 뒤 다시 시도하세요.",

@@ -151,9 +151,6 @@ export function createDemo(options: DemoOptions): Demo {
       const wanted = new Set(nodeIds);
       return new Map(frames.flatMap((f, i) => wanted.has(f.nodeId) ? [[f.nodeId, { page: 0, x: 0, y: i * 100, height: 50 }] as const] : []));
     },
-    async screenSections(sources) {
-      return new Map(sources.map(source => [source.nodeId, { id: 'demo-home', name: COPY.flow040, order: 0 }]));
-    },
     async clearMarkers() {
       const n = frames.filter(f => f.tag).length + flipbooks.size + (dataPageMade ? 1 : 0);
       frames.forEach(f => (f.tag = null));
@@ -261,6 +258,10 @@ export function createDemo(options: DemoOptions): Demo {
       for (const t of latest) if (versions.has(t.uid) && versions.get(t.uid)! < t.version) { versions.set(t.uid, t.version); n++; }
       if (n) log(`${COPY.flow001} ${flow.title}: ${n}`);
       return n;
+    },
+    async flowNode(flow, uid) {
+      if (!flows.has(flow.nodeId)) return null;
+      return uid ? `${flow.nodeId}/${uid}` : flow.nodeId;
     },
   };
 

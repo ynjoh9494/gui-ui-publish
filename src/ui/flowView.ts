@@ -1,6 +1,7 @@
 import { COPY } from '../core/copy.ts';
-import { FLOW_DEFAULT_TITLE, routeLink, sidePoint, type FlowCard, type FlowGrid, type FlowLink, type FlowRequest, type FlowSide } from '../core/flow.ts';
+import { FLOW_DEFAULT_TITLE, routeLink, sidePoint, type FlowCard, type FlowGrid, type FlowLink, type FlowListItem, type FlowRequest, type FlowSide } from '../core/flow.ts';
 import type { GuiScreenInfo } from '../core/guiScreens.ts';
+import { esc } from './html.ts';
 
 // 플로우 탭(2026-10-23 사용자 결정): 배포된 화면을 격자에 카드로 놓고 FigJam처럼 잇는다. 텍스트 편집처럼 부가 기능이다.
 // - 왼쪽 배포 화면을 누르면 첫 빈 칸에, 끌어 놓으면 그 칸에 카드를 놓는다(같은 화면을 여러 번 놓을 수 있다).
@@ -9,12 +10,22 @@ import type { GuiScreenInfo } from '../core/guiScreens.ts';
 // - 고른 카드·화살표는 Delete(Backspace)로 지운다. 라벨은 없다(글은 캔버스의 빨간 더미 글자 칸에 쓴다).
 // - 판은 끝없는 격자이고 Figma 캔버스처럼 움직인다: 가운데 버튼·Space+끌기, 휠(Shift+휠은 가로)·트랙패드. 스크롤 막대는 없다.
 // 화살표 경로는 캔버스와 같은 규칙(core/flow.ts routeLink)이라 빈 칸 직선 통과를 포함해 창에서 본 모양 그대로 그려진다. 내용은 탭을 오가도 남는다(플러그인을 닫으면 지워짐).
+// - 머리의 이력 아이콘은 만든 플로우 목록(2026-10-23 사용자 요청: 무엇이 동기화되는지 보이게)을 모달로 연다. 플로우·화면을 누르면 캔버스의 그 자리로 간다.
 
 export interface FlowView {
   render(open: boolean): void;
   setScreens(screens: GuiScreenInfo[]): void;
+  // 만든 플로우 목록(본체가 캔버스에서 지워진 플로우를 뺀 결과)
+  setFlows(flows: FlowListItem[]): void;
   // 플로우 탭의 버튼(data-action="flow-…"). 처리했으면 true
   handle(action: string, el: HTMLElement): boolean;
+}
+
+export interface FlowActions {
+  create(request: FlowRequest): void;
+  list(): void;
+  reveal(flowId: string, uid?: string): void;
+  time(ms: number): string;
 }
 
 // 창 안 격자: 카드 크기와 칸 사이 통로. 라벨이 없으므로 통로는 화살표가 지날 만큼만 둔다(2026-10-23 사용자 요청: 이전 56·44의 절반).
@@ -27,11 +38,9 @@ const HEAD = 5;
 const DRAG_START = 4;
 
 const X_ICON = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>';
+// 이력(시계와 되감기 화살표) 아이콘: 만든 플로우 목록
+const HISTORY_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>';
 const SIDES: FlowSide[] = ['top', 'right', 'bottom', 'left'];
-
-function esc(value: unknown): string {
-  return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
-}
 
 const pathData = (points: [number, number][]) => points.map((p, i) => `${i ? 'L' : 'M'}${p[0]} ${p[1]}`).join(' ');
 const linkId = (l: FlowLink) => `${l.from}:${l.fromSide}>${l.to}:${l.toSide}`;
@@ -55,8 +64,11 @@ type Drag =
   | { kind: 'card'; key: string; x: number; y: number; moved: boolean }
   | { kind: 'link'; from: string; side: FlowSide; moved: boolean };
 
-export function flowView(root: HTMLElement, send: (request: FlowRequest) => void): FlowView {
+export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
   let screens: GuiScreenInfo[] = [];
+  // 만든 플로우 목록 모달. null이면 본체 응답을 기다리는 중이다.
+  let listOpen = false;
+  let flowItems: FlowListItem[] | null = null;
   let cards: FlowCard[] = [];
   let links: FlowLink[] = [];
   let selected: { kind: 'card' | 'link'; id: string } | null = null;
@@ -162,16 +174,67 @@ export function flowView(root: HTMLElement, send: (request: FlowRequest) => void
           <button class="flow-card-remove" data-remove="${esc(card.key)}" title="${COPY.flow029}" aria-label="${COPY.flow029}">${X_ICON}</button>
           ${SIDES.map(side => `<span class="flow-dot" data-side="${side}"></span>`).join('')}</div>`;
     }).join('');
-    // 화살표 SVG는 카드·경로를 모두 덮는 범위(음수 칸 포함)로 둔다.
-    const xs = [0, ...cards.flatMap(c => [cellX(c.c) - GAP.x, cellX(c.c) + PITCH.x]), ...(preview ?? []).map(p => p[0])];
-    const ys = [0, ...cards.flatMap(c => [cellY(c.r) - GAP.y, cellY(c.r) + PITCH.y]), ...(preview ?? []).map(p => p[1])];
-    const box = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs) + 1, h: Math.max(...ys) - Math.min(...ys) + 1 };
+    const box = linksBox();
     // 화살촉은 선 굵기와 관계없이 같은 크기(userSpaceOnUse)로 그린다.
     const marker = (id: string, on: boolean) => `<marker id="${id}" viewBox="0 0 10 10" refX="10" refY="5" markerUnits="userSpaceOnUse" markerWidth="${HEAD}" markerHeight="${HEAD}" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="flow-arrowhead${on ? ' on' : ''}"/></marker>`;
     el.innerHTML = `<div class="flow-grid${drag?.kind === 'link' ? ' linking' : ''}">${drop}
       <svg class="flow-links" style="left:${box.x}px;top:${box.y}px" width="${box.w}" height="${box.h}" viewBox="${box.x} ${box.y} ${box.w} ${box.h}"><defs>${marker('flow-head', false)}${marker('flow-head-on', true)}</defs>${paths}${ghost}</svg>${cardHtml}</div>`;
     applyPan();
     paintActions();
+  }
+
+  // 화살표 SVG는 카드·경로를 모두 덮는 범위(음수 칸 포함)로 둔다.
+  function linksBox(): { x: number; y: number; w: number; h: number } {
+    const xs = [0, ...cards.flatMap(c => [cellX(c.c) - GAP.x, cellX(c.c) + PITCH.x]), ...(preview ?? []).map(p => p[0])];
+    const ys = [0, ...cards.flatMap(c => [cellY(c.r) - GAP.y, cellY(c.r) + PITCH.y]), ...(preview ?? []).map(p => p[1])];
+    return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs) + 1, h: Math.max(...ys) - Math.min(...ys) + 1 };
+  }
+
+  // 잇는 중에는 포인터가 움직일 때마다 미리보기 경로와 SVG 범위만 바꾼다(판 전체를 다시 그리지 않는다).
+  function paintPreview() {
+    const svg = board()?.querySelector<SVGSVGElement>('.flow-links');
+    if (!svg) { paintBoard(); return; }
+    let path = svg.querySelector<SVGPathElement>('.flow-link.preview');
+    if (!preview) { path?.remove(); return; }
+    if (!path) {
+      path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('class', 'flow-link preview');
+      path.setAttribute('marker-end', 'url(#flow-head)');
+      svg.appendChild(path);
+    }
+    path.setAttribute('d', pathData(preview));
+    const box = linksBox();
+    svg.style.left = `${box.x}px`;
+    svg.style.top = `${box.y}px`;
+    svg.setAttribute('width', String(box.w));
+    svg.setAttribute('height', String(box.h));
+    svg.setAttribute('viewBox', `${box.x} ${box.y} ${box.w} ${box.h}`);
+  }
+
+  function flowItem(f: FlowListItem): string {
+    const meta = [f.pageName, actions.time(f.createdAt), f.actor.name, `${COPY.flow052} ${f.screens.length}${COPY.flow053}`].filter(Boolean).map(esc).join(' · ');
+    const chips = f.screens.map(s => `<button class="flow-list-screen" data-action="flow-reveal" data-flow="${esc(f.id)}" data-uid="${esc(s.uid)}" title="${esc(s.name)}">${s.code ? `<span class="id-tag">${esc(s.code)}</span>` : ''}<span class="label">${esc(s.name)}</span></button>`).join('');
+    return `<li><button class="link flow-list-title" data-action="flow-reveal" data-flow="${esc(f.id)}">${esc(f.title)}</button><small>${meta}</small><div class="flow-list-screens">${chips}</div></li>`;
+  }
+
+  function paintList() {
+    let overlay = root.querySelector<HTMLElement>('.flow-list-overlay');
+    if (!listOpen) { overlay?.remove(); return; }
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.className = 'overlay flow-list-overlay';
+      root.appendChild(overlay);
+    }
+    const body = !flowItems ? `<p class="note">${COPY.uiApp001}</p>`
+      : flowItems.length ? `<ul class="flow-list">${flowItems.map(flowItem).join('')}</ul>` : `<p class="empty">${COPY.flow049}</p>`;
+    overlay.innerHTML = `<div class="dialog flow-list-dialog" role="dialog" aria-modal="true" aria-label="${COPY.flow047}">
+      <h2>${COPY.flow047}</h2><p class="note">${COPY.flow050}</p>${body}
+      <div class="dialog-actions"><button data-action="flow-list-close">${COPY.flow051}</button></div></div>`;
+  }
+
+  function closeList() {
+    listOpen = false;
+    paintList();
   }
 
   function paintActions() {
@@ -265,7 +328,7 @@ export function flowView(root: HTMLElement, send: (request: FlowRequest) => void
       const dot = under?.closest<HTMLElement>('.flow-dot')?.dataset.side as FlowSide | undefined;
       const at = boardPoint(ev.clientX, ev.clientY);
       preview = b ? routeLink(GRID, a, drag.side, b, dot ?? facingSide(a, b), cards) : at ? [sidePoint(GRID, a, drag.side), at] : null;
-      paintBoard();
+      paintPreview();
       return;
     }
     if (!drag.moved && Math.hypot(ev.clientX - drag.x, ev.clientY - drag.y) < DRAG_START) return;
@@ -311,7 +374,13 @@ export function flowView(root: HTMLElement, send: (request: FlowRequest) => void
   }
 
   document.addEventListener('keydown', ev => {
-    if (!view() || typing()) return;
+    if (!view()) return;
+    // 목록 모달이 열려 있으면 Esc로 닫고, 판의 카드·화살표는 지우지 않는다.
+    if (listOpen) {
+      if (ev.key === 'Escape') { ev.preventDefault(); closeList(); }
+      return;
+    }
+    if (typing()) return;
     // Space: 판 움직이기 준비. 누르는 동안 손 모양 커서를 보여 준다.
     if (ev.code === 'Space') {
       ev.preventDefault();
@@ -338,7 +407,7 @@ export function flowView(root: HTMLElement, send: (request: FlowRequest) => void
       </section>
       <section class="flow-order">
         <div class="flow-head"><div class="flow-head-title"><strong>${COPY.flow023}</strong><p class="note">${COPY.flow034}</p></div>
-          <div class="flow-actions"><button data-action="flow-clear">${COPY.flow033}</button><button class="primary" data-action="flow-create">${COPY.flow032}</button></div></div>
+          <div class="flow-actions"><button class="icon-button" data-action="flow-list" title="${COPY.flow047}" aria-label="${COPY.flow047}">${HISTORY_ICON}</button><button data-action="flow-clear">${COPY.flow033}</button><button class="primary" data-action="flow-create">${COPY.flow032}</button></div></div>
         <div class="flow-form"><label>${COPY.flow030}<input data-flow="title" value="${esc(title)}" placeholder="${esc(FLOW_DEFAULT_TITLE)}"></label></div>
         <div class="flow-board"></div>
         <p class="note flow-hint">${COPY.flow024}<br>${COPY.flow037}<br>${COPY.flow046}</p>
@@ -380,7 +449,7 @@ export function flowView(root: HTMLElement, send: (request: FlowRequest) => void
     render(open) {
       root.classList.toggle('flowing-mode', open);
       let el = view();
-      if (!open) { el?.remove(); return; }
+      if (!open) { el?.remove(); if (listOpen) closeList(); return; }
       // 이미 열려 있으면 다시 그리지 않는다(입력 중인 커서 유지).
       if (el) return;
       el = document.createElement('div');
@@ -393,11 +462,26 @@ export function flowView(root: HTMLElement, send: (request: FlowRequest) => void
       paintScreens();
       paintBoard();
     },
-    handle(action) {
+    setFlows(next) {
+      flowItems = next;
+      paintList();
+    },
+    handle(action, el) {
       switch (action) {
         case 'flow-clear': cards = []; links = []; selected = null; paintBoard(); return true;
         case 'flow-create':
-          if (cards.length >= 2) send({ title, cards: cards.map(c => ({ ...c })), links: links.map(l => ({ ...l })) });
+          if (cards.length >= 2) actions.create({ title, cards: cards.map(c => ({ ...c })), links: links.map(l => ({ ...l })) });
+          return true;
+        case 'flow-list':
+          listOpen = true;
+          flowItems = null;
+          paintList();
+          root.querySelector<HTMLElement>('.flow-list-dialog .dialog-actions button')?.focus();
+          actions.list();
+          return true;
+        case 'flow-list-close': closeList(); return true;
+        case 'flow-reveal':
+          if (el.dataset.flow) actions.reveal(el.dataset.flow, el.dataset.uid);
           return true;
       }
       return false;

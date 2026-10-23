@@ -2,13 +2,10 @@ import { COPY, GUI_STATE_HINT, GUI_STATE_LABEL, UI_STATE_HINT, UI_STATE_LABEL, t
 import { changeDetected, ignoreBlock, UI_ESTIMATE_LABEL, type Entry, type Estimate } from '../core/compare.ts';
 import { isNotScreen, isPrevious, type Draft } from '../core/drafts.ts';
 import type { State } from '../core/store.ts';
-
-function escape(value: string): string {
-  return value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
-}
+import { esc } from './html.ts';
 
 function icon(className: string, label: string, body: string): string {
-  const tooltip = escape(label);
+  const tooltip = esc(label);
   return `<span class="estimate-icon ${className}" role="img" tabindex="0" title="${tooltip}" aria-label="${tooltip}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg></span>`;
 }
 
