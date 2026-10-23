@@ -186,27 +186,40 @@ test('목록에서 옮긴 기존 플립북을 목록 순서대로 캔버스에�
   assert.deepEqual([done.ids, done.moved], [[], ['fb2', 'fb3']]);
 });
 
-test('캔버스 위치는 페이지의 플러그인 Section을 위에서부터, Section 안 플립북을 놓인 순서대로 센다', async () => {
+test('캔버스 위치는 페이지의 루트 Section을 위에서부터, 안의 Section은 없는 것으로 보고 루트 Section 기준으로 센다', async () => {
   const { flipbookSpots } = await import('../src/figma/flipbook.ts');
-  const data = (values: Record<string, string>) => (_ns: string, key: string) => values[key] ?? '';
-  const frame = (id: string, flipbook: string, x: number, y: number) => ({ id, type: 'FRAME', x, y,
-    getSharedPluginData: data({ flipbookOf: flipbook }), setSharedPluginData: () => {} });
-  const section = (key: string, y: number, children: unknown[], name = key) => ({ type: 'SECTION', name, x: 0, y, children, getSharedPluginData: data({ categoryOf: key }) });
+  const node = (values: Record<string, string>) => ({
+    getSharedPluginData: (_ns: string, key: string) => values[key] ?? '',
+    setSharedPluginData: (_ns: string, key: string, value: string) => { values[key] = value; },
+  });
+  const frame = (id: string, flipbook: string, x: number, y: number) => ({ id, type: 'FRAME', x, y, ...node({ flipbookOf: flipbook }) });
+  const section = (key: string, x: number, y: number, children: unknown[], name = key) => ({ type: 'SECTION', name, x, y, children, ...node(key ? { categoryOf: key } : {}) });
+  const drawn = section('', 0, 9000, [frame('9:1', 'fb9', 3000, 0), section('', 0, 1000, [frame('9:2', 'fb8', 100, 0)])], '직접 만든 Section');
+  const copy = section('home', 0, 7000, [frame('7:1', 'fb7', 0, 0)], '홈 복사본');
+  const empty = section('', 0, 20000, [], '빈 Section');
   const page = {
-    type: 'PAGE', loadAsync: async () => {},
+    id: 'p', type: 'PAGE', loadAsync: async () => {},
     children: [
-      section('home', 5000, [frame('2:2', 'fb2', 900, 300), frame('2:1', 'fb1', 300, 300), frame('2:3', 'fb3', 300, 1200)], '홈 화면'),
-      section('section:banner', 0, [frame('1:1', 'fb4', 300, 300)]),
-      // 사용자가 직접 만든 Section과 그 안의 프레임은 세지 않는다.
-      { type: 'SECTION', x: 0, y: 9000, children: [frame('9:9', 'fb9', 0, 0)], getSharedPluginData: data({}) },
+      // 홈 Section 안에 사용자가 만든 Section(안쪽 기준 (0, 0)이 루트 기준 (0, 900))
+      section('home', 0, 5000, [frame('2:2', 'fb2', 900, 300), frame('2:1', 'fb1', 300, 300), section('', 0, 900, [frame('2:3', 'fb3', 300, 300)])], '홈 화면'),
+      section('section:banner', 0, 0, [frame('1:1', 'fb4', 300, 300)]),
+      drawn, copy, empty,
     ],
-    findAllWithCriteria() { return this.children.flatMap((s: any) => s.children as any[]).filter(n => n.type === 'FRAME' && n.getSharedPluginData('guiuipublish', 'flipbookOf')); },
   };
   (globalThis as unknown as { figma: unknown }).figma = { getNodeByIdAsync: async (id: string) => (id === 'p' ? page : null) };
-  assert.deepEqual(await flipbookSpots('guiuipublish', ['p', 'missing']), {
-    '1:1': { section: 'section:banner', sectionName: 'section:banner', sectionIndex: 0, index: 0 },
-    '2:1': { section: 'home', sectionName: '홈 화면', sectionIndex: 1, index: 0 },
-    '2:2': { section: 'home', sectionName: '홈 화면', sectionIndex: 1, index: 1 },
-    '2:3': { section: 'home', sectionName: '홈 화면', sectionIndex: 1, index: 2 },
+  const spots = await flipbookSpots('guiuipublish', ['p', 'missing']);
+  const drawnKey = drawn.getSharedPluginData('guiuipublish', 'categoryOf');
+  const copyKey = copy.getSharedPluginData('guiuipublish', 'categoryOf');
+  assert.match(drawnKey, /^section:/, '플립북이 든 직접 만든 Section에 표식을 붙인다');
+  assert.ok(copyKey.startsWith('section:') && copyKey !== drawnKey, '같은 키의 아래쪽 Section(복제본)은 새 키를 받는다');
+  assert.equal(empty.getSharedPluginData('guiuipublish', 'categoryOf'), '', '플립북이 없는 Section은 그대로 둔다');
+  assert.deepEqual(spots, {
+    '1:1': { pageId: 'p', section: 'section:banner', sectionName: 'section:banner', sectionIndex: 0, index: 0 },
+    '2:1': { pageId: 'p', section: 'home', sectionName: '홈 화면', sectionIndex: 1, index: 0 },
+    '2:2': { pageId: 'p', section: 'home', sectionName: '홈 화면', sectionIndex: 1, index: 1 },
+    '2:3': { pageId: 'p', section: 'home', sectionName: '홈 화면', sectionIndex: 1, index: 2 },
+    '7:1': { pageId: 'p', section: copyKey, sectionName: '홈 복사본', sectionIndex: 2, index: 0 },
+    '9:1': { pageId: 'p', section: drawnKey, sectionName: '직접 만든 Section', sectionIndex: 3, index: 0 },
+    '9:2': { pageId: 'p', section: drawnKey, sectionName: '직접 만든 Section', sectionIndex: 3, index: 1 },
   });
 });

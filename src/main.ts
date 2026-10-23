@@ -27,8 +27,8 @@ figma.on('selectionchange', () => {
       if (seq !== selectionSeq) return;
       return controller.canvasSelectionChanged();
     }).then(() => {
-      // 캔버스에서 바꾼 Section 이름은 기록·Chapter를 바꾸므로 다른 쓰기와 겹치지 않게 쓰기 순서에 넣는다.
-      writeQueue = writeQueue.then(() => controller.syncSectionNames(), () => controller.syncSectionNames());
+      // 캔버스에서 옮기거나 이름을 바꾼 Section은 기록·Chapter를 바꾸므로 다른 쓰기와 겹치지 않게 쓰기 순서에 넣는다.
+      writeQueue = writeQueue.then(() => controller.syncCanvasSections(), () => controller.syncCanvasSections());
     }).catch(error => {
       figma.ui.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) });
     });

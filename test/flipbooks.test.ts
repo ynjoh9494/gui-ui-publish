@@ -843,6 +843,43 @@ test('새 플립북의 기본 Section은 그 페이지에 같은 카테고리 Se
   assert.equal(fresh.category.name, '홈', 'a page without that Section starts from the category name');
 });
 
+test('캔버스에서 다른 Section·페이지로 옮긴 플립북은 기록이 캔버스를 따라가고, 프레임을 원래 Section으로 되돌리지 않는다', async () => {
+  const store = new Store(memoryKV());
+  store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['ui', 'ui2'], flipbookPageId: 'ui' });
+  let n = 0;
+  for (const fb of planFlipbooks({ pageId: 'ui', rows: [row([], false, 'A'), row([], false, 'B'), row([], false, 'C')] }, new Map(), actor, 1000, () => `fb${++n}`)) {
+    store.put(keys.flipbook(fb.id), { ...fb, category: fb.id === 'fb3' ? { key: 'epg', name: 'EPG', order: 2 } : { key: 'home', name: '홈', order: 1 } });
+  }
+  const synced: [string, string, string, string][] = [];
+  const host = {
+    kv: store.kv, mode: 'UI', actor, post: () => {},
+    pages: () => [{ id: 'ui', name: 'UI' }, { id: 'ui2', name: 'UI 2' }],
+    templateIssues: async () => [],
+    inspectFlipbooks: async () => ({
+      found: new Map([['fb1', '1:1'], ['fb2', '1:2'], ['fb3', '1:3']]),
+      spots: {
+        '1:1': { pageId: 'ui', section: 'home', sectionName: '홈', sectionIndex: 0, index: 0 },
+        // fb2: 같은 페이지의 EPG Section으로, fb3: 다른 페이지에 새로 그린 Section으로 옮겼다.
+        '1:2': { pageId: 'ui', section: 'epg', sectionName: 'EPG', sectionIndex: 1, index: 1 },
+        '1:3': { pageId: 'ui2', section: 'section:new', sectionName: '새 묶음', sectionIndex: 0, index: 0 },
+      },
+    }),
+    listFlipbooks: async () => new Map(),
+    syncFlipbook: async (settings: { pageId: string }, view: { flipbookId: string; category: { key: string; name: string } }) => {
+      synced.push([view.flipbookId, settings.pageId, view.category.key, view.category.name]);
+      return { nodeId: '1:0', notes: [] };
+    },
+    ensureDataPage: async () => 'data', renderData: async () => {},
+  } as unknown as Host;
+  const controller = new Controller(host);
+  await controller.handle({ type: 'ready' });
+  const fb2 = controller.store.state.flipbooks.get('fb2')!;
+  const fb3 = controller.store.state.flipbooks.get('fb3')!;
+  assert.deepEqual([fb2.pageId, fb2.category], ['ui', { key: 'epg', name: 'EPG', order: 2 }], 'EPG Section의 정렬 순서를 따른다');
+  assert.deepEqual([fb3.pageId, fb3.category.key, fb3.category.name], ['ui2', 'section:new', '새 묶음']);
+  assert.deepEqual(synced.sort(), [['fb2', 'ui', 'epg', 'EPG'], ['fb3', 'ui2', 'section:new', '새 묶음']], 'Chapter만 다시 반영하며 캔버스의 페이지에서 찾는다');
+});
+
 test('캔버스에서 바꾼 Section 이름을 플러그인을 열 때 그 Section 플립북의 기록과 Chapter에 반영하고, 캔버스 이름은 덮어쓰지 않는다', async () => {
   const posted: ToUi[] = [];
   const store = new Store(memoryKV());
@@ -876,7 +913,7 @@ test('캔버스에서 바꾼 Section 이름을 플러그인을 열 때 그 Secti
 
   chapters.length = 0;
   await controller.canvasSelectionChanged().catch(() => {});
-  await controller.syncSectionNames();
+  await controller.syncCanvasSections();
   assert.deepEqual(chapters, [], 'nothing to do when the names already match');
   canvasName = '  ';
   await controller.handle({ type: 'ready' });

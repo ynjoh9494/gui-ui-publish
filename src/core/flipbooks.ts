@@ -56,8 +56,10 @@ export function defaultSection(first: GuiScreenInfo | undefined, existing: reado
   return existing.find(s => s.key === base.key) ?? base;
 }
 
+export const newSectionKey = (): string => `${CUSTOM_SECTION_PREFIX}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
 // 새 Section. 키는 페이지에서 Section을 다시 찾는 표식이고, 이름은 Section·Chapter에 쓴다.
-export function customSection(name: string, key = `${CUSTOM_SECTION_PREFIX}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`): FlipbookSection {
+export function customSection(name: string, key = newSectionKey()): FlipbookSection {
   return { key, name: name.trim(), order: CUSTOM_SECTION_ORDER };
 }
 
@@ -143,29 +145,42 @@ export function moveFlipbooks(store: Store, moves: FlipbookMove[], pageIds: read
   return out;
 }
 
-// Section 이름은 캔버스에서 바꾸고 플러그인이 따라간다(2026-10-22 사용자 결정). 플립북 프레임이 기록과 같은 키의 Section 안에 있는데
-// 그 Section 이름이 기록과 다르면 바꿀 이름을 돌려준다. 빈 이름은 따르지 않는다.
-// frames: 플립북 ID → 프레임 노드 ID, spots: 프레임 노드 ID → 캔버스 위치(Section 키·이름)
-export function canvasSectionNames(state: State, frames: Map<string, string>, spots: Record<string, { section: string; sectionName?: string }>): { flipbookId: string; name: string }[] {
-  const out: { flipbookId: string; name: string }[] = [];
+// 플립북이 놓인 페이지·Section은 캔버스가 원본이다(Section 이름 2026-10-22, 옮기기·새 Section 2026-10-23 사용자 결정).
+// 플러그인은 캔버스 배치를 따라 기록만 바꾸고, 안내 없이 프레임을 원래 Section으로 되돌리지 않는다.
+// 플립북 프레임이 놓인 페이지·Section(키·이름)이 기록과 다르면 바꿀 자리를 돌려준다. 빈 이름의 Section은 따르지 않는다.
+// frames: 플립북 ID → 프레임 노드 ID, spots: 프레임 노드 ID → 캔버스 위치(페이지, Section 키·이름)
+export interface CanvasSection { flipbookId: string; pageId: string; section: FlipbookSection }
+export function canvasSections(state: State, frames: Map<string, string>, spots: Record<string, { pageId?: string; section: string; sectionName?: string }>): CanvasSection[] {
+  const out: CanvasSection[] = [];
   for (const fb of state.flipbooks.values()) {
     const nodeId = frames.get(fb.id);
     const spot = nodeId ? spots[nodeId] : undefined;
     const name = spot?.sectionName?.trim();
-    if (fb.status === 'active' && spot?.section === fb.category.key && name && name !== fb.category.name) out.push({ flipbookId: fb.id, name });
+    if (fb.status !== 'active' || !spot?.section || !name) continue;
+    const recorded = fb.pageId ?? state.project.flipbookPageId ?? '';
+    const pageId = spot.pageId ?? recorded;
+    if (pageId === recorded && spot.section === fb.category.key && name === fb.category.name) continue;
+    // 같은 페이지·키의 Section에 놓인 다른 플립북이 있으면 그 정렬 순서를 쓴다.
+    const order = spot.section === fb.category.key ? fb.category.order
+      : pageSections(state, pageId).find(s => s.key === spot.section)?.order ?? CUSTOM_SECTION_ORDER;
+    out.push({ flipbookId: fb.id, pageId, section: { key: spot.section, name, order } });
   }
   return out;
 }
 
-// 캔버스에서 바꾼 Section 이름을 기록에 옮기고 바뀐 플립북을 돌려준다. Chapter는 반영할 때 이 이름으로 바뀐다.
-export function renameSectionsFromCanvas(store: Store, renames: { flipbookId: string; name: string }[], actor: Actor): Flipbook[] {
+// 캔버스의 페이지·Section을 기록에 옮기고 바뀐 플립북을 돌려준다. Chapter는 반영할 때 이 이름으로 바뀐다.
+export function followCanvasSections(store: Store, changes: CanvasSection[], actor: Actor): Flipbook[] {
   const out: Flipbook[] = [];
-  for (const { flipbookId, name } of renames) {
+  for (const { flipbookId, pageId, section } of changes) {
     const before = store.state.flipbooks.get(flipbookId);
-    if (!before || before.status !== 'active' || before.category.name === name) continue;
-    const after: Flipbook = { ...before, rev: before.rev + 1, category: { ...before.category, name } };
+    if (!before || before.status !== 'active') continue;
+    const fromPage = before.pageId ?? store.state.project.flipbookPageId;
+    const moved = fromPage !== pageId || before.category.key !== section.key;
+    if (!moved && before.category.name === section.name) continue;
+    const after: Flipbook = { ...before, rev: before.rev + 1, pageId, category: section };
     store.put(keys.flipbook(flipbookId), after);
-    store.audit(actor, 'flipbook.section', flipbookId, before.category.name, name);
+    if (moved) store.audit(actor, 'flipbook.move', flipbookId, { pageId: fromPage, section: before.category.key }, { pageId, section: section.key, canvas: true });
+    else store.audit(actor, 'flipbook.section', flipbookId, before.category.name, section.name);
     out.push(after);
   }
   return out;

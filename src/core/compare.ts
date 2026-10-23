@@ -62,8 +62,8 @@ export const UI_FINGERPRINT_VERSION = `${LEGACY_FINGERPRINT_VERSION}/ui1`;
 
 // 플립북 프레임의 캔버스 위치: 놓인 Section(플러그인이 만든 Section의 키, 없으면 ''), 페이지 안 Section 순서(위→아래),
 // Section 안 순서(위 행부터, 행 안에서는 왼쪽부터)
-// sectionName: 캔버스 Section의 지금 이름(Section 이름은 캔버스가 원본이다)
-export interface FlipbookSpot { section: string; sectionName?: string; sectionIndex: number; index: number }
+// pageId·sectionName: 프레임이 놓인 페이지와 캔버스 Section의 지금 이름(플립북의 페이지·Section은 캔버스가 원본이다)
+export interface FlipbookSpot { pageId?: string; section: string; sectionName?: string; sectionIndex: number; index: number }
 
 // 플립북별 스캔 결과. nodeId가 없으면 플립북 프레임을 찾지 못했다. spot은 목록을 캔버스 순서로 보여 줄 때 쓴다.
 export interface UiScan { flipbookId: string; nodeId: string | null; fingerprint: string | null; error: string | null; spot?: FlipbookSpot | null }

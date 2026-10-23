@@ -3,7 +3,7 @@ import { baseline, changeDetected, classify, ignoreBlock, uiEstimate, uncheckedE
 import { LEGACY_FINGERPRINT_VERSION } from './core/fingerprint.ts';
 import { dataModel } from './core/data.ts';
 import { flipbookView, guiKey, validGuiWidth } from './core/flipbook.ts';
-import { canvasSectionNames, checkMoves, importGuiUpdates, markReviewed, moveFlipbooks, pageSections, planFlipbooks, removeFlipbooks, renameFlipbook, renameSectionsFromCanvas, retireFlipbooks, type FlipbookMove, type FlipbookRequest, type ReviewRequest } from './core/flipbooks.ts';
+import { canvasSections, checkMoves, followCanvasSections, importGuiUpdates, markReviewed, moveFlipbooks, pageSections, planFlipbooks, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookMove, type FlipbookRequest, type ReviewRequest } from './core/flipbooks.ts';
 import type { Draft } from './core/drafts.ts';
 import type { SelectionWrite } from './core/description.ts';
 import { flipbookHistoryRows, guiHistoryRows } from './core/history.ts';
@@ -51,7 +51,7 @@ function writeMessage(result: SelectionWrite): string {
 
 const spotOf = (spots: Record<string, FlipbookSpot>, nodeId: string | null): FlipbookSpot | null => (nodeId ? spots[nodeId] ?? null : null);
 const sameSpot = (a: FlipbookSpot | null | undefined, b: FlipbookSpot | null | undefined) =>
-  (a ?? null) === (b ?? null) || (!!a && !!b && a.section === b.section && a.sectionName === b.sectionName && a.sectionIndex === b.sectionIndex && a.index === b.index);
+  (a ?? null) === (b ?? null) || (!!a && !!b && a.pageId === b.pageId && a.section === b.section && a.sectionName === b.sectionName && a.sectionIndex === b.sectionIndex && a.index === b.index);
 
 export interface DeliveryReport { screens: number; done: number; failed: string[]; notes: string[]; skipped: string | null }
 const emptyReport = (): DeliveryReport => ({ screens: 0, done: 0, failed: [], notes: [], skipped: null });
@@ -81,8 +81,8 @@ export class Controller {
   private canvasSelectionSeq = 0;
   // 텍스트 편집 탭이 보이는 동안만 캔버스 선택마다 대상을 찾는다(선택마다 조상·하위 트리를 읽는 작업이라 탭이 닫혀 있으면 하지 않는다).
   private textTabOpen = false;
-  // 캔버스를 읽다가 기록과 이름이 다른 Section을 찾았다. 반영(기록·Chapter)은 쓰기 순서에서 syncSectionNames가 한다.
-  private sectionNamesPending = false;
+  // 캔버스를 읽다가 기록과 페이지·Section(키·이름)이 다른 플립북을 찾았다. 반영(기록·Chapter)은 쓰기 순서에서 syncCanvasSections가 한다.
+  private canvasSectionsPending = false;
   private scanningGui = false;
   // 새 버전 페이지 비교 결과. 전환은 이 결과의 프레임만 연결하고, 계산한 지문을 그대로 원본 목록으로 쓴다.
   // sources·common: 유사도 근거를 제안 때와 같은 규칙으로 다시 계산하는 데 쓴다.
@@ -119,7 +119,7 @@ export class Controller {
           // 플립북 페이지를 불러오는 동안 Figma가 멈춘 것처럼 보이므로 첫 로딩 표시를 이어서 띄운다.
           if (this.host.mode === 'UI') {
             await this.progress(COPY.controller136);
-            try { await this.checkTemplate(); await this.linkFlipbooks(); await this.syncSectionNames(); }
+            try { await this.checkTemplate(); await this.linkFlipbooks(); await this.syncCanvasSections(); }
             finally { this.busy(null); }
           }
           break;
@@ -654,23 +654,28 @@ export class Controller {
     }
   }
 
-  // 캔버스에서 바꾼 Section 이름을 그 Section 플립북의 기록과 Chapter에 반영한다(2026-10-22 사용자 결정: Section 이름은 캔버스가 원본).
-  // 캔버스를 쓰므로 main.ts가 쓰기 순서에 넣어 부른다. 이름이 다른 Section을 찾았을 때만 다시 읽는다.
-  async syncSectionNames(): Promise<void> {
-    if (this.host.mode !== 'UI' || !this.sectionNamesPending) return;
-    this.sectionNamesPending = false;
+  // 캔버스에서 옮기거나 이름을 바꾼 Section을 그 플립북의 기록과 Chapter에 반영한다(플립북의 페이지·Section은 캔버스가 원본).
+  // 캔버스를 쓰므로 main.ts가 쓰기 순서에 넣어 부른다. 기록과 다른 플립북을 찾았을 때만 다시 읽는다.
+  async syncCanvasSections(): Promise<void> {
+    if (this.host.mode !== 'UI' || !this.canvasSectionsPending) return;
+    this.canvasSectionsPending = false;
     try {
-      const s = this.store;
-      s.reload();
-      const { found, spots } = await this.inspectFlipbooks();
-      const changed = renameSectionsFromCanvas(s, canvasSectionNames(s.state, found, spots), this.host.actor);
+      const changed = await this.followCanvas();
       if (!changed.length) return;
-      await this.deliverFlipbooks({}, { targets: changed.map(fb => fb.id) });
+      await this.deliverFlipbooks({}, { targets: changed, canvasFollowed: true });
       await this.refreshData();
       this.postState();
     } catch (e) {
       this.host.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
     }
+  }
+
+  // 기록을 캔버스의 페이지·Section으로 맞추고 바뀐 플립북 ID를 돌려준다.
+  private async followCanvas(): Promise<string[]> {
+    const s = this.store;
+    s.reload();
+    const { found, spots } = await this.inspectFlipbooks();
+    return followCanvasSections(s, canvasSections(s.state, found, spots), this.host.actor).map(fb => fb.id);
   }
 
   // UI Flipbook: 플립북 프레임이 캔버스에 있는지만 다시 찾는다(지문 비교 없음). 찾지 못한 플립북은 목록에 연결 끊김으로 표시한다.
@@ -694,7 +699,7 @@ export class Controller {
 
   // 찾은 플립북 프레임(플립북 ID → 노드 ID)과 캔버스 위치로 목록의 연결 상태·순서를 갱신한다.
   private applyLinks(found: Map<string, string>, spots: Record<string, FlipbookSpot> = {}): void {
-    if (canvasSectionNames(this.store.state, found, spots).length) this.sectionNamesPending = true;
+    if (canvasSections(this.store.state, found, spots).length) this.canvasSectionsPending = true;
     const known = new Map(this.uiScans.map(u => [u.flipbookId, u]));
     const next = [...this.store.state.flipbooks.values()].map(fb => {
       const nodeId = found.get(fb.id) ?? null;
@@ -1018,14 +1023,18 @@ export class Controller {
   // 반영이 끝나지 않은 플립북을 현재 기록으로 맞춘다. 플립북 단위로 실패를 기록하고 나머지는 계속한다.
   // baseline: 새로 만든 플립북. 만든 직후의 UI 작성 영역을 첫 UI Publish 전 비교 기준으로 저장한다.
   // after: 새로 만들 플립북을 Section 안에 놓을 자리. retitle: 플러그인에서 제목을 바꾼 플립북.
-  async deliverFlipbooks(filter: { batchId?: string } = {}, options: { force?: boolean; targets?: string[]; baseline?: Set<string>; after?: Map<string, string | null>; retitle?: Set<string> } = {}): Promise<DeliveryReport> {
+  async deliverFlipbooks(filter: { batchId?: string } = {}, options: { force?: boolean; targets?: string[]; baseline?: Set<string>; after?: Map<string, string | null>; retitle?: Set<string>; canvasFollowed?: boolean } = {}): Promise<DeliveryReport> {
     const s = this.store;
     s.reload();
-    const { templateNodeId } = s.state.project;
-    const unfinished = unfinishedDeliveries(s.state, { ...filter, kind: 'flipbook' });
-    const targets = [...new Set([...(options.targets ?? []), ...unfinished.map(d => d.targetId)])].filter(id => s.state.flipbooks.get(id)?.status === 'active');
+    const active = (id: string) => s.state.flipbooks.get(id)?.status === 'active';
+    const requested = [...(options.targets ?? []), ...unfinishedDeliveries(s.state, { ...filter, kind: 'flipbook' }).map(d => d.targetId)].filter(active);
     const report = emptyReport();
-    if (!targets.length) return report;
+    if (!requested.length) return report;
+    // 플립북을 기록의 페이지에서 찾으므로 캔버스에서 옮긴 플립북의 기록부터 맞춘다. 맞춘 플립북은 Chapter도 다시 반영한다.
+    // 읽지 못하면 기록대로 반영한다.
+    const followed = options.canvasFollowed ? [] : await this.followCanvas().catch(() => []);
+    const targets = [...new Set([...requested, ...followed])].filter(active);
+    const { templateNodeId } = s.state.project;
     if (!templateNodeId) return { ...report, skipped: `${COPY.controller027} ${targets.length}${COPY.controller028}` };
     // 템플릿에 문제가 있으면 반영하지 않고 대기로 둔다. 템플릿을 고친 뒤 다시 시도하면 반영된다.
     const issues = await this.checkTemplate();

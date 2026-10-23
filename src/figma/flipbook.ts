@@ -1,6 +1,7 @@
 import { COPY } from '../core/copy.ts';
 import type { FlipbookSpot } from '../core/compare.ts';
 import { GUI_GAP, guiTargetWidth, type FlipbookGui, type FlipbookRow, type FlipbookView } from '../core/flipbook.ts';
+import { newSectionKey } from '../core/flipbooks.ts';
 import { TAG_PALETTE } from '../core/palette.ts';
 import type { NodeSnapshot } from '../core/fingerprint.ts';
 import { sha256 } from '../core/hash.ts';
@@ -265,11 +266,35 @@ async function setText(node: TextNode | null, value: string, cache: Map<string, 
 
 // ── 배치 ───────────────────────────────────────────────
 
+// 루트 Section(페이지 바로 아래 Section) 안의 플립북 프레임. Section 안의 Section은 없는 것으로 보고(2026-10-23 사용자 결정)
+// 그 안의 프레임도 루트 Section에 놓인 것으로 센다. 위치는 루트 Section 기준 좌표로 읽고 쓴다.
 // 놓인 순서(위 행부터, 행 안에서는 왼쪽부터)로 돌려준다.
-function flipbookFrames(container: ChildrenMixin, ns: string): FrameNode[] {
-  return (container.children as readonly SceneNode[])
-    .filter((n): n is FrameNode => n.type === 'FRAME' && !!n.getSharedPluginData(ns, FLIPBOOK_KEY))
-    .sort((a, b) => a.y - b.y || a.x - b.x);
+interface Placed extends Box { readonly node: FrameNode }
+function placed(node: FrameNode, dx: number, dy: number): Placed {
+  return {
+    node,
+    get x() { return node.x + dx; }, set x(v) { node.x = v - dx; },
+    get y() { return node.y + dy; }, set y(v) { node.y = v - dy; },
+    get width() { return node.width; }, get height() { return node.height; },
+  };
+}
+function flipbookFrames(section: SectionNode, ns: string): Placed[] {
+  const out: Placed[] = [];
+  const walk = (container: SectionNode, dx: number, dy: number) => {
+    for (const n of container.children) {
+      if (n.type === 'FRAME' && n.getSharedPluginData(ns, FLIPBOOK_KEY)) out.push(placed(n, dx, dy));
+      else if (n.type === 'SECTION') walk(n, dx + n.x, dy + n.y);
+    }
+  };
+  walk(section, 0, 0);
+  return out.sort((a, b) => a.y - b.y || a.x - b.x);
+}
+
+// 노드가 들어 있는 루트 Section. 페이지 바로 아래에 있거나 Section 밖이면 null.
+function rootSection(node: BaseNode): SectionNode | null {
+  let found: SectionNode | null = null;
+  for (let n = node.parent; n && n.type !== 'PAGE'; n = n.parent) found = n.type === 'SECTION' ? n : null;
+  return found;
 }
 
 function categorySection(ns: string, page: PageNode, category: { key: string; name: string }): SectionNode {
@@ -407,28 +432,15 @@ async function createFlipbook(ns: string, page: PageNode, template: FrameNode, v
   const frames = flipbookFrames(section, ns);
   section.appendChild(frame);
   // 만들기 목록에서 정한 자리: 지정한 플립북 바로 다음(null이면 맨 앞). 그 플립북이 Section에 없으면 맨 뒤에 둔다.
-  const anchor = view.after ? frames.find(f => f.getSharedPluginData(ns, FLIPBOOK_KEY) === view.after) : undefined;
+  const anchor = view.after ? frames.find(f => f.node.getSharedPluginData(ns, FLIPBOOK_KEY) === view.after) : undefined;
   placeFrame(frames, frame, view.after === null ? null : anchor);
   fitSection(ns, section);
   return frame;
 }
 
-// 카테고리가 바뀐 화면의 플립북을 새 카테고리 Section으로 옮긴다. 프레임 안의 UI 작성 내용은 함께 옮겨진다.
-function moveToCategory(ns: string, page: PageNode, frame: FrameNode, view: FlipbookView): void {
-  const target = categorySection(ns, page, view.category);
-  if (frame.parent === target) return;
-  const from = frame.parent?.type === 'SECTION' ? frame.parent : null;
-  const frames = flipbookFrames(target, ns);
-  target.appendChild(frame);
-  placeFrame(frames, frame, undefined);
-  fitSection(ns, target);
-  // 원래 Section의 남은 프레임은 그 자리에 둔다. 빠진 자리만큼 Section을 줄인다.
-  if (from) fitSection(ns, from, true);
-}
-
 // 목록에서 옮긴 기존 플립북(2026-10-22 사용자 요청)을 캔버스에서도 옮긴다. 새 플립북을 넣을 때와 같은 규칙이다:
 // 그 Section의 정한 플립북(after) 바로 다음 칸(null이면 맨 앞)에 놓고, 칸이 차 있으면 같은 행의 뒤쪽 프레임만 민다.
-// 빠진 자리는 정리하지 않고, 원래 Section은 빠진 만큼만 줄인다(카테고리가 바뀐 플립북을 옮길 때와 같다). 다른 페이지로도 옮긴다.
+// 빠진 자리는 정리하지 않고, 원래 Section은 빠진 만큼만 줄인다. 다른 페이지로도 옮긴다.
 // 프레임을 찾지 못하면 false. 프레임 안의 UI 작성 내용은 함께 옮겨진다.
 export async function moveFlipbookFrame(ns: string, move: { flipbookId: string; fromPageId: string; pageId: string; category: { key: string; name: string }; after: string | null }): Promise<boolean> {
   const from = await loadedPage(move.fromPageId);
@@ -436,9 +448,9 @@ export async function moveFlipbookFrame(ns: string, move: { flipbookId: string; 
   if (!frame) return false;
   const page = move.pageId === move.fromPageId ? from : await loadedPage(move.pageId);
   const target = categorySection(ns, page, move.category);
-  const source = frame.parent?.type === 'SECTION' ? frame.parent : null;
-  const frames = flipbookFrames(target, ns).filter(f => f !== frame);
-  const anchor = move.after ? frames.find(f => f.getSharedPluginData(ns, FLIPBOOK_KEY) === move.after) : undefined;
+  const source = rootSection(frame);
+  const frames = flipbookFrames(target, ns).filter(f => f.node !== frame);
+  const anchor = move.after ? frames.find(f => f.node.getSharedPluginData(ns, FLIPBOOK_KEY) === move.after) : undefined;
   if (frame.parent !== target) target.appendChild(frame);
   placeFrame(frames, frame, move.after === null ? null : anchor);
   fitSection(ns, target);
@@ -486,13 +498,25 @@ export async function listFlipbooks(ns: string, pageIds: string[]): Promise<Map<
   return new Map([...pickFlipbookFrames(ns, frames)].map(([id, frame]) => [id, frame.id]));
 }
 
+// 플립북이 든 루트 Section에 표식이 없으면(캔버스에서 직접 만든 Section) 새 키를 붙여 플러그인 Section으로 본다. 같은 페이지에
+// 같은 키의 루트 Section이 여럿이면(복제한 Section) 위쪽(같으면 왼쪽) Section만 그 키를 두고 나머지에 새 키를 붙인다(2026-10-23 사용자 결정).
+// 표식만 붙이고 캔버스 배치는 바꾸지 않는다.
 function pageFlipbookSpots(ns: string, page: PageNode, spots: Record<string, FlipbookSpot>): void {
-  const sections = page.children.filter((n): n is SectionNode => n.type === 'SECTION' && !!n.getSharedPluginData(ns, CATEGORY_KEY))
-    .sort((a, b) => a.y - b.y || a.x - b.x);
-  sections.forEach((section, sectionIndex) => {
-    const key = section.getSharedPluginData(ns, CATEGORY_KEY);
-    flipbookFrames(section, ns).forEach((frame, index) => { spots[frame.id] = { section: key, sectionName: section.name, sectionIndex, index }; });
-  });
+  const seen = new Set<string>();
+  let sectionIndex = 0;
+  const roots = page.children.filter((n): n is SectionNode => n.type === 'SECTION').sort((a, b) => a.y - b.y || a.x - b.x);
+  for (const section of roots) {
+    const frames = flipbookFrames(section, ns);
+    let key = section.getSharedPluginData(ns, CATEGORY_KEY);
+    if (key ? seen.has(key) : frames.length) {
+      key = newSectionKey();
+      section.setSharedPluginData(ns, CATEGORY_KEY, key);
+    }
+    if (!key) continue;
+    seen.add(key);
+    frames.forEach((frame, index) => { spots[frame.node.id] = { pageId: page.id, section: key, sectionName: section.name, sectionIndex, index }; });
+    sectionIndex++;
+  }
 }
 
 // 연결 상태와 목록 위치를 같은 페이지 로드에서 읽는다.
@@ -787,7 +811,7 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
   let kit = session.kits.get(settings.templateId);
   if (!kit) { kit = await tagKit(settings.templateId); session.kits.set(settings.templateId, kit); }
   const existing = frames.get(view.flipbookId);
-  if (existing) moveToCategory(ns, page, existing, view);
+  // 기록과 다른 Section에 있어도 옮기지 않는다. 기록이 캔버스를 따라간다(2026-10-23 사용자 결정).
   const frame = existing ?? await createFlipbook(ns, page, kit.template, view);
   frames.set(view.flipbookId, frame);
   const p = parts(frame);
@@ -814,9 +838,13 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
   await syncRows(ns, p.history, settings, view.rows, kit, notes);
 
   // 이미지·이력 길이에 따라 크기가 바뀐다. 크기가 바뀌면 이웃 화면과 겹치지 않게 필요한 만큼만 민다.
-  if (frame.parent?.type === 'SECTION') {
-    if (frame.width !== before.width || frame.height !== before.height) makeRoom(flipbookFrames(frame.parent, ns), frame, before);
-    fitSection(ns, frame.parent);
+  // 이웃은 루트 Section 전체(안의 Section 포함)에서 찾고, 프레임을 담은 Section부터 루트 Section까지 크기를 맞춘다.
+  const root = rootSection(frame);
+  if (root) {
+    const frames = flipbookFrames(root, ns);
+    const self = frames.find(f => f.node === frame);
+    if (self && (frame.width !== before.width || frame.height !== before.height)) makeRoom(frames, self, before);
+    for (let s = frame.parent; s?.type === 'SECTION'; s = s.parent) fitSection(ns, s);
   }
   return { nodeId: frame.id, notes: [...notes] };
 }
