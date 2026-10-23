@@ -368,12 +368,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     }
   }
 
+  // UI 플립북 목록은 페이지별로 접는다(2026-10-23 사용자 요청). 「페이지|Section」 키 중 그 페이지의 키가 하나라도 있으면 펼친다.
+  const pageOfGroup = (groupKey: string) => groupKey.slice(0, groupKey.indexOf('|'));
+  const pageOpen = (pageId: string) => [...expanded.UI].some(key => pageOfGroup(key) === pageId);
+
   function listModel(t: Team): ListModel {
     if (t === 'GUI') followSelection();
     const sourceEntries = entriesFor(t);
     const index = t === 'GUI' ? draftIndex(state!, sourceEntries) : undefined;
     const groups = new Set<string>([UNCATEGORIZED, ...state!.categories.keys(), ...[...state!.flipbooks.values()].map(f => `${f.pageId ?? state!.project.flipbookPageId ?? ''}|${f.category.key}`)]);
-    const collapsed = new Set([...groups].filter(g => !expanded[t].has(g)));
+    const collapsed = new Set([...groups].filter(g => !(t === 'UI' ? pageOpen(pageOfGroup(g)) : expanded[t].has(g))));
     return buildList(t, state!, sourceEntries, e => (t === 'UI' || entryLocked(t, e) ? 'excluded' : validation(t, e, index).status), {
       collapsed, query: query[t], changedOnly: changedOnly[t] && !locked(t), pages,
       changed: t === 'UI' ? e => !!e.flipbookId && needsReview(state!, e.flipbookId) : undefined,
@@ -889,22 +893,35 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     // 목록에서 제목을 고치는 중이면 다시 그려도 입력 중인 값과 커서를 유지한다.
     const typing = box.querySelector<HTMLInputElement>('.title-input');
     const typed = typing ? { id: typing.dataset.key ?? typing.dataset.id, value: typing.value, focused: document.activeElement === typing, start: typing.selectionStart, end: typing.selectionEnd } : null;
-    box.innerHTML = groups.map(g => {
-      const listed = shown.get(g.key);
-      const drafts = g.items.filter(isNewKey).length;
-      // 기존 플립북을 드래그해 놓을 수 있는 그룹: 설정에서 지정한 플립북 페이지의 Section
-      const droppable = !!g.pageId && flipbookPageOptions().some(p => p.id === g.pageId);
-      // 새 플립북만 있는 그룹(새 Section 등)은 접지 않았으면 펼친다.
-      const open = listed ? listed.expanded || !!query.UI : expanded.UI.has(g.key);
-      const items = open ? g.items.filter(item => rows.has(item) || byKey.has(item)) : [];
-      // 접힌 그룹에 확인이 필요한 플립북이 있으면 머리 맨 오른쪽에 빨간 점을 둔다(2026-10-22 사용자 요청). 펼치면 행마다 보인다.
-      const flagged = !open && g.items.some(item => !isNewKey(item) && needsReview(state!, item));
+    // 페이지마다 아코디언 하나로 접고, 그 안의 Section은 작은 라벨 행으로만 나눈다(2026-10-23 사용자 요청).
+    const byPage: { pageId: string; sections: ArrangedGroup[] }[] = [];
+    for (const g of groups) {
+      const last = byPage[byPage.length - 1];
+      if (last && last.pageId === (g.pageId ?? '')) last.sections.push(g); else byPage.push({ pageId: g.pageId ?? '', sections: [g] });
+    }
+    box.innerHTML = byPage.map(({ pageId, sections }) => {
+      const all = sections.flatMap(g => g.items);
+      const drafts = all.filter(isNewKey).length;
+      const open = !!query.UI || pageOpen(pageId);
+      // 접힌 페이지에 확인이 필요한 플립북이 있으면 머리 맨 오른쪽에 빨간 점을 둔다(2026-10-22 사용자 요청). 펼치면 행마다 보인다.
+      const flagged = !open && all.some(item => !isNewKey(item) && needsReview(state!, item));
+      const name = pages.find(p => p.id === pageId)?.name ?? sections[0].name;
       return `<div class="group">
-        <div class="group-bar" data-group="${esc(g.key)}"><button class="group-head flipbook-head" data-action="group" data-group="${esc(g.key)}" aria-expanded="${open}">
-          <span class="caret">${open ? '▾' : '▸'}</span><span class="group-name">${esc(g.name)}</span>
-          <span class="count">${g.items.length - drafts}${drafts ? ` <b class="new-count" title="${COPY.uiApp333}">+${drafts}</b>` : ''}</span>
+        <div class="group-bar"><button class="group-head flipbook-head" data-action="page-group" data-page="${esc(pageId)}" aria-expanded="${open}">
+          <span class="caret">${open ? '▾' : '▸'}</span><span class="group-name">${esc(name)}</span>
+          <span class="count">${all.length - drafts}${drafts ? ` <b class="new-count" title="${COPY.uiApp333}">+${drafts}</b>` : ''}</span>
           ${flagged ? `<span class="review-dot group-review" role="img" title="${COPY.uiApp192}" aria-label="${COPY.uiApp192}"></span>` : ''}
         </button></div>
+        ${open ? sections.map(g => sectionRows(g)).join('') : ''}
+      </div>`;
+    }).join('');
+    // Section 라벨 행과 그 Section의 플립북 행. 라벨에 놓으면 그 Section 맨 앞으로 옮긴다.
+    function sectionRows(g: ArrangedGroup): string {
+      // 기존 플립북을 드래그해 놓을 수 있는 그룹: 설정에서 지정한 플립북 페이지의 Section
+      const droppable = !!g.pageId && flipbookPageOptions().some(p => p.id === g.pageId);
+      const items = g.items.filter(item => rows.has(item) || byKey.has(item));
+      return `<div class="section-group">
+        <div class="section-label" data-group="${esc(g.key)}" title="${esc(g.section.name)}">${esc(g.section.name)}</div>
         ${items.map(item => {
           const n = byKey.get(item);
           if (n) {
@@ -938,7 +955,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
           </div>`;
         }).join('')}
       </div>`;
-    }).join('');
+    }
     box.scrollTop = scrollTop;
     if (revealSelection) { revealSelection = false; box.querySelector<HTMLElement>('.row.selected')?.scrollIntoView({ block: 'nearest' }); }
     const input = box.querySelector<HTMLInputElement>('.title-input');
@@ -2350,6 +2367,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         renderList();
         break;
       }
+      case 'page-group': {
+        const pageId = el.dataset.page ?? '';
+        if (pageOpen(pageId)) { for (const key of [...expanded.UI]) if (pageOfGroup(key) === pageId) expanded.UI.delete(key); }
+        else expanded.UI.add(`${pageId}|`);
+        renderList();
+        break;
+      }
       case 'include': ev.stopPropagation(); toggleInclude(el.dataset.key!, (el as HTMLInputElement).checked); break;
       case 'include-all': {
         ev.stopPropagation();
@@ -2660,14 +2684,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     editTitle(id, name.closest('.list-box') ? 'list' : 'detail');
   });
 
-  // 새 플립북 드래그로 옮기기: 행 위쪽 절반이면 그 행 앞, 아래쪽 절반이면 뒤, 그룹 머리면 그 Section 맨 앞에 놓는다.
+  // 새 플립북 드래그로 옮기기: 행 위쪽 절반이면 그 행 앞, 아래쪽 절반이면 뒤, Section 라벨 행이면 그 Section 맨 앞에 놓는다.
   const clearDrop = () => { for (const node of root.querySelectorAll('.drop-before, .drop-after, .drop-into')) node.classList.remove('drop-before', 'drop-after', 'drop-into'); };
   const dropTarget = (ev: DragEvent): { node: HTMLElement; groupKey: string; to: { before?: string; after?: string; start?: boolean } } | null => {
-    const node = (ev.target as HTMLElement).closest<HTMLElement>('.list-box .row[data-group], .list-box .group-bar[data-group]');
+    const node = (ev.target as HTMLElement).closest<HTMLElement>('.list-box .row[data-group], .list-box .section-label[data-group]');
     if (!node || !draggingNew) return null;
     const groupKey = node.dataset.group!;
     if (!arrangement().some(g => g.key === groupKey && g.pageId && flipbookPageOptions().some(p => p.id === g.pageId))) return null;
-    if (node.classList.contains('group-bar')) return { node, groupKey, to: { start: true } };
+    if (node.classList.contains('section-label')) return { node, groupKey, to: { start: true } };
     const rect = node.getBoundingClientRect();
     const key = node.dataset.key!;
     return { node, groupKey, to: ev.clientY < rect.top + rect.height / 2 ? { before: key } : { after: key } };

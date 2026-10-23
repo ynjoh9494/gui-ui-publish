@@ -659,14 +659,29 @@ export class Controller {
   async syncCanvasSections(): Promise<void> {
     if (this.host.mode !== 'UI' || !this.canvasSectionsPending) return;
     this.canvasSectionsPending = false;
+    let delivered = false;
     try {
       const changed = await this.followCanvas();
       if (!changed.length) return;
-      await this.deliverFlipbooks({}, { targets: changed, canvasFollowed: true });
-      await this.refreshData();
+      // 바뀐 것은 Section뿐이므로 Chapter만 다시 쓴다. Host가 지원하지 않으면 플립북 전체를 반영한다.
+      const s = this.store.state;
+      if (this.host.syncChapters) {
+        await this.host.syncChapters(changed.flatMap(id => {
+          const fb = s.flipbooks.get(id);
+          const pageId = fb?.pageId ?? s.project.flipbookPageId;
+          return fb && pageId ? [{ pageId, flipbookId: id, name: fb.category.name }] : [];
+        }));
+      } else {
+        delivered = true;
+        await this.deliverFlipbooks({}, { targets: changed, canvasFollowed: true });
+      }
       this.postState();
+      await this.refreshData();
     } catch (e) {
       this.host.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      // 버튼 요청이 아니라 캔버스 선택에서 부르므로 반영 중 표시를 여기서 닫는다.
+      if (delivered) this.busy(null);
     }
   }
 

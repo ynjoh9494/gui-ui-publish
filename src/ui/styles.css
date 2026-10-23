@@ -285,10 +285,16 @@ button.link.danger { color: var(--danger); }
 .list-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 2px; }
 .list-actions button { white-space: nowrap; }
 .group-head .new-count { color: var(--brand); font-weight: 600; }
-/* UI Flipbook 그룹 머리: 이름 바로 오른쪽에 개수, 맨 오른쪽에 확인이 필요한 플립북 빨간 점(접혀 있을 때) */
+/* UI Flipbook 페이지 머리: 이름 바로 오른쪽에 개수, 맨 오른쪽에 확인이 필요한 플립북 빨간 점(접혀 있을 때) */
 .group-head.flipbook-head .group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .group-head.flipbook-head .count { flex: none; margin-left: 0; }
 .group-head.flipbook-head .group-review { margin-left: auto; }
+/* 접기 화살표(▸·▾): 폭을 고정하고 오른쪽 여백을 3px로 줄인다(2026-10-23 사용자 요청). 글자는 8 + 10 + 3 = 21px에서 시작한다. */
+.group-head .caret { flex: none; width: 10px; margin-right: -3px; text-align: center; }
+.create-category-heading .category-chevron { flex: none; width: 10px; margin-right: -2px; text-align: center; }
+/* 페이지 안의 Section 구분 행: 본문보다 작은 옅은 글자, 회색 배경. Section 이름과 플립북 이름은 페이지 이름 글자 시작(21px)에 맞춘다. */
+.section-label { padding: 2px 8px 2px 21px; background: var(--bg2); color: var(--muted); font-size: 11px; line-height: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-box .section-group .row { padding-left: 18px; }
 /* 새 플립북(만들기 전 미리보기): 점선 왼쪽 막대와 옅은 파랑 배경, 드래그해서 옮긴다. */
 .row.new-row { border-left: 3px dashed color-mix(in srgb, var(--brand) 60%, transparent); background: color-mix(in srgb, var(--brand) 5%, transparent); cursor: grab; }
 .row.new-row.selected { border-left-style: dashed; }
@@ -304,7 +310,7 @@ button.link.danger { color: var(--danger); }
 .row.dragging { opacity: .45; }
 .row.drop-before { box-shadow: inset 0 2px var(--brand); }
 .row.drop-after { box-shadow: inset 0 -2px var(--brand); }
-.group-bar.drop-into { box-shadow: inset 0 0 0 2px var(--brand); }
+.section-label.drop-into { box-shadow: inset 0 0 0 2px var(--brand); }
 /* 제목 줄: 제목(또는 입력)과 연필·삭제 버튼 */
 .title-head { display: flex; align-items: center; gap: 4px; }
 .title-head h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

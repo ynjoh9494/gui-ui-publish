@@ -789,12 +789,28 @@ export async function syncRows(ns: string, history: ChildrenMixin, settings: Fli
 
 // 플러그인이 쓴 값이거나 템플릿 기본값일 때만 바꾼다. 사용자가 고친 값은 둔다.
 // force: 사용자가 플러그인에서 직접 바꾼 값이라 캔버스에서 고친 값도 바꾼다.
-async function setOwnedText(ns: string, node: TextNode | null, value: string, known: string[], kit: TagKit, key: string, force = false): Promise<void> {
+async function setOwnedText(ns: string, node: TextNode | null, value: string, known: string[], kit: Pick<TagKit, 'fonts'>, key: string, force = false): Promise<void> {
   if (!node) return;
   const written = node.getSharedPluginData(ns, key);
   if (!force && node.characters !== written && !known.includes(node.characters)) return;
   await setText(node, value, kit.fonts);
   node.setSharedPluginData(ns, key, value);
+}
+
+// Chapter만 다시 쓴다. 캔버스에서 옮기거나 이름을 바꾼 Section을 따라갈 때 플립북 전체(GUI·이력)를 다시 반영하지 않는다.
+export async function syncChapters(ns: string, items: { pageId: string; flipbookId: string; name: string }[]): Promise<void> {
+  const fonts = { fonts: new Map<string, Promise<void>>() };
+  const byPage = new Map<string, Map<string, FrameNode>>();
+  for (const { pageId, flipbookId, name } of items) {
+    let frames = byPage.get(pageId);
+    if (!frames) { frames = pageFlipbooks(ns, await loadedPage(pageId)); byPage.set(pageId, frames); }
+    const frame = frames.get(flipbookId);
+    if (!frame) continue;
+    const p = parts(frame);
+    const headerMain = p.header?.type === 'INSTANCE' ? await p.header.getMainComponentAsync() : null;
+    const fallback = cellText(headerMain, 'input-cell-chapter');
+    await setOwnedText(ns, p.chapter, name, ['-', ...(fallback ? [fallback.characters] : [])], fonts, CHAPTER_KEY);
+  }
 }
 
 export interface SyncResult { nodeId: string; notes: string[] }

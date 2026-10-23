@@ -7,7 +7,7 @@ import { clampWindow } from '../core/wire.ts';
 import type { Host } from '../host.ts';
 import { ensureDataPage, renderDataPage } from './data.ts';
 import { createFingerprintReader } from './fingerprints.ts';
-import { NS, findFlipbook, flipbookSpots, inspectFlipbooks, listFlipbooks, moveFlipbookFrame, uiAreaSnapshot, syncFlipbook, templateFromSelection, templateIssues, flipbookSession, type FlipbookSession } from './flipbook.ts';
+import { NS, findFlipbook, flipbookSpots, inspectFlipbooks, listFlipbooks, moveFlipbookFrame, uiAreaSnapshot, syncChapters, syncFlipbook, templateFromSelection, templateIssues, flipbookSession, type FlipbookSession } from './flipbook.ts';
 import { fillDescription, readDescription, selectedDescriptionRoot, selectionTarget } from './description.ts';
 import { readRichText, selectedTextNode, writeRichText } from './richText.ts';
 import { makeThumbnail, placeThumbnails, renameThumbnails, thumbnailBytes } from './thumbs.ts';
@@ -198,6 +198,7 @@ export function figmaHost(mode: Host['mode']): Host {
     beginDelivery: () => { deliverySession = flipbookSession(); },
     endDelivery: () => { deliverySession = undefined; },
     syncFlipbook: (settings, view) => syncFlipbook(NS, settings, view, deliverySession),
+    syncChapters: items => syncChapters(NS, items),
     moveFlipbook: move => moveFlipbookFrame(NS, move),
 
     async reveal(nodeId, isLatest) {

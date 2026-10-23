@@ -254,7 +254,7 @@ try {
     return hint.textContent.startsWith('만들기 전까지 저장 안 함') && cancel.textContent === '취소' && Math.abs(h.left - t.left) < 1 && h.top >= t.bottom - 1 && h.right <= c.left && c.right <= b.left;
   }), '왼쪽에 제목과 안내, 오른쪽에 취소·만들기를 둔다');
   assert.equal(await app.locator('.list .new-row .name').innerText(), initialName, '목록에는 첫 화면 이름을 제목으로 보여 준다');
-  assert.ok((await app.locator('.list .group-head').filter({ has: page.locator('.new-count') }).innerText()).includes('홈'), '화면 카테고리 Section에 놓는다');
+  assert.ok((await app.locator('.list .section-group').filter({ has: page.locator('.new-row') }).locator('.section-label').innerText()).includes('홈'), '화면 카테고리 Section에 놓는다');
   assert.equal(await app.locator('.detail [data-input=new-title]').inputValue(), initialName, '오른쪽 제목은 첫 화면 이름이 채워진 입력란이다');
   assert.equal(await app.locator('.detail [data-action=new-edit-title]').count(), 0, '오른쪽 제목에는 연필이 없다');
   assert.ok(await app.locator('.list .new-row.selected').evaluate(row => row.querySelector('.name').getBoundingClientRect().right <= row.querySelector('[data-action=new-edit-title]').getBoundingClientRect().left), '연필은 목록 이름 오른쪽에 있다');
@@ -301,24 +301,24 @@ try {
   assert.equal(await app.locator('[data-action=new-section-cancel]').innerText(), '취소', '섹션 추가는 다른 입력처럼 취소로 닫는다');
   await app.locator('[data-input=new-section-name]').fill('안내');
   await app.locator('[data-input=new-section-name]').press('Enter');
-  await page.waitForFunction(() => [...document.querySelectorAll('#app .list .group-head')].some(head => head.textContent?.includes('안내')));
+  await page.waitForFunction(() => [...document.querySelectorAll('#app .list .section-label')].some(head => head.textContent?.includes('안내')));
   assert.equal(await app.locator('[data-input=new-section] option:checked').innerText(), '안내', '새 Section을 고른다');
   // 다른 새 플립북을 드래그해 그 Section의 「정책 안내」 아래에 놓는다.
   const dragged = app.locator('.list .new-row').filter({ hasText: initialName });
   const targetRow = app.locator('.list .new-row').filter({ hasText: '정책 안내' });
   const box = await targetRow.boundingBox();
   await dragged.dragTo(targetRow, { targetPosition: { x: 20, y: box.height - 3 } });
-  const sectionOf = async name => app.locator('.list .group').filter({ has: page.locator('.new-row').filter({ hasText: name }) }).locator('.group-head').innerText();
-  await page.waitForFunction(name => [...document.querySelectorAll('#app .list .group')].some(group =>
-    [...group.querySelectorAll('.new-row .name')].some(row => row.textContent === name) && group.querySelector('.group-head')?.textContent?.includes('안내')), initialName);
+  const sectionOf = async name => app.locator('.list .section-group').filter({ has: page.locator('.new-row').filter({ hasText: name }) }).locator('.section-label').innerText();
+  await page.waitForFunction(name => [...document.querySelectorAll('#app .list .section-group')].some(group =>
+    [...group.querySelectorAll('.new-row .name')].some(row => row.textContent === name) && group.querySelector('.section-label')?.textContent?.includes('안내')), initialName);
   assert.ok((await sectionOf(initialName)).includes('안내'), '드래그해서 다른 Section으로 옮긴다');
   await newNames(['정책 안내', initialName], '놓은 자리 순서');
   await shot('03b-create-arrange');
   // Section을 「화면 카테고리」로 되돌리면 홈 Section 맨 뒤로 간다.
   await app.locator('[data-input=new-section]').selectOption('');
   // 목록은 다음 프레임에 다시 그린다.
-  await page.waitForFunction(name => [...document.querySelectorAll('#app .list .group')].some(group =>
-    [...group.querySelectorAll('.new-row .name')].some(row => row.textContent === name) && group.querySelector('.group-head')?.textContent?.includes('홈')), initialName, { timeout: 3000 }).catch(() => {});
+  await page.waitForFunction(name => [...document.querySelectorAll('#app .list .section-group')].some(group =>
+    [...group.querySelectorAll('.new-row .name')].some(row => row.textContent === name) && group.querySelector('.section-label')?.textContent?.includes('홈')), initialName, { timeout: 3000 }).catch(() => {});
   assert.ok((await sectionOf(initialName)).includes('홈'), '화면 카테고리 Section으로 되돌린다');
   await app.locator('[data-action=create-submit]').click();
   await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('2개를 만들었습니다'));
@@ -343,11 +343,11 @@ try {
   await page.waitForFunction(name => document.querySelector('#app .detail h2')?.textContent === name, initialName);
   // 기존 플립북도 드래그해 다른 Section으로 옮긴다(2026-10-22). 만들기 전까지는 목록에서만 옮기고, 캔버스 배치에 반영할지 묻는다.
   {
-    const groupOfRow = name => app.locator('.list .group').filter({ has: page.locator('.row:not(.new-row) .name', { hasText: name }) }).locator('.group-head').innerText();
-    const inGroup = (name, section) => page.waitForFunction(([name, section]) => [...document.querySelectorAll('#app .list .group')].some(group =>
-      [...group.querySelectorAll('.row:not(.new-row) .name')].some(row => row.textContent === name) && group.querySelector('.group-head')?.textContent?.includes(section)), [name, section], { timeout: 3000 });
+    const groupOfRow = name => app.locator('.list .section-group').filter({ has: page.locator('.row:not(.new-row) .name', { hasText: name }) }).locator('.section-label').innerText();
+    const inGroup = (name, section) => page.waitForFunction(([name, section]) => [...document.querySelectorAll('#app .list .section-group')].some(group =>
+      [...group.querySelectorAll('.row:not(.new-row) .name')].some(row => row.textContent === name) && group.querySelector('.section-label')?.textContent?.includes(section)), [name, section], { timeout: 3000 });
     const dragToHome = () => app.locator('.list .row:not(.new-row)').filter({ has: page.locator('.name', { hasText: '정책 안내' }) })
-      .dragTo(app.locator('.list .group-bar').filter({ hasText: '· 홈' }));
+      .dragTo(app.locator('.list .section-label').filter({ hasText: /^홈$/ }));
     await dragToHome();
     await inGroup('정책 안내', '홈');
     assert.match(await app.locator('.footer .footer-line').innerText(), /옮긴 플립북 1개/, '옮긴 기존 플립북 수를 보여 준다');
@@ -399,8 +399,9 @@ try {
   // 오른쪽 제목 입력란에 바로 입력한다.
   await app.locator('.detail [data-input=new-title]').fill('다른 페이지 정책');
   await app.locator('.detail [data-input=new-title]').press('Enter');
-  assert.ok((await sectionOf('다른 페이지 정책')).includes('UI 플립북'), '고른 페이지의 Section으로 옮긴다');
-  assert.ok(!(await sectionOf('다른 페이지 정책')).includes('정책 ·') && !(await sectionOf('다른 페이지 정책')).endsWith('· 정책'), '화면이 없다고 「정책」 Section에 넣지 않는다');
+  const pageOf = name => app.locator('.list .group').filter({ has: page.locator('.new-row').filter({ hasText: name }) }).locator('.group-head').innerText();
+  assert.ok((await pageOf('다른 페이지 정책')).includes('UI 플립북'), '고른 페이지의 Section으로 옮긴다');
+  assert.notEqual(await sectionOf('다른 페이지 정책'), '정책', '화면이 없다고 「정책」 Section에 넣지 않는다');
   await app.locator('[data-action=create-submit]').click();
   await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('1개를 만들었습니다'));
 
@@ -471,8 +472,8 @@ try {
   assert.equal(await app.locator('.row .review-dot').getAttribute('title'), '화면이 수정되었습니다');
   // 접힌 그룹에 확인이 필요한 플립북이 있으면 머리 맨 오른쪽에 빨간 점을 둔다. 개수는 그룹 이름 바로 오른쪽이다.
   {
-    const groupKey = await app.locator('.list .group').filter({ has: page.locator('.row .review-dot') }).locator('.group-head').getAttribute('data-group');
-    const head = app.locator(`.list .group-head[data-group="${groupKey}"]`);
+    const pageKey = await app.locator('.list .group').filter({ has: page.locator('.row .review-dot') }).locator('.group-head').getAttribute('data-page');
+    const head = app.locator(`.list .group-head[data-page="${pageKey}"]`);
     assert.equal(await head.locator('.review-dot').count(), 0, '펼친 그룹 머리에는 빨간 점이 없다');
     await head.click();
     await head.locator('.review-dot').waitFor({ timeout: 3000 });
