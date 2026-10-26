@@ -64,8 +64,9 @@ export interface Host extends FingerprintReader {
   updateFlow?(flow: FlowRecord, thumbs: FlowThumb[]): Promise<number | null>;
   // 플로우 그룹(uid가 있으면 그 화면 칸, 없으면 그룹)의 노드 ID. 그룹을 찾지 못하면 null
   flowNode?(flow: FlowRecord, uid?: string): Promise<string | null>;
-  // PDF 저장: 보고 있는 페이지의 선택에서 저장할 프레임 수와, 그 프레임을 캔버스 순서대로 내보낸 쪽. pageName: 보고 있는 페이지 이름
+  // PDF 저장: 보고 있는 페이지의 선택에서 저장할 프레임 수
   pdfSelection?(): PdfSelection;
+  // 고른 프레임을 캔버스 순서대로 내보낸 쪽. pageName: 보고 있는 페이지 이름(파일 이름에 쓴다).
   // progress가 false를 돌려주면(취소) 다음 프레임으로 가지 않고 pages가 null이다.
   exportPdf?(progress: (done: number, total: number) => Promise<boolean>): Promise<{ pageName: string; pages: PdfPage[] | null }>;
 }

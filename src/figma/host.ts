@@ -73,7 +73,6 @@ export function figmaHost(mode: Host['mode']): Host {
     // 썸네일 페이지는 플러그인이 관리하므로 페이지 선택지에서 뺀다.
     pages: () => root.children.filter(p => p.getSharedPluginData(NS, 'role') !== 'thumbs').map(p => ({ id: p.id, name: p.name, ...(p === figma.currentPage ? { current: true } : {}) })),
 
-
     async listFrames(pageIds, sectionIds, isCurrent = () => true) {
       const sections = new Set(sectionIds);
       const frames: ScannedFrame[] = [];

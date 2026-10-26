@@ -5,7 +5,7 @@ import { canvasOrder, type CanvasPosition } from './screenCode.ts';
 export const PDF_HIDDEN_PARTS = ['UI Title', 'Update History List'] as const;
 
 // 한 쪽은 프레임을 2배 JPG로 내보낸 이미지다(2026-10-26 사용자 결정). Figma의 PDF 내보내기는 그림자·블러를
-// 고해상도 그림으로 구워 효과가 많은 플립북 한 장에 6~7초·10MB가 걸렸다. 2배 JPG는 약 2초·1.7MB다.
+// 고해상도 그림으로 구워 효과가 많은 플립북 한 장에 6~7초·10MB가 걸렸다. 2배 JPG는 약 2초·1.6MB다.
 export const PDF_IMAGE_SCALE = 2;
 
 // 지금 캔버스 선택에서 저장할 프레임 수와 프레임이 아니라 뺄 노드 수

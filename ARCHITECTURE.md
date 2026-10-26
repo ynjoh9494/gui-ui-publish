@@ -26,11 +26,12 @@ flowchart LR
 | `src/core/types.ts`, `store.ts` | 파일 기록의 타입, 키 구성, 역직렬화, 메모리 상태와 저장소 동기화 |
 | `src/core/compare.ts`, `fingerprint.ts`, `versionMatch.ts` | GUI 변경 판정, 지문 정규화, 새 버전 페이지의 화면 연결 제안 |
 | `src/core/drafts.ts`, `publish.ts`, `registry.ts` | 입력 검증, GUI 배포 계획·확정, 카테고리·작업자·태그·화면 레지스트리 |
-| `src/core/flow.ts` | 플로우 계획(배포된 화면·칸 겹침 검사, 잘못된 화살표 제외), 격자 칸 위치와 칸 사이 통로를 따르는 꺾인 화살표 경로(`routeLink`, 플러그인 판과 캔버스가 함께 씀), 조건 레이어 자리, 다시 배포된 화면이 든 플로우 고르기, 만든 플로우 목록(`flowList`) |
+| `src/core/flow.ts` | 플로우 계획(배포된 화면만, 가장 왼쪽·위 썸네일이 (0, 0)이 되게 당김, 잘못된·중복 화살표 제외), 썸네일마다 제 크기 자리(격자는 놓는 위치 스냅)와 다른 화면 자리를 피해 화면 사이 통로를 따르는 꺾인 화살표 경로(`routeLink`, 플러그인 판과 캔버스가 함께 씀), 조건 레이어 자리, 다시 배포된 화면이 든 플로우 고르기, 만든 플로우 목록(`flowList`) |
 | `src/core/pdf.ts` | PDF 저장 탭의 정책: 저장하는 동안 숨길 요소 이름(UI Title·Update History List), 쪽 이미지 배율(2배 JPG), 쪽 순서(캔버스 왼쪽 위 → 오른쪽 아래), 파일 이름 |
 | `src/core/richText.ts` | 텍스트 편집 탭의 문서 모델(문단·목록 단계·굵은 범위), 편집 동작(줄 나누기·합치기·붙여 넣기·굵게·목록 단계), 붙여 넣기·복사용 텍스트 형식 |
 | `src/core/flipbooks.ts`, `flipbook.ts`, `guiScreens.ts`, `history.ts`, `data.ts` | 플립북 기록·확인 상태, 캔버스 반영용 뷰, 화면 목록·이력·DATA 모델 |
 | `src/controller.ts` | 메시지 처리, 스캔·배포·플립북·관리 작업의 순서와 실패 보고 |
+| `src/flowController.ts`, `pdfController.ts` | UI Flipbook의 독립 흐름 조정: 플로우 만들기·목록·이동·다시 배포된 썸네일 교체(지운 그룹은 기록에서 뺌), PDF 저장 탭 상태·선택 프레임 수·내보내기·취소. Controller는 메시지만 넘긴다 |
 | `src/host.ts` | Controller가 요구하는 Figma 기능의 인터페이스. 코어에 Figma 노드 타입을 들이지 않는 경계 |
 | `src/figma/host.ts` | `Host` 구현, 페이지·노드 탐색, 파일 저장소와 캔버스 API 연결 |
 | `src/figma/snapshot.ts`, `fingerprints.ts` | 노드의 시각 속성·해석된 변수 값을 스냅샷으로 수집하고 지문·유사도 특징 생성 |
@@ -86,15 +87,15 @@ UI Flipbook의 현재 화면 흐름은 **플립북 만들기, GUI 갱신 알림,
 2. GUI Publish 후 `importGuiUpdates()`가 플립북에 들어 있는 화면의 새 버전과 이력 사본을 기록한다. `syncFlipbook()`은 원본 GUI 레이어를 복사해 설정 폭과 1x·1/2x·1/4x 배율로 배치한다. 버전·배율·폭이 같은 기존 복사본은 재사용한다.
 3. 템플릿과 플립북의 플러그인 관리 영역만 수정한다. Description 내용, 콜아웃, 마커는 보존하고 GUI 복사본을 다시 배치할 때 해당 화면을 따라 마커 위치를 옮긴다.
 4. 새 GUI 이력이 `rv:`에 저장된 화면별 확인 버전보다 앞서면 플립북에 확인 필요 표시를 한다. `markReviewed()`는 그때까지의 버전, Status 태그와 코멘트를 저장하고 플립북의 표시·이력 행을 갱신한다. 시각 대신 화면별 버전으로 확인 여부를 판단한다.
-5. 플립북의 페이지·Section은 캔버스가 원본이다. Figma `inspectFlipbooks()`가 루트 Section(페이지 바로 아래 Section)마다 플립북 프레임의 자리(`FlipbookSpot`: 페이지, Section 키·이름, 순서)를 읽는다. 안쪽 Section은 없는 것으로 보고 루트 Section 좌표로 세며, 표식 없는 루트 Section에는 키를 붙이고 복제로 겹친 키는 새로 붙인다. Section 밖 프레임은 `NO_SECTION_KEY`(「(섹션 없음)」) 자리다. 코어 `canvasSections()`·`followCanvasSections()`가 기록과 다른 플립북의 페이지·Section을 캔버스에 맞춘다. 플러그인을 열 때와 목록 새로고침(`refreshList`)에서 기록과 다른 플립북을 찾으면 `syncCanvasSections()`가 쓰기 큐에서 기록을 맞추고 `Host.syncChapters()`로 Chapter만 다시 쓴다. `deliverFlipbooks()`도 반영 전에 같은 맞춤을 한 번 한다(부른 쪽이 이미 맞췄으면 `canvasFollowed`, 이미 읽은 캔버스는 `canvas`로 넘겨 다시 읽지 않는다). 플러그인은 프레임을 기록의 Section으로 되돌리지 않는다.
+5. 플립북의 페이지·Section은 캔버스가 원본이다. Figma `inspectFlipbooks()`가 루트 Section(페이지 바로 아래 Section)마다 플립북 프레임의 자리(`FlipbookSpot`: 페이지, Section 키·이름, 순서)를 읽는다. 안쪽 Section은 없는 것으로 보고 루트 Section 좌표로 세며, 표식 없는 루트 Section에는 키를 붙이고 복제로 겹친 키는 새로 붙인다. Section 밖 프레임은 `NO_SECTION_KEY`(「(섹션 없음)」) 자리다. 코어 `canvasSections()`·`followCanvasSections()`가 기록과 다른 플립북의 페이지·Section을 캔버스에 맞춘다. 플러그인을 열 때와 목록 새로고침(`refreshList`)에서 기록과 다른 플립북을 찾으면 `syncCanvasSections()`가 쓰기 큐에서 기록을 맞추고 `Host.syncChapters()`로 Chapter만 다시 쓴다. `deliverFlipbooks()`도 반영 전에 같은 맞춤을 한 번 한다(부른 쪽이 이미 맞췄으면 `canvasFollowed`, 이미 읽은 캔버스는 `canvas`로 넘겨 다시 읽지 않는다). 읽은 캔버스의 프레임 노드 ID는 `Host.beginDelivery(known)`으로 반영 세션에 넘기고, `syncFlipbook()`은 그 노드가 같은 페이지에 있고 표식이 맞으면 페이지를 다시 훑지 않고 쓴다. 캔버스를 읽은 뒤에 기록을 다시 읽어, 페이지를 불러오는 동안 바뀐 기록을 덮어쓰지 않는다. 플러그인은 프레임을 기록의 Section으로 되돌리지 않는다.
 
-6. 화면 편집(`editFlipbookScreens` 메시지)은 연결된 플립북만 받는다. 코어 `editFlipbookScreens()`가 새 화면 목록·순서·크기를 검사해 `Flipbook.screens`·`kind`·`scale`·자동 제목을 바꾸고(남긴 화면은 반영한 버전 유지, 새 화면은 현재 버전과 `addedAt`), Controller가 반영 대상(`dlv:`)으로 등록해 `deliverFlipbooks()`로 다시 맞춘다. 캔버스 쪽은 `syncGui()`가 같은 화면·크기의 복사본을 재사용하고 마커를 남은 화면에 따라 옮긴다. `unreviewed()`는 지금 든 화면의 기록 중 `max(확인 기준 시각, addedAt)` 뒤의 것만 확인할 것으로 본다.
+6. 화면 편집(`editFlipbookScreens` 메시지)은 연결된 플립북만 받는다. 코어 `editFlipbookScreens()`가 새 화면 목록·순서·크기를 검사해 `Flipbook.screens`·`kind`·`scale`·자동 제목을 바꾸고(남긴 화면은 반영한 버전 유지, 새 화면은 현재 버전과 `addedAt`), Controller가 반영 대상(`dlv:`)으로 등록해 `deliverFlipbooks()`로 다시 맞춘다. 캔버스 쪽은 `syncGui()`가 같은 화면·크기의 복사본을 재사용하고 마커를 남은 화면에 따라 옮긴다. `unreviewed()`는 지금 든 화면의 기록 중 `max(확인 기준 시각, addedAt)` 뒤의 것만 확인할 것으로 본다. 반영 뒤 목록 위치는 그 플립북이 있는 페이지만 다시 읽는다.
 
 플립북 반영은 `dlv:`의 `pending → applying → done/failed` 상태로 추적한다. 한 플립북 반영이 실패해도 다른 플립북은 계속 처리하며, 재시도로 미완료 대상을 다시 맞출 수 있다. GUI 복사본의 원천은 GUI 원본 프레임이며, 별도 이미지 라이브러리나 외부 전달 서버를 거치지 않는다.
 
 ## 응답성 및 변경 시 유의점
 
-- `main.ts`는 파일을 바꾸는 메시지를 하나의 큐에서 순서대로 실행한다. 스캔·취소·탐색은 큐 밖에서 처리하며, 작업 시퀀스 번호로 오래된 결과를 버린다. 캔버스 선택 이벤트는 80ms 동안 마지막 변경만 처리한다. UI Flipbook은 캔버스 선택마다 플립북 페이지를 다시 읽지 않고(캔버스 작업이 느려져서), 목록 새로고침(`refreshList`, 쓰기 큐)과 플러그인 작업 뒤에 읽는다. 읽을 때마다 `listSynced`로 시각을 알린다. 캔버스를 읽는 `inspectFlipbooks()`는 Section 표식(키)을 붙이는 쓰기를 할 수 있다(배치는 바꾸지 않는다).
+- `main.ts`는 파일을 바꾸는 메시지를 하나의 큐에서 순서대로 실행한다. 스캔·취소·탐색은 큐 밖에서 처리하며, 작업 시퀀스 번호로 오래된 결과를 버린다. 캔버스 선택 이벤트는 80ms 동안 마지막 변경만 처리하고, 실행한 명령(`Host.mode`)의 목록에서만 고른다. UI Flipbook은 캔버스 선택마다 플립북 페이지를 다시 읽지 않고(캔버스 작업이 느려져서), 목록 새로고침(`refreshList`, 쓰기 큐)과 플러그인 작업 뒤에 읽는다. 읽을 때마다 `listSynced`로 시각을 알린다. 캔버스를 읽는 `inspectFlipbooks()`는 Section 표식(키)을 붙이는 쓰기를 할 수 있다(배치는 바꾸지 않는다).
 - 긴 스캔은 일정 간격으로 이벤트 루프에 양보하고 진행률을 묶어 보낸다. 한 번의 스캔 안에서는 `Snapshotter`의 변수 조회 캐시를 공유한다. 플립북 전달 작업 안에서는 페이지·프레임·템플릿 조회 캐시를 공유하되 다음 전달에서는 다시 읽는다.
 - 화면 지문 규칙을 바꾸면 `FINGERPRINT_VERSION`과 구형 기준 비교 경로를 함께 검토한다. 템플릿의 플러그인 관리 영역을 바꾸면 `figma/flipbook.ts`의 탐색·동기화와 UI 작성 영역 제외 규칙을 함께 확인한다.
 - `sharedPluginData` 키나 모델을 바꿀 때 `store.ts`의 로딩·호환 경로, `wire.ts`의 UI 직렬화, DATA 모델, 미리보기 Host를 함께 확인한다. 기존 데이터는 전체 자동 마이그레이션하지 않는다.

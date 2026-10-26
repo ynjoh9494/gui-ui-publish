@@ -360,7 +360,7 @@ export function commitPlan(store: Store, plan: Plan, input: CommitInput): Commit
   const batch: Batch = { id: plan.batchId, team: plan.team, actor: plan.actor, committedAt: now, items: committed.map(i => ({ screenId: i.screenId, version: i.toVersion })) };
   store.put(keys.batch(batch.id), batch);
   const entryKeys = [...committed, ...exclusions].map(i => i.entryKey);
-  return { ok: true, replay: false, committed: withPrevious(plan, entryKeys,new Set(committed.map(i => i.screenId))), conflicts, batch, deliveries };
+  return { ok: true, replay: false, committed: withPrevious(plan, entryKeys, new Set(committed.map(i => i.screenId))), conflicts, batch, deliveries };
 }
 
 // 짝인 신규 후보가 확정된 이전 화면의 항목 키를 더한다. UI는 이 키로 입력을 지우므로, 빠지면 배포 뒤에도 포함 상태로 남는다.
