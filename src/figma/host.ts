@@ -247,7 +247,7 @@ export function figmaHost(mode: Host['mode']): Host {
       return { kind: 'text', name: node.name };
     },
     createFlow: plan => createFlow(NS, plan),
-    updateFlow: (flow, thumbs) => updateFlow(NS, flow, thumbs),
+    updateFlow: (flow, thumbs, sameVersion) => updateFlow(NS, flow, thumbs, sameVersion),
     flowNode: (flow, uid) => flowNode(NS, flow, uid),
   };
 }

@@ -102,6 +102,13 @@ test('플로우 그룹을 만들고, 다시 배포된 화면만 썸네일을 바
   assert.deepEqual(rect('s2').fills, [{ type: 'IMAGE', imageHash: 'h2', scaleMode: 'FIT' }]);
   assert.equal(root.findAll(n => !!n.getSharedPluginData(NS, 'flowEmpty')).length, 0);
   assert.equal(await updateFlow(NS, record, thumbs), 0, 'running again changes nothing');
+  // 같은 버전을 다시 만든 썸네일(rethumb)은 sameVersion일 때만 바꾸고, 이미 그 이미지면 그대로 둔다.
+  m.images.add('h2b');
+  const remade = [{ uid: 's2', version: 2, thumb: { hash: 'h2b', width: 480, height: 270 } }];
+  assert.equal(await updateFlow(NS, record, remade), 0);
+  assert.equal(await updateFlow(NS, record, remade, true), 1);
+  assert.deepEqual(rect('s2').fills, [{ type: 'IMAGE', imageHash: 'h2b', scaleMode: 'FIT' }]);
+  assert.equal(await updateFlow(NS, record, remade, true), 0);
 
   assert.equal(await flowNode(NS, record), root.id);
   assert.equal(await flowNode(NS, record, 's2'), rect('s2').parent!.id, 'a screen opens its card group');

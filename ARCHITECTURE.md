@@ -30,6 +30,7 @@ flowchart LR
 | `src/core/richText.ts` | 텍스트 편집 탭의 문서 모델(문단·목록 단계·굵은 범위), 편집 동작(줄 나누기·합치기·붙여 넣기·굵게·목록 단계), 붙여 넣기·복사용 텍스트 형식 |
 | `src/core/flipbooks.ts`, `flipbook.ts`, `guiScreens.ts`, `history.ts`, `data.ts` | 플립북 기록·확인 상태, 캔버스 반영용 뷰, 화면 목록·이력·DATA 모델 |
 | `src/controller.ts` | 메시지 처리, 스캔·배포·플립북·관리 작업의 순서와 실패 보고 |
+| `src/rethumb.ts` | 임시 메뉴 명령 `rethumb`(2026-10-26): 배포한 화면의 썸네일을 1/2 해상도로 한 번 다시 만들어 마지막 GUI 기록의 해시와 플로우 이미지를 바꾼다. 실행 뒤 `main.ts` 분기·메뉴·`rethumb` 문구·`updateFlow`의 `sameVersion`과 함께 지운다 |
 | `src/host.ts` | Controller가 요구하는 Figma 기능의 인터페이스. 코어에 Figma 노드 타입을 들이지 않는 경계 |
 | `src/figma/host.ts` | `Host` 구현, 페이지·노드 탐색, 파일 저장소와 캔버스 API 연결 |
 | `src/figma/snapshot.ts`, `fingerprints.ts` | 노드의 시각 속성·해석된 변수 값을 스냅샷으로 수집하고 지문·유사도 특징 생성 |

@@ -174,7 +174,8 @@ async function findFlow(ns: string, flow: FlowRecord): Promise<GroupNode | Frame
 
 // 다시 배포된 화면의 썸네일만 바꾼다. 플로우 그룹을 찾지 못하면 null(기록을 지운다), 아니면 바꾼 썸네일 수.
 // 칸 크기와 화살표는 그대로 두고, 비율이 바뀐 이미지는 칸 안에 맞춘다(FIT).
-export async function updateFlow(ns: string, flow: FlowRecord, thumbs: FlowThumb[]): Promise<number | null> {
+// sameVersion: 같은 버전의 썸네일을 다시 만든 경우(rethumb.ts)에도 채움을 바꾼다.
+export async function updateFlow(ns: string, flow: FlowRecord, thumbs: FlowThumb[], sameVersion = false): Promise<number | null> {
   const node = await findFlow(ns, flow);
   if (!node) return null;
   await pageOf(node)?.loadAsync();
@@ -189,7 +190,9 @@ export async function updateFlow(ns: string, flow: FlowRecord, thumbs: FlowThumb
   let changed = 0;
   for (const rect of node.findAllWithCriteria({ types: ['RECTANGLE'], sharedPluginData: { namespace: ns, keys: [SCREEN_KEY] } })) {
     const next = latest.get(rect.getSharedPluginData(ns, SCREEN_KEY));
-    if (!next || Number(rect.getSharedPluginData(ns, VERSION_KEY) || 0) >= next.version || !figma.getImageByHash(next.thumb.hash)) continue;
+    const shown = Number(rect.getSharedPluginData(ns, VERSION_KEY) || 0);
+    if (!next || shown > next.version || (shown === next.version && !sameVersion) || !figma.getImageByHash(next.thumb.hash)) continue;
+    if (sameVersion && Array.isArray(rect.fills) && rect.fills.some(p => p.type === 'IMAGE' && p.imageHash === next.thumb.hash)) continue;
     rect.fills = imageFill(next.thumb.hash);
     rect.setSharedPluginData(ns, VERSION_KEY, String(next.version));
     for (const note of notes.get(rect.id) ?? []) note.remove();

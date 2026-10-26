@@ -58,8 +58,8 @@ export interface Host extends FingerprintReader {
   writeSelection(paragraphs: RichParagraph[]): Promise<SelectionWrite>;
   // 플로우: 지금 보고 있는 페이지에 그룹을 만든다. notes: 썸네일을 찾지 못한 화면 등 알릴 내용
   createFlow?(plan: FlowPlan): Promise<{ nodeId: string; pageId: string; notes: string[] }>;
-  // 다시 배포된 화면의 썸네일만 바꾼다. 플로우 그룹을 찾지 못하면 null
-  updateFlow?(flow: FlowRecord, thumbs: FlowThumb[]): Promise<number | null>;
+  // 다시 배포된 화면의 썸네일만 바꾼다. 플로우 그룹을 찾지 못하면 null. sameVersion: 같은 버전도 바꾼다(rethumb.ts)
+  updateFlow?(flow: FlowRecord, thumbs: FlowThumb[], sameVersion?: boolean): Promise<number | null>;
   // 플로우 그룹(uid가 있으면 그 화면 칸, 없으면 그룹)의 노드 ID. 그룹을 찾지 못하면 null
   flowNode?(flow: FlowRecord, uid?: string): Promise<string | null>;
 }
