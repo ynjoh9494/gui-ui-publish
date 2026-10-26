@@ -387,6 +387,13 @@ button.link.danger { color: var(--danger); }
 .create-screen-label { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; margin: 0; color: var(--text); cursor: pointer; }
 .create-screen-label .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .create-screen-option select { width: 58px; flex: none; padding: 2px; font-size: 11px; }
+/* 「선택된 화면」 순서 바꾸기(드래그) */
+.create-selected-list .create-screen-option[draggable="true"] { cursor: grab; }
+.create-screen-option.dragging { opacity: .45; }
+.create-screen-option.drop-before { box-shadow: inset 0 2px var(--brand); }
+.create-screen-option.drop-after { box-shadow: inset 0 -2px var(--brand); }
+/* 화면 편집: 머리 아래 대상 플립북 제목 한 줄 */
+.edit-target { margin: 6px 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .create-unused-dot { width: 8px; height: 8px; border-radius: 50%; background: #d9ae00; flex: none; }
 .create-unused-dot.planned { background: #999; }
 /* 플립북 없는 화면 일괄 만들기 모달: 범위 선택 아래 대상 화면 목록이 남은 높이를 쓴다. */

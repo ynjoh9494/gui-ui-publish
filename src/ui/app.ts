@@ -43,7 +43,7 @@ const NODE_PREVIEW = 'node:';
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
 const WHILE_BUSY = new Set(['tab', 'settings', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'toggle-detail', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
-const BEFORE_CHECK = new Set([...WHILE_BUSY, 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
+const BEFORE_CHECK = new Set([...WHILE_BUSY, 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'fb-edit-screens', 'edit-screens-cancel', 'edit-screens-apply', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'text-import', 'text-apply',
   'version-open', 'version-close', 'version-match', 'version-select', 'version-review-only', 'version-reveal', 'version-switch', 'version-cancel']);
 
@@ -113,6 +113,15 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   // 목록에서 옮긴 기존 플립북(2026-10-22 사용자 요청). 키는 플립북 ID다. 만들기(새 플립북이 없으면 배치 반영)를 누르면 캔버스에 반영할지 묻는다.
   type MovedFlipbook = { key: string; pageId: string; section: FlipbookSection; after?: string | null; seq: number };
   let movedFlipbooks: MovedFlipbook[] = [];
+  // 기존 플립북의 화면 편집(2026-10-26 사용자 요청). 플립북 ID별로 두며 적용하기 전에는 저장하지 않는다.
+  // 다른 플립북을 골랐다가 돌아와도 남고, 취소나 적용으로 지운다. 화면 선택은 새 플립북과 같은 「선택된 화면」·「화면 선택」을 쓴다.
+  type ScreenEdit = { key: string; flipbookId: string; uids: string[]; scale: FlipbookScale; scales: Record<string, FlipbookScale> };
+  const screenEdits = new Map<string, ScreenEdit>();
+  // 적용 중인 플립북 ID와 마지막 적용 오류
+  let editSubmitting: string | null = null;
+  let editError: string | null = null;
+  // 「선택된 화면」에서 드래그 중인 화면
+  let draggingScreen: string | null = null;
   let floatSeq = 0;
   // 새 플립북 확인 모달: 캔버스 배치 반영 여부(arrange), 만들기 취소 확인(cancel)
   let newDialog: 'arrange' | 'cancel' | null = null;
@@ -424,6 +433,46 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     return n.uids.map(uid => screens.find(screen => screen.uid === uid)).filter((screen): screen is GuiScreenInfo => !!screen);
   }
   const newKind = (n: NewFlipbook) => rowKind({ uids: n.uids, multi: n.uids.length > 1, scale: n.scale });
+  // 화면 편집 중인 기존 플립북: 그 플립북 하나만 골랐고 새 플립북을 고르지 않았을 때
+  function currentEdit(): ScreenEdit | null {
+    if (currentNew() || tab !== 'UI') return null;
+    const chosen = selectedEntries('UI');
+    const id = chosen.length === 1 ? chosen[0].flipbookId : null;
+    const edit = id ? screenEdits.get(id) : undefined;
+    return edit && state?.flipbooks.get(edit.flipbookId)?.status === 'active' ? edit : null;
+  }
+  // 화면 선택 영역이 다루는 항목(새 플립북 또는 화면 편집)
+  const editorRow = (): NewFlipbook | ScreenEdit | null => currentNew() ?? currentEdit();
+  const rowByKey = (key: string | undefined): NewFlipbook | ScreenEdit | undefined => newFlipbooks.find(n => n.key === key) ?? [...screenEdits.values()].find(e => e.key === key);
+  const isEdit = (row: NewFlipbook | ScreenEdit): row is ScreenEdit => 'flipbookId' in row;
+  // 화면 편집의 선택된 화면. 사용 종료되었거나 원본이 없어도 이미 든 화면은 보여 준다(빼거나 그대로 둘 수 있다).
+  function editScreens(e: ScreenEdit): GuiScreenInfo[] {
+    const fb = state?.flipbooks.get(e.flipbookId);
+    return e.uids.map(uid => createScreens.find(screen => screen.uid === uid) ?? (s => s && {
+      uid, code: s.code, name: s.name, category: null, status: 'deleted' as const, isCase: false, version: s.version, thumb: null, sourceNodeId: null,
+    })(fb?.screens.find(x => x.uid === uid))).filter((screen): screen is GuiScreenInfo => !!screen);
+  }
+  const rowScreens = (row: NewFlipbook | ScreenEdit) => isEdit(row) ? editScreens(row) : newScreens(row);
+  // 선택된 화면(목록·순서)을 바꾼 뒤 다시 그린다. 새 플립북은 첫 화면이 바뀌어 화면 카테고리 Section(자동)이 바뀌면 그 Section 맨 뒤로 옮긴다.
+  function screensChanged(row: NewFlipbook | ScreenEdit, change: () => void) {
+    if (isEdit(row)) { change(); editError = null; renderDetail(); return; }
+    const before = newSection(row).key;
+    change();
+    createError = null;
+    if (newSection(row).key !== before) relocateNew(row, row.pageId, row.section);
+    else normalizeNew();
+    revealSelection = true;
+    renderDetail(); renderList(); renderFooter();
+  }
+  // 화면마다 보이는 크기. 적용할 때도 이 값을 보낸다.
+  const editScales = (e: ScreenEdit) => Object.fromEntries(e.uids.map(uid => [uid, e.scales[uid] ?? e.scale]));
+  // 플립북 기록과 화면·순서·크기가 다른가
+  function editChanged(e: ScreenEdit): boolean {
+    const fb = state?.flipbooks.get(e.flipbookId);
+    if (!fb) return false;
+    const scales = editScales(e);
+    return e.uids.length !== fb.screens.length || fb.screens.some((s, i) => s.uid !== e.uids[i] || (s.scale ?? fb.scale) !== scales[s.uid]);
+  }
   // 따로 고르지 않았으면 첫 화면의 카테고리 Section이다. 화면이 없으면 「정책」으로 보내지 않고 그 페이지 맨 아래 Section에 둔다
   // (2026-10-22 사용자 요청). 페이지에 플립북이 없으면 미분류다.
   // canvas: 이미 계산한 캔버스 배치. 목록 전체를 배치할 때 새 플립북마다 다시 계산하지 않도록 넘긴다.
@@ -538,6 +587,22 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   }
   // 「새 플립북」: 고른 항목 바로 다음(같은 페이지·Section)에 넣고 고른다. 고른 항목이 없으면 기본 페이지의 화면 카테고리 Section 맨 뒤다.
   // quiet: 화면 우클릭으로 추가. 고른 항목을 바꾸지 않고, 화면·제목이 빈 새 플립북이 있으면 그 항목을 채운다.
+  // 새 플립북·화면 편집을 처음 열 때 창이 960×800보다 작으면 넓히고, 둘 다 닫으면(restoreEditorSize) 되돌린다.
+  function widenForEditor() {
+    if (sizeBeforeCreate) return;
+    // 오른쪽 영역을 펼치며 넣는 중이면 접기 전 너비를 기준으로 넓힌다.
+    const expanding = !!compactFrom && !detailCollapsed;
+    sizeBeforeCreate = { width: compactFrom?.width ?? root.offsetWidth, height: root.offsetHeight };
+    if (expanding) compactFrom = null;
+    if (expanding || sizeBeforeCreate.width < 960 || sizeBeforeCreate.height < 800) bridge.send({ type: 'resize', width: Math.max(sizeBeforeCreate.width, 960), height: Math.max(sizeBeforeCreate.height, 800) });
+  }
+  function restoreEditorSize() {
+    if (!sizeBeforeCreate || newFlipbooks.length || movedFlipbooks.length || screenEdits.size) return;
+    // 접어 둔 동안이면 창은 그대로 두고 펼칠 때 돌아갈 너비만 바꾼다.
+    if (compactFrom) compactFrom.width = sizeBeforeCreate.width;
+    else bridge.send({ type: 'resize', ...sizeBeforeCreate });
+    sizeBeforeCreate = null;
+  }
   function addNew(uids: string[] = [], quiet = false): boolean {
     const options = flipbookPageOptions();
     if (!state || !options.length) { notify('error', COPY.uiApp209); return false; }
@@ -546,13 +611,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       const empty = newFlipbooks.find(n => !n.uids.length && !n.title.trim());
       if (empty) { empty.uids = uids; normalizeNew(); expanded.UI.add(`${empty.pageId}|${newSection(empty).key}`); renderList(); renderFooter(); return true; }
     }
-    if (!newFlipbooks.length && !sizeBeforeCreate) {
-      // 오른쪽 영역을 펼치며 넣는 중이면 접기 전 너비를 기준으로 넓힌다.
-      const expanding = !!compactFrom && !detailCollapsed;
-      sizeBeforeCreate = { width: compactFrom?.width ?? root.offsetWidth, height: root.offsetHeight };
-      if (expanding) compactFrom = null;
-      if (expanding || sizeBeforeCreate.width < 960 || sizeBeforeCreate.height < 800) bridge.send({ type: 'resize', width: Math.max(sizeBeforeCreate.width, 960), height: Math.max(sizeBeforeCreate.height, 800) });
-    }
+    if (!newFlipbooks.length) widenForEditor();
     // 지금 보고 있는 플립북 페이지에 넣는다(2026-10-23 사용자 요청). 플립북 페이지가 아니면 기본 플립북 페이지다.
     const pageId = options.find(pg => pg.current)?.id ?? options.find(pg => pg.id === state!.project.flipbookPageId)?.id ?? options[0].id;
     const n: NewFlipbook = { key: `${NEW_PREFIX}${++newSeq}`, uids, scale: 1, scales: {}, title: '', pageId, section: null, seq: ++floatSeq };
@@ -590,12 +649,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     editingTitle = null;
     addingSection = false;
     createError = null;
-    // 접어 둔 동안이면 창은 그대로 두고 펼칠 때 돌아갈 너비만 바꾼다.
-    if (sizeBeforeCreate) {
-      if (compactFrom) compactFrom.width = sizeBeforeCreate.width;
-      else bridge.send({ type: 'resize', ...sizeBeforeCreate });
-      sizeBeforeCreate = null;
-    }
+    restoreEditorSize();
   }
   // 고를 수 있는 Section: 그 페이지에 있는 Section과 다른 새 플립북에 정한 새 Section
   function sectionChoices(pageId: string): FlipbookSection[] {
@@ -1096,9 +1150,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
 
   function renderDetail() {
     $('.detail').classList.toggle('locked', tab !== 'ADMIN' && detailLocked(team()));
-    $('.detail').classList.remove('flipbook-detail', 'new-flipbook-detail');
+    $('.detail').classList.remove('flipbook-detail', 'new-flipbook-detail', 'screen-edit-detail');
     if (tab === 'ADMIN') { renderAdmin(); return; }
-    if (team() === 'UI') { if (currentNew()) renderNewDetail(); else renderFlipbookDetail(); return; }
+    if (team() === 'UI') { if (currentNew()) renderNewDetail(); else if (currentEdit()) renderEditDetail(); else renderFlipbookDetail(); return; }
     const t = team();
     // 변경사항 확인 전에는 안내 문구만 가운데에 보여 주고 다른 정보는 숨긴다.
     if (state && locked(t)) { $('.detail').innerHTML = `<div class="detail-hint"><p>${COPY.uiApp023}</p></div>`; return; }
@@ -1292,6 +1346,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     }
     if (!multi) {
       const fb = state.flipbooks.get(entry.flipbookId);
+      // 화면 편집(2026-10-26 사용자 요청): 화면 머리 줄 오른쪽 버튼으로 연다. 연결이 끊긴 플립북은 반영할 수 없어 열지 않는다.
+      if (fb && entry.estimate !== 'missing') top += `<div class="gui-size fb-screens-head"><p class="note">${COPY.uiApp205} <b>${fb.screens.length}</b>${COPY.uiApp015}</p><button data-action="fb-edit-screens" data-id="${esc(fb.id)}" title="${esc(COPY.uiApp352)}">${COPY.uiApp346}</button></div>`;
       top += fb?.screens.length ? flipbookThumbs(entry.flipbookId, new Set(changed.keys())) : `<p class="note">${COPY.uiApp221}</p>`;
       top += '<div class="history"></div>';
     }
@@ -1440,22 +1496,23 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const list = root.querySelector<HTMLElement>('.create-screen-list');
     const selectedList = root.querySelector<HTMLElement>('.create-selected-list');
     if (!list || !selectedList) return;
-    const row = currentNew();
+    const row = editorRow();
     if (!row) { list.innerHTML = ''; selectedList.innerHTML = ''; return; }
     const used = new Set([...state!.flipbooks.values()].filter(fb => fb.status === 'active').flatMap(fb => fb.screens.map(screen => screen.uid)));
     const planned = new Set(newFlipbooks.flatMap(item => item.uids));
     const queryText = createQuery.trim().toLocaleLowerCase();
     const screens = activeScreens();
-    const selectedScreens = newScreens(row);
+    const selectedScreens = rowScreens(row);
     const shown = screens.filter(screen =>
       !row.uids.includes(screen.uid)
       &&
       (!createUncreatedOnly || !used.has(screen.uid) && !planned.has(screen.uid))
       && (!queryText || `${screen.code} ${screen.name}`.toLocaleLowerCase().includes(queryText)));
+    // 「선택된 화면」은 드래그하거나 Alt+↑↓로 순서를 바꾼다. 이 순서가 GUI 영역·Screen ID 순서다.
     const screenOption = (screen: GuiScreenInfo) => {
       const selected = row.uids.includes(screen.uid);
       const inputId = `create-screen-${screen.uid}`;
-      return `<div class="create-screen-option" data-thumb="${esc(screen.thumb?.hash ?? '')}">
+      return `<div class="create-screen-option" data-thumb="${esc(screen.thumb?.hash ?? '')}"${selected ? ` draggable="true" data-uid="${esc(screen.uid)}" title="${esc(COPY.uiApp349)}"` : ''}>
         <input id="${esc(inputId)}" type="checkbox" data-action="create-screen-toggle" value="${esc(screen.uid)}" ${selected ? 'checked' : ''}>
         <label for="${esc(inputId)}" class="create-screen-label" title="${esc(screen.name)}"><span class="id-tag">${esc(screen.code)}</span><span class="name">${esc(screen.name)}</span></label>
         ${selected ? `<select data-input="create-screen-scale" data-key="${esc(row.key)}" data-uid="${esc(screen.uid)}" aria-label="${esc(screen.name)} 이미지 크기" title="이미지 크기">${scaleOptions(row.scales[screen.uid] ?? row.scale)}</select>` : ''}
@@ -1494,8 +1551,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const auto = defaultTitle(newKind(n), chosen);
     const automatic = autoSection(n);
     const choices = sectionChoices(n.pageId).filter(s => s.key !== automatic.key);
-    const scales = n.uids.map(uid => n.scales[uid] ?? n.scale);
-    const bulkScale = scales.length && scales.every(scale => scale === scales[0]) ? scales[0] : scales.length ? null : n.scale;
     // 제목은 페이지·섹션처럼 늘 입력란이다(2026-10-22 사용자 요청). 지금 쓸 제목(첫 화면 이름 또는 「새 플립북」)을 채워 두며,
     // 직접 고치기 전까지는 화면을 바꾸면 따라 바뀐다. 입력 중에 다시 그려도 값과 커서를 유지한다.
     const typing = detail.querySelector<HTMLInputElement>(`[data-input="new-title"][data-key="${CSS.escape(n.key)}"]`);
@@ -1515,15 +1570,50 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         <label>${COPY.uiApp338}${sectionField}</label>
         <label>${COPY.uiApp312}<input class="title-input" data-input="new-title" data-key="${esc(n.key)}" value="${esc(title)}" placeholder="${esc(auto)}" aria-label="${COPY.uiApp203}"></label>
       </div>
-      <div class="create-browser">
-        <section class="create-selected-box"><header><strong>선택된 화면</strong><label class="create-bulk-scale">화면 크기 <select data-input="create-bulk-scale" data-key="${esc(n.key)}" aria-label="화면 크기 일괄 선택" ${n.uids.length ? '' : 'disabled'}>${scaleOptions(bulkScale)}</select></label></header><div class="create-selected-list"></div></section>
-        <section class="create-available-box"><header><strong>${COPY.uiApp205} 선택</strong></header><input type="search" data-input="create-query" value="${esc(createQuery)}" placeholder="화면 검색" aria-label="화면 검색"><label class="create-filter create-switch"><input type="checkbox" role="switch" data-action="create-uncreated-only" ${createUncreatedOnly ? 'checked' : ''}><span class="switch-track" aria-hidden="true"></span><span>생성된 플립북이 없는 화면</span></label><div class="create-screen-list"></div></section>
-      </div>`;
+      ${screenBrowser(n)}`;
     renderCreateScreenList();
     detail.querySelector<HTMLElement>('.create-screen-list')!.scrollTop = listScroll;
     detail.querySelector<HTMLElement>('.create-selected-list')!.scrollTop = selectedScroll;
     const field = detail.querySelector<HTMLInputElement>('[data-input="new-title"]');
     if (field && typed) { field.value = typed.value; field.focus(); field.setSelectionRange(typed.start, typed.end); }
+  }
+
+  // 「선택된 화면」(화면 크기 일괄 선택)과 「화면 선택」. 새 플립북과 화면 편집이 같이 쓴다. 목록은 renderCreateScreenList가 채운다.
+  function screenBrowser(row: NewFlipbook | ScreenEdit): string {
+    const scales = row.uids.map(uid => row.scales[uid] ?? row.scale);
+    const bulkScale = scales.length && scales.every(scale => scale === scales[0]) ? scales[0] : scales.length ? null : row.scale;
+    return `<div class="create-browser">
+        <section class="create-selected-box"><header><strong>선택된 화면</strong><label class="create-bulk-scale">화면 크기 <select data-input="create-bulk-scale" data-key="${esc(row.key)}" aria-label="화면 크기 일괄 선택" ${row.uids.length ? '' : 'disabled'}>${scaleOptions(bulkScale)}</select></label></header><div class="create-selected-list"></div></section>
+        <section class="create-available-box"><header><strong>${COPY.uiApp205} 선택</strong></header><input type="search" data-input="create-query" value="${esc(createQuery)}" placeholder="화면 검색" aria-label="화면 검색"><label class="create-filter create-switch"><input type="checkbox" role="switch" data-action="create-uncreated-only" ${createUncreatedOnly ? 'checked' : ''}><span class="switch-track" aria-hidden="true"></span><span>생성된 플립북이 없는 화면</span></label><div class="create-screen-list"></div></section>
+      </div>`;
+  }
+
+  // 기존 플립북의 화면 편집(2026-10-26 사용자 요청): 머리 왼쪽에 「화면 편집」과 안내, 오른쪽에 취소·적용을 두고,
+  // 아래는 새 플립북과 같은 「선택된 화면」·「화면 선택」이다. 페이지·Section·제목은 목록과 상세 제목에서 바꾼다.
+  function renderEditDetail() {
+    const detail = $('.detail');
+    const e = currentEdit();
+    const fb = e && state?.flipbooks.get(e.flipbookId);
+    if (!e || !fb) return;
+    detail.classList.add('new-flipbook-detail', 'screen-edit-detail');
+    const listScroll = detail.querySelector<HTMLElement>('.create-screen-list')?.scrollTop ?? 0;
+    const selectedScroll = detail.querySelector<HTMLElement>('.create-selected-list')?.scrollTop ?? 0;
+    const submitting = editSubmitting === e.flipbookId;
+    detail.innerHTML = `<div class="detail-head edit-head"><div class="edit-title"><h2>${COPY.uiApp346}</h2><p class="note">${COPY.uiApp347}</p></div>
+        <div class="new-actions"><button data-action="edit-screens-cancel" ${submitting ? 'disabled' : ''}>${COPY.uiApp149}</button>
+          <button class="primary" data-action="edit-screens-apply" ${submitting || !editChanged(e) ? 'disabled' : ''}>${submitting ? COPY.uiApp351 : COPY.uiApp348}</button></div></div>
+      <div class="new-error">${editError ? `<p class="bad" role="alert">${esc(editError)}</p>` : ''}</div>
+      <p class="edit-target"><span class="note">${COPY.uiApp350}</span> ${esc(fb.title)}</p>
+      ${screenBrowser(e)}`;
+    renderCreateScreenList();
+    detail.querySelector<HTMLElement>('.create-screen-list')!.scrollTop = listScroll;
+    detail.querySelector<HTMLElement>('.create-selected-list')!.scrollTop = selectedScroll;
+  }
+  // 크기만 바꾸면 화면 목록을 다시 그리지 않으므로 적용 버튼만 맞춘다.
+  function paintEditApply() {
+    const e = currentEdit();
+    const button = root.querySelector<HTMLButtonElement>('.detail [data-action="edit-screens-apply"]');
+    if (e && button) button.disabled = editSubmitting === e.flipbookId || !editChanged(e);
   }
 
   // 일괄 만들기 후보: 플립북이 없고 생성 목록에도 고르지 않은 화면
@@ -2334,17 +2424,40 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       }
       case 'create-uncreated-only': createUncreatedOnly = (el as HTMLInputElement).checked; renderCreateScreenList(); break;
       case 'create-screen-toggle': {
-        const row = currentNew();
+        const row = editorRow();
         if (!row) break;
         const uid = (el as HTMLInputElement).value;
-        const before = newSection(row).key;
-        row.uids = (el as HTMLInputElement).checked ? [...row.uids, uid] : row.uids.filter(value => value !== uid);
-        createError = null;
-        // 첫 화면이 바뀌어 화면 카테고리 Section(자동)이 바뀌면 그 Section 맨 뒤로 옮긴다.
-        if (newSection(row).key !== before) relocateNew(row, row.pageId, row.section);
-        else normalizeNew();
-        revealSelection = true;
-        renderDetail(); renderList(); renderFooter(); break;
+        const checked = (el as HTMLInputElement).checked;
+        screensChanged(row, () => { row.uids = checked ? [...row.uids, uid] : row.uids.filter(value => value !== uid); });
+        break;
+      }
+      case 'fb-edit-screens': {
+        const fb = state?.flipbooks.get(el.dataset.id!);
+        if (!fb) break;
+        if (!createScreens.length) bridge.send({ type: 'guiScreens' });
+        widenForEditor();
+        if (!screenEdits.has(fb.id)) screenEdits.set(fb.id, { key: `edit:${fb.id}`, flipbookId: fb.id, uids: fb.screens.map(s => s.uid), scale: fb.scale, scales: Object.fromEntries(fb.screens.map(s => [s.uid, s.scale ?? fb.scale])) });
+        editError = null;
+        renderDetail();
+        break;
+      }
+      case 'edit-screens-cancel': {
+        const e = currentEdit();
+        if (!e || editSubmitting) break;
+        screenEdits.delete(e.flipbookId);
+        editError = null;
+        restoreEditorSize();
+        renderDetail();
+        break;
+      }
+      case 'edit-screens-apply': {
+        const e = currentEdit();
+        if (!e || editSubmitting || !editChanged(e)) break;
+        editSubmitting = e.flipbookId;
+        editError = null;
+        bridge.send({ type: 'editFlipbookScreens', request: { flipbookId: e.flipbookId, uids: [...e.uids], scale: e.scale, scales: editScales(e) } });
+        renderDetail();
+        break;
       }
       case 'create-submit': submitNew(); break;
       case 'arrange-skip': submitNew(false); break;
@@ -2721,7 +2834,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   // 새 플립북: 화면을 우클릭하면 그 화면 하나로 된 새 플립북을 목록(화면 카테고리 Section 맨 뒤)에 추가한다.
   // 화면·제목이 비어 있는 새 플립북이 있으면 그 항목을 채운다. 현재 고른 항목은 그대로 둔다.
   root.addEventListener('contextmenu', ev => {
-    const option = (ev.target as HTMLElement).closest<HTMLElement>('.new-flipbook-detail .create-screen-option');
+    const option = (ev.target as HTMLElement).closest<HTMLElement>('.new-flipbook-detail:not(.screen-edit-detail) .create-screen-option');
     const uid = option?.querySelector<HTMLInputElement>('[data-action="create-screen-toggle"]')?.value;
     if (!uid) return;
     ev.preventDefault();
@@ -2758,7 +2871,34 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const key = node.dataset.key!;
     return { node, groupKey, to: ev.clientY < rect.top + rect.height / 2 ? { before: key } : { after: key } };
   };
+  // 「선택된 화면」 순서 바꾸기: 놓은 화면의 위·아래 절반에 따라 그 앞·뒤로 옮긴다.
+  const screenDrop = (ev: DragEvent): { node: HTMLElement; uid: string; before: boolean } | null => {
+    if (!draggingScreen) return null;
+    const node = (ev.target as HTMLElement).closest<HTMLElement>('.create-selected-list .create-screen-option[data-uid]');
+    if (!node || node.dataset.uid === draggingScreen) return null;
+    const rect = node.getBoundingClientRect();
+    return { node, uid: node.dataset.uid!, before: ev.clientY < rect.top + rect.height / 2 };
+  };
+  function moveScreen(uid: string, to: { uid: string; before: boolean } | { step: -1 | 1 }) {
+    const row = editorRow();
+    if (!row || !row.uids.includes(uid)) return;
+    screensChanged(row, () => {
+      const rest = row.uids.filter(value => value !== uid);
+      const at = 'step' in to ? Math.max(0, Math.min(rest.length, row.uids.indexOf(uid) + to.step)) : rest.indexOf(to.uid) + (to.before ? 0 : 1);
+      rest.splice(at, 0, uid);
+      row.uids = rest;
+    });
+  }
   root.addEventListener('dragstart', ev => {
+    const option = (ev.target as HTMLElement).closest<HTMLElement>('.create-selected-list .create-screen-option[data-uid]');
+    if (option) {
+      if (busyLabel || newSubmitting || editSubmitting) { ev.preventDefault(); return; }
+      draggingScreen = option.dataset.uid!;
+      ev.dataTransfer?.setData('text/plain', draggingScreen);
+      if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
+      option.classList.add('dragging');
+      return;
+    }
     const row = (ev.target as HTMLElement).closest<HTMLElement>('.list-box .row[data-group][draggable="true"]');
     if (!row || busyLabel || newSubmitting) { if (row) ev.preventDefault(); return; }
     draggingNew = row.dataset.key!;
@@ -2767,6 +2907,15 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     row.classList.add('dragging');
   });
   root.addEventListener('dragover', ev => {
+    if (draggingScreen) {
+      const drop = screenDrop(ev);
+      clearDrop();
+      if (!drop) return;
+      ev.preventDefault();
+      if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
+      drop.node.classList.add(drop.before ? 'drop-before' : 'drop-after');
+      return;
+    }
     const target = dropTarget(ev);
     clearDrop();
     if (!target) return;
@@ -2775,6 +2924,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     target.node.classList.add(target.to.start ? 'drop-into' : target.to.before ? 'drop-before' : 'drop-after');
   });
   root.addEventListener('drop', ev => {
+    if (draggingScreen) {
+      const drop = screenDrop(ev);
+      const uid = draggingScreen;
+      draggingScreen = null;
+      clearDrop();
+      if (!drop) return;
+      ev.preventDefault();
+      moveScreen(uid, drop);
+      return;
+    }
     const target = dropTarget(ev);
     clearDrop();
     if (!target || !draggingNew) return;
@@ -2787,6 +2946,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   });
   root.addEventListener('dragend', () => {
     draggingNew = null;
+    draggingScreen = null;
     clearDrop();
     for (const node of root.querySelectorAll('.dragging')) node.classList.remove('dragging');
   });
@@ -2822,6 +2982,15 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         root.querySelector<HTMLElement>(`.new-row[data-key="${CSS.escape(key)}"]`)?.focus();
       } else if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); selectNew(key); }
       else if (ev.key === 'Delete' && !newSubmitting) { ev.preventDefault(); removeNew(key); }
+      return;
+    }
+    // 「선택된 화면」: 체크박스에서 Alt+↑↓로 순서를 바꾼다.
+    if (ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown') && el.matches('.create-selected-list [data-action="create-screen-toggle"]')) {
+      ev.preventDefault();
+      if (busyLabel || newSubmitting || editSubmitting) return;
+      const uid = (el as HTMLInputElement).value;
+      moveScreen(uid, { step: ev.key === 'ArrowUp' ? -1 : 1 });
+      root.querySelector<HTMLElement>(`.create-selected-list [data-action="create-screen-toggle"][value="${CSS.escape(uid)}"]`)?.focus();
       return;
     }
     // 기존 플립북 행: Alt+↑↓로 자리를 옮긴다. Enter·Space는 아래 공통 처리로 고른다.
@@ -2917,17 +3086,18 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       return;
     }
     if (el.dataset.input === 'create-bulk-scale') {
-      const r = newFlipbooks.find(x => x.key === el.dataset.key);
-      if (r) { r.scale = Number(el.value) as FlipbookScale; for (const uid of r.uids) r.scales[uid] = r.scale; renderCreateScreenList(); }
+      const r = rowByKey(el.dataset.key);
+      if (r) { r.scale = Number(el.value) as FlipbookScale; for (const uid of r.uids) r.scales[uid] = r.scale; renderCreateScreenList(); paintEditApply(); }
       return;
     }
     if (el.dataset.input === 'create-screen-scale') {
-      const r = newFlipbooks.find(x => x.key === el.dataset.key);
+      const r = rowByKey(el.dataset.key);
       if (r && el.dataset.uid) {
         r.scales[el.dataset.uid] = Number(el.value) as FlipbookScale;
         const values = r.uids.map(uid => r.scales[uid] ?? r.scale);
         const bulk = root.querySelector<HTMLSelectElement>('[data-input="create-bulk-scale"]');
         if (bulk) bulk.innerHTML = scaleOptions(values.every(value => value === values[0]) ? values[0] : null);
+        paintEditApply();
       }
       return;
     }
@@ -3344,14 +3514,23 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         notify('info', msg.message);
         renderList(); renderDetail(); renderFooter();
         break;
+      // 기록이 바뀌었으면(반영에 실패했어도) 편집 내용은 기록과 같으므로 지운다. 반영 실패는 오류로 알린다.
+      case 'flipbookScreensEdited':
+        editSubmitting = null;
+        editError = null;
+        screenEdits.delete(msg.id);
+        restoreEditorSize();
+        notify(msg.failed ? 'error' : 'info', msg.message);
+        if (tab === 'UI') { renderList(); renderDetail(); }
+        break;
       case 'thumbnails':
         for (const item of msg.items) {
           if (item.bytes) thumbUrls.set(item.hash, URL.createObjectURL(new Blob([new Uint8Array(item.bytes)], { type: 'image/jpeg' })));
           else { thumbUrls.set(item.hash, ''); failedPreviews.add(item.hash); }
         }
-        // 플립북 만들기 창은 마우스를 올린 미리보기만 쓰므로 다시 그리지 않는다(열린 화면 선택이 닫히지 않게).
+        // 플립북 만들기·화면 편집 창은 마우스를 올린 미리보기만 쓰므로 다시 그리지 않는다(열린 화면 선택이 닫히지 않게).
         if (versionOpen) renderVersionDetail();
-        else if (!currentNew() && tab !== 'ADMIN') renderDetailKeepingFocus();
+        else if (!currentNew() && !currentEdit() && tab !== 'ADMIN') renderDetailKeepingFocus();
         flows.thumbsLoaded();
         showHoverThumb();
         break;
@@ -3378,6 +3557,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         pdf.setRunning(false);
         if (bulk?.submitting) { bulk.submitting = false; bulk.error = msg.message; renderBulk(); }
         else if (newSubmitting) { newSubmitting = false; createError = msg.message; renderFooter(); }
+        else if (editSubmitting) { editSubmitting = null; editError = msg.message; renderDetail(); }
         notify('error', msg.message);
         break;
     }

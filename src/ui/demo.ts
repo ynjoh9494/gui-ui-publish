@@ -76,6 +76,8 @@ export function createDemo(options: DemoOptions): Demo {
   const thumbs = new Map<string, Uint8Array>();
   let thumbSeq = 0;
   const flipbooks = new Map<string, string>();
+  // 플립북마다 마지막으로 반영한 GUI 영역(Screen ID@크기). 화면 편집을 로그로 보여 준다.
+  const shownGui = new Map<string, string>();
   // 플립북 프레임의 캔버스 배치. 같은 페이지·Section끼리 배열 순서가 Section 안 순서이고, Section은 처음 나온 순서다.
   const placed: { flipbookId: string; pageId: string; section: string; sectionName: string }[] = [];
   const uiEdits = new Map<string, number>();
@@ -209,6 +211,10 @@ export function createDemo(options: DemoOptions): Demo {
         changed();
       }
       if (view.retitle) log(`제목 변경: ${view.name}`);
+      // 화면 편집으로 GUI 영역의 화면·순서·크기가 바뀌었다.
+      const gui = view.gui.map(g => `${g.code}@${g.scale ?? view.scale}`).join(', ');
+      if (shownGui.has(view.flipbookId) && shownGui.get(view.flipbookId) !== gui) log(`${COPY.uiPreview055} ${gui || '-'}`);
+      shownGui.set(view.flipbookId, gui);
       log(`${COPY.uiPreview025} ${view.category.name} / ${view.name} ${COPY.uiPreview026} ${view.status ? `${view.status.tag.name}(${view.status.colorKey})` : '-'} ${COPY.uiPreview027} ${view.rows[0]?.at ?? '-'} ${COPY.uiPreview028} ${Math.max(0, view.rows.length - 1)}${COPY.uiPreview029}`);
       return { nodeId: flipbooks.get(view.flipbookId)!, notes: [] };
     },

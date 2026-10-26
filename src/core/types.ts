@@ -157,7 +157,8 @@ export type FlipbookKind = 'single' | 'multi' | 'policy';
 export type FlipbookScale = 1 | 0.5 | 0.25;
 
 // 플립북에 넣은 GUI 화면. version은 플립북에 반영한 GUI 버전이다.
-export interface FlipbookScreen { uid: string; code: string; name: string; version: number; scale?: FlipbookScale }
+// addedAt: 만든 뒤 화면 편집으로 넣은 시각. 그 전에 배포된 GUI 기록은 확인할 것으로 보지 않는다. 만들 때 넣은 화면에는 없다.
+export interface FlipbookScreen { uid: string; code: string; name: string; version: number; scale?: FlipbookScale; addedAt?: number }
 
 export interface Flipbook {
   id: string;

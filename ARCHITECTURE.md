@@ -88,6 +88,8 @@ UI Flipbook의 현재 화면 흐름은 **플립북 만들기, GUI 갱신 알림,
 4. 새 GUI 이력이 `rv:`에 저장된 화면별 확인 버전보다 앞서면 플립북에 확인 필요 표시를 한다. `markReviewed()`는 그때까지의 버전, Status 태그와 코멘트를 저장하고 플립북의 표시·이력 행을 갱신한다. 시각 대신 화면별 버전으로 확인 여부를 판단한다.
 5. 플립북의 페이지·Section은 캔버스가 원본이다. Figma `inspectFlipbooks()`가 루트 Section(페이지 바로 아래 Section)마다 플립북 프레임의 자리(`FlipbookSpot`: 페이지, Section 키·이름, 순서)를 읽는다. 안쪽 Section은 없는 것으로 보고 루트 Section 좌표로 세며, 표식 없는 루트 Section에는 키를 붙이고 복제로 겹친 키는 새로 붙인다. Section 밖 프레임은 `NO_SECTION_KEY`(「(섹션 없음)」) 자리다. 코어 `canvasSections()`·`followCanvasSections()`가 기록과 다른 플립북의 페이지·Section을 캔버스에 맞춘다. 플러그인을 열 때와 목록 새로고침(`refreshList`)에서 기록과 다른 플립북을 찾으면 `syncCanvasSections()`가 쓰기 큐에서 기록을 맞추고 `Host.syncChapters()`로 Chapter만 다시 쓴다. `deliverFlipbooks()`도 반영 전에 같은 맞춤을 한 번 한다(부른 쪽이 이미 맞췄으면 `canvasFollowed`, 이미 읽은 캔버스는 `canvas`로 넘겨 다시 읽지 않는다). 플러그인은 프레임을 기록의 Section으로 되돌리지 않는다.
 
+6. 화면 편집(`editFlipbookScreens` 메시지)은 연결된 플립북만 받는다. 코어 `editFlipbookScreens()`가 새 화면 목록·순서·크기를 검사해 `Flipbook.screens`·`kind`·`scale`·자동 제목을 바꾸고(남긴 화면은 반영한 버전 유지, 새 화면은 현재 버전과 `addedAt`), Controller가 반영 대상(`dlv:`)으로 등록해 `deliverFlipbooks()`로 다시 맞춘다. 캔버스 쪽은 `syncGui()`가 같은 화면·크기의 복사본을 재사용하고 마커를 남은 화면에 따라 옮긴다. `unreviewed()`는 지금 든 화면의 기록 중 `max(확인 기준 시각, addedAt)` 뒤의 것만 확인할 것으로 본다.
+
 플립북 반영은 `dlv:`의 `pending → applying → done/failed` 상태로 추적한다. 한 플립북 반영이 실패해도 다른 플립북은 계속 처리하며, 재시도로 미완료 대상을 다시 맞출 수 있다. GUI 복사본의 원천은 GUI 원본 프레임이며, 별도 이미지 라이브러리나 외부 전달 서버를 거치지 않는다.
 
 ## 응답성 및 변경 시 유의점

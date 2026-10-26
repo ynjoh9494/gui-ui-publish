@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseFrameName, formatFrameName } from '../src/core/screenName.ts';
 import { guiRecordInfos, guiScreens, type GuiRecordInfo, type GuiScreenInfo } from '../src/core/guiScreens.ts';
-import { canvasSections, checkMoves, filterScreens, followCanvasSections, noSection, planFlipbooks, importGuiUpdates, markReviewed, needsReview, removeFlipbooks, retireFlipbooks, uncreatedScreens, unreviewed } from '../src/core/flipbooks.ts';
+import { canvasSections, checkMoves, editFlipbookScreens, filterScreens, followCanvasSections, noSection, planFlipbooks, importGuiUpdates, markReviewed, needsReview, removeFlipbooks, retireFlipbooks, uncreatedScreens, unreviewed } from '../src/core/flipbooks.ts';
 import { chapterName, flipbookView } from '../src/core/flipbook.ts';
 import { flipbookHistoryRows } from '../src/core/history.ts';
 import { acknowledgeChange, buildPlan, commitPlan } from '../src/core/publish.ts';
@@ -1012,4 +1012,95 @@ test('첫 플립북 동기화가 실패해도 대기 화면을 닫고 오류를 
   const ready = posted.findIndex(m => m.type === 'startupReady');
   assert.ok(error >= 0 && ready > error, '오류를 알린 뒤 대기 화면을 닫는다');
   assert.ok(posted.slice(error, ready).some(m => m.type === 'busy' && m.label === null));
+});
+
+test('화면 편집은 화면을 더하고 바꾸고 빼며, 자동 제목만 새 첫 화면을 따르고 바뀐 것이 없으면 기록하지 않는다', () => {
+  const store = new Store(memoryKV(), () => 100);
+  const screens = new Map([screen('a', 'STB_HO_001'), screen('b', 'STB_HO_002', 3), screen('c', 'STB_HO_003'),
+    { ...screen('old', 'STB_HO_004'), status: 'deleted' as const }, { ...screen('raw', 'STB_HO_005'), sourceNodeId: null }].map(s => [s.uid, s]));
+  const [fb] = planFlipbooks({ pageId: 'p', rows: [row(['a'])] }, screens, actor, 100, () => 'fb');
+  store.put(keys.flipbook(fb.id), { ...fb, category: { key: 'custom', name: '내 섹션', order: 5 } });
+  // 더하기: 여러 화면이 되고, 남긴 화면은 반영한 버전을 두고 새 화면은 지금 버전과 넣은 시각을 남긴다.
+  const added = editFlipbookScreens(store, { flipbookId: 'fb', uids: ['a', 'b'], scale: 0.5, scales: { a: 1 } }, screens, actor, 200);
+  assert.equal(added.kind, 'multi');
+  assert.deepEqual(added.screens.map(s => [s.uid, s.version, s.scale, s.addedAt]), [['a', 1, 1, undefined], ['b', 3, 0.5, 200]]);
+  assert.deepEqual([added.title, added.category.key], ['화면 a', 'custom'], '자동 제목은 첫 화면 이름, Section은 그대로');
+  // 바꾸기: 첫 화면을 바꾸면 자동 제목도 바뀐다.
+  const replaced = editFlipbookScreens(store, { flipbookId: 'fb', uids: ['c', 'b'], scale: 0.5, scales: { c: 1 } }, screens, actor, 300);
+  assert.deepEqual([replaced.title, replaced.titleNames], ['화면 c', ['화면 a', '화면 c']]);
+  // 바뀐 것이 없으면 그대로 돌려주고 기록하지 않는다.
+  const audits = () => store.kv.keys().filter(k => k.startsWith('aud:')).length;
+  const before = audits();
+  assert.equal(editFlipbookScreens(store, { flipbookId: 'fb', uids: ['c', 'b'], scale: 0.5, scales: { c: 1 } }, screens, actor, 400), store.state.flipbooks.get('fb'));
+  assert.equal(audits(), before);
+  // 직접 고친 제목은 두고, 화면을 모두 빼면 정책 플립북이 된다.
+  store.put(keys.flipbook('fb'), { ...store.state.flipbooks.get('fb')!, title: '직접 쓴 제목', autoTitle: false });
+  const single = editFlipbookScreens(store, { flipbookId: 'fb', uids: ['b'], scale: 0.5, scales: { b: 0.5 } }, screens, actor, 500);
+  assert.deepEqual([single.kind, single.scale, single.screens[0].scale, single.title], ['single', 1, 0.5, '직접 쓴 제목']);
+  assert.equal(editFlipbookScreens(store, { flipbookId: 'fb', uids: [], scale: 1 }, screens, actor, 600).kind, 'policy');
+  // 사용 종료·원본 없는 화면은 넣을 수 없고, 같은 화면을 두 번 넣을 수 없다.
+  assert.throws(() => editFlipbookScreens(store, { flipbookId: 'fb', uids: ['old'], scale: 1 }, screens, actor, 700), /사용 종료/);
+  assert.throws(() => editFlipbookScreens(store, { flipbookId: 'fb', uids: ['raw'], scale: 1 }, screens, actor, 700), /원본/);
+  assert.throws(() => editFlipbookScreens(store, { flipbookId: 'fb', uids: ['a', 'a'], scale: 0.5 }, screens, actor, 700), /두 번/);
+  // 이미 든 화면이 사용 종료되었으면 크기를 바꾸지 않을 때만 남긴다.
+  store.put(keys.flipbook('fb'), { ...store.state.flipbooks.get('fb')!, kind: 'multi', scale: 0.5, screens: [{ uid: 'old', code: 'STB_HO_004', name: '화면 old', version: 1, scale: 0.5 }] });
+  assert.equal(editFlipbookScreens(store, { flipbookId: 'fb', uids: ['old', 'a'], scale: 0.5 }, screens, actor, 800).screens.length, 2);
+  assert.throws(() => editFlipbookScreens(store, { flipbookId: 'fb', uids: ['old', 'a'], scale: 0.25 }, screens, actor, 900), /GUI 원본이 있어야/);
+  store.put(keys.flipbook('fb'), { ...store.state.flipbooks.get('fb')!, status: 'deleted' });
+  assert.throws(() => editFlipbookScreens(store, { flipbookId: 'fb', uids: ['a'], scale: 1 }, screens, actor, 1000), /찾을 수 없습니다/);
+});
+
+test('화면 편집으로 넣은 화면은 넣은 뒤의 배포만 확인할 것으로 보고, 뺀 화면은 이력에만 남는다', () => {
+  let now = 100;
+  const store = new Store(memoryKV(), () => now);
+  const a2 = screen('a', 'STB_HO_001', 2), b1 = screen('b', 'STB_HO_002', 1);
+  const [fb] = planFlipbooks({ pageId: 'p', rows: [row(['a'])] }, new Map([['a', screen('a', 'STB_HO_001')]]), actor, 100, () => 'fb');
+  store.put(keys.flipbook(fb.id), fb);
+  importGuiUpdates(store, 'fb', new Map([['a', a2]]), [record('a', a2.code, 1), record('a', a2.code, 2)]);
+  assert.deepEqual(unreviewed(store.state, 'fb').map(r => [r.uid, r.version]), [['a', 2]]);
+  // a를 빼고 b를 넣는다(b v1은 넣기 전에 배포됨). a의 확인할 기록은 사라지고 이력에는 남는다.
+  now = 2500;
+  editFlipbookScreens(store, { flipbookId: 'fb', uids: ['b'], scale: 1 }, new Map([['a', a2], ['b', b1]]), actor, now);
+  assert.equal(needsReview(store.state, 'fb'), false);
+  assert.equal(flipbookHistoryRows(store.state, 'fb').length, 1);
+  // 넣은 뒤 다시 배포되면 확인할 것으로 본다.
+  const b2 = screen('b', 'STB_HO_002', 2);
+  importGuiUpdates(store, 'fb', new Map([['b', b2]]), [record('b', b2.code, 1), { ...record('b', b2.code, 2), committedAt: 3000 }]);
+  assert.deepEqual(unreviewed(store.state, 'fb').map(r => [r.uid, r.version]), [['b', 2]]);
+  // 뺀 화면을 다시 넣어도 넣기 전의 기록은 확인할 것으로 보지 않는다.
+  now = 4000;
+  editFlipbookScreens(store, { flipbookId: 'fb', uids: ['b', 'a'], scale: 0.5 }, new Map([['a', a2], ['b', b2]]), actor, now);
+  assert.deepEqual(unreviewed(store.state, 'fb').map(r => [r.uid, r.version]), [['b', 2]]);
+});
+
+test('화면 편집은 연결된 플립북의 기록을 바꾸고 GUI 영역을 새 순서로 반영하며, 연결이 끊긴 플립북은 바꾸지 않는다', async () => {
+  const posted: ToUi[] = [];
+  const store = new Store(memoryKV());
+  store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['ui'], flipbookPageId: 'ui' });
+  for (const [id, code] of [['a', 'STB_HO_001'], ['b', 'STB_HO_002']]) {
+    store.put(keys.screen(id), { id, rev: 1, code, name: `화면 ${id}`, categoryId: null, baseScreenId: null, status: 'active', source: { nodeId: `node-${id}`, pageId: 'gui' }, guiVersion: 1, guiTag: null, createdAt: 1 } satisfies Screen);
+  }
+  let n = 0;
+  const made = planFlipbooks({ pageId: 'ui', rows: [row(['a']), row(['a'])] }, guiScreens(store.state), actor, 1000, () => `fb${++n}`);
+  for (const fb of made) store.put(keys.flipbook(fb.id), fb);
+  const synced: { id: string; gui: string[] }[] = [];
+  const host = {
+    kv: store.kv, mode: 'UI', actor,
+    post: (message: ToUi) => posted.push(message),
+    pages: () => [{ id: 'ui', name: 'UI' }],
+    templateIssues: async () => [],
+    // fb2는 캔버스에 프레임이 없다.
+    listFlipbooks: async () => new Map([['fb1', '1:1']]),
+    syncFlipbook: async (_: unknown, view: { flipbookId: string; gui: { code: string; scale: number }[] }) => { synced.push({ id: view.flipbookId, gui: view.gui.map(g => `${g.code}@${g.scale}`) }); return { nodeId: '1:1', notes: [] }; },
+  } as unknown as Host;
+  const controller = new Controller(host);
+  await controller.handle({ type: 'editFlipbookScreens', request: { flipbookId: 'fb1', uids: ['b', 'a'], scale: 0.5 } });
+  assert.deepEqual(synced, [{ id: 'fb1', gui: ['STB_HO_002@0.5', 'STB_HO_001@0.5'] }]);
+  assert.deepEqual(controller.store.state.flipbooks.get('fb1')?.screens.map(s => s.uid), ['b', 'a']);
+  const done = posted.find(m => m.type === 'flipbookScreensEdited');
+  assert.deepEqual(done?.type === 'flipbookScreensEdited' ? [done.id, done.failed] : null, ['fb1', false]);
+  await controller.handle({ type: 'editFlipbookScreens', request: { flipbookId: 'fb2', uids: ['a', 'b'], scale: 0.5 } });
+  assert.equal(posted[posted.length - 2]?.type, 'error');
+  assert.deepEqual(controller.store.state.flipbooks.get('fb2')?.screens.map(s => s.uid), ['a'], 'an unlinked flipbook keeps its record');
+  assert.equal(synced.length, 1);
 });

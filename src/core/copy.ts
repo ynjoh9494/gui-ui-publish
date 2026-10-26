@@ -395,6 +395,13 @@ export const COPY = {
   uiApp343: '동기화 중',
   uiApp344: '동기화',
   uiApp345: '플립북을 동기화하고 있습니다',
+  uiApp346: '화면 편집',
+  uiApp347: '적용하기 전까지 저장 안 함 · 드래그 / Alt+↑↓: 화면 순서',
+  uiApp348: '적용',
+  uiApp349: '드래그하거나 Alt+↑↓로 순서를 바꿉니다.',
+  uiApp350: '플립북',
+  uiApp351: '적용 중…',
+  uiApp352: '플립북을 새로 만들지 않고 화면을 더하거나 바꾸고, 빼거나 순서·크기를 바꿉니다.',
   // 튜토리얼 — src/ui/tutorial.ts. 단계마다 말풍선 제목·설명 순서다.
   uiTutorial001: '도움말',
   uiTutorial002: '튜토리얼 종료',
@@ -608,6 +615,7 @@ export const COPY = {
   coreFlipbooks012: '설정에서 지정한 플립북 페이지로만 옮길 수 있습니다.',
   coreFlipbooks013: '(섹션 없음)',
   coreFlipbooks014: '「(섹션 없음)」에는 만들거나 옮길 수 없습니다. 캔버스에서 섹션 밖으로 옮기세요.',
+  coreFlipbooks015: '크기를 바꾸려면 GUI 원본이 있어야 합니다:',
   // 실행 중 안내·결과 알림 — src/controller.ts
   controller001: '최종 확인 준비 중', // 56
   controller002: '배포 중', // 56
@@ -678,6 +686,8 @@ export const COPY = {
   controller116: '크기를 맞출 플립북이 없습니다.',
   controller118: '플립북 제목 바꾸는 중',
   controller119: '플립북 제목을 바꿨습니다:',
+  controller137: '플립북 화면 바꾸는 중',
+  controller138: '플립북 화면을 바꿨습니다:',
   controller120: "텍스트 적용 중",
   controller135: "선택한 Description에 텍스트를 적용했습니다.",
   controller121: "텍스트를 적용했습니다:",
@@ -886,6 +896,7 @@ export const COPY = {
   uiPreview052: "가짜 텍스트 레이어",
   uiPreview053: "플러그인 명령",
   uiPreview054: "플립북 옮김:",
+  uiPreview055: "플립북 화면 구성:",
 } as const;
 
 // 화면·안내·오류 문구. 원본 파일과 행은 추출 당시 위치다.

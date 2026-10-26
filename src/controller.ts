@@ -3,7 +3,7 @@ import { baseline, changeDetected, classify, ignoreBlock, uiEstimate, uncheckedE
 import { LEGACY_FINGERPRINT_VERSION } from './core/fingerprint.ts';
 import { dataModel } from './core/data.ts';
 import { chapterName, flipbookView, guiKey, validGuiWidth } from './core/flipbook.ts';
-import { canvasSections, checkMoves, followCanvasSections, importGuiUpdates, markReviewed, moveFlipbooks, pageSections, planFlipbooks, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookMove, type FlipbookRequest, type ReviewRequest } from './core/flipbooks.ts';
+import { canvasSections, checkMoves, editFlipbookScreens, followCanvasSections, importGuiUpdates, markReviewed, moveFlipbooks, pageSections, planFlipbooks, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookMove, type FlipbookRequest, type ReviewRequest, type ScreenEditRequest } from './core/flipbooks.ts';
 import type { Draft } from './core/drafts.ts';
 import type { SelectionWrite } from './core/description.ts';
 import { flowList, flowRecord, flowUpdates, planFlow, type FlowRequest } from './core/flow.ts';
@@ -41,7 +41,7 @@ const DATA_OPS = new Set<AdminOp['op']>(['renameCategory', 'setCategoryActive', 
 const BUSY_LABEL: Partial<Record<ToMain['type'], string>> = {
   prepare: COPY.controller001, commit: COPY.controller002, resetData: COPY.controller003, retry: COPY.controller004, refreshData: COPY.controller005,
   admin: COPY.controller006, createFlipbooks: COPY.controller038, markReviewed: COPY.controller066, removeFlipbooks: COPY.controller068,
-  matchVersion: COPY.controller106, switchVersion: COPY.controller107, resizeFlipbooks: COPY.controller117, renameFlipbook: COPY.controller118,
+  matchVersion: COPY.controller106, switchVersion: COPY.controller107, resizeFlipbooks: COPY.controller117, renameFlipbook: COPY.controller118, editFlipbookScreens: COPY.controller137,
   textApply: COPY.controller120, createFlow: COPY.flow006, exportPdf: COPY.pdf005,
 };
 
@@ -176,6 +176,7 @@ export class Controller {
           break;
         case 'createFlipbooks': await this.createFlipbooks(msg.request); break;
         case 'renameFlipbook': await this.renameFlipbook(msg.id, msg.title); break;
+        case 'editFlipbookScreens': await this.editFlipbookScreens(msg.request); break;
         case 'markReviewed': await this.markReviewed(msg.requests); break;
         case 'removeFlipbooks': await this.removeFlipbooks(msg.ids); break;
         case 'resizeFlipbooks': await this.resizeFlipbooks(msg.ids); break;
@@ -1148,6 +1149,32 @@ export class Controller {
     this.postState();
     const failed = report.failed.length || report.skipped;
     this.host.post({ type: failed ? 'error' : 'notice', message: failed ? deliveryMessage(report) : `${COPY.controller119} ${fb.title}` });
+  }
+
+  // 화면 편집(2026-10-26 사용자 요청): 기록의 화면 목록을 바꾸고 GUI 영역·Screen ID·자동 제목을 다시 반영한다.
+  // 프레임이 없는(연결이 끊긴) 플립북은 반영할 수 없으므로 기록도 바꾸지 않는다. 반영에 실패하면 미완료로 남아 재시도로 맞춘다.
+  private async editFlipbookScreens(request: ScreenEditRequest): Promise<void> {
+    const s = this.store;
+    s.reload();
+    const canvas = await this.inspectFlipbooks();
+    if (s.state.flipbooks.get(request.flipbookId)?.status !== 'active') throw new Error(COPY.coreFlipbook002);
+    if (!canvas.found.has(request.flipbookId)) throw new Error(COPY.figmaFlipbook027);
+    const before = s.state.flipbooks.get(request.flipbookId)!;
+    const fb = editFlipbookScreens(s, request, guiScreens(s.state), this.host.actor, s.now());
+    let report = emptyReport();
+    if (fb !== before) {
+      const batchId = `screens:${randomId()}`;
+      addDelivery(s, batchId, 'flipbook', 'UI', fb.id, s.state.uiStates.get(fb.id)?.version ?? 0);
+      report = await this.deliverFlipbooks({ batchId }, { canvas });
+      await this.refreshData();
+    }
+    this.postState();
+    // 화면 수가 바뀌면 프레임 크기가 바뀌어 Section 안 배치가 달라질 수 있다.
+    this.applyLinks(canvas.found, await this.spots());
+    const failed = !!(report.failed.length || report.skipped);
+    const latest = s.state.flipbooks.get(fb.id) ?? fb;
+    const message = [`${COPY.controller138} ${latest.title}`, failed || report.notes.length ? deliveryMessage(report) : ''].filter(Boolean).join(' ');
+    this.host.post({ type: 'flipbookScreensEdited', id: fb.id, failed, message });
   }
 
   // 확인 완료: 상태·코멘트를 기록한 뒤 그 플립북의 Status와 이력 행을 맞춘다.

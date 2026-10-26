@@ -10,7 +10,7 @@ const controller = new Controller(figmaHost(mode));
 // 같은 파일을 바꾸는 요청은 순서대로 실행한다. 스캔·취소·탐색은 최신 요청이 앞선 요청을 중단할 수 있게 둔다.
 const writes = new Set<ToMain['type']>([
   'ready', 'prepare', 'commit', 'cancelPlan', 'retry', 'refreshData', 'resetData', 'admin', 'ignoreChanges',
-  'refreshList', 'createFlipbooks', 'renameFlipbook', 'markReviewed', 'removeFlipbooks', 'resizeFlipbooks', 'switchVersion', 'textApply', 'createFlow', 'flows', 'revealFlow', 'exportPdf',
+  'refreshList', 'createFlipbooks', 'renameFlipbook', 'editFlipbookScreens', 'markReviewed', 'removeFlipbooks', 'resizeFlipbooks', 'switchVersion', 'textApply', 'createFlow', 'flows', 'revealFlow', 'exportPdf',
 ]);
 // UI 쪽 스캔은 플립북 페이지를 읽으며 표식 없는(캔버스에서 만든·복제한) Section에 표식을 쓰므로 쓰기 순서에 넣는다.
 const isWrite = (msg: ToMain) => writes.has(msg.type) || msg.type === 'scanUi' || (msg.type === 'scanSelected' && msg.team === 'UI');

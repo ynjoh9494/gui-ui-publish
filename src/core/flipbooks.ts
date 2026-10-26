@@ -209,6 +209,47 @@ export function renameFlipbook(store: Store, flipbookId: string, title: string, 
   return after;
 }
 
+// 기존 플립북의 화면 편집(2026-10-26 사용자 요청: 플립북을 새로 만들지 않고 화면을 더하거나 바꾼다). uids는 새 화면 순서다.
+export interface ScreenEditRequest { flipbookId: string; uids: string[]; scale: FlipbookScale; scales?: Record<string, FlipbookScale> }
+
+// 화면 목록·순서·크기를 바꾸고 바뀐 플립북을 돌려준다. 바뀐 것이 없으면 그대로 돌려준다.
+// 남긴 화면은 플립북에 반영한 버전을 두고, 새로 넣은 화면은 지금 배포 버전으로 넣는다. 화면 수에 따라 단일·여러 화면·정책이 바뀐다.
+// 자동 제목이면 새 첫 화면 이름을 따른다. Section·페이지는 바꾸지 않는다. 캔버스의 GUI 영역·Screen ID는 반영할 때 맞춘다.
+// 사용 종료되었거나 원본이 없는 화면은 새로 넣을 수 없고, 이미 든 화면이면 크기를 바꾸지 않을 때만 남길 수 있다(복사본을 다시 만들지 않는다).
+export function editFlipbookScreens(store: Store, request: ScreenEditRequest, screens: Map<string, GuiScreenInfo>, actor: Actor, now: number): Flipbook {
+  const before = store.state.flipbooks.get(request.flipbookId);
+  if (!before || before.status !== 'active') throw new Error(COPY.coreFlipbook002);
+  if (new Set(request.uids).size !== request.uids.length) throw new Error(COPY.coreFlipbooks006);
+  const kind: FlipbookKind = !request.uids.length ? 'policy' : request.uids.length > 1 ? 'multi' : 'single';
+  const scale = kind === 'multi' ? request.scale : 1;
+  if (!SCALES.includes(scale)) throw new Error(COPY.coreFlipbooks007);
+  const next = request.uids.map(uid => {
+    const s = screens.get(uid);
+    const kept = before.screens.find(x => x.uid === uid);
+    const itemScale = request.scales?.[uid] ?? scale;
+    if (!SCALES.includes(itemScale)) throw new Error(COPY.coreFlipbooks007);
+    const usable = !!s && s.status === 'active' && !!s.sourceNodeId;
+    if (kept) {
+      if (!usable && itemScale !== (kept.scale ?? before.scale)) throw new Error(`${COPY.coreFlipbooks015} ${kept.code}`);
+      return { ...kept, code: s?.code ?? kept.code, name: s?.name ?? kept.name, scale: itemScale };
+    }
+    if (!s) throw new Error(COPY.coreFlipbooks002);
+    if (s.status !== 'active') throw new Error(`${COPY.coreFlipbooks003} ${s.code}`);
+    if (!s.sourceNodeId) throw new Error(`${COPY.coreFlipbooks004} ${s.code}`);
+    return { uid, code: s.code, name: s.name, version: s.version, scale: itemScale, addedAt: now };
+  });
+  const same = next.length === before.screens.length && next.every((x, i) => x.uid === before.screens[i].uid && x.scale === (before.screens[i].scale ?? before.scale));
+  if (same) return before;
+  const title = before.autoTitle ? defaultTitle(kind, next) : before.title;
+  const after: Flipbook = {
+    ...before, rev: before.rev + 1, kind, scale, screens: next, title,
+    titleNames: before.titleNames.includes(title) ? before.titleNames : [...before.titleNames, title],
+  };
+  store.put(keys.flipbook(before.id), after);
+  store.audit(actor, 'flipbook.screens', before.id, before.screens.map(x => x.code), next.map(x => x.code));
+  return after;
+}
+
 // 일괄 만들기 범위. categories는 고른 카테고리 ID(미지정은 ''), kind는 기본·케이스 화면 구분이다.
 export type ScreenKind = 'all' | 'base' | 'case';
 export interface ScreenFilter { categories: ReadonlySet<string>; kind: ScreenKind; query: string }
@@ -277,13 +318,15 @@ export function importGuiUpdates(store: Store, flipbookId: string, screens: Map<
 // 확인이 필요한 GUI 기록: 플립북을 만든 뒤 이 플립북에 쌓인 기록 중 마지막 확인 완료의 버전보다 새것.
 // 확인 완료는 시각이 아니라 화면별 버전으로 비교해 작업자 PC의 시계 차이에 영향받지 않는다.
 // 확인 완료 기록이 없고 이전 버전의 UI 배포 기록만 있으면 그 시각까지는 확인한 것으로 본다.
+// 지금 플립북에 든 화면의 기록만 본다. 화면 편집으로 넣은 화면은 넣은 뒤의 기록, 뺀 화면은 이력에만 남고 확인할 것으로 보지 않는다.
 export function unreviewed(state: State, flipbookId: string): ImportedGuiRecord[] {
   const fb = state.flipbooks.get(flipbookId);
   if (!fb || fb.status !== 'active') return [];
   const review = state.reviews.get(flipbookId);
   const since = review ? fb.createdAt : Math.max(fb.createdAt, ...(state.ui.get(flipbookId) ?? []).map(r => r.committedAt));
   const reviewed = review?.versions ?? {};
-  return (state.imported.get(flipbookId) ?? []).filter(r => r.committedAt > since && r.version > (reviewed[r.uid] ?? 0));
+  const shown = new Map(fb.screens.map(s => [s.uid, Math.max(since, s.addedAt ?? 0)]));
+  return (state.imported.get(flipbookId) ?? []).filter(r => shown.has(r.uid) && r.committedAt > shown.get(r.uid)! && r.version > (reviewed[r.uid] ?? 0));
 }
 
 // 화면이 수정되었는가: 빨간 점(「화면이 수정되었습니다」)을 표시한다. 확인 완료를 누르면 풀린다(2026-10-20 사용자 결정).
