@@ -37,9 +37,12 @@ legend { color: var(--muted); padding: 0 4px; }
 .tabs { grid-column: 1 / -1; display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--border); align-items: end; }
 .tabs button { border: 0; border-radius: 5px 5px 0 0; padding: 6px 10px; background: none; color: var(--muted); }
 .tabs button[aria-selected="true"] { color: var(--text); font-weight: 600; box-shadow: inset 0 -2px 0 var(--brand); }
-.create-tabs { display: flex; gap: 2px; }
-.create-tabs button { white-space: nowrap; }
-.tabs .who { margin-left: auto; color: var(--muted); padding-bottom: 6px; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 창이 좁으면 사용자 이름, 탭 이름 순으로 줄어(말줄임, 탭 전체 이름은 title) 톱니바퀴·도움말이 창 안에 남는다.
+   오른쪽 영역을 접어 창이 목록 너비일 때는 탭 여백도 줄인다. */
+.create-tabs { display: flex; gap: 2px; min-width: 0; }
+.create-tabs button { white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.detail-collapsed .create-tabs button { padding-left: 6px; padding-right: 6px; }
+.tabs .who { margin-left: auto; color: var(--muted); padding-bottom: 6px; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1000; }
 
 .toolbar { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; padding: 6px 8px; flex-wrap: wrap; }
 .toolbar input[type="search"] { flex: 1 1 160px; }
@@ -251,7 +254,7 @@ button.link.danger { color: var(--danger); }
 .tabs { align-items: center; padding: 6px 8px; }
 .tabs .app-title { font-weight: 600; }
 .tabs .who { padding-bottom: 0; }
-.tabs .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border-radius: 6px; color: var(--muted); box-shadow: none; }
+.tabs .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border-radius: 6px; color: var(--muted); box-shadow: none; flex: none; }
 .tabs .icon-button[aria-pressed="true"] { color: var(--brand); background: var(--selected); }
 .tabs .help-button { color: var(--brand); }
 /* GUI 추가 설명: 배포 한 번에 하나 */
@@ -503,6 +506,10 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .text-actions { flex: none; display: flex; align-items: center; gap: 6px; }
 .text-actions .note { flex: 1; min-width: 0; margin: 0; }
 .text-actions button { flex: none; }
+/* PDF 저장 탭: 텍스트 편집 탭처럼 툴바 아래 영역 전체를 쓴다. */
+.pdf-mode :is(.toolbar, .list, .pane-divider, .detail, .footer) { display: none; }
+.pdf-view { grid-column: 1 / -1; grid-row: 2 / 5; min-height: 0; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.pdf-view > .note { flex: none; margin: 0; }
 /* 플로우 탭: 텍스트 편집 탭처럼 툴바 아래 영역 전체를 쓴다. 왼쪽은 배포된 화면, 오른쪽은 옅은 회색 격자 판에 흰 카드를 놓고 잇는다. */
 .flowing-mode :is(.toolbar, .list, .pane-divider, .detail, .footer) { display: none; }
 .flow-view { grid-column: 1 / -1; grid-row: 2 / 5; min-height: 0; padding: 10px; display: grid; grid-template-columns: minmax(140px, 1fr) minmax(260px, 2.4fr); gap: 10px; }

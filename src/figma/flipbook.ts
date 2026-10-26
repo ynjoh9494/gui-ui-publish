@@ -65,7 +65,7 @@ const ID_CELL = 'input-cell-id';
 
 // 이름으로 찾되 GUI 영역 안으로는 내려가지 않는다. GUI 영역에는 화면 레이어 복사본이 통째로 들어 있어
 // 화면마다 전체를 훑으면 반영이 크게 느려진다.
-function findPart(root: ChildrenMixin, match: (n: SceneNode) => boolean): SceneNode | null {
+export function findPart(root: ChildrenMixin, match: (n: SceneNode) => boolean): SceneNode | null {
   for (const child of root.children) {
     if (match(child)) return child;
     if ('children' in child && child.name !== GUI_AREA) {

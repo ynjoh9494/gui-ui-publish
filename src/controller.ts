@@ -8,6 +8,7 @@ import type { Draft } from './core/drafts.ts';
 import type { SelectionWrite } from './core/description.ts';
 import { flowList, flowRecord, flowUpdates, planFlow, type FlowRequest } from './core/flow.ts';
 import { flipbookHistoryRows, guiHistoryRows } from './core/history.ts';
+import { pdfFileName } from './core/pdf.ts';
 import { guiRecordInfos, guiScreens } from './core/guiScreens.ts';
 import { acknowledgeChange, addDelivery, upgradeBaseline, buildPlan, commitPlan, setDeliveryState, type BatchComment, unfinishedDeliveries, type CommitInput, type Plan } from './core/publish.ts';
 import {
@@ -41,7 +42,7 @@ const BUSY_LABEL: Partial<Record<ToMain['type'], string>> = {
   prepare: COPY.controller001, commit: COPY.controller002, resetData: COPY.controller003, retry: COPY.controller004, refreshData: COPY.controller005,
   admin: COPY.controller006, createFlipbooks: COPY.controller038, markReviewed: COPY.controller066, removeFlipbooks: COPY.controller068,
   matchVersion: COPY.controller106, switchVersion: COPY.controller107, resizeFlipbooks: COPY.controller117, renameFlipbook: COPY.controller118,
-  textApply: COPY.controller120, createFlow: COPY.flow006,
+  textApply: COPY.controller120, createFlow: COPY.flow006, exportPdf: COPY.pdf005,
 };
 
 // 텍스트 편집 적용 결과 안내.
@@ -82,6 +83,8 @@ export class Controller {
   private canvasSelectionSeq = 0;
   // 텍스트 편집 탭이 보이는 동안만 캔버스 선택마다 대상을 찾는다(선택마다 조상·하위 트리를 읽는 작업이라 탭이 닫혀 있으면 하지 않는다).
   private textTabOpen = false;
+  // PDF 저장 탭도 보이는 동안만 캔버스 선택마다 고른 프레임 수를 보낸다.
+  private pdfTabOpen = false;
   // 캔버스를 읽다가 기록과 페이지·Section(키·이름)이 다른 플립북을 찾았다. 반영(기록·Chapter)은 쓰기 순서에서 syncCanvasSections가 한다.
   private canvasSectionsPending = false;
   private scanningGui = false;
@@ -116,6 +119,7 @@ export class Controller {
           this.host.post({ type: 'init', mode: this.host.mode, state: toUiWire(this.store.state), actor: this.host.actor, pages: this.host.pages(), issues: this.store.issues.map(i => `${i.key}: ${i.message}`) });
           this.postEntries();
           if (this.host.mode === 'UI' && this.textTabOpen) this.postTextTarget();
+          if (this.host.mode === 'UI' && this.pdfTabOpen) this.postPdfSelection();
           // UI Flipbook 목록은 프레임이 캔버스에 있는지 바로 보여 준다(연결 끊김 표시).
           // 플립북 페이지를 불러오는 동안은 Figma가 입력을 받지 못하므로 아무 표시가 없으면 오류처럼 보인다. 그동안 「불러오는 중」을 띄운다.
           if (this.host.mode === 'UI') {
@@ -210,6 +214,16 @@ export class Controller {
         case 'textImport': this.host.post({ type: 'textImported', paragraphs: this.host.readSelection() }); break;
         case 'textApply': {
           this.host.post({ type: 'notice', message: writeMessage(await this.host.writeSelection(msg.paragraphs)) });
+          break;
+        }
+        case 'pdfTab':
+          this.pdfTabOpen = msg.open;
+          if (msg.open && this.host.mode === 'UI') this.postPdfSelection();
+          break;
+        case 'exportPdf': {
+          if (!this.host.exportPdf) break;
+          const { pageName, pages } = await this.host.exportPdf((done, total) => this.progress(`${COPY.pdf005} (${done + 1}/${total})`));
+          this.host.post({ type: 'pdfPages', fileName: pdfFileName(pageName), pages });
           break;
         }
         case 'createFlow': await this.createFlow(msg.request); break;
@@ -689,8 +703,14 @@ export class Controller {
     this.host.post({ type: 'textTarget', target: target.kind === 'description' && title ? { ...target, name: title } : target });
   }
 
+  private postPdfSelection(): void {
+    const selection = this.host.pdfSelection?.();
+    if (selection) this.host.post({ type: 'pdfSelection', selection });
+  }
+
   async canvasSelectionChanged(): Promise<void> {
     if (this.host.mode === 'UI' && this.textTabOpen) this.postTextTarget();
+    if (this.host.mode === 'UI' && this.pdfTabOpen) this.postPdfSelection();
     const nodes = this.host.selectionNodeIds();
     if (nodes === null) return;
     const canvasSeq = ++this.canvasSelectionSeq;

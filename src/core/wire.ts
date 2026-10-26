@@ -5,6 +5,7 @@ import { unreviewed, type FlipbookRequest, type ReviewRequest } from './flipbook
 import type { HistoryRow } from './history.ts';
 import type { SelectionTarget } from './description.ts';
 import type { FlowListItem, FlowRequest } from './flow.ts';
+import type { PdfPage, PdfSelection } from './pdf.ts';
 import type { RichParagraph } from './richText.ts';
 import type { BatchComment, Blocker, Plan } from './publish.ts';
 import type { GuiScreenInfo } from './guiScreens.ts';
@@ -161,6 +162,10 @@ export type ToMain =
   | { type: 'flows' }
   // 플로우(uid가 있으면 그 화면 칸)로 이동한다. 플로우가 지워졌으면 기록에서 빼고 목록을 다시 보낸다.
   | { type: 'revealFlow'; nav: number; flowId: string; uid?: string }
+  // PDF 저장 탭이 보이는지. 보이는 동안만 캔버스 선택이 바뀔 때 고른 프레임 수(pdfSelection)를 보낸다.
+  | { type: 'pdfTab'; open: boolean }
+  // 보고 있는 페이지에서 고른 프레임을 캔버스 순서대로 한 쪽씩 PDF로 내보낸다(UI Title·Update History List는 그동안만 숨김).
+  | { type: 'exportPdf' }
   // save: 손잡이를 놓았을 때. 다음 실행 때 이 크기로 연다.
   | { type: 'resize'; width: number; height: number; save?: boolean; compact?: boolean };
 
@@ -204,6 +209,9 @@ export type ToUi =
   | { type: 'textImported'; paragraphs: RichParagraph[] }
   // 텍스트 편집 대상. 탭이 보이는 동안 캔버스 선택이 바뀔 때와 탭을 열 때 보낸다.
   | { type: 'textTarget'; target: SelectionTarget }
+  | { type: 'pdfSelection'; selection: PdfSelection }
+  // 내보낸 쪽(캔버스 순서). UI가 한 파일로 합쳐 저장한다.
+  | { type: 'pdfPages'; fileName: string; pages: PdfPage[] }
   | { type: 'notice'; message: string }
   // 진행 중인 작업. null이면 끝났다.
   | { type: 'busy'; label: string | null }

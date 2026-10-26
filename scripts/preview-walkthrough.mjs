@@ -543,6 +543,13 @@ try {
     await page.keyboard.press('Escape');
     assert.equal(await app.locator('.flow-list-overlay').count(), 0, 'Esc로 목록을 닫는다');
     assert.equal(await cards.count(), 2, '목록을 여닫아도 판의 썸네일은 그대로다');
+    // PDF 저장 탭: 다른 탭처럼 목록 대신 열리고, 고른 프레임이 없으면 저장할 수 없다(미리보기 캔버스에는 프레임 선택이 없다).
+    await app.locator('.tabs [data-action=pdf-open]').click();
+    await app.locator('.pdf-view').waitFor();
+    assert.equal(await app.locator('.flow-view').count(), 0);
+    assert.equal(await app.locator('.pdf-view .pdf-count').innerText(), '저장할 프레임을 캔버스에서 선택하세요.');
+    assert.equal(await app.locator('.pdf-view [data-action=pdf-export]').isDisabled(), true);
+    await shot('04d-pdf-tab');
     await app.locator('.tabs [data-action=text-close]').click();
     assert.equal(await app.locator('.list').isVisible(), true);
   }

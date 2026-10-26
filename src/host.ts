@@ -7,6 +7,7 @@ import type { FlowPlan, FlowThumb } from './core/flow.ts';
 import type { Actor, FlowRecord, GuiThumb, Team } from './core/types.ts';
 import type { SelectionTarget, SelectionWrite } from './core/description.ts';
 import type { RichParagraph } from './core/richText.ts';
+import type { PdfPage, PdfSelection } from './core/pdf.ts';
 import type { PageInfo, ToUi } from './core/wire.ts';
 
 // Controller가 사용하는 환경 경계. Figma 호스트와 브라우저 미리보기가 각각 구현한다.
@@ -62,4 +63,7 @@ export interface Host extends FingerprintReader {
   updateFlow?(flow: FlowRecord, thumbs: FlowThumb[]): Promise<number | null>;
   // 플로우 그룹(uid가 있으면 그 화면 칸, 없으면 그룹)의 노드 ID. 그룹을 찾지 못하면 null
   flowNode?(flow: FlowRecord, uid?: string): Promise<string | null>;
+  // PDF 저장: 보고 있는 페이지의 선택에서 저장할 프레임 수와, 그 프레임을 캔버스 순서대로 내보낸 쪽. pageName: 보고 있는 페이지 이름
+  pdfSelection?(): PdfSelection;
+  exportPdf?(progress: (done: number, total: number) => Promise<void>): Promise<{ pageName: string; pages: PdfPage[] }>;
 }

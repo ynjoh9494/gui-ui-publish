@@ -5,6 +5,7 @@ import { guiStateBadge, unlinkedBadge } from './estimate.ts';
 import { startTutorial } from './tutorial.ts';
 import { textEditor } from './textEditor.ts';
 import { flowView } from './flowView.ts';
+import { pdfView } from './pdfView.ts';
 import { esc } from './html.ts';
 import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScreen, isDeletion, isPrevious, needsLink, OPTIONAL_FIELDS, renumberAutoCodes, STATUS_LABEL, validateDraft, type Draft, type DraftIndex, type InputStatus, type Validation } from '../core/drafts.ts';
 import { formatTime, type HistoryRow } from '../core/history.ts';
@@ -40,7 +41,7 @@ type Tab = Team | 'ADMIN';
 const NODE_PREVIEW = 'node:';
 
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
-const WHILE_BUSY = new Set(['tab', 'settings', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'toggle-detail', 'tutorial', 'text-open', 'text-close', 'flow-open']);
+const WHILE_BUSY = new Set(['tab', 'settings', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'toggle-detail', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
 const BEFORE_CHECK = new Set([...WHILE_BUSY, 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'text-import', 'text-apply',
@@ -185,6 +186,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   let textOpen = false;
   // UI Flipbook의 플로우 탭(2026-10-23 사용자 결정). 텍스트 편집 탭과 같이 하나만 열린다.
   let flowOpen = false;
+  // UI Flipbook의 PDF 저장 탭(2026-10-26 사용자 요청). 다른 탭과 같이 하나만 열린다.
+  let pdfOpen = false;
+  let pdfTabSent = false;
+  // PDF를 합쳐 저장하는 동안의 진행 표시. 본체의 진행 표시(busyLabel)가 끝난 뒤에도 이어서 보여 준다.
+  let pdfBusy: string | null = null;
   // 플러그인에 마지막으로 알린 텍스트 편집 탭 표시 여부
   let textTabSent = false;
   // GUI 화면정보의 이전 배포 썸네일을 펼쳐 두었는가
@@ -229,6 +235,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     <div class="resize-handle" title="${COPY.uiApp208}" aria-label="${COPY.uiApp208}"></div>`;
   const $ = (sel: string) => root.querySelector(sel) as HTMLElement;
   const editor = textEditor(root);
+  const pdf = pdfView(root);
   const flows = flowView(root, {
     create: request => bridge.send({ type: 'createFlow', request }),
     list: () => bridge.send({ type: 'flows' }),
@@ -684,7 +691,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     // 머리에는 명령 이름(GUI Publish·UI Flipbook)을 쓰지 않고 탭만 둔다(2026-10-22 사용자 요청). 탭이 없는 관리 화면만 「관리」를 쓴다.
     $('.tabs').innerHTML = `${settings ? `<span class="app-title">${COPY.uiApp004}</span>` : ''}` +
       `${mode === 'GUI' && !settings ? `<div class="create-tabs"><button data-action="version-close" aria-selected="${!versionOpen}">${COPY.uiApp272}</button><button data-action="version-open" aria-selected="${versionOpen}">${COPY.uiApp248}</button></div>` : ''}` +
-      `${mode === 'UI' && !settings ? `<div class="create-tabs"><button data-action="text-close" aria-selected="${!textOpen && !flowOpen}">${COPY.uiApp302}</button><button data-action="text-open" aria-selected="${textOpen}">${COPY.uiApp303}</button><button data-action="flow-open" aria-selected="${flowOpen}">${COPY.flow020}</button></div>` : ''}` +
+      `${mode === 'UI' && !settings ? `<div class="create-tabs"><button data-action="text-close" title="${COPY.uiApp302}" aria-selected="${!textOpen && !flowOpen && !pdfOpen}">${COPY.uiApp302}</button><button data-action="text-open" title="${COPY.uiApp303}" aria-selected="${textOpen}">${COPY.uiApp303}</button><button data-action="flow-open" title="${COPY.flow020}" aria-selected="${flowOpen}">${COPY.flow020}</button><button data-action="pdf-open" title="${COPY.pdf001}" aria-selected="${pdfOpen}">${COPY.pdf001}</button></div>` : ''}` +
       `<span class="who" title="${COPY.uiApp005}">${esc(actor?.name ?? '')}</span>` +
       `<button class="icon-button" data-action="settings" aria-pressed="${settings}" title="${COPY.uiApp004}" aria-label="${COPY.uiApp004}">${GEAR}</button>` +
       `<button class="icon-button help-button" data-action="tutorial" title="${COPY.uiTutorial001}" aria-label="${COPY.uiTutorial001}">${HELP}</button>`;
@@ -2035,13 +2042,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     flows.render(flowOpen && mode === 'UI' && tab !== 'ADMIN' && !!state);
     editor.render(textShown);
     if (textShown !== textTabSent) { textTabSent = textShown; bridge.send({ type: 'textTab', open: textShown }); }
+    const pdfShown = pdfOpen && mode === 'UI' && tab !== 'ADMIN' && !!state;
+    pdf.render(pdfShown);
+    if (pdfShown !== pdfTabSent) { pdfTabSent = pdfShown; bridge.send({ type: 'pdfTab', open: pdfShown }); }
     root.classList.toggle('admin-mode', tab === 'ADMIN');
     applyCollapse();
   }
 
   // 오른쪽 영역 접기: 창 너비를 목록 너비로 줄이고, 펼치면 접기 전 너비로 되돌린다. 설정 화면과 텍스트 편집 탭에서는 펼친 너비로 보여 준다.
   function applyCollapse() {
-    const want = detailCollapsed && tab !== 'ADMIN' && team() === 'UI' && !textOpen && !flowOpen;
+    const want = detailCollapsed && tab !== 'ADMIN' && team() === 'UI' && !textOpen && !flowOpen && !pdfOpen;
     if (want && !compactFrom) {
       const listWidth = $('.list').getBoundingClientRect().width;
       compactFrom = { width: root.offsetWidth };
@@ -2254,7 +2264,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const el = target.closest('[data-action]') as HTMLElement | null;
     if (!el) return;
     const action = el.dataset.action!;
-    if (busyLabel && !WHILE_BUSY.has(action)) return;
+    if ((busyLabel || pdfBusy) && !WHILE_BUSY.has(action)) return;
     if (action.startsWith('flow-') && flows.handle(action, el)) return;
     const t = team();
     if (locked(t) && !BEFORE_CHECK.has(action)) { ev.preventDefault(); return; }
@@ -2546,9 +2556,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         admin({ op: 'renumberScreenIds' });
         break;
       case 'renumber-cancel': renumberArmed = false; renderDetail(); break;
-      case 'text-open': textOpen = true; flowOpen = false; renderAll(); root.querySelector<HTMLElement>('.text-view .rich-editor')?.focus(); break;
-      case 'text-close': textOpen = false; flowOpen = false; renderAll(); break;
-      case 'flow-open': flowOpen = true; textOpen = false; renderAll(); bridge.send({ type: 'guiScreens' }); break;
+      case 'text-open': textOpen = true; flowOpen = false; pdfOpen = false; renderAll(); root.querySelector<HTMLElement>('.text-view .rich-editor')?.focus(); break;
+      case 'text-close': textOpen = false; flowOpen = false; pdfOpen = false; renderAll(); break;
+      case 'flow-open': flowOpen = true; textOpen = false; pdfOpen = false; renderAll(); bridge.send({ type: 'guiScreens' }); break;
+      case 'pdf-open': pdfOpen = true; textOpen = false; flowOpen = false; renderAll(); break;
+      case 'pdf-export': bridge.send({ type: 'exportPdf' }); break;
       case 'text-import': bridge.send({ type: 'textImport' }); break;
       case 'text-apply': { const paragraphs = editor.paragraphs(); if (paragraphs.some(p => p.text.trim())) bridge.send({ type: 'textApply', paragraphs }); break; }
       case 'version-open': openVersion(); break;
@@ -3344,6 +3356,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         break;
       case 'textImported': editor.setParagraphs(msg.paragraphs); break;
       case 'textTarget': editor.setTarget(msg.target); break;
+      case 'pdfSelection': pdf.setSelection(msg.selection); break;
+      case 'pdfPages': {
+        const { fileName, pages } = msg;
+        pdfBusy = COPY.pdf006; renderBusy();
+        pdf.save(fileName, pages)
+          .then(() => notify('info', `${COPY.pdf010} ${fileName} (${pages.length}${COPY.pdf011})`))
+          .catch(error => notify('error', `${COPY.pdf012} ${error instanceof Error ? error.message : String(error)}`))
+          .finally(() => { pdfBusy = null; renderBusy(); });
+        break;
+      }
       case 'notice': notify('info', msg.message); break;
       case 'busy': busyLabel = msg.label; renderBusy(); break;
       case 'error':
@@ -3359,11 +3381,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
 
   // 처리 중인 작업(Publish·저장 등). 변경사항 확인은 탭 맨 위에 진행과 취소를 따로 보여 주며 조작을 막지 않는다.
   function renderBusy() {
-    const label = busyLabel;
+    const label = busyLabel ?? pdfBusy;
     const el = $('.busy');
     el.hidden = !label;
     (el.querySelector('.busy-label') as HTMLElement).textContent = label ?? '';
-    root.classList.toggle('is-busy', !!busyLabel);
+    root.classList.toggle('is-busy', !!label);
     root.setAttribute('aria-busy', String(startupPending || !!label));
   }
 
