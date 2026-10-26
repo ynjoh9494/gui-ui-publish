@@ -5,7 +5,8 @@ export type Team = 'GUI' | 'UI';
 // GUI와 UI는 한 Figma 파일에서 작업한다(플러그인 명령 GUI Publish·UI Flipbook). 플립북에는 GUI 원본의 레이어 복사본
 // (컴포넌트 연결을 끊은 복제, 스타일·변수 연결 유지)을 넣는다. 복사본은 따로 보관하지 않고 플립북을 만들거나 GUI를
 // 반영할 때 원본에서 바로 복사한다(2026-10-20 사용자 결정).
-// GUI 배포 때 화면별 썸네일(1/4 크기, 검정 배경 JPG)을 별도 페이지에 남긴다. hash: Figma 이미지 해시
+// GUI 배포 때 화면별 썸네일(1/4 크기, 검정 배경 JPG)을 별도 페이지에 남긴다. hash: Figma 이미지 해시(1/2 해상도),
+// width·height: 캔버스에 놓는 1/4 크기
 export interface GuiThumb { hash: string; width: number; height: number }
 // 작업 종류: 신규(새 화면), 변경(수정·화면 교체), 삭제(원본이 사라진 화면을 사용 안 함으로 기록). 2026-10-20 사용자 결정으로 삭제를 다시 둔다.
 export type WorkType = 'new' | 'changed' | 'deleted';
