@@ -3382,7 +3382,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         if (msg.nav === navSeq && (!msg.ok || msg.message)) notify(msg.ok ? 'info' : 'error', msg.message);
         break;
       case 'canvasSelection': {
-        if (!msg.entryKeys.length || !state) break;
+        // 실행한 명령과 다른 목록의 선택으로는 화면을 바꾸지 않는다.
+        if (!msg.entryKeys.length || !state || msg.team !== mode) break;
         tab = msg.team;
         if (msg.team === 'UI') { selectedNew = null; editingTitle = null; addingSection = false; }
         selection[msg.team] = new Set(msg.entryKeys);

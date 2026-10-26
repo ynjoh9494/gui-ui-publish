@@ -193,6 +193,24 @@ test('중첩 Section의 화면 루트를 찾고 프레임 안의 하위 요소�
   assert.deepEqual([...screenRoots(page, new Set(['outer']))].map(item => item.id), ['outer-screen', 'inner-screen']);
 });
 
+test('캔버스 선택은 실행한 명령의 목록에서만 고르고 다른 명령의 화면으로 넘어가지 않는다', async () => {
+  const posted: ToUi[] = [];
+  const fb = { id: 'fb1', rev: 1, kind: 'single', title: '홈', autoTitle: true, titleNames: ['홈'], scale: 1, category: { key: 'home', name: '홈', order: 0 }, screens: [], pageId: 'ui', status: 'active', createdAt: 0, actor };
+  // GUI Publish를 연 채 플립북 페이지에서 플립북 프레임을 골랐다.
+  const host = {
+    kv: memoryKV({ [keys.flipbook('fb1')]: JSON.stringify(fb) }), mode: 'GUI', actor,
+    post: (message: ToUi) => posted.push(message), pages: () => [{ id: 'ui', name: '플립북' }],
+    selectionNodeIds: () => [{ nodeId: '1:1', flipbookId: 'fb1' }],
+    listFrames: async () => [],
+  } as unknown as Host;
+  const controller = new Controller(host);
+  await controller.handle({ type: 'ready' });
+  await controller.canvasSelectionChanged();
+  const last = posted.filter((m): m is Extract<ToUi, { type: 'canvasSelection' }> => m.type === 'canvasSelection').pop();
+  assert.equal(last?.team, 'GUI', 'GUI Publish는 플립북 목록으로 바꾸지 않는다');
+  assert.deepEqual(last?.entryKeys, []);
+});
+
 test('캔버스에서 선택한 미등록 화면을 목록에 올리고 선택한 화면만 비교한다', async () => {
   const posted: ToUi[] = [];
   const fingerprinted: string[] = [];

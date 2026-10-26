@@ -765,7 +765,9 @@ export class Controller {
     const linked = new Map(this.uiScans.filter(scan => scan.nodeId).map(scan => [scan.flipbookId, scan.nodeId]));
     const ui = nodes.filter(node => !node.flipbookId || !linked.has(node.flipbookId) || linked.get(node.flipbookId) === node.nodeId)
       .map(node => node.flipbookId).filter((id): id is string => !!id && this.store.state.flipbooks.has(id));
-    const team: Team = gui.length || !ui.length ? 'GUI' : 'UI';
+    // 실행한 명령의 목록에서만 고른다. GUI Publish에서 플립북 프레임을, UI Flipbook에서 GUI 원본을 골라도
+    // 다른 명령의 화면으로 넘어가지 않는다(두 명령은 2026-10-20부터 따로 연다).
+    const team: Team = this.host.mode;
     const keys = team === 'GUI' ? gui : [...new Set(ui)];
     const lastNode = nodes.find(node => node.nodeId === lastId);
     const lastKey = team === 'GUI'
