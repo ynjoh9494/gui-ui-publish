@@ -139,8 +139,6 @@ export type ToMain =
   | { type: 'markReviewed'; requests: ReviewRequest[] }
   // 연결이 끊긴 플립북을 목록에서 삭제한다. 프레임이 남은 플립북은 건너뛴다.
   | { type: 'removeFlipbooks'; ids: string[] }
-  // 고른 플립북을 설정한 1x 화면 크기로 다시 반영한다. 마커는 크기를 두고 화면을 따라간다.
-  | { type: 'resizeFlipbooks'; ids: string[] }
   // 새 버전 페이지: 붙여 넣은 페이지의 프레임을 등록 화면과 화면 내용으로 비교하고, 확인한 연결로 원본을 옮긴다.
   // 설정을 열 때 페이지 목록을 다시 받는다(플러그인을 연 뒤 추가한 페이지).
   | { type: 'pages' }

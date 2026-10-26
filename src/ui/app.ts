@@ -1301,11 +1301,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     return `<div class="thumbs">${fb.screens.map((s, i) => `<figure>${thumbImg(hashes[i], s.name)}<figcaption>${changed.has(s.uid) ? `<span class="review-dot" role="img" title="${COPY.uiApp193}" aria-label="${COPY.uiApp193}"></span>` : ''}<span class="id-tag">${esc(s.code)}</span> ${esc(s.name)}</figcaption></figure>`).join('')}</div>`;
   }
 
-  // 크기를 맞출 플립북: 연결된 플립북 중 반영한 1x 크기가 설정과 다르거나 기록이 없는 것
-  function resizeTargets(chosen: Entry[]): string[] {
-    return chosen.filter(e => !!e.flipbookId && e.estimate !== 'missing' && state!.flipbooks.get(e.flipbookId)?.guiWidth !== state!.project.guiWidth).map(e => e.flipbookId!);
-  }
-
   // UI Flipbook 상세: 오른쪽 영역을 위아래로 나눈다(2026-10-20 사용자 결정).
   // 위: 들어 있는 화면의 GUI 썸네일과 플립북 이력. 아래(항상 표시): 수정된 화면, 상태(필수, 기본 「최신」)·코멘트(선택), 확인 완료.
   function renderFlipbookDetail() {
@@ -1333,16 +1328,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const unlinked = chosen.filter(e => e.estimate === 'missing');
     if (unlinked.length) {
       top += `<div class="unlinked">${unlinkedBadge()}<p class="note">${multi ? `${COPY.uiApp238} <b>${unlinked.length}</b>${COPY.uiApp015}` : COPY.uiApp236}</p><button class="danger" data-action="remove-flipbooks">${COPY.uiApp237}</button></div>`;
-    }
-    // 1x 화면 크기: 설정 크기와 다른(기록이 없는) 플립북을 골라 맞춘다(2026-10-21 사용자 요청). 연결이 끊긴 플립북은 뺀다.
-    const resizable = resizeTargets(chosen);
-    if (chosen.length > unlinked.length) {
-      const width = state.project.guiWidth;
-      const own = state.flipbooks.get(entry.flipbookId)?.guiWidth;
-      const label = multi
-        ? `${COPY.uiApp270} <b>${resizable.length}</b>${COPY.uiApp015}`
-        : `${COPY.uiApp266} <b>${own ? `${own}px` : COPY.uiApp267}</b> · ${COPY.uiApp268} ${width}px`;
-      top += `<div class="gui-size"><p class="note">${label}</p><button data-action="resize-flipbooks" title="${esc(COPY.uiApp271)}" ${resizable.length ? '' : 'disabled'}>${width}px${COPY.uiApp269}</button></div>`;
     }
     if (!multi) {
       const fb = state.flipbooks.get(entry.flipbookId);
@@ -1730,7 +1715,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         <label>${COPY.uiApp226}</label>
         <div class="inline"><input type="number" data-f="width" data-input="admin-gui-width" min="${GUI_WIDTH_MIN}" max="${GUI_WIDTH_MAX}" step="1" value="${s.project.guiWidth}" aria-label="${COPY.uiApp226}"><button data-action="admin-gui-width">${COPY.uiApp110}</button></div>
         <p class="note gui-width-sizes">${guiWidthSizes(s.project.guiWidth)}</p>
-        <p class="note">${COPY.uiApp227} ${COPY.uiApp228} ${COPY.uiApp265}</p></section>`}
+        <p class="note">${COPY.uiApp227} ${COPY.uiApp228}</p></section>`}
       ${gui ? renderScreenIdSection(s) : ''}
       ${renderDataSection(s)}
       <section class="admin"><h3>${COPY.uiApp089}</h3>
@@ -2571,11 +2556,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         if (!ids.length) break;
         bridge.send({ type: 'removeFlipbooks', ids });
         el.setAttribute('disabled', '');
-        break;
-      }
-      case 'resize-flipbooks': {
-        const ids = state ? resizeTargets(selectedEntries('UI')) : [];
-        if (ids.length) { bridge.send({ type: 'resizeFlipbooks', ids }); el.setAttribute('disabled', ''); }
         break;
       }
       case 'remove-all-unlinked': {

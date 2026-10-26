@@ -770,33 +770,6 @@ test('템플릿에 문제가 있으면 UI Flipbook을 열 때 알리고, 플립�
   assert.deepEqual((posted.filter(m => m.type === 'templateIssues').pop() as Extract<ToUi, { type: 'templateIssues' }>).issues, []);
 });
 
-test('고른 플립북만 설정한 1x 크기로 다시 반영하고 반영한 크기를 남긴다. 사용 안 함·연결 끊김 플립북은 건너뛴다', async () => {
-  const posted: ToUi[] = [];
-  const store = new Store(memoryKV());
-  store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['ui'], flipbookPageId: 'ui', guiWidth: 1440 });
-  let n = 0;
-  const made = planFlipbooks({ pageId: 'ui', rows: ['A', 'B', 'C', 'D'].map(t => row([], false, `정책 ${t}`)) }, new Map(), actor, 1000, () => `fb${++n}`);
-  for (const fb of made) store.put(keys.flipbook(fb.id), fb.id === 'fb3' ? { ...fb, status: 'deleted' } : fb);
-  const synced: [string, number][] = [];
-  const host = {
-    kv: store.kv, mode: 'UI', actor,
-    post: (message: ToUi) => posted.push(message),
-    pages: () => [{ id: 'ui', name: 'UI' }],
-    templateIssues: async () => [],
-    // fb4는 캔버스에 프레임이 없다.
-    listFlipbooks: async () => new Map([['fb1', '1:1'], ['fb2', '1:2'], ['fb3', '1:3']]),
-    syncFlipbook: async (_: unknown, view: { flipbookId: string; guiWidth: number }) => { synced.push([view.flipbookId, view.guiWidth]); return { nodeId: '1:1', notes: [] }; },
-  } as unknown as Host;
-  const controller = new Controller(host);
-  await controller.handle({ type: 'resizeFlipbooks', ids: ['fb1', 'fb3', 'fb4'] });
-  assert.deepEqual(synced, [['fb1', 1440]], 'only the chosen, active, linked flipbook');
-  assert.equal(controller.store.state.flipbooks.get('fb1')?.guiWidth, 1440);
-  assert.equal(controller.store.state.flipbooks.get('fb2')?.guiWidth, undefined, 'not chosen');
-  assert.equal(posted.some(m => m.type === 'error'), false);
-  await controller.handle({ type: 'resizeFlipbooks', ids: ['fb4'] });
-  assert.equal(synced.length, 1, 'an unlinked flipbook is not recreated');
-});
-
 test('플립북 만들기에서 새 행이 잘못되면 기존 플립북도 옮기지 않고, 옮기다 실패하면 이미 옮긴 플립북은 기록에 남긴다', async () => {
   const posted: ToUi[] = [];
   const store = new Store(memoryKV());

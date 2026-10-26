@@ -41,7 +41,7 @@ const DATA_OPS = new Set<AdminOp['op']>(['renameCategory', 'setCategoryActive', 
 const BUSY_LABEL: Partial<Record<ToMain['type'], string>> = {
   prepare: COPY.controller001, commit: COPY.controller002, resetData: COPY.controller003, retry: COPY.controller004, refreshData: COPY.controller005,
   admin: COPY.controller006, createFlipbooks: COPY.controller038, markReviewed: COPY.controller066, removeFlipbooks: COPY.controller068,
-  matchVersion: COPY.controller106, switchVersion: COPY.controller107, resizeFlipbooks: COPY.controller117, renameFlipbook: COPY.controller118, editFlipbookScreens: COPY.controller137,
+  matchVersion: COPY.controller106, switchVersion: COPY.controller107, renameFlipbook: COPY.controller118, editFlipbookScreens: COPY.controller137,
   textApply: COPY.controller120, createFlow: COPY.flow006, exportPdf: COPY.pdf005,
 };
 
@@ -179,7 +179,6 @@ export class Controller {
         case 'editFlipbookScreens': await this.editFlipbookScreens(msg.request); break;
         case 'markReviewed': await this.markReviewed(msg.requests); break;
         case 'removeFlipbooks': await this.removeFlipbooks(msg.ids); break;
-        case 'resizeFlipbooks': await this.resizeFlipbooks(msg.ids); break;
         case 'matchVersion': await this.matchVersion(msg.pageId); break;
         case 'switchVersion': await this.switchVersion(msg.pageId, msg.links); break;
         case 'versionDetail': {
@@ -870,21 +869,6 @@ export class Controller {
     this.host.post({ type: 'flipbooksRemoved', ids: removed, message });
   }
 
-  // 고른 플립북을 설정한 1x 화면 크기로 다시 반영한다(2026-10-21 사용자 요청: 전체가 아니라 골라서).
-  // 프레임이 없는 플립북은 반영할 수 없으므로 건너뛴다. 이미 그 크기인 플립북은 GUI를 다시 복사하지 않는다.
-  private async resizeFlipbooks(ids: string[]): Promise<void> {
-    const s = this.store;
-    s.reload();
-    const canvas = await this.inspectFlipbooks();
-    const { found } = canvas;
-    const targets = ids.filter(id => s.state.flipbooks.get(id)?.status === 'active' && found.has(id));
-    const report = targets.length ? await this.deliverFlipbooks({}, { targets, canvas }) : emptyReport();
-    this.postState();
-    // 크기를 맞추면 프레임 크기가 바뀌어 Section 안 배치가 달라질 수 있다.
-    this.applyLinks(found, await this.spots());
-    this.host.post({ type: report.failed.length || report.skipped ? 'error' : 'notice', message: deliveryMessage(report) || COPY.controller116 });
-  }
-
   private async findFlipbook(flipbookId: string): Promise<string | null> {
     const fb = this.store.state.flipbooks.get(flipbookId);
     const pageId = fb?.pageId ?? this.store.state.project.flipbookPageId;
@@ -1228,7 +1212,7 @@ export class Controller {
           if (options.create?.has(flipbookId)) view.create = true;
           const result = await this.host.syncFlipbook({ pageId: view.pageId, templateId: templateNodeId, force: options.force }, view);
           for (const d of pending) setDeliveryState(s, d.batchId, d.targetId, 'done');
-          // 반영한 1x 화면 크기를 남겨 플립북 목록에서 설정 크기와 다른 플립북을 알 수 있게 한다.
+          // 반영한 1x 화면 크기를 남긴다.
           const latest = s.state.flipbooks.get(flipbookId);
           if (latest && latest.guiWidth !== view.guiWidth) s.put(keys.flipbook(flipbookId), { ...latest, rev: latest.rev + 1, guiWidth: view.guiWidth });
           if (options.baseline?.has(flipbookId) && !lastUi(s.state, flipbookId)?.fingerprint && !s.state.uiBaselines.has(flipbookId)) {
