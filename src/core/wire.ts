@@ -166,6 +166,8 @@ export type ToMain =
   | { type: 'pdfTab'; open: boolean }
   // 보고 있는 페이지에서 고른 프레임을 캔버스 순서대로 한 쪽씩 PDF로 내보낸다(UI Title·Update History List는 그동안만 숨김).
   | { type: 'exportPdf' }
+  // PDF 저장 취소. 쓰기 순서를 기다리지 않고 바로 처리해, 내보내는 중인 한 장이 끝나면 멈춘다.
+  | { type: 'cancelPdf' }
   // save: 손잡이를 놓았을 때. 다음 실행 때 이 크기로 연다.
   | { type: 'resize'; width: number; height: number; save?: boolean; compact?: boolean };
 
@@ -212,6 +214,8 @@ export type ToUi =
   | { type: 'pdfSelection'; selection: PdfSelection }
   // 내보낸 쪽(캔버스 순서). UI가 한 파일로 합쳐 저장한다.
   | { type: 'pdfPages'; fileName: string; pages: PdfPage[] }
+  // PDF 저장을 취소해 쪽을 보내지 않았다.
+  | { type: 'pdfCancelled' }
   | { type: 'notice'; message: string }
   // 진행 중인 작업. null이면 끝났다.
   | { type: 'busy'; label: string | null }

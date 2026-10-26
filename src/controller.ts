@@ -85,6 +85,9 @@ export class Controller {
   private textTabOpen = false;
   // PDF 저장 탭도 보이는 동안만 캔버스 선택마다 고른 프레임 수를 보낸다.
   private pdfTabOpen = false;
+  // PDF 저장 중 취소를 눌렀다. 다음 프레임을 내보내기 전에 멈춘다.
+  private pdfCancelled = false;
+  private pdfExporting = false;
   // 캔버스를 읽다가 기록과 페이지·Section(키·이름)이 다른 플립북을 찾았다. 반영(기록·Chapter)은 쓰기 순서에서 syncCanvasSections가 한다.
   private canvasSectionsPending = false;
   private scanningGui = false;
@@ -222,10 +225,27 @@ export class Controller {
           break;
         case 'exportPdf': {
           if (!this.host.exportPdf) break;
-          const { pageName, pages } = await this.host.exportPdf((done, total) => this.progress(`${COPY.pdf005} (${done + 1}/${total})`));
-          this.host.post({ type: 'pdfPages', fileName: pdfFileName(pageName), pages });
+          this.pdfCancelled = false;
+          this.pdfExporting = true;
+          try {
+            const { pageName, pages } = await this.host.exportPdf(async (done, total) => {
+              if (this.pdfCancelled) return false;
+              await this.progress(`${COPY.pdf005} (${done + 1}/${total})`);
+              return true;
+            });
+            if (!pages || this.pdfCancelled) this.host.post({ type: 'pdfCancelled' });
+            else this.host.post({ type: 'pdfPages', fileName: pdfFileName(pageName), pages });
+          } finally {
+            this.pdfExporting = false;
+          }
           break;
         }
+        // 쪽을 다 보낸 뒤(UI가 PDF로 묶는 중)의 취소는 UI가 처리한다.
+        case 'cancelPdf':
+          if (!this.pdfExporting) break;
+          this.pdfCancelled = true;
+          this.busy(COPY.pdf014);
+          break;
         case 'createFlow': await this.createFlow(msg.request); break;
         case 'flows': await this.postFlows(); break;
         case 'revealFlow': {

@@ -41,7 +41,7 @@ type Tab = Team | 'ADMIN';
 const NODE_PREVIEW = 'node:';
 
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
-const WHILE_BUSY = new Set(['tab', 'settings', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'toggle-detail', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open']);
+const WHILE_BUSY = new Set(['tab', 'settings', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'toggle-detail', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
 const BEFORE_CHECK = new Set([...WHILE_BUSY, 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'text-import', 'text-apply',
@@ -2560,7 +2560,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       case 'text-close': textOpen = false; flowOpen = false; pdfOpen = false; renderAll(); break;
       case 'flow-open': flowOpen = true; textOpen = false; pdfOpen = false; renderAll(); bridge.send({ type: 'guiScreens' }); break;
       case 'pdf-open': pdfOpen = true; textOpen = false; flowOpen = false; renderAll(); break;
-      case 'pdf-export': bridge.send({ type: 'exportPdf' }); break;
+      case 'pdf-export': pdf.setRunning(true); bridge.send({ type: 'exportPdf' }); break;
+      case 'pdf-cancel': pdf.cancel(); bridge.send({ type: 'cancelPdf' }); break;
       case 'text-import': bridge.send({ type: 'textImport' }); break;
       case 'text-apply': { const paragraphs = editor.paragraphs(); if (paragraphs.some(p => p.text.trim())) bridge.send({ type: 'textApply', paragraphs }); break; }
       case 'version-open': openVersion(); break;
@@ -3357,13 +3358,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       case 'textImported': editor.setParagraphs(msg.paragraphs); break;
       case 'textTarget': editor.setTarget(msg.target); break;
       case 'pdfSelection': pdf.setSelection(msg.selection); break;
+      case 'pdfCancelled': pdf.setRunning(false); notify('info', COPY.pdf015); break;
       case 'pdfPages': {
         const { fileName, pages } = msg;
         pdfBusy = COPY.pdf006; renderBusy();
         pdf.save(fileName, pages)
-          .then(() => notify('info', `${COPY.pdf010} ${fileName} (${pages.length}${COPY.pdf011})`))
+          .then(saved => notify('info', saved ? `${COPY.pdf010} ${fileName} (${pages.length}${COPY.pdf011})` : COPY.pdf015))
           .catch(error => notify('error', `${COPY.pdf012} ${error instanceof Error ? error.message : String(error)}`))
-          .finally(() => { pdfBusy = null; renderBusy(); });
+          .finally(() => { pdfBusy = null; renderBusy(); pdf.setRunning(false); });
         break;
       }
       case 'notice': notify('info', msg.message); break;
@@ -3372,6 +3374,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         pendingCategory = null; pendingTag = null; pendingWorker = null;
         // 목록 새로고침이 실패해도 아이콘이 계속 돌지 않게 한다.
         if (refreshingList) { refreshingList = false; paintSyncStatus(); }
+        // PDF 저장이 실패하면 취소 버튼을 저장 버튼으로 되돌린다.
+        pdf.setRunning(false);
         if (bulk?.submitting) { bulk.submitting = false; bulk.error = msg.message; renderBulk(); }
         else if (newSubmitting) { newSubmitting = false; createError = msg.message; renderFooter(); }
         notify('error', msg.message);

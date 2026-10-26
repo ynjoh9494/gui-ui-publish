@@ -191,7 +191,7 @@ summary { cursor: pointer; color: var(--muted); }
 .spinner { flex: none; width: 12px; height: 12px; border: 2px solid var(--brand); border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
-.is-busy [data-action]:not([data-action="tab"]):not([data-action="group"]):not([data-action="select"]):not([data-action="changed-only"]):not([data-action="cancel-scan"]) { opacity: .5; cursor: progress; }
+.is-busy [data-action]:not([data-action="tab"]):not([data-action="group"]):not([data-action="select"]):not([data-action="changed-only"]):not([data-action="cancel-scan"]):not([data-action="pdf-cancel"]) { opacity: .5; cursor: progress; }
 .check-row [data-action="cancel-scan"] { cursor: pointer; opacity: 1; }
 .detail.locked summary { pointer-events: none; opacity: .45; }
 .detail.locked :is(input, select, textarea) { opacity: .55; }

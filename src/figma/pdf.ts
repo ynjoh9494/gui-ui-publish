@@ -1,8 +1,8 @@
 import { COPY } from '../core/copy.ts';
-import { PDF_HIDDEN_PARTS, pdfOrder, type PdfPage, type PdfSelection } from '../core/pdf.ts';
+import { PDF_HIDDEN_PARTS, PDF_IMAGE_SCALE, pdfOrder, type PdfPage, type PdfSelection } from '../core/pdf.ts';
 import { findPart } from './flipbook.ts';
 
-// PDF 저장 탭: 보고 있는 페이지에서 고른 프레임을 한 쪽씩 PDF로 내보낸다.
+// PDF 저장 탭: 보고 있는 페이지에서 고른 프레임을 한 쪽씩 JPG로 내보낸다.
 type PdfFrame = FrameNode | ComponentNode | InstanceNode;
 const FRAME_TYPES = new Set<SceneNode['type']>(['FRAME', 'COMPONENT', 'INSTANCE']);
 const isFrame = (node: SceneNode): node is PdfFrame => FRAME_TYPES.has(node.type);
@@ -13,7 +13,8 @@ export function pdfSelection(): PdfSelection {
   return { frames, others: selection.length - frames };
 }
 
-export async function exportPdfPages(progress: (done: number, total: number) => Promise<void>): Promise<PdfPage[]> {
+// progress가 false를 돌려주면(취소) 다음 프레임으로 가지 않고 null을 돌려준다. 내보내는 중인 한 장은 끝까지 기다린다.
+export async function exportPdfPages(progress: (done: number, total: number) => Promise<boolean>): Promise<PdfPage[] | null> {
   const frames = pdfOrder(figma.currentPage.selection.filter(isFrame), frame => {
     const box = frame.absoluteBoundingBox ?? { x: frame.absoluteTransform[0][2], y: frame.absoluteTransform[1][2], height: frame.height };
     return { x: box.x, y: box.y, height: box.height };
@@ -21,12 +22,15 @@ export async function exportPdfPages(progress: (done: number, total: number) => 
   if (!frames.length) throw new Error(COPY.pdf004);
   const pages: PdfPage[] = [];
   for (const [index, frame] of frames.entries()) {
-    await progress(index, frames.length);
+    if (!await progress(index, frames.length)) return null;
     // 보이는 요소만 숨겼다가 내보낸 직후 되돌린다. 원래 숨겨 둔 요소는 그대로 둔다. GUI 영역 안의 복사본은 찾지 않는다.
     const hidden = PDF_HIDDEN_PARTS.map(name => findPart(frame, node => node.name === name)).filter((node): node is SceneNode => !!node && node.visible);
     for (const node of hidden) node.visible = false;
     try {
-      pages.push({ name: frame.name, bytes: await frame.exportAsync({ format: 'PDF' }) });
+      // 쪽 크기는 숨긴 뒤의 크기다(오토 레이아웃 플립북은 숨긴 만큼 줄어든다).
+      const { width, height } = frame;
+      const bytes = await frame.exportAsync({ format: 'JPG', constraint: { type: 'SCALE', value: PDF_IMAGE_SCALE } });
+      pages.push({ name: frame.name, bytes, width, height });
     } finally {
       for (const node of hidden) node.visible = true;
     }

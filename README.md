@@ -38,7 +38,7 @@ GUI팀과 UI팀이 한 Figma 파일에서 함께 쓰는 플러그인입니다. G
 
 ### 준비
 
-Node.js 22.18 이상이 필요합니다(TypeScript 테스트를 Node로 바로 실행). 실행 의존성은 PDF 저장 탭에서 여러 쪽을 한 파일로 합치는 `pdf-lib` 하나이며 `dist/ui.html`에 함께 묶입니다(네트워크를 쓰지 않음). 브라우저 미리보기 조작 스크립트는 Chrome을 씁니다(`CHROME_PATH`로 경로 지정).
+Node.js 22.18 이상이 필요합니다(TypeScript 테스트를 Node로 바로 실행). 실행 의존성은 PDF 저장 탭에서 쪽 이미지를 한 PDF로 묶는 `pdf-lib` 하나이며 `dist/ui.html`에 함께 묶입니다(네트워크를 쓰지 않음). 브라우저 미리보기 조작 스크립트는 Chrome을 씁니다(`CHROME_PATH`로 경로 지정).
 
 ```sh
 npm install
