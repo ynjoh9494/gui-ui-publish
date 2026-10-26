@@ -4,10 +4,12 @@ import { keepModes } from './layers.ts';
 
 // GUI 배포 때 만드는 화면 썸네일(2026-10-20 사용자 결정). 1/4 크기, 투명 대신 검정(#000000) 배경을 깐 JPG이며
 // 별도 페이지에 화면마다 최신 썸네일 하나를 이미지 사각형으로 둔다. 플립북 탭의 목록·화면 선택에서 미리보기로 쓴다.
-// 기록하는 크기(사각형·플로우 칸)는 1/4이고, 확대해도 깨지지 않게 이미지는 1/2 해상도로 내보낸다(2026-10-26 사용자 결정).
+// 기록하는 크기(사각형·플로우 칸)는 1/4이고, 확대해도 깨지지 않게 이미지는 3/4 해상도로 내보낸다(2026-10-26 사용자 결정).
+// 긴 화면은 Figma 이미지 한도(4096px) 안에 들도록 배율을 낮춘다.
 
 export const THUMB_SCALE = 0.25;
-const THUMB_EXPORT_SCALE = 0.5;
+const THUMB_EXPORT_SCALE = 0.75;
+const MAX_IMAGE_SIZE = 4096;
 const PAGE_ROLE_KEY = 'role';
 const PAGE_ROLE = 'thumbs';
 const THUMB_KEY = 'thumbOf';
@@ -24,7 +26,7 @@ async function thumbPage(ns: string): Promise<PageNode> {
   return page;
 }
 
-// 원본을 검정 배경 프레임에 복제해 1/2 해상도 JPG로 내보내고 크기는 1/4로 기록한다. 확정 뒤 사각형에 반영한다.
+// 원본을 검정 배경 프레임에 복제해 3/4 해상도(긴 변 4096px 이하) JPG로 내보내고 크기는 1/4로 기록한다. 확정 뒤 사각형에 반영한다.
 export async function makeThumbnail(source: SceneNode, label: string): Promise<GuiThumb> {
   const holder = figma.createFrame();
   holder.name = label;
@@ -38,7 +40,8 @@ export async function makeThumbnail(source: SceneNode, label: string): Promise<G
     copy.y = 0;
     // 원본이 페이지·Section에서 물려받던 변수 모드를 지정해 같은 색으로 보이게 한다.
     if (copy.type === 'FRAME' || copy.type === 'INSTANCE') await keepModes(source, copy as FrameNode);
-    const bytes = await holder.exportAsync({ format: 'JPG', constraint: { type: 'SCALE', value: THUMB_EXPORT_SCALE } });
+    const scale = Math.min(THUMB_EXPORT_SCALE, MAX_IMAGE_SIZE / Math.max(holder.width, holder.height));
+    const bytes = await holder.exportAsync({ format: 'JPG', constraint: { type: 'SCALE', value: scale } });
     const image = figma.createImage(bytes);
     const width = Math.max(1, Math.round(source.width * THUMB_SCALE));
     const height = Math.max(1, Math.round(source.height * THUMB_SCALE));

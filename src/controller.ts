@@ -908,7 +908,7 @@ export class Controller {
       if (item.needsThumb) await this.progress(`${COPY.controller019} ${i + 1}/${plan.items.length}`);
       const fresh = await this.host.fingerprint(item.frame.nodeId, false);
       input.fingerprints[item.entryKey] = fresh.fingerprint;
-      // 확인한 내용과 같을 때만 복사한다. 다르면 commitPlan이 충돌로 돌려준다.
+      // 확인한 내용과 같을 때만 썸네일을 만든다. 다르면 commitPlan이 충돌로 돌려준다.
       if (!item.needsThumb || fresh.fingerprint !== item.frame.fingerprint) continue;
       try { input.thumbs[item.entryKey] = await this.host.makeThumbnail(item.frame.nodeId, formatFrameName(item.code, item.name)); }
       catch (e) { thumbErrors.push(`${item.name}: ${e instanceof Error ? e.message : String(e)}`); }
