@@ -6,6 +6,7 @@ import type { FlowRecord, GuiRecord, Screen } from '../src/core/types.ts';
 import type { ToUi } from '../src/core/wire.ts';
 import { COPY } from '../src/core/copy.ts';
 import { Controller } from '../src/controller.ts';
+import { FlowController } from '../src/flowController.ts';
 import type { Host } from '../src/host.ts';
 
 // 플로우(2026-10-23): 배포된 화면을 놓고 썸네일 변에서 변으로 꺾인 화살표로 잇는다. 2026-10-26부터 썸네일은 격자에 맞춘 자유 위치에 제 크기로 놓인다.
@@ -199,6 +200,6 @@ test('플로우를 만들면 위치와 감사 기록을 남기고, 다시 배포
   assert.equal(flow.nodeId, 'n3');
   assert.ok(controller.store.state.audit.some(e => e.action === 'flow.create' && e.target === flow.id));
   live.delete('n3');
-  await (controller as unknown as { updateFlows(uids: Set<string>): Promise<string | null> }).updateFlows(new Set(['1']));
+  await new FlowController(controller.store, host).update(new Set(['1']));
   assert.equal(controller.store.state.flows.size, 0);
 });

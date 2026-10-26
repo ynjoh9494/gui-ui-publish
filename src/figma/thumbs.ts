@@ -94,13 +94,17 @@ export async function renameThumbnails(ns: string, labels: Map<string, string>):
 }
 
 // 썸네일 페이지를 불러오지 않으면 그 페이지에만 있는 이미지를 찾지 못한다(dynamic-page). 실행 중 한 번만 불러온다.
+// 페이지가 아직 없으면(첫 GUI 배포 전) 다음에 다시 찾는다. 동시에 여러 번 불러도 불러오기는 한 번이다.
 let loadedThumbPage: PageNode | null = null;
+let loadingThumbPage: Promise<void> | null = null;
 export async function loadThumbnailPage(ns: string): Promise<void> {
-  if (!loadedThumbPage || loadedThumbPage.removed) {
+  if (loadedThumbPage && !loadedThumbPage.removed) return;
+  loadingThumbPage ??= (async () => {
     const page = figma.root.children.find(p => p.getSharedPluginData(ns, PAGE_ROLE_KEY) === PAGE_ROLE) ?? null;
     await page?.loadAsync();
     loadedThumbPage = page;
-  }
+  })().finally(() => { loadingThumbPage = null; });
+  await loadingThumbPage;
 }
 
 export async function thumbnailBytes(ns: string, hash: string): Promise<Uint8Array | null> {

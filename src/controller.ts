@@ -6,9 +6,7 @@ import { chapterName, flipbookView, guiKey, validGuiWidth } from './core/flipboo
 import { canvasSections, checkMoves, editFlipbookScreens, followCanvasSections, importGuiUpdates, markReviewed, moveFlipbooks, pageSections, planFlipbooks, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookMove, type FlipbookRequest, type ReviewRequest, type ScreenEditRequest } from './core/flipbooks.ts';
 import type { Draft } from './core/drafts.ts';
 import type { SelectionWrite } from './core/description.ts';
-import { flowList, flowRecord, flowUpdates, planFlow, type FlowRequest } from './core/flow.ts';
 import { flipbookHistoryRows, guiHistoryRows } from './core/history.ts';
-import { pdfFileName } from './core/pdf.ts';
 import { guiRecordInfos, guiScreens } from './core/guiScreens.ts';
 import { acknowledgeChange, addDelivery, upgradeBaseline, buildPlan, commitPlan, setDeliveryState, type BatchComment, unfinishedDeliveries, type CommitInput, type Plan } from './core/publish.ts';
 import {
@@ -18,10 +16,12 @@ import {
 import type { CodeRename } from './core/screenCode.ts';
 import { formatFrameName } from './core/screenName.ts';
 import { keys, lastUi, randomId, Store } from './core/store.ts';
-import type { DataStatus, FlowRecord, ProjectConfig, Team, UiBaseline } from './core/types.ts';
+import type { DataStatus, ProjectConfig, Team, UiBaseline } from './core/types.ts';
 import { explainMatch, matchVersion, versionCommon, versionLinkErrors, type VersionFrame } from './core/versionMatch.ts';
 import { toUiWire, type AdminOp, type NavTarget, type ScanState, type ToMain } from './core/wire.ts';
+import { FlowController } from './flowController.ts';
 import type { Host } from './host.ts';
+import { PdfController } from './pdfController.ts';
 export type { Host, FingerprintReader } from './host.ts';
 
 const PROGRESS_STEP = 5;
@@ -86,11 +86,9 @@ export class Controller {
   private canvasSelectionSeq = 0;
   // 텍스트 편집 탭이 보이는 동안만 캔버스 선택마다 대상을 찾는다(선택마다 조상·하위 트리를 읽는 작업이라 탭이 닫혀 있으면 하지 않는다).
   private textTabOpen = false;
-  // PDF 저장 탭도 보이는 동안만 캔버스 선택마다 고른 프레임 수를 보낸다.
-  private pdfTabOpen = false;
-  // PDF 저장 중 취소를 눌렀다. 다음 프레임을 내보내기 전에 멈춘다.
-  private pdfCancelled = false;
-  private pdfExporting = false;
+  // UI Flipbook의 독립 흐름(플로우 탭, PDF 저장 탭)은 따로 조정한다.
+  private readonly flows: FlowController;
+  private readonly pdf: PdfController;
   // 캔버스를 읽다가 기록과 페이지·Section(키·이름)이 다른 플립북을 찾았다. 반영(기록·Chapter)은 쓰기 순서에서 syncCanvasSections가 한다.
   private canvasSectionsPending = false;
   private scanningGui = false;
@@ -101,6 +99,8 @@ export class Controller {
   constructor(host: Host) {
     this.host = host;
     this.store = new Store(host.kv);
+    this.flows = new FlowController(this.store, host);
+    this.pdf = new PdfController(host, label => this.progress(label), label => this.busy(label));
   }
 
   private busy(label: string | null) { this.host.post({ type: 'busy', label }); }
@@ -125,7 +125,7 @@ export class Controller {
           this.host.post({ type: 'init', mode: this.host.mode, state: toUiWire(this.store.state), actor: this.host.actor, pages: this.host.pages(), issues: this.store.issues.map(i => `${i.key}: ${i.message}`) });
           this.postEntries();
           if (this.host.mode === 'UI' && this.textTabOpen) this.postTextTarget();
-          if (this.host.mode === 'UI' && this.pdfTabOpen) this.postPdfSelection();
+          if (this.host.mode === 'UI') this.pdf.selectionChanged();
           // UI Flipbook 목록은 프레임이 캔버스에 있는지 바로 보여 준다(연결 끊김 표시).
           // 플립북 페이지를 불러오는 동안은 Figma가 입력을 받지 못하므로 아무 표시가 없으면 오류처럼 보인다. 그동안 「불러오는 중」을 띄운다.
           if (this.host.mode === 'UI') {
@@ -144,8 +144,8 @@ export class Controller {
         case 'selectFrames': await this.selectFrames(msg.nav, msg.team, msg.entryKeys, msg.lastKey); break;
         case 'prepare': await this.prepare(msg.team, msg.drafts, msg.comment); break;
         case 'thumbnails': {
-          const items: { hash: string; bytes: Uint8Array | null }[] = [];
-          for (const hash of msg.hashes) items.push({ hash, bytes: await this.host.thumbnailBytes(hash).catch(() => null) });
+          // 이미지 바이트는 서로 기다리지 않고 함께 읽는다.
+          const items = await Promise.all(msg.hashes.map(async hash => ({ hash, bytes: await this.host.thumbnailBytes(hash).catch(() => null) })));
           this.host.post({ type: 'thumbnails', items });
           break;
         }
@@ -223,44 +223,19 @@ export class Controller {
           break;
         }
         case 'pdfTab':
-          this.pdfTabOpen = msg.open;
-          if (msg.open && this.host.mode === 'UI') this.postPdfSelection();
+          if (this.host.mode === 'UI') this.pdf.setTab(msg.open);
           break;
-        case 'exportPdf': {
-          if (!this.host.exportPdf) break;
-          this.pdfCancelled = false;
-          this.pdfExporting = true;
-          try {
-            const { pageName, pages } = await this.host.exportPdf(async (done, total) => {
-              if (this.pdfCancelled) return false;
-              await this.progress(`${COPY.pdf005} (${done + 1}/${total})`);
-              return true;
-            });
-            if (!pages || this.pdfCancelled) this.host.post({ type: 'pdfCancelled' });
-            else this.host.post({ type: 'pdfPages', fileName: pdfFileName(pageName), pages });
-          } finally {
-            this.pdfExporting = false;
-          }
-          break;
-        }
-        // 쪽을 다 보낸 뒤(UI가 PDF로 묶는 중)의 취소는 UI가 처리한다.
-        case 'cancelPdf':
-          if (!this.pdfExporting) break;
-          this.pdfCancelled = true;
-          this.busy(COPY.pdf014);
-          break;
-        case 'createFlow': await this.createFlow(msg.request); break;
-        case 'flows': await this.postFlows(); break;
+        case 'exportPdf': await this.pdf.export(); break;
+        case 'cancelPdf': this.pdf.cancel(); break;
+        case 'createFlow': await this.flows.create(msg.request); break;
+        case 'flows': await this.flows.post(); break;
         case 'revealFlow': {
           this.navSeq = msg.nav;
           const latest = () => msg.nav === this.navSeq;
-          this.store.reload();
-          const flow = this.store.state.flows.get(msg.flowId);
-          const nodeId = flow && this.host.flowNode ? await this.host.flowNode(flow, msg.uid) : null;
+          const nodeId = await this.flows.find(msg.flowId, msg.uid);
           // 캔버스에서 지운 플로우는 묻지 않고 목록에서 뺀다(2026-10-23 사용자 결정).
           if (!nodeId) {
-            if (flow) this.forgetFlow(flow);
-            await this.postFlows(false);
+            await this.flows.post(false);
             if (latest()) this.host.post({ type: 'nav', nav: msg.nav, ok: false, message: COPY.flow048 });
             break;
           }
@@ -445,56 +420,6 @@ export class Controller {
     ].filter(Boolean);
     if (!parts.length) return null;
     return { message: parts.join(' '), failed: report.failed.length > 0 || !!report.skipped };
-  }
-
-  // GUI를 다시 배포하면 그 화면이 든 플로우의 썸네일만 바꾼다(2026-10-23 사용자 결정). 그룹이 지워진 플로우는 위치 기록도 지운다.
-  // 플로우 실패는 배포 결과와 따로 알린다.
-  private async updateFlows(uids: Set<string>): Promise<string | null> {
-    if (!this.host.updateFlow || !uids.size) return null;
-    const s = this.store;
-    s.reload();
-    const { flows, thumbs } = flowUpdates(s.state, uids);
-    let updated = 0;
-    const failed: string[] = [];
-    for (const flow of flows) {
-      try {
-        const changed = await this.host.updateFlow(flow, thumbs);
-        if (changed === null) this.forgetFlow(flow);
-        else if (changed) updated++;
-      } catch (e) {
-        failed.push(`${flow.title}: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }
-    return [updated ? `${COPY.flow008} ${updated}${COPY.flow009}` : '', failed.length ? `${COPY.flow010} ${failed.join('; ')}` : ''].filter(Boolean).join(' ') || null;
-  }
-
-  // 플로우 만들기: 배포된 화면만 넣는다. 위치를 기록하고(플로우 목록) 이력 행은 남기지 않는다. 감사 기록은 다른 기록과 같이 남긴다.
-  private async createFlow(request: FlowRequest): Promise<void> {
-    if (!this.host.createFlow) return;
-    const s = this.store;
-    s.reload();
-    const plan = planFlow(s.state, request, s.newId);
-    const placed = await this.host.createFlow(plan);
-    const record = flowRecord(plan, placed, this.host.actor, s.now());
-    s.put(keys.flow(plan.id), record);
-    s.audit(this.host.actor, 'flow.create', plan.id, null, { title: record.title, pageId: record.pageId, screens: record.uids });
-    this.host.post({ type: 'notice', message: [`${COPY.flow007} ${plan.title}`, ...placed.notes].join(' ') });
-  }
-
-  // 캔버스에서 그룹을 지운 플로우의 기록을 뺀다.
-  private forgetFlow(flow: FlowRecord): void {
-    this.store.remove(keys.flow(flow.id));
-    this.store.audit(this.host.actor, 'flow.remove', flow.id, { title: flow.title, pageId: flow.pageId }, null);
-  }
-
-  // 플로우 목록. check: 캔버스에서 그룹이 지워진 플로우를 찾아 기록에서 뺀다(그 플로우가 있는 페이지를 불러온다).
-  private async postFlows(check = true): Promise<void> {
-    const s = this.store;
-    s.reload();
-    if (check && this.host.flowNode) {
-      for (const flow of [...s.state.flows.values()]) if (!(await this.host.flowNode(flow))) this.forgetFlow(flow);
-    }
-    this.host.post({ type: 'flows', flows: flowList(s.state, new Map(this.host.pages().map(p => [p.id, p.name]))) });
   }
 
   // 선택 화면 확인(GUI): 원본 목록은 전체를 다시 읽고(신규 후보·복제 의심·원본 없음 판단) 지문은 고른 화면만 계산한다.
@@ -726,14 +651,9 @@ export class Controller {
     this.host.post({ type: 'textTarget', target: target.kind === 'description' && title ? { ...target, name: title } : target });
   }
 
-  private postPdfSelection(): void {
-    const selection = this.host.pdfSelection?.();
-    if (selection) this.host.post({ type: 'pdfSelection', selection });
-  }
-
   async canvasSelectionChanged(): Promise<void> {
     if (this.host.mode === 'UI' && this.textTabOpen) this.postTextTarget();
-    if (this.host.mode === 'UI' && this.pdfTabOpen) this.postPdfSelection();
+    if (this.host.mode === 'UI') this.pdf.selectionChanged();
     const nodes = this.host.selectionNodeIds();
     if (nodes === null) return;
     const canvasSeq = ++this.canvasSelectionSeq;
@@ -981,7 +901,7 @@ export class Controller {
     let report: string | null = null;
     if (result.ok && items.length) {
       report = plan.team === 'GUI'
-        ? [(await this.pullGui())?.message, await this.updateFlows(new Set(items.filter(i => i.workType !== 'deleted').map(i => i.screenId)))].filter(Boolean).join(' ') || null
+        ? [(await this.pullGui())?.message, await this.flows.update(new Set(items.filter(i => i.workType !== 'deleted').map(i => i.screenId)))].filter(Boolean).join(' ') || null
         : deliveryMessage(await this.deliverFlipbooks({ batchId }));
       await this.progress(COPY.controller005);
     }

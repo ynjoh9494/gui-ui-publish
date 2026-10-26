@@ -175,9 +175,10 @@ export class Store {
     this.put(keys.audit(entry.id), entry);
   }
 
-  // 키를 지우고 상태를 다시 만든다.
-  remove(key: string): void {
-    this.kv.set(key, '');
+  // 키를 지우고 상태를 다시 만든다. 여러 키는 한 번에 지워 상태를 한 번만 다시 만든다.
+  remove(...keys: string[]): void {
+    if (!keys.length) return;
+    for (const key of keys) this.kv.set(key, '');
     this.reload();
   }
 
