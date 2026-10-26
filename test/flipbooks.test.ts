@@ -894,6 +894,29 @@ test('Section 밖으로 옮긴 플립북은 「(섹션 없음)」이 되어 그 
   assert.throws(() => planFlipbooks({ pageId: 'ui', rows: [{ ...row([], false, 'C'), section: noSection() }] }, new Map(), actor, 1000, () => 'fb3'), /섹션 없음/);
 });
 
+test('플립북을 반영할 때 플립북 페이지는 한 번만 읽고 찾은 프레임을 반영에 넘긴다', async () => {
+  const store = new Store(memoryKV());
+  store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['ui'], flipbookPageId: 'ui' });
+  for (const fb of planFlipbooks({ pageId: 'ui', rows: [row([], false, '정책 A')] }, new Map(), actor, 1000, () => 'fb1')) {
+    store.put(keys.flipbook(fb.id), { ...fb, category: { key: 'home', name: '홈', order: 1 } });
+  }
+  let inspected = 0;
+  const known: (Map<string, string> | undefined)[] = [];
+  const host = {
+    kv: store.kv, mode: 'UI', actor, post: () => {}, pages: () => [{ id: 'ui', name: 'UI' }], selectionNodeIds: () => [],
+    templateIssues: async () => [],
+    inspectFlipbooks: async () => (inspected++, { found: new Map([['fb1', '1:1']]), spots: { '1:1': { pageId: 'ui', section: 'home', sectionName: '홈', sectionIndex: 0, index: 0 } } }),
+    listFlipbooks: async () => new Map(),
+    beginDelivery: (map?: Map<string, string>) => { known.push(map); },
+    syncFlipbook: async () => ({ nodeId: '1:1', notes: [] }),
+    ensureDataPage: async () => 'data', renderData: async () => {},
+  } as unknown as Host;
+  const controller = new Controller(host);
+  await controller.handle({ type: 'renameFlipbook', id: 'fb1', title: '새 제목' });
+  assert.equal(inspected, 1, '캔버스 따라가기와 반영이 같은 읽기를 쓴다');
+  assert.deepEqual([...known[0] ?? []], [['fb1', '1:1']], '찾은 프레임을 반영에 넘겨 페이지를 다시 훑지 않게 한다');
+});
+
 test('캔버스 선택으로는 목록을 다시 읽지 않고, 새로고침으로 찾은 Section 이름 변경은 Chapter만 다시 쓰며 반영 중 표시를 닫는다', async () => {
   for (const light of [true, false]) {
     const posted: ToUi[] = [];

@@ -198,7 +198,7 @@ export function figmaHost(mode: Host['mode']): Host {
     },
     templateFromSelection,
     templateIssues,
-    beginDelivery: () => { deliverySession = flipbookSession(); },
+    beginDelivery: known => { deliverySession = flipbookSession(known); },
     endDelivery: () => { deliverySession = undefined; },
     syncFlipbook: (settings, view) => syncFlipbook(NS, settings, view, deliverySession),
     syncChapters: items => syncChapters(NS, items),

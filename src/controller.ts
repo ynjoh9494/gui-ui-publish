@@ -51,6 +51,9 @@ function writeMessage(result: SelectionWrite): string {
   return COPY.controller135;
 }
 
+// 플립북 페이지를 한 번 읽은 결과: 플립북 ID → 프레임 노드 ID, 프레임 노드 ID → 캔버스 위치
+type CanvasRead = { found: Map<string, string>; spots: Record<string, FlipbookSpot> };
+
 const spotOf = (spots: Record<string, FlipbookSpot>, nodeId: string | null): FlipbookSpot | null => (nodeId ? spots[nodeId] ?? null : null);
 const sameSpot = (a: FlipbookSpot | null | undefined, b: FlipbookSpot | null | undefined) =>
   (a ?? null) === (b ?? null) || (!!a && !!b && a.pageId === b.pageId && a.section === b.section && a.sectionName === b.sectionName && a.sectionIndex === b.sectionIndex && a.index === b.index);
@@ -371,7 +374,7 @@ export class Controller {
     if (seq !== this.uiScanSeq) return;
     if (pulled) this.host.post({ type: pulled.failed ? 'error' : 'notice', message: pulled.message });
     const flipbooks = [...this.store.state.flipbooks.values()];
-    let inspected: { found: Map<string, string>; spots: Record<string, FlipbookSpot> };
+    let inspected: CanvasRead;
     try { inspected = await this.inspectFlipbooks(); }
     catch (e) { if (seq !== this.uiScanSeq) return; this.scanStatus('UI', 'failed'); throw e; }
     if (seq !== this.uiScanSeq) return;
@@ -544,7 +547,7 @@ export class Controller {
     this.store.reload();
     const wanted = new Set(flipbookIds);
     this.scanStatus('UI', 'loading');
-    let inspected: { found: Map<string, string>; spots: Record<string, FlipbookSpot> };
+    let inspected: CanvasRead;
     try { inspected = await this.inspectFlipbooks(); }
     catch (e) { if (seq !== this.uiScanSeq) return; this.scanStatus('UI', 'failed'); throw e; }
     if (seq !== this.uiScanSeq) return;
@@ -781,7 +784,7 @@ export class Controller {
   // 캔버스에서 옮기거나 이름을 바꾼 Section을 그 플립북의 기록과 Chapter에 반영한다(플립북의 페이지·Section은 캔버스가 원본).
   // 캔버스를 쓰므로 main.ts가 쓰기 순서에 넣어 부른다. 기록과 다른 플립북을 찾았을 때만 반영한다.
   // canvas: 바로 앞 linkFlipbooks가 읽은 캔버스(다시 읽지 않는다). 없으면 다시 읽는다.
-  async syncCanvasSections(canvas?: { found: Map<string, string>; spots: Record<string, FlipbookSpot> }): Promise<void> {
+  async syncCanvasSections(canvas?: CanvasRead): Promise<void> {
     if (this.host.mode !== 'UI' || !this.canvasSectionsPending) return;
     this.canvasSectionsPending = false;
     let delivered = false;
@@ -811,23 +814,24 @@ export class Controller {
   }
 
   // 기록을 캔버스의 페이지·Section으로 맞추고 바뀐 플립북 ID를 돌려준다. canvas: 같은 작업에서 이미 읽은 캔버스(다시 읽지 않는다).
-  private async followCanvas(canvas?: { found: Map<string, string>; spots: Record<string, FlipbookSpot> }): Promise<string[]> {
+  private async followCanvas(canvas?: CanvasRead): Promise<string[]> {
     const s = this.store;
-    s.reload();
     const { found, spots } = canvas ?? await this.inspectFlipbooks();
+    // 페이지를 불러오는 동안 바뀐 기록을 덮어쓰지 않게 캔버스를 읽은 뒤에 기록을 다시 읽는다.
+    s.reload();
     return followCanvasSections(s, canvasSections(s.state, found, spots), this.host.actor).map(fb => fb.id);
   }
 
   // UI Flipbook: 플립북 프레임이 캔버스에 있는지만 다시 찾는다(지문 비교 없음). 찾지 못한 플립북은 목록에 연결 끊김으로 표시한다.
   // 읽은 캔버스를 돌려주어 이어지는 Section 맞추기가 다시 읽지 않게 한다.
-  private async linkFlipbooks(isLatest: () => boolean = () => true): Promise<{ found: Map<string, string>; spots: Record<string, FlipbookSpot> } | undefined> {
+  private async linkFlipbooks(isLatest: () => boolean = () => true): Promise<CanvasRead | undefined> {
     const canvas = await this.inspectFlipbooks();
     if (!isLatest()) return undefined;
     this.applyLinks(canvas.found, canvas.spots);
     return canvas;
   }
 
-  private async inspectFlipbooks(pageIds = this.flipbookPages()): Promise<{ found: Map<string, string>; spots: Record<string, FlipbookSpot> }> {
+  private async inspectFlipbooks(pageIds = this.flipbookPages()): Promise<CanvasRead> {
     if (this.host.inspectFlipbooks) return this.host.inspectFlipbooks(pageIds);
     const found = await this.host.listFlipbooks(pageIds);
     return { found, spots: await this.spots(pageIds) };
@@ -1143,6 +1147,8 @@ export class Controller {
     const s = this.store;
     s.reload();
     const canvas = await this.inspectFlipbooks();
+    // 페이지를 불러오는 동안 다른 작업자가 기록을 바꿨을 수 있으므로 판정·기록 직전에 다시 읽는다.
+    s.reload();
     if (s.state.flipbooks.get(request.flipbookId)?.status !== 'active') throw new Error(COPY.coreFlipbook002);
     if (!canvas.found.has(request.flipbookId)) throw new Error(COPY.figmaFlipbook027);
     const before = s.state.flipbooks.get(request.flipbookId)!;
@@ -1155,8 +1161,10 @@ export class Controller {
       await this.refreshData();
     }
     this.postState();
-    // 화면 수가 바뀌면 프레임 크기가 바뀌어 Section 안 배치가 달라질 수 있다.
-    this.applyLinks(canvas.found, await this.spots());
+    // 화면 수가 바뀌면 프레임 크기가 바뀌어 Section 안 배치가 달라질 수 있다. 바뀌는 것은 그 플립북의 페이지뿐이므로
+    // 그 페이지만 다시 읽고 다른 페이지는 앞서 읽은 위치를 쓴다.
+    const pageId = s.state.flipbooks.get(fb.id)?.pageId ?? s.state.project.flipbookPageId;
+    this.applyLinks(canvas.found, { ...canvas.spots, ...(pageId ? await this.spots([pageId]) : {}) });
     const failed = !!(report.failed.length || report.skipped);
     const latest = s.state.flipbooks.get(fb.id) ?? fb;
     const message = [`${COPY.controller138} ${latest.title}`, failed || report.notes.length ? deliveryMessage(report) : ''].filter(Boolean).join(' ');
@@ -1180,7 +1188,7 @@ export class Controller {
   // 반영이 끝나지 않은 플립북을 현재 기록으로 맞춘다. 플립북 단위로 실패를 기록하고 나머지는 계속한다.
   // baseline: 새로 만든 플립북. 만든 직후의 UI 작성 영역을 첫 UI Publish 전 비교 기준으로 저장한다.
   // after: 새로 만들 플립북을 Section 안에 놓을 자리. retitle: 플러그인에서 제목을 바꾼 플립북.
-  async deliverFlipbooks(filter: { batchId?: string } = {}, options: { force?: boolean; targets?: string[]; baseline?: Set<string>; create?: Set<string>; after?: Map<string, string | null>; retitle?: Set<string>; canvasFollowed?: boolean; canvas?: { found: Map<string, string>; spots: Record<string, FlipbookSpot> } } = {}): Promise<DeliveryReport> {
+  async deliverFlipbooks(filter: { batchId?: string } = {}, options: { force?: boolean; targets?: string[]; baseline?: Set<string>; create?: Set<string>; after?: Map<string, string | null>; retitle?: Set<string>; canvasFollowed?: boolean; canvas?: CanvasRead } = {}): Promise<DeliveryReport> {
     const s = this.store;
     s.reload();
     const active = (id: string) => s.state.flipbooks.get(id)?.status === 'active';
@@ -1190,7 +1198,9 @@ export class Controller {
     // 플립북을 기록의 페이지에서 찾으므로 캔버스에서 옮긴 플립북의 기록부터 맞춘다. 맞춘 플립북은 Chapter도 다시 반영한다.
     // canvasFollowed: 부른 쪽이 방금 기록을 캔버스와 맞췄다(목록에서 옮기기·새 플립북·Section 따라가기). canvas: 이미 읽은 캔버스.
     // 읽지 못하면 기록대로 반영한다(2026-10-23 사용자 승인).
-    const followed = options.canvasFollowed ? [] : await this.followCanvas(options.canvas).catch(() => []);
+    // 읽은 캔버스는 반영에도 넘겨, 플립북 프레임을 찾으려고 페이지를 다시 훑지 않게 한다.
+    const canvas = options.canvas ?? (options.canvasFollowed ? undefined : await this.inspectFlipbooks().catch(() => undefined));
+    const followed = options.canvasFollowed || !canvas ? [] : await this.followCanvas(canvas).catch(() => []);
     const targets = [...new Set([...requested, ...followed])].filter(active);
     const { templateNodeId } = s.state.project;
     if (!templateNodeId) return { ...report, skipped: `${COPY.controller027} ${targets.length}${COPY.controller028}` };
@@ -1199,7 +1209,7 @@ export class Controller {
     if (issues.length) return { ...report, skipped: `${COPY.controller027} ${targets.length}${COPY.controller033} ${COPY.controller103} ${issues.join(' / ')}` };
     report.screens = targets.length;
     const byFlipbook = groupBy(unfinishedDeliveries(s.state, { kind: 'flipbook' }), d => d.targetId);
-    this.host.beginDelivery?.();
+    this.host.beginDelivery?.(canvas?.found);
     try {
       for (const [i, flipbookId] of targets.entries()) {
         await this.progress(`${COPY.controller029} ${i + 1}/${targets.length}`);

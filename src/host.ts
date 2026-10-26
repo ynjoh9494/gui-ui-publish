@@ -49,7 +49,8 @@ export interface Host extends FingerprintReader {
   syncChapters?(items: { pageId: string; flipbookId: string; name: string }[]): Promise<void>;
   // 기존 플립북 프레임을 다른 페이지·Section의 정한 자리로 옮긴다. 프레임을 찾지 못하면 false.
   moveFlipbook(move: { flipbookId: string; fromPageId: string; pageId: string; category: { key: string; name: string }; after: string | null }): Promise<boolean>;
-  beginDelivery?(): void;
+  // known: 같은 작업에서 이미 찾은 플립북 프레임(플립북 ID → 노드 ID). 반영할 때 페이지를 다시 훑지 않고 이 노드부터 확인한다.
+  beginDelivery?(known?: Map<string, string>): void;
   endDelivery?(): void;
   reveal(nodeId: string, isLatest: () => boolean): Promise<boolean>;
   // 텍스트 편집: Description을 고르면 본문 슬롯의 텍스트 전체를 읽고 쓰며, 아니면 고른 텍스트 레이어 하나를 읽고 쓴다.

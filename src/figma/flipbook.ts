@@ -36,8 +36,9 @@ const GUI_BASE_HEIGHT_KEY = 'flipbookImageBaseHeight';
 export interface FlipbookSettings { pageId: string; templateId: string; force?: boolean }
 
 // 한 번의 전달 작업 안에서만 공유한다. 다음 작업은 파일의 최신 상태를 다시 읽는다.
-export function flipbookSession() {
-  return { pages: new Map<string, PageNode>(), frames: new Map<string, Map<string, FrameNode>>(), kits: new Map<string, TagKit>() };
+// known: 같은 작업에서 이미 찾은 플립북 프레임(플립북 ID → 노드 ID). 있으면 페이지 전체를 훑지 않는다.
+export function flipbookSession(known?: ReadonlyMap<string, string>) {
+  return { pages: new Map<string, PageNode>(), frames: new Map<string, Map<string, FrameNode>>(), kits: new Map<string, TagKit>(), known: new Map(known) };
 }
 export type FlipbookSession = ReturnType<typeof flipbookSession>;
 
@@ -818,23 +819,35 @@ export async function syncChapters(ns: string, items: { pageId: string; flipbook
 
 export interface SyncResult { nodeId: string; notes: string[] }
 
+// 노드 ID로 찾은 플립북 프레임. 지워졌거나 다른 페이지로 옮겨졌거나 표식이 다르면 null이다.
+async function knownFrame(ns: string, nodeId: string | undefined, page: PageNode, flipbookId: string): Promise<FrameNode | null> {
+  if (!nodeId) return null;
+  const node = await figma.getNodeByIdAsync(nodeId);
+  return node?.type === 'FRAME' && !node.removed && node.getSharedPluginData(ns, FLIPBOOK_KEY) === flipbookId && pageOf(node) === page ? node : null;
+}
+
 // 플립북의 현재 기록으로 플립북 페이지를 맞춘다. 몇 번을 실행해도 같은 결과가 된다.
 export async function syncFlipbook(ns: string, settings: FlipbookSettings, view: FlipbookView, session = flipbookSession()): Promise<SyncResult> {
   let page = session.pages.get(settings.pageId);
   if (!page) { page = await loadedPage(settings.pageId); session.pages.set(settings.pageId, page); }
-  let frames = session.frames.get(settings.pageId);
-  if (!frames) {
-    frames = pageFlipbooks(ns, page);
-    session.frames.set(settings.pageId, frames);
-  }
   let kit = session.kits.get(settings.templateId);
   if (!kit) { kit = await tagKit(settings.templateId); session.kits.set(settings.templateId, kit); }
-  const existing = frames.get(view.flipbookId);
+  // 이미 찾은 프레임이 이 페이지에 있고 표식이 맞으면 그대로 쓴다. 아니면 페이지의 플립북 프레임을 훑는다
+  // (페이지에는 GUI 레이어 복사본이 들어 있어 훑는 비용이 레이어 수에 비례한다).
+  let existing = await knownFrame(ns, session.known.get(view.flipbookId), page, view.flipbookId);
+  if (!existing) {
+    let frames = session.frames.get(settings.pageId);
+    if (!frames) {
+      frames = pageFlipbooks(ns, page);
+      session.frames.set(settings.pageId, frames);
+    }
+    existing = frames.get(view.flipbookId) ?? null;
+  }
   // 기록과 다른 Section에 있어도 옮기지 않는다. 기록이 캔버스를 따라간다(2026-10-23 사용자 결정).
   // 프레임은 새로 만드는 플립북에만 만든다. 지워진 프레임은 다시 만들지 않고 목록에서 삭제하게 한다(2026-10-23 사용자 결정).
   if (!existing && !view.create) throw new Error(COPY.figmaFlipbook027);
   const frame = existing ?? await createFlipbook(ns, page, kit.template, view);
-  frames.set(view.flipbookId, frame);
+  session.known.set(view.flipbookId, frame.id);
   const p = parts(frame);
   if (!p.titleText || !p.status || !p.history || !p.gui) throw new Error(COPY.figmaFlipbook021);
   frame.locked = false;
