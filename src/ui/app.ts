@@ -234,6 +234,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     list: () => bridge.send({ type: 'flows' }),
     reveal: (flowId, uid) => bridge.send({ type: 'revealFlow', nav: ++navSeq, flowId, uid }),
     time: ms => formatTime(ms, state?.project.utcOffsetMinutes ?? 0),
+    thumb: hash => { requestThumbs([hash]); return thumbUrls.get(hash) || null; },
   });
 
   // 두 영역 구분선: 현재 창 너비에서 목록과 화면정보의 최소 너비(PANE)를 확보한다.
@@ -3338,6 +3339,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         // 플립북 만들기 창은 마우스를 올린 미리보기만 쓰므로 다시 그리지 않는다(열린 화면 선택이 닫히지 않게).
         if (versionOpen) renderVersionDetail();
         else if (!currentNew() && tab !== 'ADMIN') renderDetailKeepingFocus();
+        flows.thumbsLoaded();
         showHoverThumb();
         break;
       case 'textImported': editor.setParagraphs(msg.paragraphs); break;

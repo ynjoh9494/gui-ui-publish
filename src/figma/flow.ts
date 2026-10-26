@@ -13,8 +13,6 @@ const SCREEN_KEY = 'flowScreen';
 const VERSION_KEY = 'flowVersion';
 // 썸네일이 없을 때 이미지 대신 두는 안내 글자. 썸네일을 채우면 지운다.
 const EMPTY_KEY = 'flowEmpty';
-// 썸네일이 없는 화면(이 기능 전에 배포한 화면 등)의 자리 크기: 1920×1080의 1/4
-const PLACEHOLDER = { width: 480, height: 270 };
 const INK: RGB = { r: 0.2, g: 0.2, b: 0.2 };
 const gray = (l: number): SolidPaint[] => [{ type: 'SOLID', color: { r: l, g: l, b: l } }];
 const imageFill = (hash: string): ImagePaint[] => [{ type: 'IMAGE', imageHash: hash, scaleMode: 'FIT' }];
@@ -56,7 +54,8 @@ async function arrowLine(parent: ChildrenMixin, points: [number, number][]): Pro
   return v;
 }
 
-// 플러그인 창에서 정한 격자 칸에 화면을 놓고, 같은 규칙(core/flow.ts)으로 통로를 따라 꺾인 화살표를 그린다.
+// 플러그인 창에서 정한 자리에 화면을 제 썸네일 크기로 놓고, 같은 규칙(core/flow.ts)으로 꺾인 화살표를 그린다.
+// 썸네일 크기는 기록된 크기이고, 썸네일이 없는 화면은 1920×1080의 1/4 자리를 쓴다(core/flow.ts flowImageSize).
 export async function createFlow(ns: string, plan: FlowPlan): Promise<{ nodeId: string; pageId: string; notes: string[] }> {
   const L = FLOW_LAYOUT;
   const fonts = { regular: { family: 'Inter', style: 'Regular' }, bold: { family: 'Inter', style: 'Bold' } } satisfies { regular: FontName; bold: FontName };
@@ -75,14 +74,7 @@ export async function createFlow(ns: string, plan: FlowPlan): Promise<{ nodeId: 
   const made: SceneNode[] = [];
   let root: GroupNode | null = null;
   try {
-    const sizes = thumbs.map(t => t ? { w: t.width, h: t.height } : { w: PLACEHOLDER.width, h: PLACEHOLDER.height });
-    const cellW = Math.max(...sizes.map(s => s.w));
-    const imageH = Math.max(...sizes.map(s => s.h));
-    const measure = text(page, fonts.regular, COPY.flow013, L.captionSize, COPY.flow042, undefined, 'LEFT', FLOW_DUMMY, 0.5);
-    const cellH = L.cellTitle + imageH + L.captionGap + measure.height;
-    measure.remove();
-    const layout = layoutFlow(plan.cells, plan.links, { w: cellW, h: cellH, imgTop: L.cellTitle, imgH: imageH });
-    const g = layout.grid;
+    const layout = layoutFlow(plan.cells, plan.links);
     // 지금 보고 있는 곳 가운데에 놓는다.
     const center = figma.viewport.center;
     const ox = Math.round(center.x - layout.width / 2), oy = Math.round(center.y - layout.height / 2);
@@ -91,18 +83,19 @@ export async function createFlow(ns: string, plan: FlowPlan): Promise<{ nodeId: 
     heading.y = oy + L.pad;
     made.push(heading);
     const cards = plan.cells.map((cell, i) => {
-      const x = ox + g.x0 + cell.c * (g.cellW + g.gapX), y = oy + g.y0 + cell.r * (g.cellH + g.gapY);
+      const image = layout.images.get(cell.key)!;
+      const x = ox + image.x, y = oy + image.y;
       const parts: SceneNode[] = [];
       const title = text(page, fonts.bold, COPY.flow012, L.cellTitleSize, COPY.flow041, undefined, 'LEFT', FLOW_DUMMY, 0.5);
       title.x = x;
-      title.y = y;
+      title.y = y - L.cellTitle;
       parts.push(title);
       const rect = figma.createRectangle();
       page.appendChild(rect);
       rect.name = COPY.flow016;
-      rect.resize(sizes[i].w, sizes[i].h);
+      rect.resize(image.w, image.h);
       rect.x = x;
-      rect.y = y + L.cellTitle;
+      rect.y = y;
       rect.strokes = gray(0.475);
       rect.strokeWeight = 1;
       rect.setSharedPluginData(ns, SCREEN_KEY, cell.uid);
@@ -113,15 +106,15 @@ export async function createFlow(ns: string, plan: FlowPlan): Promise<{ nodeId: 
         rect.setSharedPluginData(ns, VERSION_KEY, String(cell.version));
       } else {
         rect.fills = gray(0.86);
-        const note = text(page, fonts.regular, COPY.flow005, L.captionSize, COPY.flow005, sizes[i].w, 'CENTER');
+        const note = text(page, fonts.regular, COPY.flow005, L.captionSize, COPY.flow005, image.w, 'CENTER');
         note.x = x;
-        note.y = rect.y + (sizes[i].h - note.height) / 2;
+        note.y = rect.y + (image.h - note.height) / 2;
         note.setSharedPluginData(ns, EMPTY_KEY, rect.id);
         parts.push(note);
       }
       const caption = text(page, fonts.regular, COPY.flow013, L.captionSize, COPY.flow042, undefined, 'LEFT', FLOW_DUMMY, 0.5);
       caption.x = x;
-      caption.y = rect.y + sizes[i].h + L.captionGap;
+      caption.y = rect.y + image.h + L.captionGap;
       parts.push(caption);
       made.push(...parts);
       const card = figma.group(parts, page);

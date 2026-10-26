@@ -120,7 +120,7 @@ try {
   await shot('ui-text');
   await app.locator('[data-action=text-close]').click();
 
-  // 플로우 탭: 카드 두 장을 놓고 점을 끌어 이은 모습(이 예시에는 배포된 화면이 하나라 같은 화면을 두 번 놓는다)
+  // 플로우 탭: 썸네일 두 장을 놓고 점을 끌어 이은 모습(이 예시에는 배포된 화면이 하나라 같은 화면을 두 번 놓는다)
   await app.locator('[data-action=flow-open]').click();
   await app.locator('.flow-view .flow-screen').first().waitFor();
   await app.locator('.flow-view .flow-screen').first().click();

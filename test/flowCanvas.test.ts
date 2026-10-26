@@ -78,8 +78,8 @@ function mockFigma(options: { failArrow?: boolean } = {}) {
 const plan: FlowPlan = {
   id: 'f1', title: '홈 진입',
   cells: [
-    { key: 'a', uid: 's1', r: 0, c: 0, code: 'STB_HO_001', name: '홈', version: 1, thumb: { hash: 'h1', width: 480, height: 270 } },
-    { key: 'b', uid: 's2', r: 0, c: 1, code: 'STB_HO_002', name: '상세', version: 1, thumb: null },
+    { key: 'a', uid: 's1', x: 0, y: 0, w: 480, h: 270, code: 'STB_HO_001', name: '홈', version: 1, thumb: { hash: 'h1', width: 480, height: 270 } },
+    { key: 'b', uid: 's2', x: 560, y: 40, w: 480, h: 800, code: 'STB_HO_002', name: '상세', version: 1, thumb: { hash: 'h-missing', width: 480, height: 800 } },
   ],
   links: [{ from: 'a', fromSide: 'right', to: 'b', toSide: 'left' }],
 };
@@ -94,6 +94,9 @@ test('플로우 그룹을 만들고, 다시 배포된 화면만 썸네일을 바
   assert.equal(root.getSharedPluginData(NS, 'flowOf'), 'f1');
   const rect = (uid: string) => root.findOne(n => n.type === 'RECTANGLE' && n.getSharedPluginData(NS, 'flowScreen') === uid)!;
   assert.equal(root.findAll(n => n.getSharedPluginData(NS, 'flowEmpty') === rect('s2').id).length, 1);
+  // 판의 자리를 그대로 옮기고 화면마다 제 썸네일 크기를 쓴다(이미지를 찾지 못해도 기록된 크기).
+  assert.deepEqual([rect('s2').x - rect('s1').x, rect('s2').y - rect('s1').y], [560, 40]);
+  assert.deepEqual([rect('s1').width, rect('s1').height, rect('s2').width, rect('s2').height], [480, 270, 480, 800]);
 
   const record: FlowRecord = { id: 'f1', nodeId: placed.nodeId, pageId: placed.pageId, title: plan.title, uids: ['s1', 's2'], createdAt: 1, actor };
   m.images.add('h2');

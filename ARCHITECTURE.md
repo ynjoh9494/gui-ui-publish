@@ -39,7 +39,7 @@ flowchart LR
 | `src/figma/flipbook.ts`, `layers.ts`, `thumbs.ts`, `data.ts` | 템플릿 복제, GUI 레이어 복사·배치, JPG 썸네일, DATA 페이지 렌더링 |
 | `src/figma/flow.ts` | 플로우 그리기(플로우·화면·Connector 모두 그룹: 화면별 Title·IMAGE·Caption, Connector 안의 Arrow·Action, 도착점에 `ARROW_EQUILATERAL`을 둔 Figma 벡터 연결선)와 다시 배포된 화면의 썸네일 채움 교체, 플로우 목록에서 누른 플로우·화면 칸 찾기(`flowNode`, 기록의 노드 ID와 `flowOf` 표식이 모두 맞을 때만). 썸네일 이미지는 썸네일 페이지를 불러와 해시로 찾음 |
 | `src/ui/app.ts`, `styles.css` | UI 상태·입력 초안·목록과 상세 렌더링 |
-| `src/ui/flowView.ts` | UI Flipbook 플로우 탭의 배포 화면 목록(GUI 화면 목록과 같은 카테고리 아코디언, Section 구분 없음)과 FigJam식 판(격자 카드 배치·연결·삭제, 플로우 제목), 이력 아이콘으로 여는 「만든 플로우」 모달 |
+| `src/ui/flowView.ts` | UI Flipbook 플로우 탭의 배포 화면 목록(GUI 화면 목록과 같은 카테고리 아코디언, Section 구분 없음)과 FigJam식 판(썸네일을 격자 스냅으로 배치·이동, 확대·축소, 연결·삭제, 플로우 제목), 이력 아이콘으로 여는 「만든 플로우」 모달 |
 | `src/ui/html.ts` | UI의 HTML 문자열에 넣는 값의 이스케이프(`esc`). UI 모듈이 함께 쓴다 |
 | `src/ui/textEditor.ts` | UI Flipbook 텍스트 편집 탭의 서식 편집기(contenteditable). 글자 입력은 브라우저, 구조 변경·되돌리기는 core 편집 동작으로 처리 |
 | `src/ui/demo.ts`, `tutorial.ts`, `preview.ts` | 가짜 Figma 환경(`Host`), 튜토리얼의 예시 화면 조작과 말풍선, 브라우저 미리보기 도구 |

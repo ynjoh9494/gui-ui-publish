@@ -435,7 +435,7 @@ try {
     assert.match(await app.locator('.sync-status span').getAttribute('title'), /^마지막 동기화 \d{4}-\d{2}-\d{2} /, '마우스를 올리면 날짜까지 보인다');
   }
 
-  // 플로우 탭: 배포된 화면을 격자 칸에 카드로 놓고, 카드 점을 끌어 다른 카드에 이어 플로우를 만든다(FigJam처럼).
+  // 플로우 탭: 배포된 화면을 썸네일로 판에 놓고(격자는 위치 스냅), 썸네일 점을 끌어 다른 썸네일에 이어 플로우를 만든다(FigJam처럼).
   {
     await app.locator('.tabs [data-action=flow-open]').click();
     const screens = app.locator('.flow-view .flow-screen');
@@ -458,11 +458,12 @@ try {
     assert.equal(await cards.count(), 2);
     assert.equal(await create.isEnabled(), true);
     const spots = await cards.evaluateAll(els => els.map(el => [el.offsetLeft, el.offsetTop]));
-    assert.ok(spots[1][0] > spots[0][0] && spots[1][1] === spots[0][1], '누르면 첫 빈 칸(같은 줄 다음 칸)에 놓는다');
-    assert.equal(await cards.nth(0).locator('.flow-card-id').innerText(), 'STB_HO_001', '카드 윗줄은 Screen ID');
-    assert.ok(await cards.first().getAttribute('data-thumb'), '카드에도 마우스를 올리면 썸네일을 보여 준다');
-    const sizes = await cards.evaluateAll(els => els.map(el => `${el.offsetWidth}x${el.offsetHeight}`));
-    assert.equal(new Set(sizes).size, 1, '카드 크기는 모두 같다');
+    // 480×270 썸네일이 판 배율 0.3으로 144×81, 화면 간격 80은 24px이다.
+    assert.deepEqual(spots[1], [spots[0][0] + 168, spots[0][1]], '누르면 첫 빈 자리(같은 줄, 화면 간격 80 뒤)에 놓는다');
+    assert.equal(await cards.nth(0).locator('.flow-card-id').innerText(), 'STB_HO_001', '썸네일 왼쪽 위에 Screen ID');
+    await cards.first().locator('img').waitFor();
+    assert.equal(await cards.first().getAttribute('data-thumb'), null, '판에 썸네일이 보이므로 마우스를 올린 미리보기는 띄우지 않는다');
+    assert.deepEqual(await cards.first().evaluate(el => [el.offsetWidth, el.offsetHeight]), [144, 81], '썸네일은 캔버스 크기에 판 배율을 곱한 크기');
     assert.equal(await app.locator('.flow-view .flow-board').evaluate(el => getComputedStyle(el).overflow), 'hidden', '판에는 스크롤 막대가 없다');
     // 판은 Figma 캔버스처럼 움직인다: 가운데 버튼으로 끌기, 휠
     {
@@ -484,6 +485,16 @@ try {
       await page.mouse.up({ button: 'middle' });
       const back = await cards.nth(0).boundingBox();
       assert.deepEqual([Math.round(back.x), Math.round(back.y)], [Math.round(before.x), Math.round(before.y)], '휠로 세로로 움직인다');
+      // Ctrl+휠로 포인터 자리를 두고 확대·축소한다.
+      await page.mouse.move(back.x, back.y);
+      await page.keyboard.down('Control');
+      await page.mouse.wheel(0, -100);
+      await page.waitForFunction(() => document.querySelector('#app .flow-card').offsetWidth > 144);
+      const zoomed = await cards.nth(0).boundingBox();
+      assert.deepEqual([Math.round(zoomed.x), Math.round(zoomed.y)], [Math.round(back.x), Math.round(back.y)], '포인터 아래 자리는 그대로다');
+      await page.mouse.wheel(0, 100);
+      await page.waitForFunction(() => document.querySelector('#app .flow-card').offsetWidth === 144);
+      await page.keyboard.up('Control');
     }
     const drag = async (from, to) => {
       await page.mouse.move(from.x, from.y);
@@ -499,14 +510,14 @@ try {
     await drag(await rightDot(0), await center(cards.nth(1)));
     assert.equal(await links.count(), 1, '점을 끌어 다른 카드에 놓으면 화살표로 잇는다');
     const straight = await links.first().getAttribute('d');
-    // 둘째 카드를 아래 줄 둘째 칸으로 옮기면 화살표가 통로로 꺾인다.
+    // 둘째 썸네일을 아래로 옮기면 격자에 맞춰 놓이고 화살표가 꺾인다.
     {
-      // 첫 카드에서 한 칸 오른쪽·한 줄 아래 칸의 가운데(카드 136×48, 통로 28·22)
-      const first = await center(cards.nth(0));
-      await drag(await center(cards.nth(1)), { x: first.x + 164, y: first.y + 70 });
+      const from = await center(cards.nth(1));
+      await drag(from, { x: from.x + 5, y: from.y + 125 });
     }
     assert.equal(await links.count(), 1);
-    assert.ok((await links.first().getAttribute('d')).split('L').length > straight.split('L').length, '다른 줄로 옮기면 꺾인 화살표가 된다');
+    assert.deepEqual(await cards.nth(1).evaluate(el => [el.offsetLeft, el.offsetTop]), [168, 120], '끌어 놓은 자리는 격자(40 = 12px)에 맞춘다');
+    assert.ok((await links.first().getAttribute('d')).split('L').length > straight.split('L').length, '줄이 어긋나면 꺾인 화살표가 된다');
     // 화살표를 골라 Delete로 지우고 다시 잇는다.
     await app.locator('.flow-view .flow-link-hit').first().dispatchEvent('pointerdown', { button: 0, pointerId: 1, isPrimary: true });
     await page.keyboard.press('Delete');
@@ -518,7 +529,7 @@ try {
     await shot('04b-flow-tab');
     await create.click();
     await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('플로우를 만들었습니다'));
-    await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('플로우: 홈 진입 플로우') && x.textContent.includes('(0,0).right→STB_HO_001(1,1).left')));
+    await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('플로우: 홈 진입 플로우') && x.textContent.includes('(0,0).right→STB_HO_001(560,400).left')));
     // 이력 아이콘: 만든 플로우 목록을 모달로 보여 주고, 플로우·화면을 누르면 캔버스의 그 자리로 간다.
     await app.locator('.flow-view [data-action=flow-list]').click();
     const made = app.locator('.flow-list-overlay .flow-list li');
@@ -531,7 +542,7 @@ try {
     await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('캔버스 이동') && x.textContent.includes('flow:')));
     await page.keyboard.press('Escape');
     assert.equal(await app.locator('.flow-list-overlay').count(), 0, 'Esc로 목록을 닫는다');
-    assert.equal(await cards.count(), 2, '목록을 여닫아도 판의 카드는 그대로다');
+    assert.equal(await cards.count(), 2, '목록을 여닫아도 판의 썸네일은 그대로다');
     await app.locator('.tabs [data-action=text-close]').click();
     assert.equal(await app.locator('.list').isVisible(), true);
   }

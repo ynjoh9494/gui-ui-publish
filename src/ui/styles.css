@@ -519,12 +519,12 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .flow-screen:hover { background: var(--bg2); }
 .flow-screen .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .flow-screens .empty { margin: 0; padding: 12px; }
-/* 판: 끝없는 격자를 Figma 캔버스처럼 움직인다(스크롤 막대 없음). 칸 틀 대신 칸 사이 통로 가운데에 옅은 선을 긋는다(간격·위치는 flowView.ts가 넣는다). */
-.flow-board { flex: 1 0 120px; min-height: 120px; overflow: hidden; position: relative; touch-action: none; border: 1px solid var(--border); border-radius: 6px; background-color: var(--bg2); --grid-line: color-mix(in srgb, var(--border) 55%, transparent); background-image: linear-gradient(to right, var(--grid-line) 1px, transparent 1px), linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px); }
+/* 판: 끝없는 격자를 Figma 캔버스처럼 움직인다(스크롤 막대 없음). 격자 선은 썸네일 왼쪽 위가 맞는 스냅 자리다(간격·위치는 flowView.ts가 넣는다). */
+.flow-board { flex: 1 0 120px; min-height: 120px; overflow: hidden; position: relative; touch-action: none; border: 1px solid var(--border); border-radius: 6px; background-color: var(--bg2); --grid-line: color-mix(in srgb, var(--border) 40%, transparent); background-image: linear-gradient(to right, var(--grid-line) 1px, transparent 1px), linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px); }
 .flow-board.space-pan, .flow-board.space-pan * { cursor: grab !important; }
 .flow-board.panning, .flow-board.panning * { cursor: grabbing !important; }
 .flow-grid { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; }
-.flow-drop { position: absolute; width: 136px; height: 48px; border-radius: 8px; background: color-mix(in srgb, var(--brand) 12%, transparent); }
+.flow-drop { position: absolute; box-sizing: border-box; border: 1px dashed color-mix(in srgb, var(--brand) 60%, transparent); background: color-mix(in srgb, var(--brand) 12%, transparent); }
 .flow-links { position: absolute; pointer-events: none; overflow: visible; }
 .flow-link { fill: none; stroke: var(--muted); stroke-width: 1.5; }
 .flow-link.selected { stroke: var(--brand); stroke-width: 2; }
@@ -532,14 +532,15 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .flow-arrowhead { fill: var(--muted); }
 .flow-arrowhead.on { fill: var(--brand); }
 .flow-link-hit { fill: none; stroke: transparent; stroke-width: 10; pointer-events: stroke; cursor: pointer; }
-/* 카드: 모두 같은 크기. 윗줄 Screen ID, 아랫줄 화면 이름(길면 …) */
-.flow-card { position: absolute; box-sizing: border-box; width: 136px; height: 48px; padding: 6px 10px; display: flex; flex-direction: column; justify-content: center; gap: 1px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,.08); cursor: grab; user-select: none; }
-.flow-card:hover { border-color: color-mix(in srgb, var(--brand) 55%, var(--border)); }
-.flow-card.selected { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand); }
-.flow-card.moving { z-index: 3; cursor: grabbing; box-shadow: 0 4px 12px rgba(0,0,0,.18); }
-.flow-card-id { font-size: 10px; font-weight: 600; color: var(--muted); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.flow-card-name { font-size: 12px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.flow-ghost { z-index: 30; pointer-events: none; opacity: .9; box-shadow: 0 4px 12px rgba(0,0,0,.18); }
+/* 썸네일: GUI 썸네일을 캔버스와 같은 비율로 보여 준다(크기·위치는 flowView.ts가 넣는다). 왼쪽 위에 Screen ID */
+.flow-card { position: absolute; box-sizing: border-box; background: #000; outline: 1px solid var(--border); cursor: grab; user-select: none; }
+.flow-card img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.flow-card-empty { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; background: #dbdbdb; color: #555; font-size: 11px; text-align: center; }
+.flow-card:hover { outline-color: color-mix(in srgb, var(--brand) 70%, var(--border)); }
+.flow-card.selected { outline: 2px solid var(--brand); }
+.flow-card.moving { z-index: 3; cursor: grabbing; box-shadow: 0 4px 12px rgba(0,0,0,.25); }
+.flow-card-id { position: absolute; left: 3px; top: 3px; max-width: calc(100% - 6px); box-sizing: border-box; padding: 0 4px; border-radius: 3px; background: rgba(0,0,0,.6); color: #fff; font-size: 10px; font-weight: 600; line-height: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+.flow-ghost { z-index: 30; pointer-events: none; opacity: .8; box-shadow: 0 4px 12px rgba(0,0,0,.25); }
 .flow-card-remove { position: absolute; top: -7px; right: -7px; display: none; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border-radius: 50%; background: var(--bg); }
 .flow-card:hover .flow-card-remove { display: inline-flex; }
 /* 상하좌우 연결 점: 카드에 마우스를 올리거나 잇는 중일 때 보인다. */

@@ -247,7 +247,7 @@ export function createDemo(options: DemoOptions): Demo {
     async createFlow(plan) {
       const nodeId = `flow:${plan.id}`;
       flows.set(nodeId, new Map(plan.cells.map(c => [c.uid, c.version])));
-      const at = new Map(plan.cells.map(c => [c.key, `${c.code}(${c.r},${c.c})`]));
+      const at = new Map(plan.cells.map(c => [c.key, `${c.code}(${c.x},${c.y})`]));
       log(`${COPY.flow001}: ${plan.title} / ${[...at.values()].join(' ')} / ${plan.links.map(l => `${at.get(l.from)}.${l.fromSide}→${at.get(l.to)}.${l.toSide}`).join(' ')}`);
       return { nodeId, pageId: DEMO_FLIPBOOK_PAGE.id, notes: [] };
     },
