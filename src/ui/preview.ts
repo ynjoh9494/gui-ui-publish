@@ -44,7 +44,8 @@ function renderTools() {
       <button data-dup="${f.nodeId}">${COPY.uiPreview035}</button><button data-del="${f.nodeId}">${COPY.uiPreview036}</button></div>`).join('') +
     (flipbooks.size ? `<h2>${COPY.uiPreview037}</h2>` + [...flipbooks.keys()].map(screenId => `
     <div class="frame"><span>${screenName(screenId)}</span><small>${COPY.uiPreview038} ${uiEdits.get(screenId) ?? 0}${COPY.uiPreview039}</small>
-      <button data-uiedit="${screenId}">${COPY.uiPreview038}</button></div>`).join('') : '') +
+      <button data-uiedit="${screenId}">${COPY.uiPreview038}</button></div>`).join('') +
+    `<button data-pick-flipbooks>${demo.flipbookFramesPicked() ? COPY.uiPreview057 : COPY.uiPreview056}</button>` : '') +
     `<p>${COPY.uiPreview040} <b>${COPY.uiPreview041}</b>${COPY.uiPreview042}</p><button data-reset>${COPY.uiPreview043}</button>` +
     `<h2>새 버전 페이지</h2><button data-version ${demo.hasVersionPage() ? 'disabled' : ''}>다른 파일에서 붙여 넣기</button><p>원본 페이지의 화면을 새 노드·제각각 이름으로 복사하고, 두 번째 화면은 내용을 고치고 새 화면 하나를 더합니다.</p>` +
     `<h2>${COPY.uiPreview053}</h2><button data-mode="GUI" ${host.mode === 'GUI' ? 'disabled' : ''}>GUI Publish</button> <button data-mode="UI" ${host.mode === 'UI' ? 'disabled' : ''}>UI Flipbook</button>` +
@@ -61,6 +62,8 @@ document.getElementById('tools')!.addEventListener('click', ev => {
   if (el.dataset.dup && f) { const copy = { ...f, nodeId: `${f.nodeId}-c${Date.now() % 1000}`, name: `${f.name} ${COPY.uiPreview047}` }; frames.splice(frames.indexOf(f) + 1, 0, copy); write(`${f.name} ${COPY.uiPreview048}`); }
   if (el.dataset.del && f) { frames.splice(frames.indexOf(f), 1); write(`${f.name} ${COPY.uiPreview036}`); }
   if (el.dataset.uiedit) { const n = (uiEdits.get(el.dataset.uiedit) ?? 0) + 1; uiEdits.set(el.dataset.uiedit, n); write(`${screenName(el.dataset.uiedit)} ${COPY.uiPreview049}${n}${COPY.uiPreview050}`); }
+  // 캔버스에서 플립북 프레임을 고른 것처럼 바꾼다(PDF 저장 탭).
+  if (el.dataset.pickFlipbooks !== undefined) { demo.pickFlipbookFrames(!demo.flipbookFramesPicked()); void controller.canvasSelectionChanged(); }
   // 플러그인 메뉴에서 다른 명령을 실행한 것처럼 바꾼다. 파일 데이터(kv)는 그대로다.
   if (el.dataset.mode) { host.mode = el.dataset.mode as typeof host.mode; void controller.handle({ type: 'ready' }); }
   if (el.dataset.version !== undefined && !demo.hasVersionPage()) write(`${DEMO_VERSION_PAGE.name}: ${demo.pasteVersionPage()}개 프레임 붙여 넣음`);

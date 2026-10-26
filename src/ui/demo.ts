@@ -55,6 +55,9 @@ export interface Demo {
   editFrame(frame: DemoFrame): void;
   // 캔버스에서 골라 둔 텍스트 레이어(텍스트 편집 탭). 미리보기 도구에서 내용을 확인한다.
   text: { name: string; paragraphs: RichParagraph[] };
+  // 플립북 프레임을 모두 고르거나 선택을 푼다(PDF 저장 탭). 바꾼 뒤 Controller에 캔버스 선택이 바뀌었다고 알린다.
+  pickFlipbookFrames(on: boolean): void;
+  flipbookFramesPicked(): boolean;
 }
 
 // 지문은 화면마다 다르고(body), 이름·노드와 관계없이 내용이 같으면 같다.
@@ -83,6 +86,8 @@ export function createDemo(options: DemoOptions): Demo {
   const uiEdits = new Map<string, number>();
   // 플로우 프레임 → 화면별 썸네일 버전
   const flows = new Map<string, Map<string, number>>();
+  // 가짜 캔버스에서 플립북 프레임을 모두 골랐다(PDF 저장 탭).
+  let framesPicked = false;
   let deliver: (message: ToUi) => void = () => {};
   const text = { name: 'Description', paragraphs: parseRichText(COPY.uiPreview051) };
 
@@ -269,6 +274,21 @@ export function createDemo(options: DemoOptions): Demo {
       if (!flows.has(flow.nodeId)) return null;
       return uid ? `${flow.nodeId}/${uid}` : flow.nodeId;
     },
+    // PDF 저장: 미리보기 도구로 플립북 프레임을 모두 골랐을 때만 저장할 수 있다. 프레임마다 가짜 JPG 한 장을 만든다
+    // (취소를 볼 수 있게 한 장씩 조금 기다린다).
+    pdfSelection: () => ({ frames: framesPicked ? flipbooks.size : 0, others: 0 }),
+    async exportPdf(progress) {
+      const ids = framesPicked ? [...flipbooks.keys()] : [];
+      if (!ids.length) throw new Error(COPY.pdf004);
+      const pages = [];
+      for (const [index, id] of ids.entries()) {
+        if (!await progress(index, ids.length)) return { pageName: DEMO_FLIPBOOK_PAGE.name, pages: null };
+        await wait(300);
+        pages.push({ name: id, bytes: await fakeThumb(id, 'PDF'), width: 480, height: options.tallThumb ? 1600 : 270 });
+      }
+      log(`PDF: ${ids.length}`);
+      return { pageName: DEMO_FLIPBOOK_PAGE.name, pages };
+    },
   };
 
   return {
@@ -286,5 +306,7 @@ export function createDemo(options: DemoOptions): Demo {
       return copies.length + 1;
     },
     editFrame(frame) { frame.content = `v${Number(frame.content.slice(1)) + 1}`; },
+    pickFlipbookFrames(on) { framesPicked = on; },
+    flipbookFramesPicked: () => framesPicked,
   };
 }

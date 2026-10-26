@@ -888,6 +888,9 @@ export const COPY = {
   uiPreview053: "플러그인 명령",
   uiPreview054: "플립북 옮김:",
   uiPreview055: "플립북 화면 구성:",
+  // 미리보기 도구: 가짜 캔버스에서 플립북 프레임을 모두 고르거나 선택을 푼다(PDF 저장 탭 확인용)
+  uiPreview056: "플립북 프레임 모두 선택",
+  uiPreview057: "선택 해제",
 } as const;
 
 // 화면·안내·오류 문구. 원본 파일과 행은 추출 당시 위치다.

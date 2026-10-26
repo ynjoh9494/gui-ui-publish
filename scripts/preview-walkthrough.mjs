@@ -594,6 +594,22 @@ try {
     assert.equal(await app.locator('.pdf-view .pdf-count').innerText(), '저장할 프레임을 캔버스에서 선택하세요.');
     assert.equal(await app.locator('.pdf-view [data-action=pdf-export]').isDisabled(), true);
     await shot('04d-pdf-tab');
+    // 미리보기 도구로 플립북 프레임을 고르면 저장할 수 있다. 저장 중에는 실행 버튼이 취소가 되고, 누르면 파일을 만들지 않는다.
+    await page.locator('#tools [data-pick-flipbooks]').click();
+    const exportButton = app.locator('.pdf-view [data-action=pdf-export]');
+    await page.waitForFunction(() => document.querySelector('#app .pdf-view [data-action=pdf-export]')?.disabled === false);
+    assert.match(await app.locator('.pdf-view .pdf-count').innerText(), /^선택한 프레임 \d+개$/);
+    let downloads = 0;
+    const countDownload = () => { downloads++; };
+    page.on('download', countDownload);
+    await exportButton.click();
+    await app.locator('.pdf-view [data-action=pdf-cancel]').click();
+    await exportButton.waitFor();
+    assert.equal(downloads, 0, '취소하면 파일을 만들지 않는다');
+    page.off('download', countDownload);
+    const [download] = await Promise.all([page.waitForEvent('download'), exportButton.click()]);
+    assert.match(download.suggestedFilename(), /\.pdf$/, '고른 프레임을 한 PDF로 내려받는다');
+    await page.locator('#tools [data-pick-flipbooks]').click();
     await app.locator('.tabs [data-action=text-close]').click();
     assert.equal(await app.locator('.list').isVisible(), true);
   }
