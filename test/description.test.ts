@@ -10,6 +10,7 @@ const REGULAR = { family: 'Inter', style: 'Regular' }, BOLD = { family: 'Inter',
 const MIXED = Symbol('mixed');
 let seq = 0;
 let loaded = new Set<string>();
+let fontLoads = 0;
 const key = (font: Font) => `${font.family}/${font.style}`;
 
 class Node {
@@ -38,6 +39,14 @@ class Node {
   removeChild(node: Node) { this.children.splice(this.children.indexOf(node), 1); node.parent = null; }
   remove() { this.parent?.removeChild(this); this.removed = true; }
   resize(width: number, height: number) { this.width = width; this.height = height; }
+  clone(): Node {
+    const copy = new Node(this.type, this.name, this.children.map(child => child.clone()));
+    copy.itemSpacing = this.itemSpacing;
+    copy.width = this.width;
+    copy.height = this.height;
+    copy.data = new Map(this.data);
+    return copy;
+  }
   getPluginData(name: string) { return this.data.get(name) ?? ''; }
   setPluginData(name: string, value: string) { this.data.set(name, value); }
   getSharedPluginData(namespace: string, name: string) { return this.shared.get(`${namespace}/${name}`) ?? ''; }
@@ -117,6 +126,7 @@ class Text extends Node {
 
 function setup(selection: Node[]) {
   loaded = new Set();
+  fontLoads = 0;
   (globalThis as any).figma = {
     mixed: MIXED,
     currentPage: { selection },
@@ -133,7 +143,7 @@ function setup(selection: Node[]) {
       return node;
     },
     createFrame: () => new Node('FRAME', 'Frame'),
-    async loadFontAsync(font: Font) { loaded.add(key(font)); },
+    async loadFontAsync(font: Font) { fontLoads++; loaded.add(key(font)); },
   };
 }
 
@@ -202,6 +212,19 @@ test('굵은 제목 줄마다 제목·본문 레이어를 묶고 문구는 검�
   assert.equal(groups[0].removed, true);
   assert.equal(area.children.filter(node => node.visible).length, 1);
   assert.equal(serializeRichText(readDescription(root as unknown as SceneNode)), serializeRichText(second));
+});
+
+test('묶음이 많아도 글꼴은 묶음 수만큼 다시 불러오지 않는다', async () => {
+  const counts: number[] = [];
+  for (const doc of ['**하나**\n\n- 내용', Array.from({ length: 8 }, (_, i) => `**항목 ${i}**\n\n- 내용 ${i}`).join('\n\n')]) {
+    const { root, area } = fixture();
+    setup([root]);
+    await fillDescription(root as unknown as SceneNode, parseRichText(doc));
+    counts.push(fontLoads);
+    assert.ok(area.children.every(group => group.getPluginData('guiUiPublishDescriptionGroup') === '1'));
+    assert.equal(serializeRichText(readDescription(root as unknown as SceneNode)), serializeRichText(parseRichText(doc)));
+  }
+  assert.equal(counts[0], counts[1]);
 });
 
 test('텍스트 편집 대상: 플립북 안의 요소는 그 플립북, 플립북 밖 텍스트 하나는 그 레이어, 서로 다른 플립북은 오류', () => {

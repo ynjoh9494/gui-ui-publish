@@ -2,7 +2,7 @@ import { COPY } from '../core/copy.ts';
 import type { SelectionTarget, SelectionWrite } from '../core/description.ts';
 import type { RichParagraph } from '../core/richText.ts';
 import { DESCRIPTION_AREA, FLIPBOOK_KEY, GUI_AREA, NS } from './flipbook.ts';
-import { applyRichText, BOLD_STYLE, readRichText, textFonts } from './richText.ts';
+import { applyRichText, BOLD_STYLE, readRichText, textFonts, type TextFonts } from './richText.ts';
 
 // 굵은 제목 줄마다 만든 제목·본문 묶음 표식. 레이어 하나로 넣었던 본문(OLD_BODY_MARKER)도 불러오기에서 읽는다.
 const GROUP_MARKER = 'guiUiPublishDescriptionGroup';
@@ -191,34 +191,10 @@ function styleOf(area: SlotNode): DescriptionStyle {
   return { text, itemSpacing: group ? group.itemSpacing : DEFAULT_ITEM_SPACING };
 }
 
-async function makeText(paragraphs: RichParagraph[], name: string, width: number, style: TextStyle | null): Promise<TextNode> {
-  const node = figma.createText();
-  try {
-    if (style) {
-      try { await figma.loadFontAsync(style.font); } catch { throw new Error(`${COPY.figmaText003} ${style.font.family} ${style.font.style}`); }
-      node.fontName = style.font;
-    }
-    const fonts = await textFonts(node);
-    node.name = name;
-    node.fontSize = style?.fontSize ?? DEFAULT_TEXT.fontSize;
-    node.lineHeight = style?.lineHeight ?? DEFAULT_TEXT.lineHeight;
-    if (style?.letterSpacing) node.letterSpacing = style.letterSpacing;
-    node.fills = style?.fills ?? DEFAULT_TEXT.fills;
-    node.resize(width, Math.max(1, node.height));
-    node.textAutoResize = 'HEIGHT';
-    applyRichText(node, paragraphs, fonts);
-    return node;
-  } catch (error) {
-    node.remove();
-    throw error;
-  }
-}
-
-async function makeGroup(group: DescriptionGroup, width: number, style: DescriptionStyle): Promise<FrameNode> {
+// 빈 제목·본문 레이어가 든 묶음 틀. 글꼴은 여기서 한 번만 불러오고, 묶음마다 이 틀을 복제해 글자만 넣는다.
+async function makeTemplate(width: number, style: DescriptionStyle): Promise<{ template: FrameNode; fonts: TextFonts }> {
   const frame = figma.createFrame();
   try {
-    frame.name = group.title?.text ?? COPY.figmaText008;
-    frame.setPluginData(GROUP_MARKER, '1');
     frame.resize(width, 1);
     frame.layoutMode = 'VERTICAL';
     frame.primaryAxisSizingMode = 'AUTO';
@@ -226,22 +202,44 @@ async function makeGroup(group: DescriptionGroup, width: number, style: Descript
     frame.itemSpacing = style.itemSpacing;
     frame.fills = [];
     frame.clipsContent = false;
-    if (group.title) frame.appendChild(await makeText([group.title], group.title.text, width, style.text));
-    if (group.body.length) frame.appendChild(await makeText(group.body, COPY.figmaText008, width, style.text));
-    return frame;
+    const node = figma.createText();
+    frame.appendChild(node);
+    if (style.text) {
+      try { await figma.loadFontAsync(style.text.font); } catch { throw new Error(`${COPY.figmaText003} ${style.text.font.family} ${style.text.font.style}`); }
+      node.fontName = style.text.font;
+    }
+    const fonts = await textFonts(node);
+    node.fontSize = style.text?.fontSize ?? DEFAULT_TEXT.fontSize;
+    node.lineHeight = style.text?.lineHeight ?? DEFAULT_TEXT.lineHeight;
+    if (style.text?.letterSpacing) node.letterSpacing = style.text.letterSpacing;
+    node.fills = style.text?.fills ?? DEFAULT_TEXT.fills;
+    node.resize(width, Math.max(1, node.height));
+    node.textAutoResize = 'HEIGHT';
+    frame.appendChild(node.clone());
+    return { template: frame, fonts };
   } catch (error) {
     frame.remove();
     throw error;
   }
 }
 
+function makeGroup(template: FrameNode, group: DescriptionGroup, fonts: TextFonts): FrameNode {
+  const frame = template.clone();
+  frame.name = group.title?.text ?? COPY.figmaText008;
+  frame.setPluginData(GROUP_MARKER, '1');
+  const [title, body] = frame.children as TextNode[];
+  if (group.title) { title.name = group.title.text; applyRichText(title, [group.title], fonts); } else title.remove();
+  if (group.body.length) { body.name = COPY.figmaText008; applyRichText(body, group.body, fonts); } else body.remove();
+  return frame;
+}
+
 export async function fillDescription(root: SceneNode, doc: RichParagraph[]): Promise<SelectionWrite> {
   const area = bodyArea(root);
   const width = Math.max(1, area.width - area.paddingLeft - area.paddingRight);
-  const style = styleOf(area);
+  const { template, fonts } = await makeTemplate(width, styleOf(area));
   const prepared: FrameNode[] = [];
   try {
-    for (const group of splitGroups(doc)) prepared.push(await makeGroup(group, width, style));
+    for (const group of splitGroups(doc)) prepared.push(makeGroup(template, group, fonts));
     const old = [...area.children];
     for (const group of prepared) {
       area.appendChild(group);
@@ -254,5 +252,7 @@ export async function fillDescription(root: SceneNode, doc: RichParagraph[]): Pr
   } catch (error) {
     for (const group of prepared) if (!group.removed) group.remove();
     throw error;
+  } finally {
+    template.remove();
   }
 }
