@@ -18,7 +18,7 @@ import { formatFrameName, parseFrameName } from '../core/screenName.ts';
 import type { State } from '../core/store.ts';
 import type { Actor, FlipbookScale, ImportedGuiRecord, SystemTag, Team } from '../core/types.ts';
 import { SIMILAR_MIN, type VersionEvidence, type VersionLink } from '../core/versionMatch.ts';
-import { clampWindow, fromWire, type AdminOp, type NavTarget, type PageInfo, type ScanState, type ToMain, type ToUi, type VersionMatchView } from '../core/wire.ts';
+import { clampWindow, fromWire, PANE, type AdminOp, type NavTarget, type PageInfo, type ScanState, type ToMain, type ToUi, type VersionMatchView } from '../core/wire.ts';
 
 export interface Bridge {
   send(message: ToMain): void;
@@ -236,11 +236,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     time: ms => formatTime(ms, state?.project.utcOffsetMinutes ?? 0),
   });
 
-  // 두 영역 구분선: 현재 창 너비에서 목록 260px, 화면정보 320px을 확보한다.
+  // 두 영역 구분선: 현재 창 너비에서 목록과 화면정보의 최소 너비(PANE)를 확보한다.
   {
     const divider = $('.pane-divider');
     const list = $('.list');
-    const minList = 260, minDetail = 320, dividerWidth = 8;
+    const { minList, minDetail, divider: dividerWidth } = PANE;
     const limits = () => ({ min: minList, max: Math.max(minList, root.clientWidth - dividerWidth - minDetail) });
     const sync = () => {
       const { min, max } = limits();
@@ -318,7 +318,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     handle.addEventListener('pointermove', ev => {
       if (!start) return;
       if (!(ev.buttons & 1)) { stop(ev); return; }
-      pending = clampWindow(start.width + ev.screenX - start.x, start.height + ev.screenY - start.y, !!compactFrom);
+      pending = clampWindow(mode, start.width + ev.screenX - start.x, start.height + ev.screenY - start.y, !!compactFrom);
       if (!frame) frame = requestAnimationFrame(() => send());
     });
     handle.addEventListener('pointerup', stop);

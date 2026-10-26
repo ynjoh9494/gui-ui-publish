@@ -13,7 +13,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 body { background: var(--bg); color: var(--text); font: 12px/1.45 Inter, "Noto Sans KR", system-ui, sans-serif; }
-#app, .tutorial-app { --list-width: 45%; display: grid; grid-template-columns: clamp(260px, var(--list-width), calc(100% - 328px)) 8px minmax(320px, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto; height: 100vh; position: relative; }
+#app, .tutorial-app { --list-width: 45%; display: grid; grid-template-columns: clamp(200px, var(--list-width), calc(100% - 248px)) 8px minmax(240px, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto; height: 100vh; position: relative; }
 button { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 3px 8px; cursor: pointer; }
 button:hover:not(:disabled) { background: var(--bg2); }
 button:disabled { opacity: .45; cursor: default; }
@@ -216,7 +216,7 @@ button.link.danger { color: var(--danger); }
 .list-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .list-body > :not(.list-box) { flex: none; }
 /* 목록 박스: 추가 설명 위까지 세로로 채우고 스크롤은 이 안에서 생긴다. */
-.list-box { flex: 1; min-height: 120px; overflow: auto; --box-bg: color-mix(in srgb, var(--bg2) 45%, var(--bg)); margin: 0 8px 8px; border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); border-radius: 6px; background: var(--box-bg); }
+.list-box { flex: 1; min-height: 80px; overflow: auto; --box-bg: color-mix(in srgb, var(--bg2) 45%, var(--bg)); margin: 0 8px 8px; border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); border-radius: 6px; background: var(--box-bg); }
 .list-box .group-bar { background: var(--box-bg); }
 /* 빈 목록 안내는 박스의 위아래 가운데 */
 .list-box:has(> .empty:only-child) { display: flex; align-items: center; justify-content: center; }
@@ -337,8 +337,9 @@ button.link.danger { color: var(--danger); }
 .title-head .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 25px; height: 25px; padding: 0; border: 0; background: transparent; color: var(--muted); flex: none; }
 .title-head .icon-button:hover, .title-head .icon-button[aria-pressed="true"] { color: var(--text); }
 /* 새 플립북 상세: 머리 「플립북 편집」, 그 아래 페이지·Section·제목을 한 줄씩, 아래 화면 선택이 남은 높이를 쓴다. */
-.edit-head { display: flex; align-items: flex-start; gap: 8px; }
-.edit-head .edit-title { flex: 1; min-width: 0; }
+/* 좁으면 버튼을 제목 아래 줄로 내린다. 제목·설명이 한두 글자씩 접히지 않게 한다. */
+.edit-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+.edit-head .edit-title { flex: 1 1 180px; min-width: 0; }
 .edit-head .edit-title .note { margin: 2px 0 0; }
 .edit-head .new-actions { display: flex; gap: 6px; flex: none; }
 .new-error .bad { margin: 6px 0 0; }
@@ -451,7 +452,7 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .version-page-line label { flex: 0 1 320px; min-width: 140px; margin: 0; }
 .version-page-line button { flex: none; }
 .version-empty { margin: auto; max-width: 360px; text-align: center; }
-.version-workspace { display: grid; grid-template-columns: minmax(240px, 40%) minmax(320px, 1fr); gap: 12px; flex: 1; min-height: 0; margin-top: 10px; }
+.version-workspace { display: grid; grid-template-columns: minmax(160px, 40%) minmax(240px, 1fr); gap: 12px; flex: 1; min-height: 0; margin-top: 10px; }
 .version-workspace > section { min-width: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 6px; }
 .version-list header { display: flex; align-items: center; min-height: 30px; padding: 2px 8px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 11px; flex: none; }
 .version-list > input { margin: 8px 8px 0; width: calc(100% - 16px); flex: none; }
@@ -504,10 +505,12 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .text-actions button { flex: none; }
 /* 플로우 탭: 텍스트 편집 탭처럼 툴바 아래 영역 전체를 쓴다. 왼쪽은 배포된 화면, 오른쪽은 옅은 회색 격자 판에 흰 카드를 놓고 잇는다. */
 .flowing-mode :is(.toolbar, .list, .pane-divider, .detail, .footer) { display: none; }
-.flow-view { grid-column: 1 / -1; grid-row: 2 / 5; min-height: 0; padding: 10px; display: grid; grid-template-columns: minmax(170px, 1fr) minmax(280px, 2.4fr); gap: 10px; }
+.flow-view { grid-column: 1 / -1; grid-row: 2 / 5; min-height: 0; padding: 10px; display: grid; grid-template-columns: minmax(140px, 1fr) minmax(260px, 2.4fr); gap: 10px; }
 .flow-pick, .flow-order { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
-.flow-head { flex: none; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; min-height: 24px; }
-.flow-head-title { flex: 1; min-width: 0; }
+/* 창이 작으면 구성 영역을 스크롤해 캔버스 높이(120px 이상)를 남긴다. */
+.flow-order { overflow-y: auto; }
+.flow-head { flex: none; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px; min-height: 24px; }
+.flow-head-title { flex: 1 1 180px; min-width: 0; }
 .flow-head-title .note { margin: 2px 0 0; }
 .flow-search { flex: none; }
 .flow-screens { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 5px; }
@@ -517,7 +520,7 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .flow-screen .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .flow-screens .empty { margin: 0; padding: 12px; }
 /* 판: 끝없는 격자를 Figma 캔버스처럼 움직인다(스크롤 막대 없음). 칸 틀 대신 칸 사이 통로 가운데에 옅은 선을 긋는다(간격·위치는 flowView.ts가 넣는다). */
-.flow-board { flex: 1; min-height: 0; overflow: hidden; position: relative; touch-action: none; border: 1px solid var(--border); border-radius: 6px; background-color: var(--bg2); --grid-line: color-mix(in srgb, var(--border) 55%, transparent); background-image: linear-gradient(to right, var(--grid-line) 1px, transparent 1px), linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px); }
+.flow-board { flex: 1 0 120px; min-height: 120px; overflow: hidden; position: relative; touch-action: none; border: 1px solid var(--border); border-radius: 6px; background-color: var(--bg2); --grid-line: color-mix(in srgb, var(--border) 55%, transparent); background-image: linear-gradient(to right, var(--grid-line) 1px, transparent 1px), linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px); }
 .flow-board.space-pan, .flow-board.space-pan * { cursor: grab !important; }
 .flow-board.panning, .flow-board.panning * { cursor: grabbing !important; }
 .flow-grid { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; }

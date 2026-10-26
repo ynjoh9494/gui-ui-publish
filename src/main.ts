@@ -37,5 +37,5 @@ figma.on('selectionchange', () => {
 figma.on('currentpagechange', () => { void controller.handle({ type: 'pages' }); });
 // 마지막으로 바꾼 창 크기로 다시 연다.
 void figma.clientStorage.getAsync(WINDOW_KEY).then((size: { width?: number; height?: number } | undefined) => {
-  if (size?.width && size.height) { const s = clampWindow(size.width, size.height); figma.ui.resize(s.width, s.height); }
+  if (size?.width && size.height) { const s = clampWindow(mode, size.width, size.height); figma.ui.resize(s.width, s.height); }
 }).catch(() => {});

@@ -80,18 +80,19 @@ try {
   };
   const initialListWidth = (await widths()).list;
   await dragDivider(0);
-  assert.ok((await widths()).list >= 260, '목록 최소 너비 유지');
+  assert.ok((await widths()).list >= 200, '목록 최소 너비 유지');
   await dragDivider(1000);
-  assert.ok((await widths()).detail >= 320, '화면정보 최소 너비 유지');
+  assert.ok((await widths()).detail >= 240, '화면정보 최소 너비 유지');
   await divider.focus();
   await divider.press('Home');
-  assert.equal(Math.round((await widths()).list), 260, '키보드로 목록 최소 너비 이동');
+  assert.equal(Math.round((await widths()).list), 200, '키보드로 목록 최소 너비 이동');
   await divider.press('End');
-  assert.ok((await widths()).detail >= 320, '키보드로 화면정보 최소 너비 이동');
+  assert.ok((await widths()).detail >= 240, '키보드로 화면정보 최소 너비 이동');
   await dragDivider(initialListWidth + 4);
   const originalWidth = await app.evaluate(root => root.style.width);
-  await app.evaluate(root => { root.style.width = '600px'; });
-  assert.ok((await widths()).list >= 260 && (await widths()).detail >= 320, '창이 작아져도 양쪽 최소 너비 유지');
+  // 미리보기 창은 테두리 1px씩이 있어 최소 창 너비(448px)보다 2px 넓힌다.
+  await app.evaluate(root => { root.style.width = '450px'; });
+  assert.ok((await widths()).list >= 200 && (await widths()).detail >= 240, '창이 작아져도 양쪽 최소 너비 유지');
   await app.evaluate((root, width) => { root.style.width = width; }, originalWidth);
   await shot('00-start');
   await tutorial('00b-tutorial-gui');

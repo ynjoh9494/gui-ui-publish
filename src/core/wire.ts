@@ -62,11 +62,15 @@ export interface VersionMatchView { pageId: string; links: VersionLink[]; frames
 
 // 플러그인 창 크기. 오른쪽 아래 손잡이로 바꾸고 마지막 크기를 기억한다(2026-10-20 사용자 요청).
 // 기본 크기는 이전(760×760)보다 줄인 640×456(세로는 3/5, 2026-10-20 사용자 요청).
-// 최소 크기: 화면 목록 260px + 입력 영역 320px, 세로는 머리·툴바·목록(120px 이상)·추가 설명·하단 줄이 들어가는 높이.
+// 최소 크기: 화면 목록 200px + 구분선 8px + 입력 영역 240px. 넘치는 내용은 각 영역 안에서 스크롤한다.
+// 세로는 UI Flipbook이 머리·툴바·목록(80px 이상)이 들어가는 320px, GUI Publish는 추가 설명·하단 줄이 더 있어 420px이다.
+// 이전 최소(600×420, 목록 260px·입력 320px)는 기본 크기와 거의 같아 창과 구분선을 조절할 여지가 없었다(2026-10-26 사용자 요청으로 낮춤).
 // UI Flipbook 오른쪽 영역을 접으면(compact) 창을 목록 너비로 줄이므로 가로 최소는 목록 최소 너비다(2026-10-21 사용자 요청).
-export const WINDOW = { width: 640, height: 456, minWidth: 600, minHeight: 420, minCompactWidth: 260 };
-export function clampWindow(width: number, height: number, compact = false): { width: number; height: number } {
-  return { width: Math.max(compact ? WINDOW.minCompactWidth : WINDOW.minWidth, Math.round(width)), height: Math.max(WINDOW.minHeight, Math.round(height)) };
+// 목록·입력 영역 최소 너비는 styles.css의 #app grid-template-columns와 같아야 한다.
+export const PANE = { minList: 200, minDetail: 240, divider: 8 };
+export const WINDOW = { width: 640, height: 456, minWidth: PANE.minList + PANE.divider + PANE.minDetail, minHeight: { GUI: 420, UI: 320 }, minCompactWidth: PANE.minList };
+export function clampWindow(mode: Team, width: number, height: number, compact = false): { width: number; height: number } {
+  return { width: Math.max(compact ? WINDOW.minCompactWidth : WINDOW.minWidth, Math.round(width)), height: Math.max(WINDOW.minHeight[mode], Math.round(height)) };
 }
 
 export type AdminOp =

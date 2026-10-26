@@ -65,7 +65,7 @@ export function figmaHost(mode: Host['mode']): Host {
     actor: { id: user?.id ?? 'unknown', name: user?.name ?? COPY.figmaHost004 },
     post: message => figma.ui.postMessage(message),
     resize(width, height, save, compact) {
-      const size = clampWindow(width, height, compact);
+      const size = clampWindow(mode, width, height, compact);
       figma.ui.resize(size.width, size.height);
       if (save) void figma.clientStorage.setAsync(WINDOW_KEY, size);
     },
