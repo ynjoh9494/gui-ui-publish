@@ -157,6 +157,9 @@ interface DescriptionStyle { text: TextStyle | null; itemSpacing: number }
 // 슬롯에 텍스트나 이전 묶음이 없을 때만 쓰는 구현 기본값(BEHAVIOR.md 「텍스트 편집」, 확인 필요).
 const DEFAULT_TEXT = { fontSize: 16, lineHeight: { unit: 'PERCENT', value: 130 } as LineHeight, fills: [{ type: 'SOLID', color: { r: 0.12, g: 0.12, b: 0.12 } }] as Paint[] };
 const DEFAULT_ITEM_SPACING = 3;
+// 플립북 템플릿처럼 첫 묶음 아래와 마지막 묶음 위에 두는 여백(템플릿의 Policy 아래·Navigation 위, 2026-10-26 사용자 결정).
+// 제목 문구는 보지 않고 자리로만 정하며, 묶음이 하나면 두지 않는다.
+const EDGE_GROUP_PADDING = 15;
 
 function isShown(node: BaseNode, area: BaseNode): boolean {
   for (let current: BaseNode | null = node; current && current.id !== area.id; current = current.parent) {
@@ -240,6 +243,10 @@ export async function fillDescription(root: SceneNode, doc: RichParagraph[]): Pr
   const prepared: FrameNode[] = [];
   try {
     for (const group of splitGroups(doc)) prepared.push(makeGroup(template, group, fonts));
+    if (prepared.length > 1) {
+      prepared[0].paddingBottom = EDGE_GROUP_PADDING;
+      prepared[prepared.length - 1].paddingTop = EDGE_GROUP_PADDING;
+    }
     const old = [...area.children];
     for (const group of prepared) {
       area.appendChild(group);

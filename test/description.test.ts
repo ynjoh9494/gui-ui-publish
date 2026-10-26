@@ -23,6 +23,8 @@ class Node {
   height = 1200;
   paddingLeft = 12;
   paddingRight = 12;
+  paddingTop = 0;
+  paddingBottom = 0;
   itemSpacing = 0;
   parent: Node | null = null;
   children: Node[] = [];
@@ -42,6 +44,8 @@ class Node {
   clone(): Node {
     const copy = new Node(this.type, this.name, this.children.map(child => child.clone()));
     copy.itemSpacing = this.itemSpacing;
+    copy.paddingTop = this.paddingTop;
+    copy.paddingBottom = this.paddingBottom;
     copy.width = this.width;
     copy.height = this.height;
     copy.data = new Map(this.data);
@@ -212,6 +216,18 @@ test('굵은 제목 줄마다 제목·본문 레이어를 묶고 문구는 검�
   assert.equal(groups[0].removed, true);
   assert.equal(area.children.filter(node => node.visible).length, 1);
   assert.equal(serializeRichText(readDescription(root as unknown as SceneNode)), serializeRichText(second));
+});
+
+test('첫 묶음 아래와 마지막 묶음 위에 템플릿처럼 여백 15를 두고, 제목 문구는 보지 않는다', async () => {
+  const paddings = async (doc: string) => {
+    const { root, area } = fixture();
+    setup([root]);
+    await fillDescription(root as unknown as SceneNode, parseRichText(doc));
+    return area.children.map(group => [group.paddingTop, group.paddingBottom]);
+  };
+  assert.deepEqual(await paddings('**Policy**\n\n- 설명\n\n**1. 항목**\n\n- 내용\n\n**Navigation**\n\n- 이동'), [[0, 15], [0, 0], [15, 0]]);
+  assert.deepEqual(await paddings('**1. 항목**\n\n- 내용\n\n**2. 항목**\n\n- 내용'), [[0, 15], [15, 0]]);
+  assert.deepEqual(await paddings('**Policy**\n\n- 설명'), [[0, 0]]);
 });
 
 test('묶음이 많아도 글꼴은 묶음 수만큼 다시 불러오지 않는다', async () => {
