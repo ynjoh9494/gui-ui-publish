@@ -360,8 +360,9 @@ export class Controller {
     this.scanStatus('UI', 'comparing', 0, targets.length);
     let lastListPost = Date.now();
     const pause = yielder();
+    const reader = this.host.createFingerprintReader?.() ?? this.host;
     for (let i = 0; i < targets.length; i++) {
-      const result = await this.host.uiFingerprint(targets[i].nodeId!);
+      const result = await reader.uiFingerprint(targets[i].nodeId!);
       await pause();
       if (seq !== this.uiScanSeq) return;
       Object.assign(targets[i], result);
@@ -487,8 +488,9 @@ export class Controller {
     this.postUiScans();
     this.scanStatus('UI', 'comparing', 0, targets.length);
     const pause = yielder();
+    const reader = this.host.createFingerprintReader?.() ?? this.host;
     for (const [n, scan] of targets.entries()) {
-      const result = await this.host.uiFingerprint(scan.nodeId!);
+      const result = await reader.uiFingerprint(scan.nodeId!);
       await pause();
       if (seq !== this.uiScanSeq) return;
       Object.assign(scan, result);
@@ -854,10 +856,11 @@ export class Controller {
     const input: CommitInput = { fingerprints: {}, thumbs: {} };
     // 신규·변경 GUI는 확정 직전 썸네일을 만든다. 썸네일을 만들지 못해도 확정하고 알린다.
     const thumbErrors: string[] = [];
+    const reader = this.host.createFingerprintReader?.() ?? this.host;
     for (const [i, item] of plan.items.entries()) {
       if (!item.frame) continue;
       if (item.needsThumb) await this.progress(`${COPY.controller019} ${i + 1}/${plan.items.length}`);
-      const fresh = await this.host.fingerprint(item.frame.nodeId, false);
+      const fresh = await reader.fingerprint(item.frame.nodeId, false);
       input.fingerprints[item.entryKey] = fresh.fingerprint;
       // 확인한 내용과 같을 때만 썸네일을 만든다. 다르면 commitPlan이 충돌로 돌려준다.
       if (!item.needsThumb || fresh.fingerprint !== item.frame.fingerprint) continue;
@@ -871,7 +874,7 @@ export class Controller {
       for (const item of plan.items) {
         const nodeId = flipbooks.get(item.screenId) ?? null;
         input.uiNodeIds[item.entryKey] = nodeId;
-        input.uiFingerprints[item.entryKey] = nodeId ? (await this.host.uiFingerprint(nodeId)).fingerprint : null;
+        input.uiFingerprints[item.entryKey] = nodeId ? (await reader.uiFingerprint(nodeId)).fingerprint : null;
       }
     }
     const result = commitPlan(this.store, plan, input);
@@ -1129,6 +1132,7 @@ export class Controller {
     if (issues.length) return { ...report, skipped: `${COPY.controller027} ${targets.length}${COPY.controller033} ${COPY.controller103} ${issues.join(' / ')}` };
     report.screens = targets.length;
     const byFlipbook = groupBy(unfinishedDeliveries(s.state, { kind: 'flipbook' }), d => d.targetId);
+    const reader = this.host.createFingerprintReader?.() ?? this.host;
     this.host.beginDelivery?.(canvas?.found);
     try {
       for (const [i, flipbookId] of targets.entries()) {
@@ -1148,7 +1152,7 @@ export class Controller {
           const latest = s.state.flipbooks.get(flipbookId);
           if (latest && latest.guiWidth !== view.guiWidth) s.put(keys.flipbook(flipbookId), { ...latest, rev: latest.rev + 1, guiWidth: view.guiWidth });
           if (options.baseline?.has(flipbookId) && !lastUi(s.state, flipbookId)?.fingerprint && !s.state.uiBaselines.has(flipbookId)) {
-            const ui = await this.host.uiFingerprint(result.nodeId);
+            const ui = await reader.uiFingerprint(result.nodeId);
             if (ui.fingerprint) {
               s.put(keys.uiBaseline(flipbookId), {
                 flipbookId, fingerprint: ui.fingerprint, fpVersion: UI_FINGERPRINT_VERSION, nodeId: result.nodeId, createdAt: s.now(),

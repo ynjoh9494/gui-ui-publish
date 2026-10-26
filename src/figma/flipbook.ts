@@ -490,7 +490,7 @@ function pageFlipbooks(ns: string, page: PageNode): Map<string, FrameNode> {
 
 // 여러 페이지를 한꺼번에 불러온다(받은 순서 유지, 없는 페이지는 뺀다). Figma를 다시 켠 뒤 처음 열 때는 페이지마다 불러오는 시간이
 // 길어 하나씩 기다리지 않는다.
-async function loadPages(pageIds: string[]): Promise<PageNode[]> {
+export async function loadPages(pageIds: string[]): Promise<PageNode[]> {
   const nodes = await Promise.all([...new Set(pageIds)].map(id => figma.getNodeByIdAsync(id)));
   const pages = nodes.filter((n): n is PageNode => n?.type === 'PAGE');
   await Promise.all(pages.map(page => page.loadAsync()));

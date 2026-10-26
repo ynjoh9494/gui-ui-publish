@@ -14,6 +14,7 @@ import type { PageInfo, ToUi } from './core/wire.ts';
 export interface FingerprintReader {
   fingerprint(nodeId: string, includeLegacy?: boolean): Promise<{ fingerprint: string | null; legacyFingerprint?: string | null; error: string | null }>;
   screenFeatures(nodeId: string, includeLegacy?: boolean): Promise<{ fingerprint: string | null; legacyFingerprint?: string | null; tokens: string[] | null; name?: string; error: string | null }>;
+  uiFingerprint(nodeId: string): Promise<{ fingerprint: string | null; error: string | null }>;
 }
 
 export interface Host extends FingerprintReader {
@@ -41,7 +42,6 @@ export interface Host extends FingerprintReader {
   listFlipbooks(pageIds: string[]): Promise<Map<string, string>>;
   inspectFlipbooks?(pageIds: string[]): Promise<{ found: Map<string, string>; spots: Record<string, FlipbookSpot> }>;
   flipbookSpots?(pageIds: string[]): Promise<Record<string, FlipbookSpot>>;
-  uiFingerprint(nodeId: string): Promise<{ fingerprint: string | null; error: string | null }>;
   templateFromSelection(): Promise<{ id: string; name: string }>;
   templateIssues?(templateId: string | null): Promise<string[]>;
   syncFlipbook(settings: { pageId: string; templateId: string; force?: boolean }, view: FlipbookView): Promise<{ nodeId: string; notes: string[] }>;

@@ -1,19 +1,17 @@
 import { COPY } from '../core/copy.ts';
 import type { ScannedFrame } from '../core/compare.ts';
-import { legacyFingerprint } from '../core/fingerprint.ts';
 import { canvasOrder } from '../core/screenCode.ts';
 import type { KV } from '../core/store.ts';
 import { clampWindow } from '../core/wire.ts';
 import type { Host } from '../host.ts';
 import { ensureDataPage, renderDataPage } from './data.ts';
 import { createFingerprintReader } from './fingerprints.ts';
-import { NS, findFlipbook, flipbookSpots, inspectFlipbooks, listFlipbooks, moveFlipbookFrame, uiAreaSnapshot, syncChapters, syncFlipbook, templateFromSelection, templateIssues, flipbookSession, type FlipbookSession } from './flipbook.ts';
+import { NS, findFlipbook, flipbookSpots, inspectFlipbooks, listFlipbooks, loadPages, moveFlipbookFrame, syncChapters, syncFlipbook, templateFromSelection, templateIssues, flipbookSession, type FlipbookSession } from './flipbook.ts';
 import { fillDescription, readDescription, selectedDescriptionRoot, selectionTarget } from './description.ts';
 import { createFlow, flowNode, updateFlow } from './flow.ts';
 import { exportPdfPages, pdfSelection } from './pdf.ts';
 import { readRichText, selectedTextNode, writeRichText } from './richText.ts';
 import { makeThumbnail, placeThumbnails, renameThumbnails, thumbnailBytes } from './thumbs.ts';
-import { Snapshotter } from './snapshot.ts';
 
 // 사용자별 플러그인 창 크기(figma.clientStorage)
 export const WINDOW_KEY = 'windowSize';
@@ -77,11 +75,9 @@ export function figmaHost(mode: Host['mode']): Host {
       const sections = new Set(sectionIds);
       const frames: ScannedFrame[] = [];
       const pageOrder = new Map(root.children.map((page, index) => [page.id, index]));
-      for (const pageId of [...pageIds].sort((a, b) => (pageOrder.get(a) ?? Infinity) - (pageOrder.get(b) ?? Infinity))) {
+      const pages = await loadPages([...pageIds].sort((a, b) => (pageOrder.get(a) ?? Infinity) - (pageOrder.get(b) ?? Infinity)));
+      for (const page of pages) {
         if (!isCurrent()) return frames;
-        const page = await figma.getNodeByIdAsync(pageId);
-        if (!page || page.type !== 'PAGE') continue;
-        await page.loadAsync();
         const roots = [...screenRoots(page, sections)];
         const placed = roots.filter(node => !!node.absoluteBoundingBox);
         const unplaced = roots.filter(node => !node.absoluteBoundingBox);
@@ -148,8 +144,9 @@ export function figmaHost(mode: Host['mode']): Host {
     async canvasPositions(nodeIds) {
       const pageIndex = new Map(figma.root.children.map((p, i) => [p.id, i]));
       const out = new Map<string, { page: number; x: number; y: number; height: number }>();
-      for (const nodeId of nodeIds) {
-        const node = await sceneNode(nodeId);
+      const nodes = await Promise.all(nodeIds.map(sceneNode));
+      for (const [i, nodeId] of nodeIds.entries()) {
+        const node = nodes[i];
         const box = node?.absoluteBoundingBox;
         let page: BaseNode | null = node;
         while (page && page.type !== 'PAGE') page = page.parent;
@@ -186,15 +183,7 @@ export function figmaHost(mode: Host['mode']): Host {
     listFlipbooks: pageIds => listFlipbooks(NS, pageIds),
     inspectFlipbooks: pageIds => inspectFlipbooks(NS, pageIds),
     flipbookSpots: pageIds => flipbookSpots(NS, pageIds),
-    async uiFingerprint(nodeId) {
-      try {
-        const node = await sceneNode(nodeId);
-        if (!node || node.type !== 'FRAME') return { fingerprint: null, error: COPY.figmaHost007 };
-        return { fingerprint: legacyFingerprint(await uiAreaSnapshot(new Snapshotter(), node, NS)), error: null };
-      } catch (e) {
-        return { fingerprint: null, error: `${COPY.figmaHost006} ${e instanceof Error ? e.message : String(e)}` };
-      }
-    },
+    uiFingerprint: nodeId => createFingerprintReader(sceneNode).uiFingerprint(nodeId),
     templateFromSelection,
     templateIssues,
     beginDelivery: known => { deliverySession = flipbookSession(known); },

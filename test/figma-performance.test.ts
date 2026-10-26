@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Snapshotter } from '../src/figma/snapshot.ts';
+import { createFingerprintReader } from '../src/figma/fingerprints.ts';
 import { renderDataPage } from '../src/figma/data.ts';
 import { fitSection, makeRoom, placeFrame, recolorTagFills, syncRows, templateProblems, type TagKit } from '../src/figma/flipbook.ts';
 import type { DataModel } from '../src/core/data.ts';
@@ -79,6 +80,21 @@ test('동일 변수의 동시 조회를 합치고 실패한 조회는 재시도�
   assert.equal(result.children?.length, 100);
   const hidden = { visible: false, type: 'FRAME', get fills() { throw new Error('must not read'); } } as unknown as SceneNode;
   assert.deepEqual(await snapshotter.snapshot(hidden), { type: 'FRAME', props: { visible: false } });
+});
+
+test('한 판독기로 여러 플립북의 UI 영역을 읽으면 같은 변수를 다시 조회하지 않는다', async () => {
+  let calls = 0;
+  Object.assign(globalThis, { figma: { mixed: Symbol('mixed'), variables: {
+    getVariableByIdAsync: async () => { calls++; return { resolveForConsumer: () => ({ value: 1 }) }; },
+  } } });
+  const flipbook = (id: string) => {
+    const note = { type: 'RECTANGLE', name: 'note', visible: true, boundVariables: { opacity: { type: 'VARIABLE_ALIAS', id: 'v' } } };
+    return { id, type: 'FRAME', name: 'Flipbook', visible: true, children: [{ type: 'SLOT', name: 'description area', visible: true, children: [note] }] };
+  };
+  const frames = new Map(['1', '2', '3'].map(id => [id, flipbook(id) as unknown as SceneNode]));
+  const reader = createFingerprintReader(async id => frames.get(id) ?? null);
+  for (const id of frames.keys()) assert.ok((await reader.uiFingerprint(id)).fingerprint);
+  assert.equal(calls, 1);
 });
 
 test('원기록이 그대로면 저장소 상태를 재구축하지 않고 외부 변경은 다시 읽는다', () => {

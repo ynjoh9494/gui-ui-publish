@@ -2,6 +2,7 @@ import { COPY } from '../core/copy.ts';
 import { fingerprint, legacyFingerprint } from '../core/fingerprint.ts';
 import { screenTokens } from '../core/versionMatch.ts';
 import type { FingerprintReader } from '../host.ts';
+import { NS, uiAreaSnapshot } from './flipbook.ts';
 import { Snapshotter } from './snapshot.ts';
 
 function pageOf(node: BaseNode): PageNode | null {
@@ -10,7 +11,7 @@ function pageOf(node: BaseNode): PageNode | null {
   return current as PageNode | null;
 }
 
-// 스캔 한 번의 변수 조회 캐시를 공유하고, 구형 비교 기준이 있는 화면만 두 번째 해시를 계산한다.
+// 스캔·배포 한 번의 변수 조회 캐시를 공유하고(GUI 화면과 플립북 UI 영역 모두), 구형 비교 기준이 있는 화면만 두 번째 해시를 계산한다.
 export function createFingerprintReader(sceneNode: (nodeId: string) => Promise<SceneNode | null>): FingerprintReader {
   const snapshotter = new Snapshotter();
   return {
@@ -41,6 +42,15 @@ export function createFingerprintReader(sceneNode: (nodeId: string) => Promise<S
         };
       } catch (e) {
         return { fingerprint: null, tokens: null, error: `${COPY.figmaHost006} ${e instanceof Error ? e.message : String(e)}` };
+      }
+    },
+    async uiFingerprint(nodeId) {
+      try {
+        const node = await sceneNode(nodeId);
+        if (!node || node.type !== 'FRAME') return { fingerprint: null, error: COPY.figmaHost007 };
+        return { fingerprint: legacyFingerprint(await uiAreaSnapshot(snapshotter, node, NS)), error: null };
+      } catch (e) {
+        return { fingerprint: null, error: `${COPY.figmaHost006} ${e instanceof Error ? e.message : String(e)}` };
       }
     },
   };

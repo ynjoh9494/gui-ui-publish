@@ -34,7 +34,7 @@ flowchart LR
 | `src/flowController.ts`, `pdfController.ts` | UI Flipbook의 독립 흐름 조정: 플로우 만들기·목록·이동·다시 배포된 썸네일 교체(지운 그룹은 기록에서 뺌), PDF 저장 탭 상태·선택 프레임 수·내보내기·취소. Controller는 메시지만 넘긴다 |
 | `src/host.ts` | Controller가 요구하는 Figma 기능의 인터페이스. 코어에 Figma 노드 타입을 들이지 않는 경계 |
 | `src/figma/host.ts` | `Host` 구현, 페이지·노드 탐색, 파일 저장소와 캔버스 API 연결 |
-| `src/figma/snapshot.ts`, `fingerprints.ts` | 노드의 시각 속성·해석된 변수 값을 스냅샷으로 수집하고 지문·유사도 특징 생성 |
+| `src/figma/snapshot.ts`, `fingerprints.ts` | 노드의 시각 속성·해석된 변수 값을 스냅샷으로 수집하고 GUI 화면·플립북 UI 영역의 지문·유사도 특징 생성. 확인·배포 한 번은 판독기 하나(변수 조회 캐시)를 공유 |
 | `src/core/description.ts` | 텍스트 편집 적용 결과 타입 |
 | `src/figma/description.ts` | 플립북 안 선택(여러 개·플립북 프레임 포함)에서 그 플립북의 Description을 찾고 텍스트 편집 대상을 알려 줌. 플립북 밖에서는 본문 슬롯이 있는 Description만 대상. 본문 슬롯에 굵은 제목 줄마다 제목·본문 레이어 묶음을 적용(슬롯에 있던 텍스트 서식을 이어받음)·불러오기. 제목 문구는 판정하지 않음 |
 | `src/figma/pdf.ts` | 보고 있는 페이지 선택의 프레임 수, 고른 프레임을 순서대로 한 장씩 JPG로 내보내기(숨길 요소를 그 프레임 내보내는 동안만 숨기고 실패해도 되돌림, 프레임 사이에서 취소) |
