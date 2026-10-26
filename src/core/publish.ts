@@ -50,6 +50,8 @@ export interface Plan {
   // replacedBy: 다른 프레임으로 교체되는 이전 화면의 ID. 그 화면의 원본 프레임을 제외 목록에 넣는다.
   // screenId: 화면이 아님으로 고른 배포 화면의 ID. 프레임을 제외하고 화면을 사용 안 함으로 바꾼다. expectedRev는 확정 직전 검사 기준이다.
   exclusions: { entryKey: string; nodeId: string; name: string; reason: string; replacedBy?: string; screenId?: string; expectedRev?: number }[];
+  // 교체 짝의 이전 화면. 기록을 만들지 않지만 짝이 확정되면 함께 확정한 것으로 돌려준다(원본이 사라져 제외할 프레임이 없을 때도).
+  previous: { entryKey: string; screenId: string }[];
   counts: { new: number; changed: number; deleted: number; metadata: number; ui: number };
   // 변경 후보이지만 이번에 포함하지 않은 항목 수
   held: number;
@@ -84,7 +86,7 @@ export function buildPlan(
   team: Team, state: State, entries: Entry[], drafts: Record<string, Draft>, actor: Actor, batchId: string, comment: BatchComment = emptyComment(),
 ): Plan {
   const plan: Plan = {
-    batchId, team, actor, items: [], exclusions: [], blockers: [], held: 0,
+    batchId, team, actor, items: [], exclusions: [], previous: [], blockers: [], held: 0,
     counts: { new: 0, changed: 0, deleted: 0, metadata: 0, ui: 0 },
   };
   const targets = new Map<string, string>();
@@ -112,6 +114,7 @@ export function buildPlan(
     }
     // 교체 짝의 이전 화면은 기록하지 않는다. 짝인 신규 후보가 그 화면의 새 버전이 되고, 남아 있는 원본 프레임은 제외한다.
     if (team === 'GUI' && isPrevious(entry, draft)) {
+      plan.previous.push({ entryKey: entry.key, screenId: entry.screenId! });
       if (entry.frame) plan.exclusions.push({ entryKey: entry.key, nodeId: entry.frame.nodeId, name: entry.frame.name, reason: COPY.corePublish016, replacedBy: entry.screenId! });
       continue;
     }
@@ -288,7 +291,7 @@ export function commitPlan(store: Store, plan: Plan, input: CommitInput): Commit
     const deliveries = [...store.state.deliveries.values()].filter(d => d.batchId === plan.batchId);
     const done = new Set(existing.items.map(i => i.screenId));
     const committed = plan.items.filter(i => done.has(i.screenId)).map(i => i.entryKey);
-    return { ok: true, replay: true, committed, conflicts: [], batch: existing, deliveries };
+    return { ok: true, replay: true, committed: withPrevious(plan, committed, done), conflicts: [], batch: existing, deliveries };
   }
 
   const conflicts: Blocker[] = [];
@@ -356,7 +359,15 @@ export function commitPlan(store: Store, plan: Plan, input: CommitInput): Commit
   // 묶음 기록은 마지막에 쓴다. 이 키가 있으면 확정한 화면의 기록이 모두 끝난 것이다. 확정하지 못한 화면은 넣지 않는다.
   const batch: Batch = { id: plan.batchId, team: plan.team, actor: plan.actor, committedAt: now, items: committed.map(i => ({ screenId: i.screenId, version: i.toVersion })) };
   store.put(keys.batch(batch.id), batch);
-  return { ok: true, replay: false, committed: [...committed, ...exclusions].map(i => i.entryKey), conflicts, batch, deliveries };
+  const entryKeys = [...committed, ...exclusions].map(i => i.entryKey);
+  return { ok: true, replay: false, committed: withPrevious(plan, entryKeys,new Set(committed.map(i => i.screenId))), conflicts, batch, deliveries };
+}
+
+// 짝인 신규 후보가 확정된 이전 화면의 항목 키를 더한다. UI는 이 키로 입력을 지우므로, 빠지면 배포 뒤에도 포함 상태로 남는다.
+function withPrevious(plan: Plan, committed: string[], screenIds: Set<string>): string[] {
+  const out = new Set(committed);
+  for (const p of plan.previous) if (screenIds.has(p.screenId)) out.add(p.entryKey);
+  return [...out];
 }
 
 function writeGui(store: Store, plan: Plan, item: PlanItem, input: CommitInput, now: number): void {

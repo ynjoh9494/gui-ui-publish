@@ -615,8 +615,10 @@ test('잘라내 붙인 프레임은 삭제·신규 짝으로 나오고, 교체 �
   const plan = buildPlan('GUI', store.state, entries, drafts, actor, 'b3');
   assert.deepEqual(plan.blockers, []);
   assert.deepEqual(plan.items.map(i => [i.screenId, i.workType, i.fromVersion, i.toVersion]), [[screenId, 'changed', 1, 2]]);
-  commitPlan(store, plan, { fingerprints: { [moved.key]: 'fp2' }, thumbs: { [moved.key]: thumb(screenId, 2) } });
+  const result = commitPlan(store, plan, { fingerprints: { [moved.key]: 'fp2' }, thumbs: { [moved.key]: thumb(screenId, 2) } });
   assert.equal(store.state.screens.get(screenId)!.source?.nodeId, '2:1');
+  // 제외할 원본 프레임이 없어도 이전 화면을 확정 항목으로 돌려준다. 빠지면 그 입력이 남아 배포 뒤에도 포함 상태로 나온다.
+  assert.deepEqual(result.committed.sort(), [moved.key, old.key].sort());
 });
 
 test('원본이 남은 화면도 교체할 수 있고, 남은 원본 프레임은 제외 목록에 넣는다', () => {
