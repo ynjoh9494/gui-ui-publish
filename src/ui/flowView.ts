@@ -97,7 +97,13 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
 
   const view = () => root.querySelector<HTMLElement>('.flow-view');
   const board = () => view()?.querySelector<HTMLElement>('.flow-board') ?? null;
-  const info = () => new Map(screens.map(s => [s.uid, s]));
+  // 배포 화면 uid → 정보. 그릴 때마다 썸네일마다 찾으므로 화면 목록을 받을 때 한 번만 만든다.
+  let byUid = new Map<string, GuiScreenInfo>();
+  const info = () => byUid;
+  // 마지막으로 계산한 화살표 경로. 썸네일 자리·크기와 연결이 같으면 다시 계산하지 않는다(경로 찾기가 판에서 가장 비싸다).
+  let arrowCache: { sig: string; arrows: ReturnType<typeof flowArrows> } | null = null;
+  // 잇는 중인 미리보기 경로의 대상(썸네일 key·변). 같으면 경로를 다시 찾지 않는다.
+  let previewTarget = '';
   const published = () => screens.filter(s => s.status === 'active' && s.version > 0)
     .sort((a, b) => (a.category?.order ?? Infinity) - (b.category?.order ?? Infinity) || a.code.localeCompare(b.code, 'ko') || a.name.localeCompare(b.name, 'ko'));
   const sizeOf = (uid: string) => flowImageSize(info().get(uid)?.thumb ?? null);
@@ -167,19 +173,28 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
 
   const pathData = (points: FlowPoint[]) => points.map((p, i) => `${i ? 'L' : 'M'}${px(p[0])} ${px(p[1])}`).join(' ');
 
+  // 지금 썸네일·연결의 화살표 경로(캔버스 단위라 배율과 관계없다)
+  function currentArrows(boxes: Map<string, FlowBox>) {
+    const sig = [[...boxes].map(([key, b]) => `${key}:${b.x},${b.y},${b.w},${b.h}`).join(';'), links.map(linkId).join(';')].join('|');
+    if (arrowCache?.sig !== sig) arrowCache = { sig, arrows: flowArrows(boxes, links, 0) };
+    return arrowCache.arrows;
+  }
+
+  // 배포 화면을 놓을 자리만 옅게 칠한다.
+  const dropStyle = (b: FlowBox) => `left:${px(b.x)}px;top:${px(b.y)}px;width:${px(b.w)}px;height:${px(b.h)}px`;
+
   function paintBoard() {
     const el = board();
     if (!el) return;
     const screensBy = info();
     const boxes = images();
-    // 배포 화면을 놓을 자리만 옅게 칠한다.
-    const drop = dropBox ? `<div class="flow-drop" style="left:${px(dropBox.x)}px;top:${px(dropBox.y)}px;width:${px(dropBox.w)}px;height:${px(dropBox.h)}px"></div>` : '';
-    const arrows = flowArrows(boxes, links, 0);
+    const drop = dropBox ? `<div class="flow-drop" style="${dropStyle(dropBox)}"></div>` : '';
+    const arrows = currentArrows(boxes);
     const paths = arrows.map(({ link, points }) => {
       const d = pathData(points);
       const id = esc(linkId(link));
       const on = selected?.kind === 'link' && selected.id === linkId(link);
-      return `<path class="flow-link-hit" data-link="${id}" d="${d}"/><path class="flow-link${on ? ' selected' : ''}" d="${d}" marker-end="url(#flow-head${on ? '-on' : ''})"/>`;
+      return `<path class="flow-link-hit" data-link="${id}" d="${d}"/><path class="flow-link${on ? ' selected' : ''}" data-line="${id}" d="${d}" marker-end="url(#flow-head${on ? '-on' : ''})"/>`;
     }).join('');
     const ghost = preview ? `<path class="flow-link preview" d="${pathData(preview)}" marker-end="url(#flow-head)"/>` : '';
     const cardHtml = cards.map(card => {
@@ -224,12 +239,38 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
     }
     path.setAttribute('d', pathData(preview));
     const boxes = images();
-    const area = linksBox([...flowArrows(boxes, links, 0).map(a => a.points), preview], [...boxes.values()]);
+    const area = linksBox([...currentArrows(boxes).map(a => a.points), preview], [...boxes.values()]);
     svg.style.left = `${area.x}px`;
     svg.style.top = `${area.y}px`;
     svg.setAttribute('width', String(area.w));
     svg.setAttribute('height', String(area.h));
     svg.setAttribute('viewBox', `${area.x} ${area.y} ${area.w} ${area.h}`);
+  }
+
+  // 고른 썸네일·화살표 표시만 바꾼다(판 전체를 다시 그리지 않는다).
+  function paintSelection() {
+    const el = board();
+    if (!el) return;
+    for (const card of el.querySelectorAll<HTMLElement>('.flow-card[data-key]')) card.classList.toggle('selected', selected?.kind === 'card' && selected.id === card.dataset.key);
+    for (const line of el.querySelectorAll<SVGPathElement>('.flow-link[data-line]')) {
+      const on = selected?.kind === 'link' && selected.id === line.dataset.line;
+      line.classList.toggle('selected', on);
+      line.setAttribute('marker-end', `url(#flow-head${on ? '-on' : ''})`);
+    }
+  }
+
+  // 배포 화면을 끄는 동안 놓을 자리 표시만 옮긴다.
+  function paintDrop() {
+    const grid = board()?.querySelector<HTMLElement>('.flow-grid');
+    if (!grid) { paintBoard(); return; }
+    let el = grid.querySelector<HTMLElement>('.flow-drop');
+    if (!dropBox) { el?.remove(); return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'flow-drop';
+      grid.prepend(el);
+    }
+    el.setAttribute('style', dropStyle(dropBox));
   }
 
   function flowItem(f: FlowListItem): string {
@@ -321,14 +362,18 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
     const card = target.closest<HTMLElement>('.flow-card');
     const hit = target.closest<SVGElement>('[data-link]');
     if (screen) drag = { kind: 'screen', uid: screen.dataset.uid!, x: ev.clientX, y: ev.clientY, moved: false, ghost: null };
-    else if (dot && card) { drag = { kind: 'link', from: card.dataset.key!, side: dot.dataset.side as FlowSide, moved: false }; paintBoard(); }
+    else if (dot && card) {
+      drag = { kind: 'link', from: card.dataset.key!, side: dot.dataset.side as FlowSide, moved: false };
+      previewTarget = '';
+      board()?.querySelector('.flow-grid')?.classList.add('linking');
+    }
     else if (card) {
       const c = cards.find(x => x.key === card.dataset.key);
       const p = boardPoint(ev.clientX, ev.clientY, false);
       if (!c || !p) return;
       drag = { kind: 'card', key: c.key, x: ev.clientX, y: ev.clientY, moved: false, grab: [p[0] - c.x, p[1] - c.y] };
-    } else if (hit) { selected = { kind: 'link', id: hit.dataset.link! }; paintBoard(); return; }
-    else if (target.closest('.flow-board')) { selected = null; paintBoard(); return; }
+    } else if (hit) { selected = { kind: 'link', id: hit.dataset.link! }; paintSelection(); return; }
+    else if (target.closest('.flow-board')) { selected = null; paintSelection(); return; }
     else return;
     ev.preventDefault();
     listen();
@@ -355,9 +400,17 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
       const boxA = imageOf(a);
       if (b) {
         const boxB = imageOf(b);
+        const toSide = dot ?? facingSide(boxA, boxB);
+        // 같은 썸네일·변 위에서 움직이는 동안은 경로가 같다.
+        const targetKey = `${b.key}:${toSide}`;
+        if (targetKey === previewTarget) return;
+        previewTarget = targetKey;
         const others = cards.filter(c => c !== a && c !== b).map(imageOf);
-        preview = routeLink(boxA, drag.side, boxB, dot ?? facingSide(boxA, boxB), others);
-      } else preview = at ? [sidePoint(boxA, drag.side), at] : null;
+        preview = routeLink(boxA, drag.side, boxB, toSide, others);
+      } else {
+        previewTarget = '';
+        preview = at ? [sidePoint(boxA, drag.side), at] : null;
+      }
       paintPreview();
       return;
     }
@@ -379,7 +432,7 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
       drag.ghost.style.left = `${ev.clientX - r.left - px(size.w) / 2}px`;
       drag.ghost.style.top = `${ev.clientY - r.top - px(size.h) / 2}px`;
       const spot = dropSpot(drag.uid, ev.clientX, ev.clientY);
-      if (spot?.x !== dropBox?.x || spot?.y !== dropBox?.y) { dropBox = spot; paintBoard(); }
+      if (spot?.x !== dropBox?.x || spot?.y !== dropBox?.y) { dropBox = spot; paintDrop(); }
       return;
     }
     // 썸네일은 격자 간격으로 따라오고, 자리가 바뀔 때마다 화살표를 다시 그린다.
@@ -413,7 +466,8 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
         if (spot) place(d.uid, [spot.x, spot.y]);
       }
     } else if (d.kind === 'card') {
-      if (!d.moved) selected = { kind: 'card', id: d.key };
+      // 누르기만 했으면 고른 표시만 바꾼다.
+      if (!d.moved) { selected = { kind: 'card', id: d.key }; paintSelection(); return; }
     } else if (d.moved) connect(d.from, d.side, document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null);
     paintBoard();
   }
@@ -518,6 +572,7 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
     },
     setScreens(next) {
       screens = next;
+      byUid = new Map(screens.map(s => [s.uid, s]));
       paintScreens();
       paintBoard();
     },
