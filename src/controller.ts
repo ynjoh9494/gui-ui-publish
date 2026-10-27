@@ -393,7 +393,8 @@ export class Controller {
 
   // GUI 배포 기록을 그 화면을 쓰는 플립북마다 반영한다. GUI Publish 직후, UI 변경사항 확인, 관리 정정 뒤에 실행한다.
   // 이미 반영한 버전은 건너뛰므로 여러 번 실행해도 같은 결과가 된다.
-  private async pullGui(isCurrent: () => boolean = () => true): Promise<{ message: string; failed: boolean } | null> {
+  // deferData: 부른 쪽이 이어서 DATA 페이지를 갱신하고 상태를 보낸다(GUI Publish 확정). 여기서 하면 DATA를 두 번 그린다.
+  private async pullGui(isCurrent: () => boolean = () => true, { deferData = false } = {}): Promise<{ message: string; failed: boolean } | null> {
     const s = this.store;
     s.reload();
     const active = [...s.state.flipbooks.values()].filter(fb => fb.status === 'active' && fb.screens.length);
@@ -412,8 +413,10 @@ export class Controller {
     }
     const changed = unfinishedDeliveries(s.state, { batchId }).length;
     const report = changed ? await this.deliverFlipbooks({ batchId }) : emptyReport();
-    if (changed) await this.refreshData();
-    this.postState();
+    if (!deferData) {
+      if (changed) await this.refreshData();
+      this.postState();
+    }
     const parts = [
       changed ? `${COPY.controller043} ${changed}${COPY.controller044} ${added}${COPY.controller045}` : '',
       changed ? deliveryMessage(report) : '',
@@ -918,7 +921,7 @@ export class Controller {
     let report: string | null = null;
     if (result.ok && items.length) {
       report = plan.team === 'GUI'
-        ? [(await this.pullGui())?.message, await this.flows.update(new Set(items.filter(i => i.workType !== 'deleted').map(i => i.screenId)))].filter(Boolean).join(' ') || null
+        ? [(await this.pullGui(undefined, { deferData: true }))?.message, await this.flows.update(new Set(items.filter(i => i.workType !== 'deleted').map(i => i.screenId)))].filter(Boolean).join(' ') || null
         : deliveryMessage(await this.deliverFlipbooks({ batchId }));
       await this.progress(COPY.controller005);
     }

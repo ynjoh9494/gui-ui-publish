@@ -1096,6 +1096,47 @@ test('GUI Publish의 반영은 반영할 플립북이 기록된 페이지만 읽
   }
 });
 
+test('GUI 확정은 플립북을 반영한 뒤 「DATA 페이지 갱신 중」을 띄우고 DATA 페이지를 한 번만 그린다', async () => {
+  const { store, screenId, frame } = seeded();
+  store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['0:2'], dataPageId: 'data' });
+  const [fb] = planFlipbooks({ pageId: '0:2', rows: [row([screenId])] }, guiScreens(store.state), actor, 2000, () => 'fb1');
+  store.put(keys.flipbook(fb.id), fb);
+  store.put(keys.tag('t'), { id: 't', team: 'GUI', name: '변경', colorKey: 'Green', color: '#00ff00', active: true });
+  const changed = frame('1:1', '[STB_HO_001] 홈', 'fp2');
+  // 단계 순서: 진행 문구(busy), 플립북 반영(sync), DATA 그리기(data)
+  const steps: string[] = [];
+  const posted: ToUi[] = [];
+  const host = {
+    kv: store.kv, mode: 'GUI', actor, pages: () => [{ id: '0:1', name: '원본' }, { id: '0:2', name: 'UI' }],
+    post: (message: ToUi) => { posted.push(message); if (message.type === 'busy' && message.label) steps.push(message.label); },
+    listFrames: async () => [{ ...changed, fingerprint: null }],
+    fingerprint: async () => ({ fingerprint: 'fp2', error: null }),
+    makeThumbnail: async () => thumb(screenId, 2),
+    placeThumbnails: async () => {},
+    tagSource: async () => {},
+    templateIssues: async () => [],
+    inspectFlipbooks: async () => ({ found: new Map([['fb1', '2:1']]), spots: {} }),
+    listFlipbooks: async () => new Map(),
+    syncFlipbook: async () => { steps.push('sync'); return { nodeId: '2:1', notes: [] }; },
+    ensureDataPage: async () => 'data',
+    renderData: async () => { steps.push('data'); },
+  } as unknown as Host;
+  const controller = new Controller(host);
+  await controller.handle({ type: 'scan' });
+  const [entry] = classify(controller.store.state, [changed]);
+  await controller.handle({ type: 'prepare', team: 'GUI', drafts: { [entry.key]: { ...defaultDraft('GUI', controller.store.state, entry), included: true, tagId: 't' } } });
+  const plan = posted.find((m): m is Extract<ToUi, { type: 'plan' }> => m.type === 'plan')?.plan;
+  assert.ok(plan && !plan.blockers.length, `plan is ready: ${JSON.stringify(plan?.blockers)}`);
+  steps.length = 0;
+  await controller.handle({ type: 'commit', batchId: plan.batchId });
+  assert.deepEqual(posted.filter(m => m.type === 'error'), []);
+  assert.equal(steps.filter(step => step === 'data').length, 1, 'DATA 페이지는 확정 마지막에 한 번만 그린다');
+  const sync = steps.indexOf('sync');
+  const label = steps.indexOf(COPY.controller005);
+  assert.ok(sync >= 0 && label > sync && steps.indexOf('data') > label, `플립북 반영 → 「DATA 페이지 갱신 중」 → DATA: ${steps.join(' / ')}`);
+  assert.equal(controller.store.state.flipbooks.get('fb1')?.screens[0].version, 2, '플립북은 새 버전을 받는다');
+});
+
 test('캔버스 선택으로는 목록을 다시 읽지 않고, 새로고침으로 찾은 Section 이름 변경은 Chapter만 다시 쓰며 반영 중 표시를 닫는다', async () => {
   for (const light of [true, false]) {
     const posted: ToUi[] = [];
