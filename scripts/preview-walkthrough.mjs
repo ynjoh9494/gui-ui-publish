@@ -769,12 +769,24 @@ try {
   assert.equal(await app.locator('[data-field=code]').inputValue(), '', 'new Screen ID starts empty');
   assert.equal(await app.locator('[data-field=code]').getAttribute('placeholder'), null, 'standalone screen has no suggested ID');
   await app.locator('[data-field=relation][value=case]').check();
+  // 화면 선택 드롭다운을 펼치면 머리 자리의 검색 입력에 포커스가 가고, Screen ID·이름으로 목록을 거른다.
   await app.locator('.screen-picker summary').click();
-  await app.locator('.screen-picker [data-action=pick]').filter({ hasText: 'STB_HO_001' }).click();
+  const pickerSearch = app.locator('.screen-picker .picker-search');
+  await pickerSearch.waitFor();
+  assert.equal(await pickerSearch.evaluate(node => node === document.activeElement), true, 'opening a screen picker focuses its search input');
+  await pickerSearch.fill('없는 화면');
+  assert.equal(await app.locator('.screen-picker [data-action=pick]:visible').count(), 0, 'search hides screens that do not match');
+  assert.equal(await app.locator('.screen-picker .picker-empty').isVisible(), true);
+  await pickerSearch.fill('ho_001');
+  assert.equal(await app.locator('.screen-picker .picker-empty').isVisible(), false);
+  await pickerSearch.press('Enter');
   assert.equal(await app.locator('[data-field=code]').inputValue(), 'STB_HO_001-01', 'case ID is filled automatically');
   await app.locator('[data-field=code]').scrollIntoViewIfNeeded();
   await shot('08-case-id-autofill');
   await app.locator('[data-field=disposition][value=replace]').check();
+  await app.locator('.screen-picker summary').click();
+  await app.locator('.screen-picker .picker-search').press('Escape');
+  assert.equal(await app.locator('.screen-picker').evaluate(node => node.open), false, 'Esc closes the screen picker');
   await app.locator('.screen-picker summary').click();
   await app.locator('.screen-picker [data-action=pick]').filter({ hasText: 'STB_HO_001' }).click();
   // 목록은 다음 프레임에 다시 그려지므로 상태 아이콘이 바뀔 때까지 기다린다.

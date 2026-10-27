@@ -1117,6 +1117,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
 
   // 화면 선택 드롭다운: 회색 ID 태그 + 이름, ID 순(2026-10-20 사용자 결정)
   // 「화면 없음」(값 '')은 맨 위에 두고, 케이스 기본 화면은 선택한 카테고리를 먼저 보여 준다.
+  // 펼치면 머리 자리에 검색 입력이 겹쳐 나오고, Screen ID·이름으로 목록을 거른다(2026-10-27 사용자 요청).
   function screenLabel(item: { code: string; name: string }): string {
     return `<span class="screen-option">${item.code ? `<span class="id-tag">${esc(item.code)}</span>` : ''}<span class="label">${esc(item.name)}</span></span>`;
   }
@@ -1125,7 +1126,18 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const chosen = opts.mixed ? null : sorted.find(i => i.value === selectedValue);
     const head = chosen ? screenLabel(chosen) : `<span class="placeholder">${esc(opts.mixed ? COPY.uiApp175 : placeholder)}</span>`;
     return `<details class="tag-picker screen-picker${opts.disabled ? ' disabled' : ''}"><summary aria-label="${esc(placeholder)}" data-required-field="${esc(field)}">${head}<span class="dropdown-caret" aria-hidden="true"></span></summary>
-      <div class="tag-options">${sorted.map(i => `<button data-action="pick" data-field="${field}" data-value="${esc(i.value)}" class="tag-option" aria-pressed="${i.value === selectedValue}"${opts.thumbs?.get(i.value) ? ` data-thumb="${esc(opts.thumbs.get(i.value)!)}"` : ''}>${screenLabel(i)}</button>`).join('') || `<p class="note">${COPY.uiApp190}</p>`}</div></details>`;
+      <input type="search" class="picker-search" placeholder="${COPY.uiApp358}" aria-label="${COPY.uiApp358}" autocomplete="off">
+      <div class="tag-options">${sorted.length ? sorted.map(i => `<button data-action="pick" data-field="${field}" data-value="${esc(i.value)}" data-search="${esc(`${i.code} ${i.name}`.toLowerCase())}" class="tag-option" aria-pressed="${i.value === selectedValue}"${opts.thumbs?.get(i.value) ? ` data-thumb="${esc(opts.thumbs.get(i.value)!)}"` : ''}>${screenLabel(i)}</button>`).join('') + `<p class="note picker-empty" hidden>${COPY.uiApp028}</p>` : `<p class="note">${COPY.uiApp190}</p>`}</div></details>`;
+  }
+  function filterScreenPicker(picker: HTMLElement, query: string) {
+    const q = query.trim().toLowerCase();
+    let shown = 0;
+    for (const option of picker.querySelectorAll<HTMLElement>('.tag-option')) {
+      option.hidden = !!q && !option.dataset.search!.includes(q);
+      if (!option.hidden) shown++;
+    }
+    const empty = picker.querySelector<HTMLElement>('.picker-empty');
+    if (empty) empty.hidden = shown > 0;
   }
   // 등록된 화면은 왼쪽 목록과 같은 이름·Screen ID로 보여 준다(배포 전 수정값 포함, 2026-10-21 사용자 요청).
   const registeredItems = (filter: (id: string) => boolean = () => true): ScreenItem[] => {
@@ -2076,17 +2088,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       <p class="note">${COPY.uiApp146}</p></section>`;
   }
 
-  // 태그: 이 탭(GUI 또는 UI)의 태그를 고르고, 같은 자리에서 추가·이름 변경·색 변경·사용 안 함·다시 사용을 한다.
+  // 태그: 이 탭(GUI 또는 UI)의 태그를 고르고, 같은 자리에서 추가·이름 변경·색 변경·사용 안 함을 한다.
+  // 사용 안 함으로 바꾼 태그는 드롭다운에 보이지 않는다(2026-10-27 사용자 요청: 다시 사용하지 않는다).
   function tagField(t: Team, draft: Draft, multi = false, selectedId = draft.tagId ?? '', isMixed = false, label: string = COPY.uiApp088): string {
     const own = [...state!.tags.values()].filter(x => x.team === t);
     const chosen = selectedId ? own.find(x => x.id === selectedId && x.active) ?? null : null;
-    const inactive = own.filter(x => !x.active);
     const armed = chosen && tagArmed === chosen.id;
     const pill = (tag: typeof own[number]) => `<span class="chip" style="--c:${esc(tag.color)}">${esc(tag.name)}</span>`;
     const picker = `<details class="tag-picker"><summary aria-label="${COPY.uiApp040}" data-required-field="tagId">${chosen ? pill(chosen) : `<span class="placeholder">${isMixed ? esc(COPY.uiApp175) : COPY.uiApp040}</span>`}<span class="dropdown-caret" aria-hidden="true"></span></summary>
       <div class="tag-options"><button data-action="select-tag" data-id="" class="tag-option">${COPY.uiApp040}</button>
         ${own.filter(x => x.active).map(tag => `<button data-action="select-tag" data-id="${esc(tag.id)}" class="tag-option" aria-pressed="${tag.id === selectedId}">${pill(tag)}</button>`).join('')}
-        ${inactive.map(tag => `<button data-action="tag-reactivate" data-id="${esc(tag.id)}" class="tag-option inactive">${pill(tag)} <small>${COPY.uiApp158}</small></button>`).join('')}
       </div></details>`;
     return `<div class="wide"><label>${esc(label)}</label>
       ${addMode === 'tag'
@@ -2801,7 +2812,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         admin({ op: 'updateTag', id, active: false });
         break;
       }
-      case 'tag-reactivate': admin({ op: 'updateTag', id: el.dataset.id!, active: true }); break;
       case 'admin-unexclude': admin({ op: 'unexclude', id: el.closest<HTMLElement>('[data-form]')!.dataset.id! }); break;
     }
   });
@@ -2973,6 +2983,15 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       if (prevThumbOpen && entry) details.outerHTML = previousThumb(entry);
       return;
     }
+    // 화면 선택 드롭다운: 펼치면 검색 입력에 포커스를 두고, 접으면 검색어를 비운다.
+    if (details.classList?.contains('screen-picker')) {
+      const search = details.querySelector<HTMLInputElement>('.picker-search');
+      if (!search) return;
+      search.value = '';
+      filterScreenPicker(details, '');
+      if (details.open) search.focus();
+      return;
+    }
     if (!details.classList?.contains('accordion') || !details.open) return;
     adminOpen = details.dataset.key ?? null;
     for (const other of root.querySelectorAll<HTMLDetailsElement>('details.accordion')) if (other !== details) other.open = false;
@@ -3027,6 +3046,24 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       return;
     }
     if (el.dataset.input === 'new-section-name' && ev.key === 'Escape') { ev.preventDefault(); addingSection = false; renderDetail(); return; }
+    // 화면 선택 드롭다운: ↑↓로 검색 입력과 결과 사이를 옮기고, 검색 입력의 Enter는 첫 결과를 고르며, Esc로 접는다.
+    const screenPick = el.closest<HTMLDetailsElement>('.screen-picker[open]');
+    if (screenPick && (el.classList.contains('picker-search') || el.classList.contains('tag-option'))) {
+      const search = screenPick.querySelector<HTMLInputElement>('.picker-search')!;
+      const stops = [search, ...screenPick.querySelectorAll<HTMLElement>('.tag-option:not([hidden])')];
+      if (ev.key === 'Escape') { ev.preventDefault(); screenPick.open = false; screenPick.querySelector('summary')!.focus(); return; }
+      if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+        ev.preventDefault();
+        const at = stops.indexOf(el) + (ev.key === 'ArrowDown' ? 1 : -1);
+        stops[Math.max(0, Math.min(stops.length - 1, at))].focus();
+        return;
+      }
+      if (el === search && ev.key === 'Enter' && !ev.isComposing && ev.keyCode !== 229) {
+        ev.preventDefault();
+        if (search.value.trim()) stops[1]?.click();
+        return;
+      }
+    }
     if (el.classList.contains('version-row')) {
       if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); el.click(); }
       else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') { ev.preventDefault(); moveVersionSelection(el, ev.key === 'ArrowDown' ? 1 : -1); }
@@ -3042,6 +3079,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
 
   root.addEventListener('input', ev => {
     const el = ev.target as HTMLInputElement;
+    if (el.classList.contains('picker-search')) { filterScreenPicker(el.closest('details')!, el.value); return; }
     if (bulk && el.dataset.input?.startsWith('bulk-')) {
       if (bulk.submitting) return;
       switch (el.dataset.input) {
@@ -3155,7 +3193,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       }, 0);
       return;
     }
-    const field = control.dataset.requiredField;
+    // 화면 선택 드롭다운의 검색 입력은 그 드롭다운의 필수 입력으로 본다.
+    const field = control.dataset.requiredField
+      ?? (control.classList.contains('picker-search') ? control.closest('details')?.querySelector<HTMLElement>(':scope > summary')?.dataset.requiredField : undefined);
     if (!field || !control.closest('.detail') || tab === 'ADMIN') return;
     const picker = control.closest('details');
     if (picker && ev.relatedTarget instanceof Node && picker.contains(ev.relatedTarget)) return;

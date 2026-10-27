@@ -203,8 +203,12 @@ button.link.danger { color: var(--danger); }
 .tag-picker .placeholder { color: var(--muted); }
 .tag-options { position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 4; max-height: 180px; overflow: auto; padding: 3px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,.12); }
 .tag-option { display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 6px; padding: 4px; border: 0; text-align: left; }
-.tag-option.inactive { opacity: .6; }
-.tag-option small { color: var(--muted); }
+.tag-option[hidden], .picker-empty[hidden] { display: none; }
+/* 화면 선택 드롭다운: 펼치면 머리 자리(오른쪽 화살표 제외)에 검색 입력이 겹친다. 화살표를 누르면 접힌다. */
+.picker-search { display: none; }
+.screen-picker[open] > summary { border-color: var(--brand); }
+.screen-picker[open] > .picker-search { display: block; position: absolute; top: 1px; bottom: 1px; left: 1px; right: 22px; width: auto; padding: 0 6px; border: 0; border-radius: 4px; outline: none; }
+.picker-empty { margin: 4px; }
 
 /* 변경사항 확인: 탭 맨 위 */
 .toolbar { flex-direction: column; align-items: stretch; }
