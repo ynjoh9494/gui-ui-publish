@@ -517,6 +517,8 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .rt-p[data-depth]::before { content: "•"; position: absolute; left: calc(var(--depth) * 20px + 5px); font-weight: 400; }
 .text-actions { flex: none; display: flex; align-items: center; gap: 6px; }
 .text-actions .note { flex: 1; min-width: 0; margin: 0; }
+/* 대상 이름은 한 줄로 줄인다(이름이 자동인 텍스트 레이어는 이름이 본문 전체다). 오류 문구는 줄바꿈해 끝까지 보여 준다. */
+.text-actions .text-target:not(.bad) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .text-actions button { flex: none; }
 /* PDF 저장 탭: 텍스트 편집 탭처럼 툴바 아래 영역 전체를 쓴다. */
 .pdf-mode :is(.toolbar, .list, .pane-divider, .detail, .footer) { display: none; }

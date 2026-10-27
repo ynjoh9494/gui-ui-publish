@@ -233,7 +233,7 @@ export function figmaHost(mode: Host['mode']): Host {
       if (root) return fillDescription(root, paragraphs);
       const node = selectedTextNode();
       await writeRichText(node, paragraphs);
-      return { kind: 'text', name: node.name };
+      return { kind: 'text' };
     },
     createFlow: plan => createFlow(NS, plan),
     updateFlow: (flow, thumbs) => updateFlow(NS, flow, thumbs),

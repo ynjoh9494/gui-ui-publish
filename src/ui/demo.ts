@@ -253,7 +253,7 @@ export function createDemo(options: DemoOptions): Demo {
     async writeSelection(paragraphs) {
       text.paragraphs = paragraphs;
       changed();
-      return { kind: 'text', name: text.name };
+      return { kind: 'text' };
     },
     async createFlow(plan) {
       const nodeId = `flow:${plan.id}`;

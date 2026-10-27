@@ -47,8 +47,7 @@ const BUSY_LABEL: Partial<Record<ToMain['type'], string>> = {
 
 // 텍스트 편집 적용 결과 안내.
 function writeMessage(result: SelectionWrite): string {
-  if (result.kind === 'text') return `${COPY.controller121} ${result.name}`;
-  return COPY.controller135;
+  return result.kind === 'text' ? COPY.controller121 : COPY.controller135;
 }
 
 // 플립북 페이지를 한 번 읽은 결과: 플립북 ID → 프레임 노드 ID, 프레임 노드 ID → 캔버스 위치

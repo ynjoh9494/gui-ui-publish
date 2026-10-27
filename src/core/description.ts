@@ -1,7 +1,8 @@
 // The editor applies its document to one selected text layer or to one text layer
 // in the body area of the selected flipbook's Description.
+// 적용 결과에 레이어 이름을 싣지 않는다. 이름이 자동인 텍스트 레이어는 적용하면 이름이 새 본문 전체가 된다.
 export type SelectionWrite =
-  | { kind: 'text'; name: string }
+  | { kind: 'text' }
   | { kind: 'description' };
 
 // 지금 캔버스 선택에서 불러오기·적용할 대상. 텍스트 편집 탭에 보여 준다(2026-10-22 사용자 요청).

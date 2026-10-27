@@ -690,7 +690,7 @@ export const COPY = {
   controller139: '개 화면의 배포를 취소했습니다.',
   controller120: "텍스트 적용 중",
   controller135: "선택한 Description에 텍스트를 적용했습니다.",
-  controller121: "텍스트를 적용했습니다:",
+  controller121: "선택한 텍스트 레이어에 텍스트를 적용했습니다.",
   controller133: '기존 플립북',
   controller134: '개를 옮겼습니다.',
   controller136: '불러오는 중',
