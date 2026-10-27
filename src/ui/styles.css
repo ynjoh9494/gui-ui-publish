@@ -9,6 +9,7 @@
   --selected: var(--figma-color-bg-selected, #e5f4ff);
   --danger: var(--figma-color-text-danger, #d93025);
   --ok: #2f9e44;
+  --id-font: "Roboto Condensed", Inter, "Noto Sans KR", system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
@@ -93,7 +94,7 @@ legend { color: var(--muted); padding: 0 4px; }
 .estimate-orange { color: #ad6800; }
 .estimate-gray { color: var(--muted); }
 /* 화면 ID: 작은 회색 태그 */
-.id-tag { display: inline-flex; align-items: center; flex: none; font-size: 10px; font-weight: 600; line-height: 1; padding: 2px 5px; border-radius: 4px; color: #6b6b6b; background: color-mix(in srgb, #888 16%, var(--bg)); white-space: nowrap; }
+.id-tag { display: inline-flex; align-items: center; flex: none; font-family: var(--id-font); font-size: 10px; font-weight: 600; line-height: 1; padding: 2px 5px; border-radius: 4px; color: #6b6b6b; background: color-mix(in srgb, #888 16%, var(--bg)); white-space: nowrap; }
 .screen-option { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .screen-option .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag-picker.disabled > summary { pointer-events: none; opacity: .55; }
@@ -553,7 +554,7 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .flow-card:hover { outline-color: color-mix(in srgb, var(--brand) 70%, var(--border)); }
 .flow-card.selected { outline: 2px solid var(--brand); }
 .flow-card.moving { z-index: 3; cursor: grabbing; box-shadow: 0 4px 12px rgba(0,0,0,.25); }
-.flow-card-id { position: absolute; left: 3px; top: 3px; max-width: calc(100% - 6px); box-sizing: border-box; padding: 0 4px; border-radius: 3px; background: rgba(0,0,0,.6); color: #fff; font-size: 10px; font-weight: 600; line-height: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+.flow-card-id { position: absolute; left: 3px; top: 3px; max-width: calc(100% - 6px); box-sizing: border-box; padding: 0 4px; border-radius: 3px; background: rgba(0,0,0,.6); color: #fff; font-family: var(--id-font); font-size: 10px; font-weight: 600; line-height: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
 .flow-ghost { z-index: 30; pointer-events: none; opacity: .8; box-shadow: 0 4px 12px rgba(0,0,0,.25); }
 .flow-card-remove { position: absolute; top: -7px; right: -7px; display: none; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border-radius: 50%; background: var(--bg); }
 .flow-card:hover .flow-card-remove { display: inline-flex; }

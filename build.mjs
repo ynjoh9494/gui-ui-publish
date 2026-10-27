@@ -13,7 +13,12 @@ async function bundle(entry) {
 await mkdir('dist', { recursive: true });
 await writeFile('dist/code.js', await bundle('src/main.ts'));
 
-const css = await readFile('src/ui/styles.css', 'utf8');
+// Screen ID 글꼴(Roboto Condensed 라틴 600, SIL OFL 1.1: src/ui/fonts/OFL.txt). 외부 통신을 하지 않으므로 data URL로 넣는다.
+const idFont = (await readFile('src/ui/fonts/roboto-condensed-latin-600-normal.woff2')).toString('base64');
+const fontCss = `/* Roboto Condensed: Copyright 2011 Google Inc. SIL Open Font License 1.1 */
+@font-face { font-family: "Roboto Condensed"; font-style: normal; font-weight: 600; src: url(data:font/woff2;base64,${idFont}) format("woff2"); }
+`;
+const css = fontCss + await readFile('src/ui/styles.css', 'utf8');
 const page = (title, body, script, extraCss = '') => `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>
 <style>${css}${extraCss}</style></head>

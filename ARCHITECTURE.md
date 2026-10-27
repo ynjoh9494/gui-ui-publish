@@ -17,7 +17,7 @@ flowchart LR
   H["src/ui/demo.ts<br/>가상 Host"] --> C
 ```
 
-`src/ui/index.ts`는 Figma UI iframe의 시작점이다. 메시지 형식과 `Map` 직렬화는 `src/core/wire.ts`에 둔다. 브라우저 미리보기는 같은 `Controller`와 UI를 실행하고 `Host`만 가짜 Figma 데이터(`src/ui/demo.ts`)로 교체한다. 튜토리얼(`src/ui/tutorial.ts`)도 플러그인 창 안에서 같은 가짜 환경에 두 번째 `Controller`·UI를 띄워 예시 화면을 만들고 실제 창 위에 겹친다. 예시 데이터는 본체 메시지(설정·스캔·배포·플립북 만들기)로 쌓으므로 저장 형식이 바뀌어도 따라가며, 실제 `Host`와 파일 기록에는 닿지 않는다. `build.mjs`는 Figma용 `dist/code.js`, 인라인 스크립트·스타일을 담은 `dist/ui.html`, 브라우저용 `dist/preview.html`을 만든다. `dist/`는 생성물이다.
+`src/ui/index.ts`는 Figma UI iframe의 시작점이다. 메시지 형식과 `Map` 직렬화는 `src/core/wire.ts`에 둔다. 브라우저 미리보기는 같은 `Controller`와 UI를 실행하고 `Host`만 가짜 Figma 데이터(`src/ui/demo.ts`)로 교체한다. 튜토리얼(`src/ui/tutorial.ts`)도 플러그인 창 안에서 같은 가짜 환경에 두 번째 `Controller`·UI를 띄워 예시 화면을 만들고 실제 창 위에 겹친다. 예시 데이터는 본체 메시지(설정·스캔·배포·플립북 만들기)로 쌓으므로 저장 형식이 바뀌어도 따라가며, 실제 `Host`와 파일 기록에는 닿지 않는다. `build.mjs`는 Figma용 `dist/code.js`, 인라인 스크립트·스타일과 Screen ID 글꼴(`src/ui/fonts/`, data URL)을 담은 `dist/ui.html`, 브라우저용 `dist/preview.html`을 만든다. `dist/`는 생성물이다.
 
 ## 코드 경계
 

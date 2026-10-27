@@ -72,7 +72,7 @@ npm run check
 | `src/core/` | Figma와 무관한 판정·계획·기록 모델(저장 키, 지문 비교, 배포 계획, 플립북·이력). 사용자 문구는 `copy.ts` |
 | `src/figma/` | Figma API 어댑터(레이어 복사, 썸네일, 지문 판독, 플립북 반영, DATA 페이지) |
 | `src/host.ts` | Controller가 쓰는 환경 계약. 실제 Figma와 미리보기용 가짜 환경이 이 계약을 구현 |
-| `src/ui/` | 플러그인 창. `demo.ts`는 미리보기·튜토리얼용 가짜 Figma 환경, `tutorial.ts`는 튜토리얼 |
+| `src/ui/` | 플러그인 창. `demo.ts`는 미리보기·튜토리얼용 가짜 Figma 환경, `tutorial.ts`는 튜토리얼, `fonts/`는 Screen ID 표시 글꼴(Roboto Condensed, SIL OFL 1.1) |
 | `test/` | Node 테스트(`npm test`) |
 | `scripts/` | 배포(`release.mjs`), 안내 그림 캡처, 미리보기 조작, 성능 측정, 문구 시트 Apps Script(`CopySync.gs`) |
 | `release/` | 팀원용 사용 안내 원본(`guide.html`)과 그림 |
