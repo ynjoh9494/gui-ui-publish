@@ -773,7 +773,9 @@ try {
   await app.locator('.screen-picker summary').click();
   const pickerSearch = app.locator('.screen-picker .picker-search');
   await pickerSearch.waitFor();
-  assert.equal(await pickerSearch.evaluate(node => node === document.activeElement), true, 'opening a screen picker focuses its search input');
+  // 포커스는 펼친 뒤 오는 toggle 이벤트에서 옮기므로, 입력이 보이자마자 확인하지 않고 옮겨질 때까지 기다린다.
+  const pickerFocused = await page.waitForFunction(() => document.activeElement?.matches('#app .screen-picker .picker-search'), null, { timeout: 2000 }).then(() => true, () => false);
+  assert.equal(pickerFocused, true, 'opening a screen picker focuses its search input');
   await pickerSearch.fill('없는 화면');
   assert.equal(await app.locator('.screen-picker [data-action=pick]:visible').count(), 0, 'search hides screens that do not match');
   assert.equal(await app.locator('.screen-picker .picker-empty').isVisible(), true);
