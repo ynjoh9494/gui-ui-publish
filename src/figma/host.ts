@@ -181,7 +181,7 @@ export function figmaHost(mode: Host['mode']): Host {
 
     findFlipbook: async (pageId, screenId) => (await findFlipbook(NS, pageId, screenId))?.id ?? null,
     listFlipbooks: pageIds => listFlipbooks(NS, pageIds),
-    inspectFlipbooks: pageIds => inspectFlipbooks(NS, pageIds),
+    inspectFlipbooks: (pageIds, originalsOnly) => inspectFlipbooks(NS, pageIds, originalsOnly),
     flipbookSpots: pageIds => flipbookSpots(NS, pageIds),
     uiFingerprint: nodeId => createFingerprintReader(sceneNode).uiFingerprint(nodeId),
     templateFromSelection,

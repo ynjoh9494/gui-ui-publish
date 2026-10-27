@@ -40,7 +40,7 @@ export interface Host extends FingerprintReader {
   tagSource(nodeId: string, screenId: string): Promise<void>;
   findFlipbook(pageId: string, flipbookId: string): Promise<string | null>;
   listFlipbooks(pageIds: string[]): Promise<Map<string, string>>;
-  inspectFlipbooks?(pageIds: string[]): Promise<{ found: Map<string, string>; spots: Record<string, FlipbookSpot> }>;
+  inspectFlipbooks?(pageIds: string[], originalsOnly?: boolean): Promise<{ found: Map<string, string>; spots: Record<string, FlipbookSpot> }>;
   flipbookSpots?(pageIds: string[]): Promise<Record<string, FlipbookSpot>>;
   templateFromSelection(): Promise<{ id: string; name: string }>;
   templateIssues?(templateId: string | null): Promise<string[]>;

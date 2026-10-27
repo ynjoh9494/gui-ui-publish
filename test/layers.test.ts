@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { COPY } from '../src/core/copy.ts';
-import { pickFlipbookFrames, syncGui } from '../src/figma/flipbook.ts';
+import { originalFlipbookFrames, pickFlipbookFrames, syncGui } from '../src/figma/flipbook.ts';
 import { COPY_KEY, copyLayers } from '../src/figma/layers.ts';
 
 // 레이어 복사의 호출 순서와 노드 생명주기를 검사한다. 실제 Figma의 복제·연결 끊기 결과는 별도로 확인한다.
@@ -303,6 +303,22 @@ test('복제한 플립북 프레임 대신 원본을 고른다', () => {
   // 원본을 지우고 복사본만 남으면 복사본을 플립북으로 본다.
   assert.equal(pickFlipbookFrames('ns', [copy]).get('fb'), copy);
   assert.equal(copy.map.get('flipbookNode'), '1:2');
+});
+
+test('플립북 페이지 일부만 읽을 때는 원본 프레임만 고르고 표식은 고치지 않는다', () => {
+  const frame = (id: string, data: Record<string, string>) => {
+    const map = new Map(Object.entries(data));
+    return { id, map, getSharedPluginData: (_ns: string, key: string) => map.get(key) ?? '' };
+  };
+  const original = frame('1:1', { flipbookOf: 'fb', flipbookNode: '1:1' });
+  const copy = frame('1:2', { flipbookOf: 'fb', flipbookNode: '1:1' });
+  assert.equal(originalFlipbookFrames('ns', [copy, original]).get('fb'), original);
+  // 원본은 읽지 않은 페이지에 있을 수 있으므로 복사본만 있으면 찾지 못한 것으로 둔다.
+  assert.equal(originalFlipbookFrames('ns', [copy]).has('fb'), false);
+  // 노드 ID를 적기 전 프레임도 고르지 않는다(모든 페이지를 읽을 때 적는다).
+  const legacy = frame('2:1', { flipbookOf: 'old' });
+  assert.equal(originalFlipbookFrames('ns', [legacy]).has('old'), false);
+  assert.deepEqual([copy.map.get('flipbookNode'), legacy.map.has('flipbookNode')], ['1:1', false]);
 });
 
 test('폭을 바꿔 다시 복사하면 마커는 크기를 두고 같은 화면의 같은 상대 위치로 옮긴다', async () => {

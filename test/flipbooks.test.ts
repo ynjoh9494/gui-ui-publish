@@ -917,6 +917,50 @@ test('플립북을 반영할 때 플립북 페이지는 한 번만 읽고 찾은
   assert.deepEqual([...known[0] ?? []], [['fb1', '1:1']], '찾은 프레임을 반영에 넘겨 페이지를 다시 훑지 않게 한다');
 });
 
+test('GUI Publish의 반영은 반영할 플립북이 기록된 페이지만 읽고, 그 페이지에서 원본을 찾지 못하면 플립북 페이지를 모두 읽는다', async () => {
+  for (const mode of ['GUI', 'UI'] as const) {
+    const store = new Store(memoryKV());
+    store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['ui', 'ui2'], flipbookPageId: 'ui' });
+    let n = 0;
+    for (const fb of planFlipbooks({ pageId: 'ui', rows: [row([], false, 'A'), row([], false, 'B')] }, new Map(), actor, 1000, () => `fb${++n}`)) {
+      store.put(keys.flipbook(fb.id), { ...fb, pageId: fb.id === 'fb2' ? 'ui2' : 'ui', category: { key: 'home', name: '홈', order: 1 } });
+    }
+    // 캔버스: 플립북 ID → [페이지, 원본 프레임 노드 ID]
+    const canvas = new Map([['fb1', ['ui', '1:1']], ['fb2', ['ui2', '2:1']]]);
+    const reads: [string[], boolean][] = [];
+    const synced: [string, string][] = [];
+    const host = {
+      kv: store.kv, mode, actor, post: () => {}, pages: () => [{ id: 'ui', name: 'UI' }, { id: 'ui2', name: 'UI 2' }],
+      templateIssues: async () => [],
+      inspectFlipbooks: async (pageIds: string[], originalsOnly?: boolean) => {
+        reads.push([[...pageIds].sort(), !!originalsOnly]);
+        const on = [...canvas].filter(([, [pageId]]) => pageIds.includes(pageId));
+        return {
+          found: new Map(on.map(([id, [, nodeId]]) => [id, nodeId])),
+          spots: Object.fromEntries(on.map(([, [pageId, nodeId]]) => [nodeId, { pageId, section: 'home', sectionName: '홈', sectionIndex: 0, index: 0 }])),
+        };
+      },
+      listFlipbooks: async () => new Map(),
+      syncFlipbook: async (settings: { pageId: string }, view: { flipbookId: string }) => { synced.push([view.flipbookId, settings.pageId]); return { nodeId: '1:1', notes: [] }; },
+    } as unknown as Host;
+    const controller = new Controller(host);
+    await controller.deliverFlipbooks({}, { targets: ['fb1'] });
+    if (mode === 'UI') {
+      assert.deepEqual(reads, [[['ui', 'ui2'], false]], 'UI Flipbook은 열 때 플립북 페이지를 모두 불러오므로 그대로 모두 읽는다');
+      continue;
+    }
+    assert.deepEqual(reads, [[['ui'], true]], 'fb2가 있는 페이지는 불러오지 않는다');
+    assert.deepEqual(synced, [['fb1', 'ui']]);
+    // 캔버스에서 fb1을 다른 플립북 페이지로 옮겼다: 기록된 페이지에 없으므로 모두 읽고 기록이 캔버스를 따라간다.
+    canvas.set('fb1', ['ui2', '2:2']);
+    reads.length = 0;
+    await controller.deliverFlipbooks({}, { targets: ['fb1'] });
+    assert.deepEqual(reads, [[['ui'], true], [['ui', 'ui2'], false]]);
+    assert.equal(controller.store.state.flipbooks.get('fb1')?.pageId, 'ui2');
+    assert.deepEqual(synced[synced.length - 1], ['fb1', 'ui2']);
+  }
+});
+
 test('캔버스 선택으로는 목록을 다시 읽지 않고, 새로고침으로 찾은 Section 이름 변경은 Chapter만 다시 쓰며 반영 중 표시를 닫는다', async () => {
   for (const light of [true, false]) {
     const posted: ToUi[] = [];

@@ -759,6 +759,16 @@ export class Controller {
     return { found, spots: await this.spots(pageIds) };
   }
 
+  // 반영 전에 읽을 캔버스. GUI Publish는 플립북 페이지를 미리 불러오지 않으므로 반영할 플립북이 기록된 페이지만 먼저 읽는다(2026-10-27 사용자 결정).
+  // 반영할 플립북의 원본 프레임을 그 페이지에서 모두 찾았을 때만 쓰고, 아니면(다른 페이지로 옮김, 복사본만 있음) 플립북 페이지를 모두 읽는다.
+  private async deliveryCanvas(flipbookIds: string[]): Promise<CanvasRead> {
+    if (this.host.mode === 'GUI' && this.host.inspectFlipbooks) {
+      const canvas = await this.host.inspectFlipbooks(this.flipbookPages(new Set(flipbookIds)), true);
+      if (flipbookIds.every(id => canvas.found.has(id))) return canvas;
+    }
+    return this.inspectFlipbooks();
+  }
+
   // 플립북 프레임의 캔버스 위치. 목록 순서에만 쓰므로 읽지 못하면 위치 없이 둔다(Screen ID 순).
   private async spots(pageIds = this.flipbookPages()): Promise<Record<string, FlipbookSpot>> {
     if (!this.host.flipbookSpots) return {};
@@ -805,9 +815,10 @@ export class Controller {
 
   // 플립북이 있는 페이지. 한 파일의 여러 페이지에 플립북을 만들 수 있다.
   // 목록에서 삭제한 플립북만 남은 페이지는 찾을 것이 없으므로 불러오지 않는다(처음 불러오는 페이지는 시간이 오래 걸린다).
-  private flipbookPages(): string[] {
+  // only: 이 플립북들이 기록된 페이지만
+  private flipbookPages(only?: ReadonlySet<string>): string[] {
     const s = this.store.state;
-    const ids = [...s.flipbooks.values()].filter(fb => fb.status === 'active').map(fb => fb.pageId ?? s.project.flipbookPageId).filter((id): id is string => !!id);
+    const ids = [...s.flipbooks.values()].filter(fb => fb.status === 'active' && (!only || only.has(fb.id))).map(fb => fb.pageId ?? s.project.flipbookPageId).filter((id): id is string => !!id);
     return [...new Set(ids)];
   }
 
@@ -1122,7 +1133,7 @@ export class Controller {
     // canvasFollowed: 부른 쪽이 방금 기록을 캔버스와 맞췄다(목록에서 옮기기·새 플립북·Section 따라가기). canvas: 이미 읽은 캔버스.
     // 읽지 못하면 기록대로 반영한다(2026-10-23 사용자 승인).
     // 읽은 캔버스는 반영에도 넘겨, 플립북 프레임을 찾으려고 페이지를 다시 훑지 않게 한다.
-    const canvas = options.canvas ?? (options.canvasFollowed ? undefined : await this.inspectFlipbooks().catch(() => undefined));
+    const canvas = options.canvas ?? (options.canvasFollowed ? undefined : await this.deliveryCanvas(requested).catch(() => undefined));
     const followed = options.canvasFollowed || !canvas ? [] : await this.followCanvas(canvas).catch(() => []);
     const targets = [...new Set([...requested, ...followed])].filter(active);
     const { templateNodeId } = s.state.project;

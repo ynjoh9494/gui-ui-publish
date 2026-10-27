@@ -480,6 +480,17 @@ export function pickFlipbookFrames<T extends { id: string; getSharedPluginData(n
   return out;
 }
 
+// 일부 페이지만 읽었을 때의 플립북 ID → 플립북 프레임. 읽지 않은 페이지에 원본이 있을 수 있으므로 적어 둔 노드 ID가 자기와 같은
+// 프레임(원본)만 고르고 표식은 고치지 않는다. 원본이 없는 플립북은 빠진다.
+export function originalFlipbookFrames<T extends { id: string; getSharedPluginData(ns: string, key: string): string }>(ns: string, frames: readonly T[]): Map<string, T> {
+  const out = new Map<string, T>();
+  for (const n of frames) {
+    const id = n.getSharedPluginData(ns, FLIPBOOK_KEY);
+    if (id && !out.has(id) && n.getSharedPluginData(ns, NODE_KEY) === n.id) out.set(id, n);
+  }
+  return out;
+}
+
 function flipbookCandidates(ns: string, page: PageNode): FrameNode[] {
   return page.findAllWithCriteria({ types: ['FRAME'], sharedPluginData: { namespace: ns, keys: [FLIPBOOK_KEY] } });
 }
@@ -529,8 +540,8 @@ function pageFlipbookSpots(ns: string, page: PageNode, spots: Record<string, Fli
   }
 }
 
-// 연결 상태와 목록 위치를 같은 페이지 로드에서 읽는다.
-export async function inspectFlipbooks(ns: string, pageIds: string[]): Promise<{ found: Map<string, string>; spots: Record<string, FlipbookSpot> }> {
+// 연결 상태와 목록 위치를 같은 페이지 로드에서 읽는다. originalsOnly: 플립북 페이지 일부만 읽을 때(원본 프레임만 찾는다)
+export async function inspectFlipbooks(ns: string, pageIds: string[], originalsOnly = false): Promise<{ found: Map<string, string>; spots: Record<string, FlipbookSpot> }> {
   const frames: FrameNode[] = [];
   const spots: Record<string, FlipbookSpot> = {};
   for (const page of await loadPages(pageIds)) {
@@ -538,7 +549,8 @@ export async function inspectFlipbooks(ns: string, pageIds: string[]): Promise<{
     frames.push(...candidates);
     pageFlipbookSpots(ns, page, spots, candidates);
   }
-  return { found: new Map([...pickFlipbookFrames(ns, frames)].map(([id, frame]) => [id, frame.id])), spots };
+  const picked = originalsOnly ? originalFlipbookFrames(ns, frames) : pickFlipbookFrames(ns, frames);
+  return { found: new Map([...picked].map(([id, frame]) => [id, frame.id])), spots };
 }
 
 // 플립북 프레임의 캔버스 위치(노드 ID → 위치). 페이지 바로 아래의 플러그인 Section과 그 안의 플립북 프레임만 본다.
