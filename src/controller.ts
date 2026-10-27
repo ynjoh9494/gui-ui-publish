@@ -117,6 +117,15 @@ export class Controller {
       switch (msg.type) {
         case 'ready':
           this.store.reload();
+          // 기록 저장 뒤 원본 표식을 지우기 전에 플러그인이 닫혔다면, 다시 열 때 마저 지운다.
+          // 이미 다른 화면으로 재배포한 프레임의 표식은 Host가 expectedScreenId로 보호한다.
+          for (const batch of this.store.state.batches.values()) {
+            for (const item of batch.unpublished ?? []) {
+              const screen = this.store.state.screens.get(item.screenId);
+              if (screen?.status === 'deleted' && !screen.source)
+                await this.host.tagSource(item.nodeId, '', item.screenId);
+            }
+          }
           // 기본 태그(추가·삭제)가 없으면 만든다.
           if (ensureSystemTags(this.store, this.host.actor)) this.store.reload();
           // Screen ID 자동 입력 전에 만든 프로젝트는 기존 화면 ID에서 Prefix·카테고리 코드를 읽고, 없으면 카테고리 이름으로 코드를 만든다.
@@ -910,7 +919,7 @@ export class Controller {
         await this.host.tagSource(item.frame.nodeId, item.screenId);
       }
       // 배포를 취소한 원본은 표식을 지워 다음 비교에서 복제 의심 없이 신규 후보로 나오게 한다. 프레임이 지워졌으면 건너뛴다.
-      for (const item of unpublished) await this.host.tagSource(item.nodeId, '');
+      for (const item of unpublished) await this.host.tagSource(item.nodeId, '', item.screenId);
       this.plans.delete(batchId);
     }
     // 확정 뒤의 플립북·DATA 실패는 확정 기록과 구분해 알린다. GUI는 그 화면을 쓰는 플립북에 바로 반영한다.

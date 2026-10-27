@@ -143,7 +143,12 @@ export interface UiRecord {
 export interface UiBaseline { flipbookId: string; fingerprint: string; fpVersion: string; nodeId: string; createdAt: number }
 
 // GUI Publish의 items.screenId는 화면 ID, UI Publish는 플립북 ID다.
-export interface Batch { id: string; team: Team; actor: Actor; committedAt: number; items: { screenId: string; version: number }[] }
+export interface Batch {
+  id: string; team: Team; actor: Actor; committedAt: number;
+  items: { screenId: string; version: number }[];
+  // 배포 취소 후 플러그인이 중단되어도 원본 프레임의 표식 제거를 재시도할 수 있게 남긴다.
+  unpublished?: { screenId: string; nodeId: string }[];
+}
 
 // 확정 뒤에 하는 플립북 반영. GUI Publish는 그 화면을 쓰는 플립북, UI Publish는 그 플립북을 맞춘다.
 export type DeliveryKind = 'flipbook';

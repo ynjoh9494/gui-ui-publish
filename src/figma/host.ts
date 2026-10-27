@@ -174,8 +174,9 @@ export function figmaHost(mode: Host['mode']): Host {
     },
     renderData: (pageId, model, rebuild) => renderDataPage(NS, pageId, model, rebuild),
 
-    async tagSource(nodeId, screenId) {
+    async tagSource(nodeId, screenId, expectedScreenId) {
       const node = await sceneNode(nodeId);
+      if (expectedScreenId && node?.getSharedPluginData(NS, SCREEN_KEY) !== expectedScreenId) return;
       node?.setSharedPluginData(NS, SCREEN_KEY, screenId);
     },
 

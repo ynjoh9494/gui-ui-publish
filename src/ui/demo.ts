@@ -176,8 +176,9 @@ export function createDemo(options: DemoOptions): Demo {
     async renderData(_pageId, model) {
       log(`${COPY.uiPreview020} ${model.screens.length}${COPY.uiPreview021} ${model.history.length}`);
     },
-    async tagSource(nodeId, screenId) {
+    async tagSource(nodeId, screenId, expectedScreenId) {
       const f = frames.find(x => x.nodeId === nodeId);
+      if (expectedScreenId && f?.tag !== expectedScreenId) return;
       if (f) f.tag = screenId;
     },
     async findFlipbook(_pageId, screenId) { return flipbooks.get(screenId) ?? null; },

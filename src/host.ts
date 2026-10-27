@@ -37,7 +37,8 @@ export interface Host extends FingerprintReader {
   ensureDataPage(pageId: string | null): Promise<string>;
   clearMarkers(): Promise<number>;
   renderData(pageId: string, model: DataModel, rebuild?: boolean): Promise<void>;
-  tagSource(nodeId: string, screenId: string): Promise<void>;
+  // expectedScreenId가 있으면 아직 그 화면의 표식일 때만 바꾼다(배포 취소 재시도 중 새 표식을 지우지 않기 위해).
+  tagSource(nodeId: string, screenId: string, expectedScreenId?: string): Promise<void>;
   findFlipbook(pageId: string, flipbookId: string): Promise<string | null>;
   listFlipbooks(pageIds: string[]): Promise<Map<string, string>>;
   inspectFlipbooks?(pageIds: string[], originalsOnly?: boolean): Promise<{ found: Map<string, string>; spots: Record<string, FlipbookSpot> }>;

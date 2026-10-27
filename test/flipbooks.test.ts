@@ -828,6 +828,10 @@ test('배포 취소는 입력 없이 화면을 사용 안 함으로 바꾸고 �
   const result = commitPlan(store, plan, { fingerprints: { [entryC.key]: 'fpc' }, thumbs: {} });
   assert.equal(result.ok, true);
   assert.deepEqual(result.committed.sort(), [entryB.key, entryC.key].sort());
+  assert.deepEqual(result.batch?.unpublished, [{ screenId: b, nodeId: '5:1' }]);
+  // 기록 저장 직후 프레임 표식 제거 전에 중단되어 같은 묶음을 재실행해도 취소 항목을 돌려준다.
+  const replay = commitPlan(store, plan, { fingerprints: {}, thumbs: {} });
+  assert.deepEqual([replay.ok, replay.replay, replay.committed.sort()], [true, true, [entryB.key, entryC.key].sort()]);
   const afterB = store.state.screens.get(b)!;
   assert.deepEqual([afterB.status, afterB.source, afterB.mergedInto, afterB.guiVersion, store.state.gui.get(b)!.length, store.state.exclusions.size], ['deleted', null, undefined, 1, 1, 0]);
   assert.ok(store.state.audit.some(x => x.action === 'screen.unpublish' && x.target === b));
@@ -835,6 +839,30 @@ test('배포 취소는 입력 없이 화면을 사용 안 함으로 바꾸고 �
   // Controller가 원본 표식을 지우면 그 프레임은 복제 의심 안내 없이 신규 후보로 나온다.
   const back = scan(null).find(e => e.frame?.nodeId === '5:1')!;
   assert.deepEqual([back.screenId, back.estimate, back.notes], [null, 'new', []]);
+});
+
+test('다시 열 때 완료된 배포 취소의 남은 원본 표식만 지운다', async () => {
+  const { store, b, scan } = withWrongScreen();
+  const entry = scan().find(e => e.screenId === b)!;
+  const draft: Draft = { ...defaultDraft('GUI', store.state, entry), included: true, unpublish: true };
+  const plan = buildPlan('GUI', store.state, scan(), { [entry.key]: draft }, actor, 'unpublish-only');
+  assert.deepEqual(plan.blockers, []);
+  assert.equal(commitPlan(store, plan, { fingerprints: {}, thumbs: {} }).ok, true);
+  const replay = commitPlan(store, plan, { fingerprints: {}, thumbs: {} });
+  assert.deepEqual([replay.ok, replay.replay, replay.committed], [true, true, [entry.key]], '취소만 있는 묶음도 재실행 시 완료 항목을 돌려준다');
+  let marker = b;
+  const errors: string[] = [];
+  const host = {
+    kv: store.kv, mode: 'GUI', actor, pages: () => [], post: (message: ToUi) => { if (message.type === 'error') errors.push(message.message); },
+    tagSource: async (_nodeId: string, screenId: string, expected?: string) => { if (!expected || marker === expected) marker = screenId; },
+  } as unknown as Host;
+  await new Controller(host).handle({ type: 'ready' });
+  assert.equal(marker, '', '중단된 배포 취소의 표식을 복구한다');
+  assert.deepEqual(errors, []);
+  marker = 'new-screen';
+  await new Controller(host).handle({ type: 'ready' });
+  assert.equal(marker, 'new-screen', '이후 새로 배포한 화면의 표식은 유지한다');
+  assert.deepEqual(errors, []);
 });
 
 test('UI 목록의 「업데이트된 화면만 보기」는 확인이 필요한 플립북만 남기고, 검색은 Screen ID도 찾는다', () => {

@@ -320,7 +320,11 @@ export function commitPlan(store: Store, plan: Plan, input: CommitInput): Commit
   if (existing) {
     const deliveries = [...store.state.deliveries.values()].filter(d => d.batchId === plan.batchId);
     const done = new Set(existing.items.map(i => i.screenId));
-    const committed = plan.items.filter(i => done.has(i.screenId)).map(i => i.entryKey);
+    const unpublished = new Set((existing.unpublished ?? []).map(i => i.screenId));
+    const committed = [
+      ...plan.items.filter(i => done.has(i.screenId)).map(i => i.entryKey),
+      ...plan.unpublished.filter(i => unpublished.has(i.screenId)).map(i => i.entryKey),
+    ];
     return { ok: true, replay: true, committed: withPrevious(plan, committed, done), conflicts: [], batch: existing, deliveries };
   }
 
@@ -404,7 +408,11 @@ export function commitPlan(store: Store, plan: Plan, input: CommitInput): Commit
     return delivery;
   });
   // 묶음 기록은 마지막에 쓴다. 이 키가 있으면 확정한 화면의 기록이 모두 끝난 것이다. 확정하지 못한 화면은 넣지 않는다.
-  const batch: Batch = { id: plan.batchId, team: plan.team, actor: plan.actor, committedAt: now, items: committed.map(i => ({ screenId: i.screenId, version: i.toVersion })) };
+  const batch: Batch = {
+    id: plan.batchId, team: plan.team, actor: plan.actor, committedAt: now,
+    items: committed.map(i => ({ screenId: i.screenId, version: i.toVersion })),
+    ...(unpublished.length ? { unpublished: unpublished.map(i => ({ screenId: i.screenId, nodeId: i.nodeId })) } : {}),
+  };
   store.put(keys.batch(batch.id), batch);
   const entryKeys = [...committed, ...exclusions, ...unpublished].map(i => i.entryKey);
   return { ok: true, replay: false, committed: withPrevious(plan, entryKeys, new Set(committed.map(i => i.screenId))), conflicts, batch, deliveries };
