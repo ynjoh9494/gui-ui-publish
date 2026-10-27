@@ -292,7 +292,7 @@ const UI_STEPS: Step[] = [
     spots: d => [d.q('.detail .fb-bottom')],
   },
   {
-    title: COPY.uiTutorial070, body: COPY.uiTutorial071,
+    title: COPY.uiTutorial070, body: COPY.uiTutorial071, isNew: true,
     async prepare(d) {
       await d.click('.tabs [data-action="text-open"]');
       await d.click('.text-view [data-action="text-import"]');

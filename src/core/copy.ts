@@ -475,7 +475,7 @@ export const COPY = {
   uiTutorial068: 'VOD 상세 버튼 위치 수정',
   uiTutorial069: '검색 결과 화면 추가',
   uiTutorial070: "텍스트 편집",
-  uiTutorial071: "플립북, 텍스트, 또는 프레임을 선택하면 불러오고 적용합니다.",
+  uiTutorial071: "플립북이나 텍스트를 골라 불러오고 적용합니다. 플립북 밖 프레임에는 텍스트를 추가합니다.",
   uiTutorial072: "플로우",
   uiTutorial073: "배포된 화면을 썸네일로 추가하고, 썸네일 가장자리 점을 다른 썸네일로 드래그해 연결합니다. GUI를 다시 배포하면 썸네일만 바뀝니다.",
   uiTutorial074: "새 기능",
