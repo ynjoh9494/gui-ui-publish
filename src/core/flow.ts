@@ -34,8 +34,6 @@ export const FLOW_SNAP = 40;
 export const FLOW_PLACEHOLDER = { w: 480, h: 270 };
 export const flowImageSize = (thumb: GuiThumb | null): { w: number; h: number } => thumb ? { w: thumb.width, h: thumb.height } : { ...FLOW_PLACEHOLDER };
 export const FLOW_DEFAULT_TITLE = COPY.flow001;
-// 더미 글자 색 #ff0000. Figma 예시처럼 텍스트 채움 불투명도를 50%로 쓴다(2026-10-23 사용자 확인).
-export const FLOW_DUMMY = { r: 1, g: 0, b: 0 };
 
 const SIDES: FlowSide[] = ['top', 'right', 'bottom', 'left'];
 export const isSide = (v: unknown): v is FlowSide => SIDES.includes(v as FlowSide);

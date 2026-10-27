@@ -1,29 +1,30 @@
 import { COPY } from '../core/copy.ts';
-import { FLOW_DUMMY, FLOW_LAYOUT, layoutFlow, type FlowPlan, type FlowThumb } from '../core/flow.ts';
+import { FLOW_LAYOUT, layoutFlow, type FlowPlan, type FlowThumb } from '../core/flow.ts';
 import { formatFrameName } from '../core/screenName.ts';
 import type { FlowRecord } from '../core/types.ts';
 import { loadThumbnailPage } from './thumbs.ts';
 
 // 플로우(2026-10-23 사용자 결정). 썸네일은 GUI 배포 때 만든 이미지를 그대로 채우고, 다시 배포되면 그 채움만 바꾼다.
 // 예시의 레이어 구조를 따른다: 플로우·화면·Connector 모두 그룹이고(배경 없음, 크기를 바꾸면 화살표도 함께 늘어난다),
-// Inter·반투명 빨간 안내 글자를 쓴다. 플러그인은 만든 뒤 내용을 고치지 않는다.
+// Inter 글자를 쓴다. 플러그인은 만든 뒤 내용을 고치지 않는다.
 
 const FLOW_KEY = 'flowOf';
 const SCREEN_KEY = 'flowScreen';
 const VERSION_KEY = 'flowVersion';
 // 썸네일이 없을 때 이미지 대신 두는 안내 글자. 썸네일을 채우면 지운다.
 const EMPTY_KEY = 'flowEmpty';
+// 글자·화살표 색 #333333. 안내 글자도 불투명도 100%로 쓴다(2026-10-27 사용자 요청: 빨강 #ff0000·50%에서 바꿈).
 const INK: RGB = { r: 0.2, g: 0.2, b: 0.2 };
 const gray = (l: number): SolidPaint[] => [{ type: 'SOLID', color: { r: l, g: l, b: l } }];
 const imageFill = (hash: string): ImagePaint[] => [{ type: 'IMAGE', imageHash: hash, scaleMode: 'FIT' }];
 
-function text(parent: ChildrenMixin, font: FontName, chars: string, size: number, name: string, width?: number, align: 'LEFT' | 'CENTER' | 'RIGHT' = 'LEFT', color: RGB = INK, opacity = 1): TextNode {
+function text(parent: ChildrenMixin, font: FontName, chars: string, size: number, name: string, width?: number, align: 'LEFT' | 'CENTER' | 'RIGHT' = 'LEFT'): TextNode {
   const t = figma.createText();
   parent.appendChild(t);
   t.fontName = font;
   t.fontSize = size;
   t.characters = chars;
-  t.fills = [{ type: 'SOLID', color, opacity }];
+  t.fills = [{ type: 'SOLID', color: INK }];
   t.lineHeight = { unit: 'PERCENT', value: 130 };
   t.name = name;
   if (width) {
@@ -86,7 +87,7 @@ export async function createFlow(ns: string, plan: FlowPlan): Promise<{ nodeId: 
       const image = layout.images.get(cell.key)!;
       const x = ox + image.x, y = oy + image.y;
       const parts: SceneNode[] = [];
-      const title = text(page, fonts.bold, COPY.flow012, L.cellTitleSize, COPY.flow041, undefined, 'LEFT', FLOW_DUMMY, 0.5);
+      const title = text(page, fonts.bold, COPY.flow012, L.cellTitleSize, COPY.flow041);
       title.x = x;
       title.y = y - L.cellTitle;
       parts.push(title);
@@ -112,7 +113,7 @@ export async function createFlow(ns: string, plan: FlowPlan): Promise<{ nodeId: 
         note.setSharedPluginData(ns, EMPTY_KEY, rect.id);
         parts.push(note);
       }
-      const caption = text(page, fonts.regular, COPY.flow013, L.captionSize, COPY.flow042, undefined, 'LEFT', FLOW_DUMMY, 0.5);
+      const caption = text(page, fonts.regular, COPY.flow013, L.captionSize, COPY.flow042);
       caption.x = x;
       caption.y = rect.y + image.h + L.captionGap;
       parts.push(caption);
@@ -130,7 +131,7 @@ export async function createFlow(ns: string, plan: FlowPlan): Promise<{ nodeId: 
       line.strokeWeight = L.line;
       line.name = COPY.flow015;
       const spot = arrow.label;
-      const label = text(page, fonts.regular, COPY.flow014, L.labelSize, COPY.flow043, undefined, 'LEFT', FLOW_DUMMY, 0.5);
+      const label = text(page, fonts.regular, COPY.flow014, L.labelSize, COPY.flow043);
       made.push(label);
       label.x = ox + (spot.align === 'right' ? spot.x + spot.width - label.width : spot.x);
       label.y = oy + (spot.anchor === 'bottom' ? spot.y - label.height : spot.y);
