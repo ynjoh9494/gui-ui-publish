@@ -1598,7 +1598,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const scales = row.uids.map(uid => row.scales[uid] ?? row.scale);
     const bulkScale = scales.length && scales.every(scale => scale === scales[0]) ? scales[0] : scales.length ? null : row.scale;
     return `<div class="create-browser">
-        <section class="create-selected-box"><header><strong>선택된 화면</strong><label class="create-bulk-scale">화면 크기 <select data-input="create-bulk-scale" data-key="${esc(row.key)}" aria-label="화면 크기 일괄 선택" ${row.uids.length ? '' : 'disabled'}>${scaleOptions(bulkScale)}</select></label></header><div class="create-selected-list"></div></section>
+        <section class="create-selected-box"><header><strong>${COPY.uiApp359}</strong><label class="create-bulk-scale">화면 크기 <select data-input="create-bulk-scale" data-key="${esc(row.key)}" aria-label="화면 크기 일괄 선택" ${row.uids.length ? '' : 'disabled'}>${scaleOptions(bulkScale)}</select></label></header><div class="create-selected-list"></div></section>
         <section class="create-available-box"><header><strong>${COPY.uiApp205} 선택</strong></header><input type="search" data-input="create-query" value="${esc(createQuery)}" placeholder="화면 검색" aria-label="화면 검색"><label class="create-filter create-switch"><input type="checkbox" role="switch" data-action="create-uncreated-only" ${createUncreatedOnly ? 'checked' : ''}><span class="switch-track" aria-hidden="true"></span><span>생성된 플립북이 없는 화면</span></label><div class="create-screen-list"></div></section>
       </div>`;
   }

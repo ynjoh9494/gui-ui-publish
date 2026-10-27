@@ -401,6 +401,7 @@ export const COPY = {
   uiApp356: '· 배포 취소',
   uiApp357: '지난 이력은 이 화면에 남고, 이 화면만 쓰던 플립북은 사용 안 함이 됩니다. 프레임은 신규 후보로 다시 등록할 수 있습니다.',
   uiApp358: '화면 검색',
+  uiApp359: '선택된 화면',
   // 튜토리얼 — src/ui/tutorial.ts. 단계마다 말풍선 제목·설명 순서다.
   uiTutorial001: '도움말',
   uiTutorial002: '튜토리얼 종료',
