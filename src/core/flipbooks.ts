@@ -250,6 +250,35 @@ export function editFlipbookScreens(store: Store, request: ScreenEditRequest, sc
   return after;
 }
 
+// 배포 화면 from의 원본으로 화면 to를 교체했을 때 from이 든 플립북을 to로 바꾼다(2026-10-27 사용자 결정).
+// 같은 플립북에 to가 이미 있으면 from만 뺀다(화면 편집처럼 화면 수에 따라 단일·여러 화면이 바뀐다).
+// to는 이번 배포 전 버전(heldVersion)으로 넣는다. 다음 GUI 반영 때 이번 배포가 이 플립북의 새 GUI·이력 행·빨간 점이 된다.
+// 넣은 자리의 크기와 넣은 시각은 from 것을 이어 쓴다. from의 지난 GUI 이력은 플립북 이력에 남는다.
+export function followMergedFlipbooks(store: Store, fromId: string, toId: string, heldVersion: number, actor: Actor): string[] {
+  const to = store.state.screens.get(toId);
+  if (!to) return [];
+  const out: string[] = [];
+  for (const before of [...store.state.flipbooks.values()]) {
+    if (before.status !== 'active' || !before.screens.some(s => s.uid === fromId)) continue;
+    const has = before.screens.some(s => s.uid === toId);
+    // 남은 화면의 크기는 그대로 둔다. 플립북 기본 크기가 바뀌어도 따라가지 않게 지금 크기를 화면마다 적는다.
+    const next = (has ? before.screens.filter(s => s.uid !== fromId)
+      : before.screens.map(s => s.uid === fromId ? { ...s, uid: toId, code: to.code, name: to.name, version: heldVersion } : s))
+      .map(s => ({ ...s, scale: s.scale ?? before.scale }));
+    const kind: FlipbookKind = before.kind === 'multi' && next.length < 2 ? 'single' : before.kind;
+    const scale = kind === 'multi' ? before.scale : 1;
+    const title = before.autoTitle ? defaultTitle(kind, next) : before.title;
+    const after: Flipbook = {
+      ...before, rev: before.rev + 1, kind, scale, screens: next, title,
+      titleNames: before.titleNames.includes(title) ? before.titleNames : [...before.titleNames, title],
+    };
+    store.put(keys.flipbook(before.id), after);
+    store.audit(actor, 'flipbook.screens', before.id, before.screens.map(x => x.code), next.map(x => x.code));
+    out.push(before.id);
+  }
+  return out;
+}
+
 // 일괄 만들기 범위. categories는 고른 카테고리 ID(미지정은 ''), kind는 기본·케이스 화면 구분이다.
 export type ScreenKind = 'all' | 'base' | 'case';
 export interface ScreenFilter { categories: ReadonlySet<string>; kind: ScreenKind; query: string }

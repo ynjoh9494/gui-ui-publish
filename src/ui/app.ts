@@ -7,7 +7,7 @@ import { textEditor } from './textEditor.ts';
 import { flowView } from './flowView.ts';
 import { pdfView } from './pdfView.ts';
 import { esc } from './html.ts';
-import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScreen, isDeletion, isPrevious, needsLink, OPTIONAL_FIELDS, renumberAutoCodes, STATUS_LABEL, validateDraft, type Draft, type DraftIndex, type InputStatus, type Validation } from '../core/drafts.ts';
+import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScreen, isDeletion, isPrevious, isUnpublish, mergesInto, needsLink, OPTIONAL_FIELDS, renumberAutoCodes, STATUS_LABEL, validateDraft, type Draft, type DraftIndex, type InputStatus, type Validation } from '../core/drafts.ts';
 import { formatTime, type HistoryRow } from '../core/history.ts';
 import { arrangeFlipbooks, buildList, guiGroupKey, placeDrafts, savedGuiDisplay, savedGuiPlace, UNCATEGORIZED, type ArrangedGroup, type GuiPlace, type ListModel } from '../core/list.ts';
 import { emptyComment, type BatchComment, type Plan } from '../core/publish.ts';
@@ -363,7 +363,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   // 왼쪽 목록에 반영할 입력값. 배포를 켠 화면만 쓴다(배포를 끄면 입력 영역이 숨고 배포에도 쓰이지 않는다).
   function shownDraft(entry: Entry): Draft | null {
     const draft = drafts.GUI[entry.key];
-    return draft?.included && !draft.notScreen && !isDeletion(entry, draft) && !isPrevious(entry, draft) ? draft : null;
+    return draft?.included && !draft.notScreen && !isUnpublish(entry, draft) && !isDeletion(entry, draft) && !isPrevious(entry, draft) ? draft : null;
   }
 
   // GUI 목록에 보이는 이름·Screen ID. 배포 전이라도 배포할 값(draftName·draftCode)을 쓴다. 화면 선택 드롭다운도 같은 값을 쓴다.
@@ -379,8 +379,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     if (!draft) return saved;
     const relation = (target: GuiPlace) => draft.relation === 'case' ? draft.baseScreenId ?? null : draft.relation === 'standalone' ? null : target.baseScreenId;
     if (registersNew('GUI', entry)) return { categoryId: draft.categoryId ?? null, baseScreenId: relation(savedGuiPlace(state!, null)) };
-    // 기존 화면 교체는 이전 화면의 카테고리를 기준으로 하고 화면 관계는 그대로 둔다.
-    if (!entry.screenId) { const target = savedGuiPlace(state!, draft.replaceScreenId ?? null); return { categoryId: draft.categoryId ?? target.categoryId, baseScreenId: target.baseScreenId }; }
+    // 기존 화면 교체는 이전 화면의 카테고리를 기준으로 하고 화면 관계는 그대로 둔다. 배포 화면으로 교체할 때도 같다.
+    if (!entry.screenId || mergesInto(entry, draft)) { const target = savedGuiPlace(state!, draft.replaceScreenId ?? entry.screenId); return { categoryId: draft.categoryId ?? target.categoryId, baseScreenId: target.baseScreenId }; }
     return { categoryId: draft.categoryId ?? saved.categoryId, baseScreenId: relation(saved) };
   }
 
@@ -1136,8 +1136,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       return { value: x.id, code: shown.code, name: shown.name, categoryId: x.categoryId };
     });
   };
-  // 신규 후보 프레임. 이름은 왼쪽 목록과 같고, ID는 프레임 이름의 대괄호 안을 보여 준다.
-  const candidateItems = (): ScreenItem[] => entries.filter(e => !e.screenId && e.frame).map(e => {
+  // 교체에 쓸 프레임: 신규 후보와 원본이 있는 다른 배포 화면(2026-10-27 사용자 요청: 잘못 배포한 화면으로도 교체).
+  // 이름·ID는 왼쪽 목록과 같고, 신규 후보의 ID는 프레임 이름의 대괄호 안을 보여 준다.
+  const candidateItems = (self: string): ScreenItem[] => entries.filter(e => e.frame && e.key !== self && (!e.screenId || (e.estimate !== 'missing' && e.estimate !== 'retired'))).map(e => {
+    if (e.screenId) return { value: e.key, ...guiDisplay(e), categoryId: state!.screens.get(e.screenId)?.categoryId };
     const parsed = parseFrameName(e.frame!.name);
     return { value: e.key, code: parsed.code ?? '', name: guiDisplay(e).name };
   });
@@ -1205,15 +1207,24 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         html += `<fieldset><legend>${COPY.uiApp047}${mixedMark(multi && !allDelete && !allReplace)}</legend>
           <label class="check"><input type="radio" name="retire" value="delete" data-field="retire" ${allDelete ? 'checked' : ''}> ${COPY.uiApp185}</label>
           ${multi ? '' : `<label class="check"><input type="radio" name="retire" value="replace" data-field="retire" ${allReplace ? 'checked' : ''}> ${COPY.uiApp186}</label>`}
-          ${!multi && allReplace ? screenPicker('replaceWith', candidateItems(), draft.replacedBy, COPY.uiApp187) : ''}</fieldset>`;
+          ${!multi && allReplace ? screenPicker('replaceWith', candidateItems(entry.key), draft.replacedBy, COPY.uiApp187) : ''}</fieldset>`;
       } else if (chosen.every(e => !!e.screenId && !!e.frame && !isPrevious(e, draftOf(t, e)))) {
         // 이미 배포한 화면도 화면이 아님으로 고를 수 있다. 프레임은 제외 목록에 넣고 화면은 사용 안 함으로 바꾼다.
+        // 하나만 고르면 그 원본으로 다른 화면을 교체할 수도 있다(2026-10-27 사용자 요청: 잘못 신규로 배포한 화면 바로잡기).
+        // 배포 취소는 화면을 사용 안 함으로 바꾸고 프레임을 신규 후보로 돌린다(2026-10-27 사용자 요청).
         const allNotScreen = chosen.every(e => draftOf(t, e).notScreen);
-        const allModify = chosen.every(e => !draftOf(t, e).notScreen);
-        html += `<fieldset><legend>${COPY.uiApp047}${mixedMark(multi && !allModify && !allNotScreen)}</legend>
+        const allMerge = chosen.every(e => mergesInto(e, draftOf(t, e)));
+        const allUnpublish = chosen.every(e => isUnpublish(e, draftOf(t, e)));
+        const allModify = chosen.every(e => { const d = draftOf(t, e); return !d.notScreen && !d.unpublish && !mergesInto(e, d); });
+        html += `<fieldset><legend>${COPY.uiApp047}${mixedMark(multi && !allModify && !allNotScreen && !allMerge && !allUnpublish)}</legend>
           <label class="check"><input type="radio" name="disposition" value="modify" data-field="disposition" ${allModify ? 'checked' : ''}> ${COPY.uiApp243}</label>
+          ${multi ? '' : `<label class="check"><input type="radio" name="disposition" value="replace" data-field="disposition" ${allMerge ? 'checked' : ''}> ${COPY.uiApp049}</label>`}
           <label class="check"><input type="radio" name="disposition" value="not-screen" data-field="disposition" ${allNotScreen ? 'checked' : ''}> ${COPY.uiApp050}</label>
+          <label class="check"><input type="radio" name="disposition" value="unpublish" data-field="disposition" ${allUnpublish ? 'checked' : ''}> ${COPY.uiApp355}</label>
+          ${!multi && allMerge ? screenPicker('replaceScreenId', registeredItems(id => id !== entry.screenId), draft.replaceScreenId, COPY.uiApp052) : ''}
           ${allNotScreen ? excludeReason : ''}</fieldset>`;
+        if (!multi && allMerge) html += `<p class="note">${COPY.uiApp353}</p>`;
+        if (allUnpublish) html += `<p class="note">${COPY.uiApp357}</p>`;
       }
       if (!multi && isPrevious(entry, draft)) html += `<p class="note">${COPY.uiApp188} ${esc(partnerName(draft.replacedBy))}. ${COPY.uiApp189}</p>`;
     }
@@ -1221,7 +1232,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     // 화면이 아님·교체 짝의 이전 화면은 정보를 입력하지 않는다.
     const inputs = showInputs && chosen.every(e => {
       const d = draftOf(t, e);
-      return !d.notScreen && !isPrevious(e, d) && !(t === 'GUI' && e.estimate === 'missing' && d.retire === 'replace');
+      return !d.notScreen && !d.unpublish && !isPrevious(e, d) && !(t === 'GUI' && e.estimate === 'missing' && d.retire === 'replace');
     });
     if (inputs) {
       const deleting = t === 'GUI' && chosen.every(e => isDeletion(e, draftOf(t, e)));
@@ -1240,7 +1251,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         const d = draftOf(t, e);
         return e.estimate !== 'missing' && !d.notScreen;
       })) html += categoryField(entry, draft, multi, common(d => d.categoryId), mixed(d => d.categoryId));
-      if (t === 'GUI' && chosen.every(e => registersNew(t, e) || (!!e.screenId && e.estimate !== 'missing'))) {
+      // 교체는 화면 관계를 입력받지 않는다(교체할 화면의 관계를 그대로 둔다).
+      if (t === 'GUI' && chosen.every(e => registersNew(t, e) || (!!e.screenId && e.estimate !== 'missing' && !mergesInto(e, draftOf(t, e))))) {
         const relation = common(d => d.relation);
         const allCase = relation === 'case';
         const baseMixed = allCase && mixed(d => d.baseScreenId);
@@ -1378,13 +1390,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
 
   function missingRequired(t: Team, entry: Entry, field: string): boolean {
     const draft = draftOf(t, entry);
-    if (!draft.included || draft.notScreen || isPrevious(entry, draft)) return false;
+    if (!draft.included || draft.notScreen || draft.unpublish || isPrevious(entry, draft)) return false;
     if (t === 'GUI' && entry.estimate === 'missing' && draft.retire === 'replace') return field === 'replaceWith' && !draft.replacedBy;
     if (field === 'workerId') return !draft.workerId;
     if (field === 'tagId') return !draft.tagId;
     if (t !== 'GUI' || isDeletion(entry, draft)) return false;
     if (field === 'code') return !draftCode(state!, entry, draft).trim();
-    if (field === 'replaceScreenId') return needsLink(entry) && draft.link === 'replace' && !draft.replaceScreenId;
+    if (field === 'replaceScreenId') return ((needsLink(entry) && draft.link === 'replace') || mergesInto(entry, draft)) && !draft.replaceScreenId;
     if (field === 'name') return !draftName(state!, entry, draft);
     if (field === 'categoryId') return (registersNew(t, entry) || entry.categoryMissing) && !draft.categoryId && !draft.newCategoryName?.trim();
     if (field === 'baseScreenId') return draft.relation === 'case' && !draft.baseScreenId;
@@ -1448,8 +1460,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         return ` <small>${COPY.uiApp057}: ${esc(relationLabel(before))} → ${esc(relationLabel(item.baseScreenId))}</small>`;
       return item.baseScreenId ? ` <small>${COPY.uiApp091} ${esc(state!.screens.get(item.baseScreenId)?.name ?? '')}</small>` : '';
     };
+    // 다른 화면을 교체해 사용 안 함이 되는 배포 화면
+    const mergeNote = (item: Plan['items'][number]) => {
+      const from = item.mergeFrom ? state!.screens.get(item.mergeFrom.screenId) : null;
+      return from ? ` <small>${COPY.uiApp354} ${esc([from.code, from.name].filter(Boolean).join(' '))}</small>` : '';
+    };
     const summary = plan.team === 'GUI'
-      ? `${COPY.uiApp073} ${c.new} ${COPY.uiApp074} ${c.changed} ${COPY.uiApp184} ${c.deleted} ${COPY.uiApp077} ${plan.exclusions.length} ${COPY.uiApp078} ${c.metadata} ${COPY.uiApp079} ${plan.held}`
+      ? `${COPY.uiApp073} ${c.new} ${COPY.uiApp074} ${c.changed} ${COPY.uiApp184} ${c.deleted} ${COPY.uiApp077} ${plan.exclusions.length} ${COPY.uiApp356} ${plan.unpublished.length} ${COPY.uiApp078} ${c.metadata} ${COPY.uiApp079} ${plan.held}`
       : `${COPY.uiApp080} ${c.ui}${COPY.uiApp081} ${COPY.uiApp184} ${c.deleted}${COPY.uiApp081}`;
     overlay.hidden = false;
     overlay.innerHTML = `<div class="dialog" role="dialog" aria-modal="true" aria-label="${COPY.uiApp039}">
@@ -1460,12 +1477,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         <div><button class="link" data-action="goto" data-key="${esc(b.entryKey)}">${esc(b.name || COPY.uiApp084)}</button> ${b.messages.map(esc).join(' · ')}</div>`).join('')}</div>` : ''}
       <table class="items"><thead><tr><th>${COPY.uiApp085}</th><th>${COPY.uiApp086}</th><th>${COPY.uiApp087}</th><th>${COPY.uiApp088}</th><th>${COPY.uiApp089}</th>${plan.team === 'UI' ? `<th>${COPY.uiApp090}</th>` : ''}</tr></thead><tbody>
       ${plan.items.map(i => `<tr>
-        <td>${esc(i.name)}${relationNote(i)}${i.isNew && i.newCategoryName ? ` <small>${COPY.uiApp092} ${esc(i.newCategoryName)}</small>` : ''}${!i.isNew && i.fromCategoryId !== i.categoryId ? ` <small>${COPY.uiApp093} ${esc(catName(i.fromCategoryId))} → ${esc(catName(i.categoryId))}</small>` : ''}</td>
+        <td>${esc(i.name)}${relationNote(i)}${mergeNote(i)}${i.isNew && i.newCategoryName ? ` <small>${COPY.uiApp092} ${esc(i.newCategoryName)}</small>` : ''}${!i.isNew && i.fromCategoryId !== i.categoryId ? ` <small>${COPY.uiApp093} ${esc(catName(i.fromCategoryId))} → ${esc(catName(i.categoryId))}</small>` : ''}</td>
         <td>${i.team === 'UI' && i.workType === 'changed' ? 'UI' : i.workType ? WORK_LABEL[i.workType] : 'UI'}</td>
         <td>${i.team} ${i.fromVersion ? `v${i.fromVersion} → ` : ''}v${i.toVersion}</td>
         <td><span class="chip" style="--c:${esc(i.tag.color)}">${esc(i.tag.name)}</span></td>
         <td>${esc(i.worker.name)}</td>${plan!.team === 'UI' ? `<td>${esc(i.description)}</td>` : ''}</tr>`).join('')}
       ${plan.exclusions.map(e => `<tr><td>${esc(e.name)}</td><td>${COPY.uiApp050}</td><td>—</td><td>—</td><td>${esc(e.reason)}</td></tr>`).join('')}
+      ${plan.unpublished.map(e => `<tr><td>${esc(e.name)}</td><td>${COPY.uiApp355}</td><td>—</td><td>—</td><td>—</td></tr>`).join('')}
       </tbody></table>
       <p class="note">${COPY.uiApp094}</p>
       <div class="dialog-actions">
@@ -2243,6 +2261,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const entry = entries.find(e => e.key === newKey);
     if (entry && state) clearFill(state, entry, n, n.replaceScreenId);
     n.replaceScreenId = undefined;
+    // 배포 화면은 비운 카테고리 입력을 자기 카테고리로 되돌린다(Screen ID는 비우면 저장값을 쓴다).
+    const own = entry?.screenId ? state?.screens.get(entry.screenId) : null;
+    if (own && n.categoryId === undefined && !entry!.categoryMissing) n.categoryId = own.categoryId ?? undefined;
   }
   function unpairScreen(screenKey: string) {
     const d = guiDraft(screenKey);
@@ -2251,16 +2272,20 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     if (n?.replaceScreenId === screenKey) { n.replaceScreenId = undefined; n.included = false; }
     d.replacedBy = undefined;
   }
+  // newKey는 신규 후보 또는 다른 화면을 교체하는 배포 화면이다. 교체하는 화면은 교체될 수 없고 교체될 화면은 다른 화면을 교체할 수 없으므로
+  // 양쪽의 반대 짝은 먼저 푼다. 교체될 배포 화면은 「화면 수정」으로 돌린다.
   function pair(newKey: string, screenKey: string) {
     const n = guiDraft(newKey), d = guiDraft(screenKey);
     if (!n || !d) return;
     if (n.replaceScreenId !== screenKey) unpairNew(newKey);
     if (d.replacedBy !== newKey) unpairScreen(screenKey);
-    Object.assign(n, { included: true, notScreen: false, link: 'replace', replaceScreenId: screenKey });
+    if (n.replacedBy) unpairScreen(newKey);
+    if (d.link === 'replace') { unpairNew(screenKey); d.link = undefined; }
+    Object.assign(n, { included: true, notScreen: false, unpublish: false, link: 'replace', replaceScreenId: screenKey });
     // 이전 화면의 Screen ID·카테고리를 채운다.
     if (state) fillFromScreen(state, n, screenKey);
     defaultTag(n, null);
-    Object.assign(d, { included: true, notScreen: false, replacedBy: newKey });
+    Object.assign(d, { included: true, notScreen: false, unpublish: false, replacedBy: newKey });
     if (isMissing(screenKey)) d.retire = 'replace';
   }
   // 포함을 켜고 끈다. 짝이 있으면 두 항목을 함께 바꾼다. 자동으로 찾은 짝(잘라내 붙인 프레임)은 꺼도 기본값으로 남긴다.
@@ -2278,6 +2303,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
           if (entries.find(e => e.key === d.replaceScreenId)?.pairKey !== entry.key) releaseScreen(d.replaceScreenId);
         }
       }
+      return;
+    }
+    // 다른 화면을 교체하는 배포 화면은 신규 후보의 교체처럼 짝을 함께 켜고 끈다. 끄면 교체할 화면은 짝에서 놓되 고른 화면은 기억한다.
+    if (mergesInto(entry, d) && d.replaceScreenId) {
+      if (checked && guiDraft(d.replaceScreenId)) { pair(entry.key, d.replaceScreenId); return; }
+      d.included = checked;
+      if (!checked && guiDraft(d.replaceScreenId)?.replacedBy === entry.key) releaseScreen(d.replaceScreenId);
       return;
     }
     if (checked && d.replacedBy && guiDraft(d.replacedBy) && (entry.estimate !== 'missing' || d.retire === 'replace')) { pair(d.replacedBy, entry.key); return; }
@@ -3168,9 +3200,21 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       case 'disposition': {
         for (const selectedEntry of selectedEntries(t)) {
           const target = draftOf(t, selectedEntry);
-          // 배포한 화면: 화면 수정 또는 화면이 아님
+          // 배포한 화면: 화면 수정, 기존 화면 교체(하나만 골랐을 때), 화면이 아님 또는 배포 취소
           if (!needsLink(selectedEntry)) {
-            if (selectedEntry.frame) target.notScreen = el.value === 'not-screen';
+            if (!selectedEntry.frame) continue;
+            if (el.value === 'replace') {
+              target.link = 'replace';
+              target.notScreen = false;
+              target.unpublish = false;
+              defaultTag(target, null);
+              if (target.replaceScreenId) pair(selectedEntry.key, target.replaceScreenId);
+              continue;
+            }
+            unpairNew(selectedEntry.key);
+            target.link = undefined;
+            target.notScreen = el.value === 'not-screen';
+            target.unpublish = el.value === 'unpublish';
             continue;
           }
           if (el.value === 'replace') {

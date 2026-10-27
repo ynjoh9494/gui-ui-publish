@@ -12,7 +12,9 @@ export interface Draft {
   // 화면이 아님: 신규 후보 또는 이미 배포한 화면의 프레임을 제외 목록에 넣는다. 배포한 화면은 사용 안 함으로 바꾼다.
   notScreen?: boolean;
   excludeReason?: string;
-  // GUI 신규 후보: 새 화면으로 등록할지 기존 화면을 교체할지
+  // 배포 취소: 원본이 있는 배포 화면을 사용 안 함으로 바꾸고 원본 연결을 끊는다. 프레임은 제외하지 않으므로 다시 신규 후보로 나온다.
+  unpublish?: boolean;
+  // GUI 신규 후보: 새 화면으로 등록할지 기존 화면을 교체할지. 원본이 있는 배포 화면도 'replace'로 다른 화면을 교체할 수 있다.
   link?: 'new' | 'replace';
   replaceScreenId?: string;
   // GUI 원본이 사라진 화면(삭제): 사용 안 함으로 기록할지 다른 프레임으로 교체할지
@@ -65,6 +67,11 @@ export function isNotScreen(entry: Entry, draft: Draft): boolean {
   return !!draft.notScreen && !!entry.frame && entry.estimate !== 'retired';
 }
 
+// 원본이 있는 배포 화면의 배포를 취소하는가(2026-10-27 사용자 요청). 화면은 사용 안 함이 되고 프레임은 신규 후보로 돌아간다.
+export function isUnpublish(entry: Entry, draft: Draft): boolean {
+  return entry.screenId !== null && !!entry.frame && entry.estimate !== 'missing' && entry.estimate !== 'retired' && !!draft.unpublish;
+}
+
 // 원본이 사라진 등록 화면을 사용 안 함으로 기록하는가
 export function isDeletion(entry: Entry, draft: Draft): boolean {
   return entry.screenId !== null && entry.estimate === 'missing' && draft.retire !== 'replace';
@@ -73,6 +80,18 @@ export function isDeletion(entry: Entry, draft: Draft): boolean {
 // 교체 짝의 이전 화면인가. 이전 화면은 기록을 만들지 않고 짝인 신규 후보가 그 화면의 새 버전이 된다.
 export function isPrevious(entry: Entry, draft: Draft): boolean {
   return entry.screenId !== null && !!draft.replacedBy && (entry.estimate !== 'missing' || draft.retire === 'replace');
+}
+
+// 원본이 있는 배포 화면으로 다른 화면을 교체하는가(2026-10-27 사용자 요청: 잘못 신규로 배포한 화면 바로잡기).
+// 교체할 화면이 이 원본으로 새 버전이 되고, 이 화면은 사용 안 함이 되며 플립북·플로우·케이스는 교체할 화면으로 옮긴다.
+export function mergesInto(entry: Entry, draft: Draft): boolean {
+  return entry.screenId !== null && !!entry.frame && entry.estimate !== 'missing' && entry.estimate !== 'retired'
+    && draft.link === 'replace' && !draft.notScreen && !draft.unpublish;
+}
+
+// 이 프레임이 새 버전이 될 기존 화면. 신규 후보와 배포 화면 모두 교체를 골랐을 때만 있다.
+export function replaceTarget(entry: Entry, draft: Draft): string | null {
+  return (needsLink(entry) && draft.link === 'replace') || mergesInto(entry, draft) ? draft.replaceScreenId ?? null : null;
 }
 
 // 초안에서 정해지는 작업 종류. 화면 교체는 기존 화면의 변경으로 기록한다.
@@ -88,7 +107,7 @@ export function draftCode(state: State, entry: Entry, draft: Draft): string {
   const parsed = !entry.screenId && entry.frame ? parseFrameName(entry.frame.name).code : null;
   if (parsed) return parsed;
   if (isNewRegistration('GUI', entry, draft)) return '';
-  const target = draft.link === 'replace' && needsLink(entry) ? draft.replaceScreenId : entry.screenId;
+  const target = replaceTarget(entry, draft) ?? entry.screenId;
   return (target ? state.screens.get(target)?.code : '') ?? '';
 }
 
@@ -128,7 +147,8 @@ export function codeOwner(state: State, code: string, self: string | null, draft
       if (draft.replacedBy) {
         const replacement = drafts[draft.replacedBy];
         if (replacement?.included && plannedCode(draft.replacedBy, replacement) !== code) continue;
-      } else if (draft.retire === 'delete' || draft.notScreen || plannedCode(s.id, draft) !== code) continue;
+      // 삭제·화면이 아님·배포 취소·다른 화면을 교체하는 배포 화면은 사용 안 함이 되므로 그 ID를 비운다.
+      } else if (draft.retire === 'delete' || draft.notScreen || draft.unpublish || (draft.link === 'replace' && draft.replaceScreenId) || plannedCode(s.id, draft) !== code) continue;
     }
     return s.id;
   }
@@ -248,7 +268,7 @@ function filled(v: string | undefined): boolean { return !!v && v.trim().length 
 // drafts: 같은 탭의 다른 초안. 교체 짝(신규 후보 ↔ 이전 화면)이 서로를 가리키는지 확인한다.
 export function validateDraft(team: Team, state: State, entry: Entry, draft: Draft | undefined, drafts: Record<string, Draft> = {}, entries: Entry[] = [], index?: DraftIndex): Validation {
   if (!draft?.included) return { status: 'excluded', missing: [], errors: [] };
-  if (team === 'GUI' && isNotScreen(entry, draft))
+  if (team === 'GUI' && (isNotScreen(entry, draft) || isUnpublish(entry, draft)))
     return { status: 'ready', missing: [], errors: [] };
   if (team === 'GUI' && isPrevious(entry, draft)) {
     const partner = drafts[draft.replacedBy!];
@@ -298,21 +318,24 @@ function validateGui(state: State, entry: Entry, draft: Draft, drafts: Record<st
   const code = draftCode(state, entry, draft);
   if (!code) missing.push(COPY.coreDrafts029);
   else {
-    const self = needsLink(entry) ? (draft.link === 'replace' ? draft.replaceScreenId ?? null : null) : entry.screenId;
+    const self = replaceTarget(entry, draft) ?? (needsLink(entry) ? null : entry.screenId);
     const owner = codeOwner(state, code, self, drafts, entries, index);
     if (owner) errors.push(`${COPY.coreDrafts030} ${state.screens.get(owner)!.name}`);
   }
   if (!draftName(state, entry, draft)) missing.push(COPY.coreDrafts019);
 
-  if (needsLink(entry)) {
+  const merging = mergesInto(entry, draft);
+  if (needsLink(entry) || merging) {
     if (draft.link === 'replace') {
       const target = draft.replaceScreenId ? state.screens.get(draft.replaceScreenId) : null;
-      if (!target) { missing.push(COPY.coreDrafts014); return; }
+      if (!target || target.id === entry.screenId) { missing.push(COPY.coreDrafts014); return; }
       if (target.status !== 'active') errors.push(COPY.coreDrafts015);
       if (draft.categoryId && !state.categories.get(draft.categoryId)?.active) errors.push(COPY.coreDrafts021);
       // 원본이 남아 있는 화면도 교체할 수 있다. 그 원본은 배포 뒤 목록에서 제외한다(2026-10-20 사용자 결정).
       const partner = drafts[target.id];
       if (partner && !(partner.included && partner.replacedBy === entry.key)) errors.push(COPY.coreDrafts032);
+      // 다른 화면을 교체하는 배포 화면은 그 자신이 교체될 수 없다.
+      if (merging && draft.replacedBy) errors.push(COPY.coreDrafts032);
       if (entry.frame?.error) errors.push(`${COPY.coreDrafts027} ${entry.frame.error}`);
       return;
     }

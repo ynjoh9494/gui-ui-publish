@@ -1,6 +1,6 @@
 import { COPY } from './copy.ts';
-import { guiScreenInfo } from './guiScreens.ts';
-import type { State } from './store.ts';
+import { formerUids, guiScreenInfo } from './guiScreens.ts';
+import { keys, type State, type Store } from './store.ts';
 import type { Actor, FlowRecord, GuiThumb } from './types.ts';
 
 // 플로우(2026-10-23 사용자 결정): 배포된 화면을 놓고 꺾인 화살표로 잇는 독립 그룹. UI Flipbook의 부가 기능이다.
@@ -303,16 +303,30 @@ export function layoutFlow(cells: { key: string; x: number; y: number; w: number
 // ── 다시 배포된 화면 ───────────────────────────────────
 
 // 플로우 썸네일을 바꿀 화면: 마지막 배포에 썸네일이 있는 화면만. 사용 안 함이 된 화면은 마지막 이미지를 그대로 둔다.
-export interface FlowThumb { uid: string; version: number; thumb: GuiThumb }
+// formerUids: 이 화면이 이어받은(교체해 사용 안 함이 된) 화면. 캔버스 칸에 그 표식이 남아 있으면 이 화면으로 바꿔 읽는다.
+export interface FlowThumb { uid: string; version: number; thumb: GuiThumb; formerUids?: string[] }
 export function flowUpdates(state: State, uids: Set<string>): { flows: FlowRecord[]; thumbs: FlowThumb[] } {
   const thumbs: FlowThumb[] = [];
+  const former = formerUids(state);
   for (const uid of uids) {
     const screen = state.screens.get(uid);
     const info = screen && guiScreenInfo(state, screen);
-    if (info && info.status === 'active' && info.thumb) thumbs.push({ uid, version: info.version, thumb: info.thumb });
+    if (info && info.status === 'active' && info.thumb) thumbs.push({ uid, version: info.version, thumb: info.thumb, ...(former.has(uid) ? { formerUids: former.get(uid) } : {}) });
   }
   const wanted = new Set(thumbs.map(t => t.uid));
   return { flows: [...state.flows.values()].filter(f => f.uids.some(uid => wanted.has(uid))), thumbs };
+}
+
+// 배포 화면 from의 원본으로 화면 to를 교체했을 때 from이 든 플로우 기록을 to로 바꾼다(2026-10-27 사용자 결정).
+// 캔버스 칸의 표식은 다음 썸네일 업데이트 때 바꾼다(FlowThumb.formerUids). 이력 행·감사 기록은 남기지 않는다.
+export function followMergedFlows(store: Store, fromId: string, toId: string): string[] {
+  const out: string[] = [];
+  for (const flow of [...store.state.flows.values()]) {
+    if (!flow.uids.includes(fromId)) continue;
+    store.put(keys.flow(flow.id), { ...flow, uids: [...new Set(flow.uids.map(uid => uid === fromId ? toId : uid))] } satisfies FlowRecord);
+    out.push(flow.id);
+  }
+  return out;
 }
 
 // ── 플로우 목록 ───────────────────────────────────────

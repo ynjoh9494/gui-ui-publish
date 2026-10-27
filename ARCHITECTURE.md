@@ -63,7 +63,7 @@ flowchart LR
 | `cat:`, `wrk:`, `tag:`, `exc:`, `aud:`, `data` | 관리 항목, 제외, 감사 기록, DATA 렌더 상태 |
 | `flw:{id}` | 플로우 그룹의 위치(페이지·노드)와 들어 있는 화면. 다시 배포된 화면의 썸네일을 바꾸려고 찾고 플로우 목록에 보여 주며 이력 행은 없다(만들기·삭제는 `audit:`에만 남는다). 캔버스에서 그룹이 지워졌으면 업데이트·목록 열기·이동 때 지운다. 썸네일마다의 화면·버전은 그룹 안 사각형의 `flowScreen`·`flowVersion` 표식에 둔다 |
 
-내부 화면 ID(`Screen.id`)는 플립북의 `uid`로도 쓰는 고정 식별자다. 사람이 보는 Screen ID(`Screen.code`)와 화면 이름은 별도 기록이며 GUI 원본 프레임 이름을 바꾸지 않는다. 원본 프레임의 `screenId`, 플립북 프레임의 `flipbookOf`·`flipbookNode`, GUI 복사본의 표식 등 노드 `sharedPluginData`는 기록과 캔버스를 연결한다. UI 창 크기만 사용자별 `figma.clientStorage`에 저장한다.
+내부 화면 ID(`Screen.id`)는 플립북의 `uid`로도 쓰는 고정 식별자다. 사람이 보는 Screen ID(`Screen.code`)와 화면 이름은 별도 기록이며 GUI 원본 프레임 이름을 바꾸지 않는다. 원본 프레임의 `screenId`, 플립북 프레임의 `flipbookOf`·`flipbookNode`, GUI 복사본의 표식 등 노드 `sharedPluginData`는 기록과 캔버스를 연결한다. 다른 화면을 교체해 사용 안 함이 된 화면은 `Screen.mergedInto`에 이어받은 화면을 남기며, 캔버스에 남은 그 화면의 GUI 복사본 표식(마커 기준)과 플로우 칸 표식은 `formerUids()`로 이어받은 화면으로 읽는다. UI 창 크기만 사용자별 `figma.clientStorage`에 저장한다.
 
 키를 화면·플립북·버전별로 나눠 관련 없는 화면의 쓰기가 같은 키를 덮어쓰지 않게 했다. `Store.reload()`는 원시 값이 바뀌었을 때 상태를 다시 만들고, 확정 직전의 충돌 검사는 `readFresh()`로 해당 키를 직접 읽는다. GUI 확정은 `Screen.rev`, 남아 있는 UI Publish 경로는 `UiState.rev`로 동시 변경을 검사한다. 이 설계는 파일 전체의 원자적 트랜잭션을 제공하지 않으므로, 아래의 배포 기록과 캔버스 반영을 별도 단계로 다룬다.
 
@@ -74,7 +74,7 @@ flowchart LR
 1. `Controller.scan()`이 설정된 GUI 페이지의 최상위 또는 Section 안 화면 루트를 `Host.listFrames()`로 모은다. 저장된 원본 연결과 비교해 신규·변경·원본 없음·비교 전 등의 목록을 만든다.
 2. `Snapshotter`가 화면에 영향을 주는 노드 속성과 변수의 해석 값을 수집한다. `core/fingerprint.ts`가 이름과 루트 캔버스 위치를 제외하고 정규화해 해시를 만든다. 구형 지문이 기준인 화면은 구형 해시도 계산해, 결과가 같을 때 새 정규화 기준으로 옮긴다.
 3. UI 입력 초안을 `buildPlan()`이 검증해 최종 확인용 계획을 만든다. 확정 시 `Controller.commit()`은 대상 원본 지문을 다시 계산하고 필요한 JPG 썸네일을 만든다. `commitPlan()`은 저장된 `rev`, 지문, Screen ID 충돌 등을 재검사한다.
-4. 통과한 화면마다 GUI 버전·화면 상태를 저장하고 묶음 기록을 남긴다. 일부 화면이 충돌하면 나머지만 확정하고 충돌 항목은 다시 입력할 수 있게 돌려준다. 원본 프레임에는 연결 표식만 남긴다.
+4. 통과한 화면마다 GUI 버전·화면 상태를 저장하고 묶음 기록을 남긴다. 일부 화면이 충돌하면 나머지만 확정하고 충돌 항목은 다시 입력할 수 있게 돌려준다. 원본 프레임에는 연결 표식만 남긴다. 배포 화면의 원본으로 다른 화면을 교체한 항목(`PlanItem.mergeFrom`)은 모든 화면을 기록한 뒤 교체에 쓴 화면을 사용 안 함으로 바꾸고 `Screen.mergedInto`를 남기며, 그 화면의 케이스·플립북(`followMergedFlipbooks()`)·플로우(`followMergedFlows()`) 기록을 교체한 화면으로 옮긴다. 배포 취소(`Plan.unpublished`)는 화면을 사용 안 함으로 바꾸고 원본 연결을 끊으며, Controller가 원본의 화면 표식을 지운다.
 5. 확정 뒤 썸네일을 캔버스에 놓고, 그 화면을 쓰는 플립북에 새 GUI 이력을 가져와 반영하고, 그 화면이 든 플로우의 썸네일 채움을 바꾼 다음(`updateFlows()`, 그룹이 없으면 `flw:` 기록 삭제) DATA 페이지를 갱신한다. 썸네일·플립북·플로우·DATA 실패는 확정 기록과 구분해 보고한다.
 
 새 버전 페이지에서는 `versionMatch.ts`가 새 프레임의 지문·텍스트·이미지·레이어 특징과 기존 원본을 비교해 연결을 제안한다. 사용자가 확인한 연결로 `Screen.source`와 GUI 범위를 옮긴다. 이 작업 자체는 GUI 버전을 만들지 않는다.

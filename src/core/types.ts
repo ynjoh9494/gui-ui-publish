@@ -78,6 +78,9 @@ export interface Screen {
   guiTag: TagSnapshot | null;
   // 「변경 무시」로 등록한 비교 기준. 다음 GUI 버전을 확정하면 지운다.
   ack?: GuiAck | null;
+  // 이 화면의 원본으로 다른 화면을 교체해 사용 안 함이 되었을 때 그 화면 ID(잘못 신규로 배포한 화면 바로잡기).
+  // 플립북 GUI 복사본·플로우 칸에 남은 이 화면의 표식은 그 화면을 따라간다.
+  mergedInto?: string;
   createdAt: number;
 }
 

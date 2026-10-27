@@ -20,7 +20,7 @@ export const WORK_LABEL: Record<WorkType, string> = { new: '신규', changed: '�
 // GUI 목록의 상태 아이콘(2026-10-20 사용자 결정). 앞의 여섯 개는 변경사항 확인 결과, 나머지는 배포를 켠 뒤의 상태다.
 export const GUI_STATE_LABEL = {
   'detected-new': '신규', 'detected-change': '변경 감지', 'detected-delete': '삭제', unchanged: '변경사항 없음', pending: '비교 전', failed: '비교 불가',
-  added: '추가됨', replaced: '화면 교체됨', previous: '이전 버전', 'not-screen': '화면이 아님', modified: '수정됨', deleted: '삭제됨',
+  added: '추가됨', replaced: '화면 교체됨', previous: '이전 버전', 'not-screen': '화면이 아님', unpublished: '배포 취소', modified: '수정됨', deleted: '삭제됨',
 } as const;
 export type GuiState = keyof typeof GUI_STATE_LABEL;
 export const UI_STATE_LABEL = {
@@ -47,6 +47,7 @@ export const GUI_STATE_HINT: Record<GuiState, string> = {
   replaced: '기존 화면을 이 프레임으로 교체합니다. 기존 화면의 새 버전으로 기록합니다.',
   previous: '다른 프레임으로 교체됩니다. 배포 뒤 이 프레임은 목록에서 제외합니다.',
   'not-screen': '배포 뒤 이 프레임은 목록에서 제외합니다.',
+  unpublished: '배포 뒤 이 화면은 사용 안 함이 되고 원본 연결을 끊습니다. 프레임은 신규로 다시 나옵니다.',
   modified: '변경 내용을 배포합니다.',
   deleted: '배포 뒤 이 화면은 사용 안 함으로 바뀌고 목록에서 빠집니다.',
 };
@@ -395,6 +396,11 @@ export const COPY = {
   uiApp350: '플립북',
   uiApp351: '적용 중…',
   uiApp352: '플립북을 새로 만들지 않고 화면을 더하거나 바꾸고, 빼거나 순서·크기를 바꿉니다.',
+  uiApp353: '배포하면 이전 화면이 이 원본으로 새 버전이 되고, 이 화면은 사용 안 함이 됩니다. 이 화면이 든 플립북·플로우와 케이스는 이전 화면으로 옮기고, 지난 이력은 이 화면에 남습니다.',
+  uiApp354: '사용 안 함으로 바꿀 화면:',
+  uiApp355: '배포 취소',
+  uiApp356: '· 배포 취소',
+  uiApp357: '지난 이력은 이 화면에 남고, 이 화면만 쓰던 플립북은 사용 안 함이 됩니다. 프레임은 신규 후보로 다시 등록할 수 있습니다.',
   // 튜토리얼 — src/ui/tutorial.ts. 단계마다 말풍선 제목·설명 순서다.
   uiTutorial001: '도움말',
   uiTutorial002: '튜토리얼 종료',
@@ -410,7 +416,7 @@ export const COPY = {
   uiTutorial012: '검색·필터',
   uiTutorial013: '화면 이름으로 찾고, 보이는 화면을 모두 배포에 넣거나 변경된 화면만 볼 수 있습니다.',
   uiTutorial014: '배포',
-  uiTutorial015: '켜면 이번 배포에 포함됩니다. 새 화면으로 등록할지, 기존 화면을 교체할지, 화면이 아닌지 고릅니다.',
+  uiTutorial015: '켜면 이번 배포에 포함됩니다. 새 화면으로 등록할지, 기존 화면을 교체할지, 화면이 아닌지 고릅니다. 이미 배포한 화면은 배포를 취소할 수도 있습니다.',
   uiTutorial016: '화면 정보',
   uiTutorial017: '화면 이름, Screen ID, 카테고리, 독립·케이스 관계를 정합니다. Screen ID는 관리에서 정한 규칙대로 자동 입력되며 직접 고칠 수 있습니다.',
   uiTutorial018: '태그·작업자',
@@ -518,6 +524,7 @@ export const COPY = {
   coreDrafts032: '교체 짝이 맞지 않습니다. 교체할 화면을 다시 고르세요.',
   coreDrafts034: '카테고리가 삭제되어 새 카테고리를 지정해야 합니다.',
   coreDrafts035: '지문을 계산하지 못해 변경을 무시할 수 없습니다.',
+  coreDrafts036: '케이스가 연결된 화면으로는 케이스 화면을 교체할 수 없습니다. 케이스의 기본 화면을 먼저 바꾸세요.',
   // 목록의 분류 표시 — src/core/list.ts
   coreList001: '미분류', // 104
   coreList002: ' (사용 안 함)', // 104
@@ -680,6 +687,7 @@ export const COPY = {
   controller119: '플립북 제목을 바꿨습니다:',
   controller137: '플립북 화면 바꾸는 중',
   controller138: '플립북 화면을 바꿨습니다:',
+  controller139: '개 화면의 배포를 취소했습니다.',
   controller120: "텍스트 적용 중",
   controller135: "선택한 Description에 텍스트를 적용했습니다.",
   controller121: "텍스트를 적용했습니다:",

@@ -1,7 +1,9 @@
 import { COPY } from './copy.ts';
 import { baseline, entryName, UI_FINGERPRINT_VERSION, type Entry } from './compare.ts';
-import { draftCode, draftName, isNotScreen, isPrevious, needsLink, OPTIONAL_FIELDS, validateDraft, workTypeOf, type Draft } from './drafts.ts';
+import { draftCode, draftName, isNotScreen, isPrevious, isUnpublish, mergesInto, needsLink, OPTIONAL_FIELDS, replaceTarget, validateDraft, workTypeOf, type Draft } from './drafts.ts';
 import { FINGERPRINT_VERSION, LEGACY_FINGERPRINT_VERSION } from './fingerprint.ts';
+import { followMergedFlipbooks } from './flipbooks.ts';
+import { followMergedFlows } from './flow.ts';
 import { sha256 } from './hash.ts';
 import { addCategory, addExclusion, caseRelationError, findCategoryByName, workerLabel } from './registry.ts';
 import { keys, lastGui, type State, type Store } from './store.ts';
@@ -38,6 +40,9 @@ export interface PlanItem {
   description: string;
   extra: Record<string, string>;
   metadataChanged: boolean;
+  // 이 원본으로 다른 화면을 교체하는 배포 화면. 확정하면 사용 안 함으로 바꾸고 플립북·플로우·케이스를 screenId로 옮긴다.
+  // expectedRev는 확정 직전 검사 기준이다.
+  mergeFrom?: { screenId: string; expectedRev: number };
 }
 
 export interface Blocker { entryKey: string; name: string; messages: string[] }
@@ -52,6 +57,8 @@ export interface Plan {
   exclusions: { entryKey: string; nodeId: string; name: string; reason: string; replacedBy?: string; screenId?: string; expectedRev?: number }[];
   // 교체 짝의 이전 화면. 기록을 만들지 않지만 짝이 확정되면 함께 확정한 것으로 돌려준다(원본이 사라져 제외할 프레임이 없을 때도).
   previous: { entryKey: string; screenId: string }[];
+  // 배포를 취소할 화면. 사용 안 함으로 바꾸고 원본 연결을 끊는다. nodeId는 표식을 지울 원본 프레임, expectedRev는 확정 직전 검사 기준이다.
+  unpublished: { entryKey: string; screenId: string; nodeId: string; name: string; expectedRev: number }[];
   counts: { new: number; changed: number; deleted: number; metadata: number; ui: number };
   // 변경 후보이지만 이번에 포함하지 않은 항목 수
   held: number;
@@ -86,7 +93,7 @@ export function buildPlan(
   team: Team, state: State, entries: Entry[], drafts: Record<string, Draft>, actor: Actor, batchId: string, comment: BatchComment = emptyComment(),
 ): Plan {
   const plan: Plan = {
-    batchId, team, actor, items: [], exclusions: [], previous: [], blockers: [], held: 0,
+    batchId, team, actor, items: [], exclusions: [], previous: [], unpublished: [], blockers: [], held: 0,
     counts: { new: 0, changed: 0, deleted: 0, metadata: 0, ui: 0 },
   };
   const targets = new Map<string, string>();
@@ -104,6 +111,11 @@ export function buildPlan(
         entryKey: entry.key, nodeId: entry.frame!.nodeId, name: entry.frame!.name, reason: draft.excludeReason?.trim() ?? '',
         ...(screen ? { screenId: screen.id, expectedRev: screen.rev } : {}),
       });
+      continue;
+    }
+    if (team === 'GUI' && isUnpublish(entry, draft)) {
+      const screen = state.screens.get(entry.screenId!)!;
+      plan.unpublished.push({ entryKey: entry.key, screenId: screen.id, nodeId: entry.frame!.nodeId, name: screen.name, expectedRev: screen.rev });
       continue;
     }
     const name = entryName(state, entry);
@@ -144,8 +156,22 @@ export function buildPlan(
     const planned = new Map(plan.items.map(item => [item.screenId, item]));
     for (const item of plan.items) if (item.baseScreenId && planned.get(item.baseScreenId)?.baseScreenId)
       plan.blockers.push({ entryKey: item.entryKey, name: item.name, messages: [COPY.coreRegistry018] });
+    // 다른 화면을 교체하는 배포 화면의 케이스는 교체할 화면으로 옮긴다(2026-10-27 사용자 결정). 교체할 화면이 케이스면
+    // 케이스의 케이스가 되므로 막는다. 같은 배포에서 기본 화면을 바꾸거나 사용 안 함이 되는 케이스는 세지 않는다.
+    const retiring = new Set([
+      ...plan.exclusions.flatMap(x => x.screenId ? [x.screenId] : []),
+      ...plan.unpublished.map(x => x.screenId),
+      ...plan.items.flatMap(item => item.mergeFrom ? [item.mergeFrom.screenId] : item.workType === 'deleted' ? [item.screenId] : []),
+    ]);
+    for (const item of plan.items) {
+      const from = item.mergeFrom?.screenId;
+      if (!from || !item.baseScreenId) continue;
+      const cases = plan.items.some(other => other.workType !== 'deleted' && other.baseScreenId === from)
+        || [...state.screens.values()].some(s => s.status === 'active' && s.baseScreenId === from && !planned.has(s.id) && !retiring.has(s.id));
+      if (cases) plan.blockers.push({ entryKey: item.entryKey, name: item.name, messages: [COPY.coreDrafts036] });
+    }
   }
-  if (!plan.items.length && !plan.exclusions.length && !plan.blockers.length) plan.blockers.push({ entryKey: '', name: '', messages: [COPY.corePublish003] });
+  if (!plan.items.length && !plan.exclusions.length && !plan.unpublished.length && !plan.blockers.length) plan.blockers.push({ entryKey: '', name: '', messages: [COPY.corePublish003] });
   if (team === 'GUI') for (const error of commentErrors(comment)) plan.blockers.push({ entryKey: '', name: '', messages: [error] });
   return plan;
 }
@@ -177,17 +203,20 @@ function guiItem(state: State, entry: Entry, draft: Draft, batchId: string, comm
       baseScreenId: draft.relation === 'case' ? draft.baseScreenId! : null, metadataChanged: false,
     };
   }
-  const screenId = needsLink(entry) ? draft.replaceScreenId! : entry.screenId!;
+  const target = replaceTarget(entry, draft);
+  const screenId = target ?? entry.screenId!;
   const screen = state.screens.get(screenId)!;
   const categoryId = draft.categoryId ?? screen.categoryId;
   // 교체는 화면 관계를 입력받지 않으므로 이전 화면의 관계를 그대로 둔다. 신규 등록으로 골랐다가 남은 값은 쓰지 않는다.
-  const baseScreenId = needsLink(entry) ? screen.baseScreenId
+  const baseScreenId = target ? screen.baseScreenId
     : draft.relation === 'case' ? draft.baseScreenId ?? null : draft.relation === 'standalone' ? null : screen.baseScreenId;
+  const merged = mergesInto(entry, draft) ? state.screens.get(entry.screenId!)! : null;
   return {
     ...common, screenId, isNew: false, expectedRev: screen.rev, fromVersion: screen.guiVersion, toVersion: screen.guiVersion + 1,
     needsThumb: workType === 'changed', categoryId, fromCategoryId: screen.categoryId, newCategoryName: null,
     baseScreenId,
     metadataChanged: common.name !== screen.name || common.code !== screen.code || categoryId !== screen.categoryId || baseScreenId !== screen.baseScreenId,
+    ...(merged ? { mergeFrom: { screenId: merged.id, expectedRev: merged.rev } } : {}),
   };
 }
 
@@ -271,6 +300,7 @@ function checkItem(store: Store, item: PlanItem, input: CommitInput): string[] {
       if (!item.frame) out.push(COPY.corePublish008);
       else if (input.fingerprints[item.entryKey] !== item.frame.fingerprint) out.push(COPY.corePublish009);
     }
+    if (item.mergeFrom) out.push(...retireCheck(store, item.mergeFrom.screenId, item.mergeFrom.expectedRev));
   } else {
     const fresh = store.readFresh<UiState>(keys.uiState(item.screenId));
     if ((fresh?.rev ?? 0) !== item.expectedRev) out.push(COPY.corePublish011);
@@ -312,14 +342,20 @@ export function commitPlan(store: Store, plan: Plan, input: CommitInput): Commit
     if (messages.length) conflicts.push({ entryKey: exclusion.entryKey, name: exclusion.name, messages });
     return !linked && !messages.length;
   });
-  // 화면이 아님으로 사용 안 함이 되는 화면의 ID는 같은 배포의 다른 화면이 쓸 수 있다.
-  const retiring = new Set(exclusions.flatMap(exclusion => exclusion.screenId ? [exclusion.screenId] : []));
+  const unpublished = plan.unpublished.filter(item => {
+    const messages = retireCheck(store, item.screenId, item.expectedRev);
+    if (messages.length) conflicts.push({ entryKey: item.entryKey, name: item.name, messages });
+    return !messages.length;
+  });
+  // 화면이 아님·배포 취소로, 또는 다른 화면을 교체해 사용 안 함이 되는 화면의 ID는 같은 배포의 다른 화면이 쓸 수 있다.
+  const excluded = [...exclusions.flatMap(exclusion => exclusion.screenId ? [exclusion.screenId] : []), ...unpublished.map(item => item.screenId)];
   // 일부 화면이 충돌해 빠졌다면 그 화면이 아직 쓰는 ID를 받으려는 화면도 함께 보류한다.
   // 한 칸씩 밀기나 ID 맞교환은 관련 화면이 모두 확정될 때 허용한다.
   if (plan.team === 'GUI') {
     let removed = true;
     while (removed) {
       removed = false;
+      const retiring = new Set([...excluded, ...ready.flatMap(item => item.mergeFrom ? [item.mergeFrom.screenId] : [])]);
       const readyById = new Map(ready.map(item => [item.screenId, item]));
       for (let index = ready.length - 1; index >= 0; index--) {
         const item = ready[index];
@@ -335,17 +371,28 @@ export function commitPlan(store: Store, plan: Plan, input: CommitInput): Commit
     }
   }
   const committed = [...written, ...ready];
-  if (!committed.length && !exclusions.length) return { ok: false, replay: false, committed: [], conflicts, batch: null, deliveries: [] };
+  // 교체되는 화면의 남은 원본은 그 화면의 새 버전을 확정할 때만 제외한다. 새 버전이 충돌로 빠지면 원본 연결을 그대로 둔다.
+  const replaced = new Set(committed.map(item => item.screenId));
+  for (let index = exclusions.length - 1; index >= 0; index--) {
+    const exclusion = exclusions[index];
+    if (exclusion.replacedBy && !replaced.has(exclusion.replacedBy)) exclusions.splice(index, 1);
+  }
+  if (!committed.length && !exclusions.length && !unpublished.length) return { ok: false, replay: false, committed: [], conflicts, batch: null, deliveries: [] };
 
   const now = store.now();
   for (const exclusion of exclusions) {
     addExclusion(store, exclusion.nodeId, exclusion.name, exclusion.reason, plan.actor);
     if (exclusion.screenId) retireNotScreen(store, exclusion.screenId, exclusion.reason, plan.actor);
   }
+  for (const item of unpublished) unpublishScreen(store, item.screenId, plan.actor);
   for (const item of ready) {
     if (item.team === 'GUI') writeGui(store, plan, item, input, now);
     else writeUi(store, plan, item, input, now);
   }
+  // 같은 배포에서 그 화면을 기본 화면으로 기록한 케이스도 옮기도록 모든 화면을 기록한 뒤에 한다.
+  // 중단 뒤 다시 실행해 새 버전은 이미 기록된 경우에도, 교체에 쓴 화면이 아직 사용 중이면 마저 옮긴다.
+  for (const item of committed)
+    if (item.mergeFrom && store.state.screens.get(item.mergeFrom.screenId)?.status === 'active') mergeScreen(store, item.mergeFrom.screenId, item.screenId, item.fromVersion, plan.actor);
 
   // UI는 그 플립북 반영이 뒤따른다. GUI는 확정 뒤 그 화면을 쓰는 플립북마다 전달을 만든다(Controller.pullGui).
   const deliveries: Delivery[] = plan.team === 'GUI' ? [] : committed.filter(item => item.workType !== 'deleted').map(item => {
@@ -359,7 +406,7 @@ export function commitPlan(store: Store, plan: Plan, input: CommitInput): Commit
   // 묶음 기록은 마지막에 쓴다. 이 키가 있으면 확정한 화면의 기록이 모두 끝난 것이다. 확정하지 못한 화면은 넣지 않는다.
   const batch: Batch = { id: plan.batchId, team: plan.team, actor: plan.actor, committedAt: now, items: committed.map(i => ({ screenId: i.screenId, version: i.toVersion })) };
   store.put(keys.batch(batch.id), batch);
-  const entryKeys = [...committed, ...exclusions].map(i => i.entryKey);
+  const entryKeys = [...committed, ...exclusions, ...unpublished].map(i => i.entryKey);
   return { ok: true, replay: false, committed: withPrevious(plan, entryKeys, new Set(committed.map(i => i.screenId))), conflicts, batch, deliveries };
 }
 
@@ -411,6 +458,26 @@ function writeGui(store: Store, plan: Plan, item: PlanItem, input: CommitInput, 
   store.put(keys.screen(screen.id), screen);
 }
 
+// 배포 화면의 원본으로 다른 화면을 교체했다(2026-10-27 사용자 결정). 원본 연결은 교체한 화면으로 넘어갔으므로
+// 이 화면은 사용 안 함으로 바꾸고 GUI 버전은 만들지 않는다. 지난 이력은 이 화면에 남긴다.
+// 케이스는 교체한 화면의 케이스로 옮기고(Screen ID는 그대로), 이 화면이 든 플립북·플로우도 교체한 화면으로 바꾼다.
+// heldVersion: 교체한 화면의 이번 배포 전 버전. 플립북에는 그 버전으로 넣어 이번 배포가 새 GUI로 반영되게 한다.
+function mergeScreen(store: Store, fromId: string, toId: string, heldVersion: number, actor: Actor): void {
+  const before = store.state.screens.get(fromId)!;
+  store.put(keys.screen(fromId), { ...before, rev: before.rev + 1, status: 'deleted', source: null, mergedInto: toId } satisfies Screen);
+  store.audit(actor, 'screen.merge', fromId, { status: before.status, source: before.source }, { status: 'deleted', source: null, mergedInto: toId });
+  // 케이스의 케이스가 되는 교체는 buildPlan이 막는다. 확정 사이에 관계가 바뀌었으면 옮기지 않고 그대로 둔다.
+  if (!store.state.screens.get(toId)?.baseScreenId) {
+    for (const s of [...store.state.screens.values()]) {
+      if (s.status !== 'active' || s.baseScreenId !== fromId) continue;
+      store.put(keys.screen(s.id), { ...s, rev: s.rev + 1, baseScreenId: toId } satisfies Screen);
+      store.audit(actor, 'screen.relation', s.id, fromId, toId);
+    }
+  }
+  followMergedFlipbooks(store, fromId, toId, heldVersion, actor);
+  followMergedFlows(store, fromId, toId);
+}
+
 // 화면이 아님으로 고른 배포 화면의 확정 직전 검사. 최종 확인 뒤 다른 작업이 화면을 바꿨으면 확정하지 않는다.
 function retireCheck(store: Store, screenId: string, expectedRev: number | undefined): string[] {
   const fresh = store.readFresh<Screen>(keys.screen(screenId));
@@ -424,6 +491,14 @@ function retireNotScreen(store: Store, screenId: string, reason: string, actor: 
   const before = store.state.screens.get(screenId)!;
   store.put(keys.screen(screenId), { ...before, rev: before.rev + 1, status: 'deleted', source: null } satisfies Screen);
   store.audit(actor, 'screen.notScreen', screenId, { status: before.status, source: before.source }, { status: 'deleted', source: null }, reason);
+}
+
+// 배포 취소(2026-10-27 사용자 요청): 화면이 아님처럼 GUI 버전 없이 사용 안 함으로 바꾸고 원본 연결을 끊되 프레임은 제외하지 않는다.
+// 원본 프레임의 표식은 Controller가 지우므로 그 프레임은 다음 비교부터 신규 후보로 나온다. 지난 이력은 남긴다.
+function unpublishScreen(store: Store, screenId: string, actor: Actor): void {
+  const before = store.state.screens.get(screenId)!;
+  store.put(keys.screen(screenId), { ...before, rev: before.rev + 1, status: 'deleted', source: null } satisfies Screen);
+  store.audit(actor, 'screen.unpublish', screenId, { status: before.status, source: before.source }, { status: 'deleted', source: null });
 }
 
 // 「변경 무시」: 변경 감지된 화면의 현재 지문을 지금 버전의 비교 기준으로 저장한다. 버전·이력·플립북은 그대로이며

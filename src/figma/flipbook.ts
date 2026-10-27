@@ -697,13 +697,18 @@ export async function syncGui(ns: string, area: FrameNode, gui: FlipbookGui[], s
   }
   staging?.remove();
   // 이전 화면마다 새 복사본을 찾는다. 같은 화면이 여러 번 들어 있으면 놓인 순서대로 짝짓는다.
+  // 같은 화면을 먼저 짝짓고, 남은 이전 복사본은 그 화면을 이어받은 화면(교체로 바뀐 자리)에 짝짓는다.
   const used = new Set<number>();
-  const target = anchors.map(a => {
-    const index = gui.findIndex((g, i) => !used.has(i) && g.uid === a.uid);
+  const match = (fits: (g: FlipbookGui, uid: string) => boolean) => (found: FrameNode | null, i: number) => {
+    if (found) return found;
+    const index = gui.findIndex((g, j) => !used.has(j) && fits(g, anchors[i].uid));
     if (index < 0) return null;
     used.add(index);
     return placed[index];
-  });
+  };
+  const target = anchors.map(() => null as FrameNode | null)
+    .map(match((g, uid) => g.uid === uid))
+    .map(match((g, uid) => !!g.formerUids?.includes(uid)));
   for (const pin of pins) {
     if (!pin) continue;
     const copy = target[pin.anchor];

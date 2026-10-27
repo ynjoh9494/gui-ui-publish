@@ -1,4 +1,5 @@
 import { COPY } from './copy.ts';
+import { formerUids } from './guiScreens.ts';
 import { flipbookHistoryRows } from './history.ts';
 import type { State } from './store.ts';
 import type { Flipbook, FlipbookKind, FlipbookScale, TagSnapshot, Team } from './types.ts';
@@ -20,7 +21,8 @@ export interface FlipbookRow {
 }
 
 // 플립북에 놓을 GUI. 원본 프레임을 바로 복사해 넣는다. key가 GUI 영역의 표식과 같으면 다시 복사하지 않는다.
-export interface FlipbookGui { uid: string; code: string; version: number; key: string; sourceNodeId: string | null; scale?: FlipbookScale }
+// formerUids: 이 화면이 이어받은(교체해 사용 안 함이 된) 화면. 그 화면의 이전 복사본 위 마커는 이 화면을 따라간다.
+export interface FlipbookGui { uid: string; code: string; version: number; key: string; sourceNodeId: string | null; scale?: FlipbookScale; formerUids?: string[] }
 
 export interface FlipbookView {
   flipbookId: string;
@@ -97,6 +99,7 @@ export function flipbookView(state: State, flipbookId: string): FlipbookView {
   const fb: Flipbook | undefined = state.flipbooks.get(flipbookId);
   if (!fb) throw new Error(COPY.coreFlipbook002);
   const offset = state.project.utcOffsetMinutes;
+  const former = formerUids(state);
   const rows: FlipbookRow[] = flipbookHistoryRows(state, flipbookId).map(r => ({
     key: `${r.team}:${r.batchId}`, team: r.team, tag: r.tag, colorKey: r.tag.colorKey, description: r.description,
     worker: r.worker, at: formatShort(r.committedAt, offset),
@@ -106,6 +109,7 @@ export function flipbookView(state: State, flipbookId: string): FlipbookView {
     category: fb.category, chapter: chapterName(fb), pageId: fb.pageId ?? state.project.flipbookPageId,
     gui: fb.screens.map(s => ({
       uid: s.uid, code: s.code, version: s.version, key: guiKey(s.uid, s.version), sourceNodeId: state.screens.get(s.uid)?.source?.nodeId ?? null, scale: s.scale ?? fb.scale,
+      ...(former.has(s.uid) ? { formerUids: former.get(s.uid) } : {}),
     })),
     scale: fb.scale, guiWidth: state.project.guiWidth, status: rows[0] ?? null, rows,
   };

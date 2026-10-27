@@ -1,6 +1,6 @@
 import { COPY, GUI_STATE_HINT, GUI_STATE_LABEL, UI_STATE_HINT, UI_STATE_LABEL, type GuiState, type UiListState } from '../core/copy.ts';
 import { changeDetected, ignoreBlock, UI_ESTIMATE_LABEL, type Entry, type Estimate } from '../core/compare.ts';
-import { isNotScreen, isPrevious, type Draft } from '../core/drafts.ts';
+import { isNotScreen, isPrevious, isUnpublish, mergesInto, type Draft } from '../core/drafts.ts';
 import type { State } from '../core/store.ts';
 import { esc } from './html.ts';
 
@@ -26,6 +26,7 @@ const GUI_ICON: Record<GuiState, { tone: string; body: string }> = {
   replaced: { tone: 'teal', body: SQUARE + SWAP },
   previous: { tone: 'gray', body: SQUARE + SWAP },
   'not-screen': { tone: 'gray', body: '<path d="m7 7 10 10M17 7 7 17"/>' },
+  unpublished: { tone: 'gray', body: SQUARE + '<path d="M9.5 10h4.5a2.5 2.5 0 0 1 0 5h-3"/><path d="m11.5 7.5-2.5 2.5 2.5 2.5"/>' },
   modified: { tone: 'teal', body: SQUARE + '<path d="m13.6 7.4 3 3L10.2 16.8H7.2v-3l6.4-6.4Z"/>' },
   deleted: { tone: 'red', body: SQUARE + '<path d="M8 12h8"/>' },
 };
@@ -37,6 +38,8 @@ export function guiState(entry: Entry, draft: Draft | undefined): GuiState {
   if (draft?.included) {
     if (!entry.screenId) return draft.notScreen ? 'not-screen' : draft.link === 'replace' ? 'replaced' : 'added';
     if (isNotScreen(entry, draft)) return 'not-screen';
+    if (isUnpublish(entry, draft)) return 'unpublished';
+    if (mergesInto(entry, draft)) return 'replaced';
     if (isPrevious(entry, draft)) return 'previous';
     if (entry.estimate === 'missing') return draft.retire === 'replace' ? 'previous' : 'deleted';
     return 'modified';
@@ -55,6 +58,8 @@ export function guiStateBadge(state: State, entry: Entry, draft: Draft | undefin
     if (entry.categoryMissing) lines.push(ignoreBlock(state, entry) ?? '');
   }
   if (value === 'not-screen' && entry.screenId) lines.push(COPY.uiApp244);
+  if (value === 'replaced' && entry.screenId) lines.push(COPY.uiApp353);
+  if (value === 'unpublished') lines.push(COPY.uiApp357);
   if (value === 'failed' && entry.frame?.error) lines.push(entry.frame.error);
   lines.push(...entry.notes);
   const { tone, body } = GUI_ICON[value];

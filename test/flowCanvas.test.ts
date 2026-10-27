@@ -118,6 +118,24 @@ test('플로우 그룹을 만들고, 다시 배포된 화면만 썸네일을 바
   assert.equal(await flowNode(NS, record), null);
 });
 
+test('교체로 사용 안 함이 된 화면의 칸은 이어받은 화면의 썸네일로 바꾸고 칸의 표식도 그 화면으로 바꾼다', async () => {
+  const m = mockFigma();
+  m.images.add('h1');
+  const placed = await createFlow(NS, plan);
+  const root = m.page.children.find(n => n.id === placed.nodeId)!;
+  const rect = (uid: string) => root.findOne(n => n.type === 'RECTANGLE' && n.getSharedPluginData(NS, 'flowScreen') === uid);
+  // 기록은 확정 때 이미 s9로 바뀌었고, 캔버스의 s1 칸은 다음 업데이트 때 s9로 읽는다.
+  const record: FlowRecord = { id: 'f1', nodeId: placed.nodeId, pageId: placed.pageId, title: plan.title, uids: ['s9', 's2'], createdAt: 1, actor };
+  m.images.add('h9');
+  // 버전은 화면마다 따로 매기므로 s9가 버전 1이어도 옛 칸은 새로 넣는 것으로 본다.
+  const thumbs = [{ uid: 's9', version: 1, thumb: { hash: 'h9', width: 480, height: 270 }, formerUids: ['s1'] }];
+  assert.equal(await updateFlow(NS, record, thumbs), 1);
+  assert.equal(rect('s1'), null);
+  assert.deepEqual([rect('s9')!.fills, rect('s9')!.getSharedPluginData(NS, 'flowVersion')], [[{ type: 'IMAGE', imageHash: 'h9', scaleMode: 'FIT' }], '1']);
+  assert.equal(await updateFlow(NS, record, thumbs), 0, 'running again changes nothing');
+  assert.equal(await flowNode(NS, record, 's9'), rect('s9')!.parent!.id);
+});
+
 test('플로우를 그리다 실패하면 만든 노드를 모두 지운다', async () => {
   const m = mockFigma({ failArrow: true });
   m.images.add('h1');

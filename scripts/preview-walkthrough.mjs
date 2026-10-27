@@ -822,6 +822,79 @@ try {
   assert.equal(await app.locator('.row:has(.id-tag)').filter({ hasText: initialName }).count(), 0, 'deleted screen leaves the list');
   await shot('11-deleted');
 
+  // 배포된 화면으로 다른 화면을 교체하고(잘못 신규로 배포한 화면 바로잡기), 배포를 취소하면 그 프레임이 신규로 돌아온다(2026-10-27 사용자 요청).
+  await app.locator('[data-action=changed-only]').uncheck();
+  for (const head of await app.locator('.group-head').all())
+    if (await head.getAttribute('aria-expanded') === 'false') await head.click();
+  const fresh = app.locator('.row:not(:has(.id-tag))');
+  const keepKey = await fresh.nth(0).getAttribute('data-key');
+  const wrongKey = await fresh.nth(1).getAttribute('data-key');
+  for (const [key, code] of [[keepKey, 'STB_HO_002'], [wrongKey, 'STB_HO_003']]) {
+    const row = app.locator(`.row[data-key="${key}"]`);
+    await row.click();
+    await row.locator('[data-action=include]').check();
+    // 앞 단계에서 교체·케이스를 골랐던 후보도 있으므로 신규 등록·독립 화면을 직접 고른다.
+    await app.locator('[data-field=disposition][value=new]').check();
+    await app.locator('[data-field=relation][value=standalone]').check();
+    await app.locator('[data-field=categoryId]').selectOption({ label: '홈' });
+    await app.locator('[data-field=code]').fill(code);
+  }
+  await app.locator('[data-action=prepare]').click();
+  await app.locator('[data-action=commit]').click();
+  await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('배포했습니다'));
+  await scan();
+  for (const head of await app.locator('.group-head').all())
+    if (await head.getAttribute('aria-expanded') === 'false') await head.click();
+  const rowOf = async code => app.locator(`.row[data-key="${await app.locator('.row:has(.id-tag)').filter({ hasText: code }).first().getAttribute('data-key')}"]`);
+  const keep = await rowOf('STB_HO_002');
+  const wrong = await rowOf('STB_HO_003');
+  await wrong.click();
+  await wrong.locator('[data-action=include]').check();
+  assert.equal(await app.locator('[data-field=disposition][value=modify]').isChecked(), true);
+  await app.locator('[data-field=disposition][value=replace]').check();
+  await app.locator('.screen-picker summary').click();
+  assert.equal(await app.locator('.screen-picker [data-action=pick]').filter({ hasText: 'STB_HO_003' }).count(), 0, 'a screen cannot replace itself');
+  await app.locator('.screen-picker [data-action=pick]').filter({ hasText: 'STB_HO_002' }).click();
+  await stateIs(wrong, '화면 교체됨');
+  await stateIs(keep, '이전 버전');
+  assert.equal(await app.locator('[data-field=code]').inputValue(), 'STB_HO_002', 'the replaced screen ID is filled');
+  assert.equal(await app.locator('.detail [data-field=relation]').count(), 0, 'a replacement keeps the relation');
+  await shot('11b-replace-with-published');
+  // 배포를 끄면 짝이 함께 풀리고, 다시 켜면 고른 화면과 다시 짝이 된다.
+  await wrong.locator('[data-action=include]').uncheck();
+  await stateIs(keep, '변경사항 없음');
+  await wrong.locator('[data-action=include]').check();
+  await stateIs(keep, '이전 버전');
+  // 교체는 신규 후보의 교체처럼 태그를 고른다.
+  await app.locator('.tag-picker summary[aria-label="태그 선택"]').click();
+  await app.locator('.tag-options [data-action=select-tag]').filter({ hasText: '검토' }).click();
+  await app.locator('[data-action=prepare]').click();
+  await page.waitForFunction(() => document.querySelector('#app .dialog')?.textContent?.includes('사용 안 함으로 바꿀 화면: STB_HO_003'));
+  await shot('11c-replace-confirm');
+  await app.locator('[data-action=commit]').click();
+  await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('배포했습니다'));
+  await scan();
+  assert.equal(await app.locator('.row:has(.id-tag)').filter({ hasText: 'STB_HO_003' }).count(), 0, 'the screen used for the replacement leaves the list');
+  assert.equal(await app.locator(`.row[data-key="${wrongKey}"]`).count(), 0, 'its frame is now the source of STB_HO_002');
+  const replaced = await rowOf('STB_HO_002');
+  await stateIs(replaced, '변경사항 없음');
+
+  await replaced.click();
+  await replaced.locator('[data-action=include]').check();
+  await app.locator('[data-field=disposition][value=unpublish]').check();
+  await stateIs(replaced, '배포 취소');
+  assert.equal(await app.locator('.detail [data-field=code]').count(), 0, 'unpublish has no inputs');
+  await shot('11d-unpublish');
+  await app.locator('[data-action=prepare]').click();
+  await app.locator('[data-action=commit]').click();
+  await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('배포를 취소했습니다'));
+  await scan();
+  assert.equal(await app.locator('.row:has(.id-tag)').filter({ hasText: 'STB_HO_002' }).count(), 0, 'the unpublished screen leaves the list');
+  const back = app.locator(`.row[data-key="${wrongKey}"]`);
+  assert.equal(await back.count(), 1, 'the frame comes back as a new candidate');
+  await stateIs(back, '신규');
+  await shot('11e-unpublished');
+
   // 여러 후보의 화면 이름이 다르면 '-'를 보여 주고 공통 이름을 두 초안에 적용한다.
   await page.goto(pathToFileURL(previewPath).href);
   await page.waitForFunction(() => document.querySelector('#app .tabs [data-action=version-close]'));

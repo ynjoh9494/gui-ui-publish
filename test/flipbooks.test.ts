@@ -10,7 +10,8 @@ import { keys, memoryKV, Store } from '../src/core/store.ts';
 import { dataModel } from '../src/core/data.ts';
 import { arrangeFlipbooks, buildList } from '../src/core/list.ts';
 import { changeDetected, classify, entryName, ignoreBlock, uncheckedEntries, uiEntries, type Entry } from '../src/core/compare.ts';
-import { clearAutoCaseCode, clearFill, defaultDraft, draftCode, draftName, fillCaseCode, fillFromScreen, isPrevious, suggestedCaseCode, validateDraft, type Draft } from '../src/core/drafts.ts';
+import { clearAutoCaseCode, clearFill, defaultDraft, draftCode, draftName, fillCaseCode, fillFromScreen, isPrevious, isUnpublish, mergesInto, suggestedCaseCode, validateDraft, type Draft } from '../src/core/drafts.ts';
+import { flowUpdates } from '../src/core/flow.ts';
 import { ensureSystemTags, removeExclusion, systemTagId, updateTag } from '../src/core/registry.ts';
 import type { GuiRecord, Screen } from '../src/core/types.ts';
 import { Controller, type Host } from '../src/controller.ts';
@@ -700,6 +701,140 @@ test('이미 배포한 화면을 화면이 아님으로 배포하면 프레임�
   // 제외를 해제하면 그 프레임은 신규 후보로 다시 나온다.
   removeExclusion(store, [...store.state.exclusions.values()].find(x => x.nodeId === '1:1')!.id, actor);
   assert.deepEqual(classify(store.state, [frame('1:1', '[STB_HO_001] 홈', 'fp1')]).filter(e => !e.screenId).map(e => e.frame!.nodeId), ['1:1']);
+});
+
+// 잘못 신규로 배포한 화면 B(STB_HO_005, 원본 5:1)와 그 케이스 c를 seeded()의 화면 A(STB_HO_001, 원본 1:1)에 더한다.
+function withWrongScreen() {
+  const seed = seeded();
+  const { store, frame } = seed;
+  const wrong = classify(store.state, [frame('1:1', '[STB_HO_001] 홈', 'fp1'), frame('5:1', '홈 개편', 'fp5', null)]).find(e => !e.screenId)!;
+  const draft = defaultDraft('GUI', store.state, wrong);
+  Object.assign(draft, { included: true, code: 'STB_HO_005', categoryId: 'home', workerId: 'w' });
+  const created = buildPlan('GUI', store.state, [wrong], { [wrong.key]: draft }, actor, 'b2');
+  const b = created.items[0].screenId;
+  assert.equal(commitPlan(store, created, { fingerprints: { [wrong.key]: 'fp5' }, thumbs: { [wrong.key]: thumb(b, 1) } }).ok, true);
+  store.put(keys.screen('c'), {
+    id: 'c', rev: 1, code: 'STB_HO_005-01', name: '홈 개편 팝업', categoryId: 'home', baseScreenId: b,
+    status: 'active', source: { nodeId: '6:1', pageId: '0:1' }, guiVersion: 1, guiTag: null, createdAt: 1000,
+  } satisfies Screen);
+  const scan = (tagB: string | null = b) => classify(store.state, [frame('1:1', '[STB_HO_001] 홈', 'fp1'), frame('5:1', '홈 개편', 'fp5', tagB), frame('6:1', '팝업', 'fpc', 'c')]);
+  return { ...seed, a: seed.screenId, b, scan };
+}
+
+// B의 원본으로 A를 교체하는 초안. A는 교체 짝의 이전 화면이 된다.
+function mergeDrafts(store: Store, entryA: Entry, entryB: Entry): Record<string, Draft> {
+  const drafts: Record<string, Draft> = {
+    [entryA.key]: { ...defaultDraft('GUI', store.state, entryA), included: true, replacedBy: entryB.key },
+    [entryB.key]: { ...defaultDraft('GUI', store.state, entryB), included: true, link: 'replace', replaceScreenId: entryA.screenId!, workerId: 'w', tagId: systemTagId(store.state, 'add')! },
+  };
+  fillFromScreen(store.state, drafts[entryB.key], entryA.screenId!);
+  return drafts;
+}
+
+test('배포된 화면으로 다른 화면을 교체하면 그 원본으로 새 버전이 되고, 교체에 쓴 화면의 플립북·플로우·케이스는 교체한 화면을 따라간다', () => {
+  const { store, a, b, scan, frame } = withWrongScreen();
+  const screens = guiScreens(store.state);
+  const [onlyB] = planFlipbooks({ pageId: 'p', rows: [row([b])] }, screens, actor, 1, () => 'fbB');
+  const [both] = planFlipbooks({ pageId: 'p', rows: [row([a, b], true)] }, screens, actor, 1, () => 'fbAB');
+  store.put(keys.flipbook(onlyB.id), onlyB);
+  store.put(keys.flipbook(both.id), both);
+  store.put(keys.flow('flow1'), { id: 'flow1', nodeId: '9:1', pageId: 'p', title: '플로우', uids: [a, b], createdAt: 1, actor });
+  store.put(keys.flow('flow2'), { id: 'flow2', nodeId: '9:2', pageId: 'p', title: '플로우', uids: [b, 'c'], createdAt: 1, actor });
+
+  const entries = scan();
+  const entryA = entries.find(e => e.screenId === a)!, entryB = entries.find(e => e.screenId === b)!;
+  const drafts = mergeDrafts(store, entryA, entryB);
+  assert.deepEqual([mergesInto(entryB, drafts[entryB.key]), isPrevious(entryA, drafts[entryA.key])], [true, true]);
+  assert.deepEqual([guiState(entryB, drafts[entryB.key]), guiState(entryA, drafts[entryA.key])], ['replaced', 'previous']);
+  // A의 Screen ID를 채우고, 사용 안 함이 될 B의 Screen ID는 같은 배포에서 비어 있는 것으로 본다.
+  assert.equal(draftCode(store.state, entryB, drafts[entryB.key]), 'STB_HO_001');
+  assert.equal(validateDraft('GUI', store.state, entryB, drafts[entryB.key], drafts, entries).status, 'ready');
+  assert.equal(validateDraft('GUI', store.state, entryB, { ...drafts[entryB.key], code: 'STB_HO_005' }, drafts, entries).status, 'ready');
+  const plan = buildPlan('GUI', store.state, entries, drafts, actor, 'b3');
+  assert.deepEqual(plan.blockers, []);
+  assert.deepEqual(plan.items.map(i => [i.screenId, i.workType, i.fromVersion, i.toVersion, i.code, i.frame?.nodeId, i.mergeFrom?.screenId]), [[a, 'changed', 1, 2, 'STB_HO_001', '5:1', b]]);
+  assert.deepEqual(plan.exclusions.map(x => [x.nodeId, x.replacedBy]), [['1:1', a]]);
+
+  const result = commitPlan(store, plan, { fingerprints: { [entryB.key]: 'fp5' }, thumbs: { [entryB.key]: thumb(a, 2) } });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.committed.sort(), [entryA.key, entryB.key].sort());
+  const afterA = store.state.screens.get(a)!, afterB = store.state.screens.get(b)!;
+  assert.deepEqual([afterA.source?.nodeId, afterA.guiVersion, afterA.code], ['5:1', 2, 'STB_HO_001']);
+  assert.deepEqual([afterB.status, afterB.source, afterB.mergedInto, afterB.guiVersion, store.state.gui.get(b)!.length], ['deleted', null, a, 1, 1], 'B keeps its history and gets no version');
+  assert.ok([...store.state.exclusions.values()].some(x => x.nodeId === '1:1' && x.active));
+  assert.deepEqual([store.state.screens.get('c')!.baseScreenId, store.state.screens.get('c')!.code], [a, 'STB_HO_005-01'], 'the case moves to A and keeps its Screen ID');
+  // 플립북: B 자리에 A(이번 배포 전 버전), A가 이미 있으면 B만 빼고 남은 화면 크기는 그대로 둔다.
+  assert.deepEqual(store.state.flipbooks.get('fbB')!.screens.map(s => [s.uid, s.version, s.code]), [[a, 1, 'STB_HO_001']]);
+  const merged = store.state.flipbooks.get('fbAB')!;
+  assert.deepEqual([merged.screens.map(s => [s.uid, s.scale]), merged.kind], [[[a, 0.5]], 'single']);
+  assert.deepEqual([store.state.flows.get('flow1')!.uids, store.state.flows.get('flow2')!.uids], [[a], [a, 'c']]);
+  // 다음 GUI 반영 때 이번 배포가 B만 들었던 플립북의 새 GUI·이력이 되고 확인할 것으로 나온다.
+  const imported = importGuiUpdates(store, 'fbB', guiScreens(store.state), guiRecordInfos(store.state, new Set([a])));
+  assert.deepEqual([imported.changed, imported.added, needsReview(store.state, 'fbB')], [true, 1, true]);
+  assert.deepEqual(retireFlipbooks(store, actor), []);
+  // 캔버스에 남은 B 표식(GUI 복사본·플로우 칸)은 A로 읽는다.
+  assert.deepEqual(flipbookView(store.state, 'fbB').gui.map(g => [g.uid, g.formerUids]), [[a, [b]]]);
+  assert.deepEqual(flowUpdates(store.state, new Set([a])).thumbs.map(t => [t.uid, t.formerUids]), [[a, [b]]]);
+  // 확정 뒤 B 원본은 A의 원본이고 B는 사용 안 함이다.
+  const after = classify(store.state, [frame('1:1', '[STB_HO_001] 홈', 'fp1'), frame('5:1', '홈 개편', 'fp5', a)]);
+  assert.deepEqual(after.filter(e => e.screenId === a || e.screenId === b).map(e => [e.screenId, e.estimate, e.frame?.nodeId ?? null]), [[a, 'unchanged', '5:1'], [b, 'retired', null]]);
+  assert.equal(after.some(e => !e.screenId), false, 'no frame comes back as new');
+});
+
+test('배포된 화면으로 교체할 때 케이스가 케이스의 케이스가 되거나 확정 직전 화면이 바뀌면 아무것도 바꾸지 않는다', () => {
+  const { store, a, b, scan } = withWrongScreen();
+  // A가 다른 화면의 케이스면 B의 케이스 c를 A로 옮길 수 없다.
+  store.put(keys.screen('x'), { id: 'x', rev: 1, code: 'STB_HO_009', name: '기본', categoryId: 'home', baseScreenId: null, status: 'active', source: null, guiVersion: 1, guiTag: null, createdAt: 1000 } satisfies Screen);
+  store.put(keys.screen(a), { ...store.state.screens.get(a)!, baseScreenId: 'x' });
+  let entries = scan();
+  let drafts = mergeDrafts(store, entries.find(e => e.screenId === a)!, entries.find(e => e.screenId === b)!);
+  assert.deepEqual(buildPlan('GUI', store.state, entries, drafts, actor, 'b3').blockers.flatMap(x => x.messages), [COPY.coreDrafts036]);
+  // 같은 배포에서 c를 독립 화면으로 바꾸면 통과한다.
+  const entryC = entries.find(e => e.screenId === 'c')!;
+  drafts[entryC.key] = { ...defaultDraft('GUI', store.state, entryC), included: true, relation: 'standalone', baseScreenId: undefined, workerId: 'w', tagId: systemTagId(store.state, 'add')! };
+  assert.deepEqual(buildPlan('GUI', store.state, entries, drafts, actor, 'b3').blockers, []);
+
+  // 최종 확인 뒤 다른 작업이 B를 바꿨으면 A의 새 버전도, A 원본 제외도, B 사용 안 함도 하지 않는다.
+  store.put(keys.screen(a), { ...store.state.screens.get(a)!, baseScreenId: null });
+  entries = scan();
+  drafts = mergeDrafts(store, entries.find(e => e.screenId === a)!, entries.find(e => e.screenId === b)!);
+  const plan = buildPlan('GUI', store.state, entries, drafts, actor, 'b4');
+  assert.deepEqual(plan.blockers, []);
+  store.put(keys.screen(b), { ...store.state.screens.get(b)!, rev: 99 });
+  const blocked = commitPlan(store, plan, { fingerprints: { [b]: 'fp5' }, thumbs: {} });
+  assert.deepEqual([blocked.ok, blocked.conflicts.map(c => c.messages.join())], [false, [COPY.corePublish006]]);
+  assert.deepEqual([store.state.screens.get(a)!.source?.nodeId, store.state.screens.get(b)!.status, store.state.exclusions.size], ['1:1', 'active', 0]);
+});
+
+test('배포 취소는 입력 없이 화면을 사용 안 함으로 바꾸고 원본 연결을 끊어, 그 프레임이 다시 신규 후보로 나온다', () => {
+  const { store, b, scan } = withWrongScreen();
+  const [fb] = planFlipbooks({ pageId: 'p', rows: [row([b])] }, guiScreens(store.state), actor, 1, () => 'fbB');
+  store.put(keys.flipbook(fb.id), fb);
+  const entries = scan();
+  const entryB = entries.find(e => e.screenId === b)!;
+  const fresh: Draft = { ...defaultDraft('GUI', store.state, entryB), included: true, unpublish: true, workerId: undefined };
+  assert.deepEqual([isUnpublish(entryB, fresh), guiState(entryB, fresh)], [true, 'unpublished']);
+  assert.equal(validateDraft('GUI', store.state, entryB, fresh).status, 'ready', 'no worker, tag or Screen ID input');
+  // 사용 안 함이 되는 화면의 Screen ID는 같은 배포의 다른 화면이 쓸 수 있다.
+  const entryC = entries.find(e => e.screenId === 'c')!;
+  const drafts: Record<string, Draft> = {
+    [entryB.key]: fresh,
+    [entryC.key]: { ...defaultDraft('GUI', store.state, entryC), included: true, code: 'STB_HO_005', relation: 'standalone', baseScreenId: undefined, workerId: 'w', tagId: systemTagId(store.state, 'add')! },
+  };
+  assert.equal(validateDraft('GUI', store.state, entryC, drafts[entryC.key], drafts, entries).status, 'ready');
+  const plan = buildPlan('GUI', store.state, entries, drafts, actor, 'b3');
+  assert.deepEqual(plan.blockers, []);
+  assert.deepEqual([plan.unpublished.map(x => [x.screenId, x.nodeId]), plan.exclusions, plan.items.map(i => [i.screenId, i.code])], [[[b, '5:1']], [], [['c', 'STB_HO_005']]]);
+  const result = commitPlan(store, plan, { fingerprints: { [entryC.key]: 'fpc' }, thumbs: {} });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.committed.sort(), [entryB.key, entryC.key].sort());
+  const afterB = store.state.screens.get(b)!;
+  assert.deepEqual([afterB.status, afterB.source, afterB.mergedInto, afterB.guiVersion, store.state.gui.get(b)!.length, store.state.exclusions.size], ['deleted', null, undefined, 1, 1, 0]);
+  assert.ok(store.state.audit.some(x => x.action === 'screen.unpublish' && x.target === b));
+  assert.deepEqual(retireFlipbooks(store, actor), ['fbB']);
+  // Controller가 원본 표식을 지우면 그 프레임은 복제 의심 안내 없이 신규 후보로 나온다.
+  const back = scan(null).find(e => e.frame?.nodeId === '5:1')!;
+  assert.deepEqual([back.screenId, back.estimate, back.notes], [null, 'new', []]);
 });
 
 test('UI 목록의 「업데이트된 화면만 보기」는 확인이 필요한 플립북만 남기고, 검색은 Screen ID도 찾는다', () => {

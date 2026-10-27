@@ -354,6 +354,32 @@ test('여러 화면 플립북의 마커는 자기 화면을 따라가고, 화면
   assert.deepEqual([marker.width, marker.height], [40, 40]);
 });
 
+test('교체로 바뀐 자리의 마커는 이어받은 화면을 따라가고, 이어받은 화면이 이미 있으면 빠진 자리의 마커는 제자리에 둔다', async () => {
+  setup();
+  const source = screen();
+  (globalThis as any).figma.getNodeByIdAsync = async () => source;
+  const half = (uid: string, extra: object = {}) => ({ uid, code: uid, version: 1, key: `${uid}@1`, sourceNodeId: source.id, scale: 0.5 as const, ...extra });
+  const s1 = half('s1', { version: 2, key: 's1@2', formerUids: ['old'] });
+  // 두 번째 화면(x 966)의 왼쪽 위에서 (100, 50) 떨어진 곳의 마커
+  const markerOn = (area: Node) => {
+    const marker = Object.assign(new Node('FRAME', 'Marker'), { x: 966 + 100 - 20, y: 50 - 20, width: 40, height: 40 });
+    area.appendChild(marker);
+    return marker;
+  };
+  const swapped = new Node('FRAME', 'GUI Image Slot');
+  await syncGui('ns', swapped as unknown as FrameNode, [half('s0'), half('old')], 1, new Set(), 1920);
+  const follows = markerOn(swapped);
+  // old 자리를 s1이 이어받고 맨 앞으로 왔다.
+  await syncGui('ns', swapped as unknown as FrameNode, [s1, half('s0')], 1, new Set(), 1920);
+  assert.deepEqual([follows.x + 20, follows.y + 20], [100, 50]);
+
+  const both = new Node('FRAME', 'GUI Image Slot');
+  await syncGui('ns', both as unknown as FrameNode, [half('s1'), half('old')], 1, new Set(), 1920);
+  const stays = markerOn(both);
+  await syncGui('ns', both as unknown as FrameNode, [s1], 1, new Set(), 1920);
+  assert.deepEqual([stays.x, stays.y], [966 + 100 - 20, 50 - 20], 's1 keeps its own markers; the removed slot does not take them');
+});
+
 test('플립북 프레임에 절대 위치로 놓은 노드는 중심이 GUI 영역 안일 때만 화면을 따라간다', async () => {
   setup();
   const source = screen();

@@ -174,6 +174,8 @@ export async function updateFlow(ns: string, flow: FlowRecord, thumbs: FlowThumb
   await pageOf(node)?.loadAsync();
   await loadThumbnailPage(ns);
   const latest = new Map(thumbs.map(t => [t.uid, t]));
+  // 교체해 사용 안 함이 된 화면의 칸은 이어받은 화면으로 읽는다. 버전은 화면마다 따로 매기므로 옛 칸은 처음 넣는 것으로 본다.
+  for (const t of thumbs) for (const uid of t.formerUids ?? []) if (!latest.has(uid)) latest.set(uid, t);
   // 「썸네일 없음」 글자는 그 글자가 가리던 사각형 ID로 찾는다. 사각형마다 플로우 전체를 다시 찾지 않는다.
   const notes = new Map<string, TextNode[]>();
   for (const note of node.findAllWithCriteria({ types: ['TEXT'], sharedPluginData: { namespace: ns, keys: [EMPTY_KEY] } })) {
@@ -182,9 +184,12 @@ export async function updateFlow(ns: string, flow: FlowRecord, thumbs: FlowThumb
   }
   let changed = 0;
   for (const rect of node.findAllWithCriteria({ types: ['RECTANGLE'], sharedPluginData: { namespace: ns, keys: [SCREEN_KEY] } })) {
-    const next = latest.get(rect.getSharedPluginData(ns, SCREEN_KEY));
-    if (!next || Number(rect.getSharedPluginData(ns, VERSION_KEY) || 0) >= next.version || !figma.getImageByHash(next.thumb.hash)) continue;
+    const uid = rect.getSharedPluginData(ns, SCREEN_KEY);
+    const next = latest.get(uid);
+    const former = !!next && next.uid !== uid;
+    if (!next || (!former && Number(rect.getSharedPluginData(ns, VERSION_KEY) || 0) >= next.version) || !figma.getImageByHash(next.thumb.hash)) continue;
     rect.fills = imageFill(next.thumb.hash);
+    if (former) rect.setSharedPluginData(ns, SCREEN_KEY, next.uid);
     rect.setSharedPluginData(ns, VERSION_KEY, String(next.version));
     for (const note of notes.get(rect.id) ?? []) note.remove();
     changed++;

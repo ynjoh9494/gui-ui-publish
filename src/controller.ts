@@ -847,7 +847,7 @@ export class Controller {
       for (let i = 0; i < this.frames.length; i++) {
         const f = this.frames[i];
         const entry = entriesByNode.get(f.nodeId);
-        if (f.fingerprint === null && !f.error && entry && drafts[entry.key]?.included && !drafts[entry.key]?.notScreen)
+        if (f.fingerprint === null && !f.error && entry && drafts[entry.key]?.included && !drafts[entry.key]?.notScreen && !drafts[entry.key]?.unpublish)
           this.frames[i] = { ...f, ...await reader.fingerprint(f.nodeId, legacy.has(f.nodeId)) };
       }
       this.entries = classify(this.store.state, this.frames);
@@ -892,6 +892,7 @@ export class Controller {
     const done = new Set(result.committed);
     const items = plan.items.filter(item => done.has(item.entryKey));
     const exclusions = plan.exclusions.filter(item => done.has(item.entryKey));
+    const unpublished = plan.unpublished.filter(item => done.has(item.entryKey));
     const thumbnails = items.flatMap(item => {
       const thumb = input.thumbs[item.entryKey];
       return item.team === 'GUI' && thumb ? [{ screenId: item.screenId, label: formatFrameName(item.code, item.name), thumb }] : [];
@@ -906,11 +907,13 @@ export class Controller {
         if (item.team !== 'GUI' || !item.frame) continue;
         await this.host.tagSource(item.frame.nodeId, item.screenId);
       }
+      // 배포를 취소한 원본은 표식을 지워 다음 비교에서 복제 의심 없이 신규 후보로 나오게 한다. 프레임이 지워졌으면 건너뛴다.
+      for (const item of unpublished) await this.host.tagSource(item.nodeId, '');
       this.plans.delete(batchId);
     }
     // 확정 뒤의 플립북·DATA 실패는 확정 기록과 구분해 알린다. GUI는 그 화면을 쓰는 플립북에 바로 반영한다.
-    // 삭제나 화면이 아님으로 배포해 화면이 모두 사용 안 함이 된 플립북도 사용 안 함으로 바꾼다.
-    const retired = exclusions.some(item => item.screenId);
+    // 삭제·화면이 아님·배포 취소로 화면이 모두 사용 안 함이 된 플립북도 사용 안 함으로 바꾼다.
+    const retired = exclusions.some(item => item.screenId) || unpublished.length > 0;
     if (result.ok && plan.team === 'GUI' && (retired || items.some(item => item.workType === 'deleted'))) retireFlipbooks(this.store, this.host.actor);
     let report: string | null = null;
     if (result.ok && items.length) {
@@ -925,7 +928,7 @@ export class Controller {
     this.host.post({
       type: 'committed', ok: result.ok, committed: result.committed, conflicts: result.conflicts, batchId, pending,
       message: result.ok
-        ? [items.length ? `${items.length}${COPY.controller020}` : '', thumbErrors.length ? `${COPY.controller062} ${thumbErrors.join('; ')}` : '', exclusions.length ? `${exclusions.length}${COPY.controller021}` : '', failed, report, data ? '' : COPY.controller022].filter(Boolean).join(' ')
+        ? [items.length ? `${items.length}${COPY.controller020}` : '', thumbErrors.length ? `${COPY.controller062} ${thumbErrors.join('; ')}` : '', exclusions.length ? `${exclusions.length}${COPY.controller021}` : '', unpublished.length ? `${unpublished.length}${COPY.controller139}` : '', failed, report, data ? '' : COPY.controller022].filter(Boolean).join(' ')
         : COPY.controller023,
     });
     this.postState();
@@ -933,7 +936,8 @@ export class Controller {
     if (result.ok) {
       if (plan.team === 'GUI') {
         // 표식을 남겼으므로 읽어 둔 원본 목록의 표식도 맞춘다.
-        const tagged = new Map(items.filter(i => i.frame).map(i => [i.frame!.nodeId, i.screenId]));
+        const tagged = new Map<string, string | null>(items.filter(i => i.frame).map(i => [i.frame!.nodeId, i.screenId]));
+        for (const item of unpublished) tagged.set(item.nodeId, null);
         this.frames = this.frames.map(f => tagged.has(f.nodeId) ? { ...f, screenTag: tagged.get(f.nodeId)! } : f);
       }
       this.refreshEstimates({ ...plan, items });

@@ -42,6 +42,26 @@ export function guiScreenInfo(state: State, screen: Screen): GuiScreenInfo {
   };
 }
 
+// 다른 화면을 교체해 사용 안 함이 된 화면(mergedInto)의 ID를 지금 그 자리를 이어받은 화면별로 모은다.
+// 교체가 이어졌으면 마지막 화면까지 따라간다. 캔버스에 남은 옛 화면 표식(GUI 복사본·플로우 칸)을 그 화면으로 읽을 때 쓴다.
+export function formerUids(state: State): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const screen of state.screens.values()) {
+    if (!screen.mergedInto) continue;
+    let current = screen;
+    const seen = new Set([screen.id]);
+    while (current.mergedInto && !seen.has(current.mergedInto)) {
+      const next = state.screens.get(current.mergedInto);
+      if (!next) break;
+      seen.add(next.id);
+      current = next;
+    }
+    if (current.id === screen.id) continue;
+    out.set(current.id, [...out.get(current.id) ?? [], screen.id]);
+  }
+  return out;
+}
+
 export function guiScreens(state: State): Map<string, GuiScreenInfo> {
   return new Map([...state.screens.values()].map(s => [s.id, guiScreenInfo(state, s)]));
 }
