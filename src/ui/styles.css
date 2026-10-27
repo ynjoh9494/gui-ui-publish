@@ -601,6 +601,9 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .tutorial-bubble[data-tail^="top"]::before { top: -7px; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 .tutorial-bubble[data-tail^="bottom"]::before { bottom: -7px; clip-path: polygon(0 0, 100% 0, 50% 100%); }
 .tutorial-bubble strong { display: block; padding-right: 44px; font-size: 13px; }
+/* 「새 기능」 라벨: 태그(.chip) 모양을 작게. 말풍선은 늘 흰 바탕이라 바탕색을 흰색에 섞는다. */
+.tutorial-new { min-height: 16px; margin-left: 6px; padding: 0 6px; border-radius: 6px; font-size: 10px; background: color-mix(in srgb, var(--c) 12%, #fff); }
+.tutorial-new[hidden] { display: none; }
 .tutorial-bubble p { margin: 4px 0 0; }
 .tutorial-progress { position: absolute; top: 10px; right: 14px; font-size: 11px; color: #6b6b6b; font-variant-numeric: tabular-nums; }
 .tutorial-close { position: absolute; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: #fff; color: #000; transform: translate(-50%, -50%); }

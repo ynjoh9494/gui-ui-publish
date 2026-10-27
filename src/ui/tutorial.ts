@@ -5,7 +5,7 @@ import { COPY } from '../core/copy.ts';
 // 어디를 눌러도(Enter·Space도) 다음 단계로 가고, 도움말 자리의 X와 Esc는 끝낸다. 마지막 단계에서 넘기면 끝난다.
 import type { Entry } from '../core/compare.ts';
 import { defaultDraft, type Draft } from '../core/drafts.ts';
-import { TAG_PALETTE } from '../core/palette.ts';
+import { paletteHex, TAG_PALETTE } from '../core/palette.ts';
 import type { Plan } from '../core/publish.ts';
 import { Store } from '../core/store.ts';
 import type { Actor, Team } from '../core/types.ts';
@@ -35,6 +35,9 @@ type Spot = Element | (Element | null | undefined)[] | null | undefined;
 interface Step {
   title: string;
   body: string;
+  // 지난 배포에 없던 기능을 설명하는 단계. 제목 오른쪽에 「새 기능」 라벨을 단다(2026-10-27 사용자 요청).
+  // 배포 직전 도움말을 갱신할 때 지난 표시를 지우고 다시 붙인다(.claude/agents/release-help.md).
+  isNew?: boolean;
   // 이 단계를 보여 주기 전에 예시 화면을 조작한다.
   prepare?(d: Driver): Promise<void>;
   // 밝게 남길 영역. 배열은 한 영역으로 합치며 말풍선은 첫 영역을 가리킨다.
@@ -118,7 +121,7 @@ const GUI_STEPS: Step[] = [
     spots: d => [d.q('.list .list-filters')],
   },
   {
-    title: COPY.uiTutorial014, body: COPY.uiTutorial015,
+    title: COPY.uiTutorial014, body: COPY.uiTutorial015, isNew: true,
     async prepare(d) {
       await d.click(() => d.row(COPY.uiPreview009));
       await d.click('.detail [data-action="include-selected"]');
@@ -281,6 +284,10 @@ const UI_STEPS: Step[] = [
     spots: d => [d.q('.detail .fb-top')],
   },
   {
+    title: COPY.uiTutorial075, body: COPY.uiTutorial076, isNew: true,
+    spots: d => [d.q('.detail .fb-screens-head')],
+  },
+  {
     title: COPY.uiTutorial058, body: COPY.uiTutorial059,
     spots: d => [d.q('.detail .fb-bottom')],
   },
@@ -302,6 +309,14 @@ const UI_STEPS: Step[] = [
       await d.until(() => d.all('.flow-view .flow-card').length === 2);
     },
     spots: d => [d.q('.tabs .create-tabs'), d.q('.flow-view')],
+  },
+  {
+    title: COPY.uiTutorial077, body: COPY.uiTutorial078, isNew: true,
+    async prepare(d) {
+      await d.click('.tabs [data-action="pdf-open"]');
+      await d.until(() => d.q('.pdf-view'));
+    },
+    spots: d => [d.q('.tabs .create-tabs'), d.q('.pdf-view')],
   },
 ];
 
@@ -449,7 +464,7 @@ export function startTutorial(options: TutorialOptions): void {
   layer.setAttribute('aria-modal', 'true');
   layer.setAttribute('aria-label', COPY.uiTutorial003);
   layer.innerHTML = `<svg class="tutorial-dim" aria-hidden="true"><path fill-rule="evenodd"/></svg>
-    <div class="tutorial-bubble" hidden aria-live="polite"><span class="tutorial-progress"></span><strong></strong><p></p></div>
+    <div class="tutorial-bubble" hidden aria-live="polite"><span class="tutorial-progress"></span><strong><span class="tutorial-title"></span><span class="chip tutorial-new" style="--c:${paletteHex('Yellow')}" hidden>${COPY.uiTutorial074}</span></strong><p></p></div>
     <button class="tutorial-close" aria-label="${COPY.uiTutorial002}">${HELP_CLOSE_ICON}</button>`;
   container.append(app, layer);
   document.body.append(container);
@@ -518,7 +533,8 @@ export function startTutorial(options: TutorialOptions): void {
     if (!step) { bubble.hidden = true; return; }
     bubble.hidden = false;
     bubble.querySelector('.tutorial-progress')!.textContent = `${shown + 1}/${steps.length}`;
-    bubble.querySelector('strong')!.textContent = step.title;
+    bubble.querySelector('.tutorial-title')!.textContent = step.title;
+    bubble.querySelector<HTMLElement>('.tutorial-new')!.hidden = !step.isNew;
     bubble.querySelector('p')!.textContent = step.body;
     const w = bubble.offsetWidth, h = bubble.offsetHeight;
     // 영역을 찾지 못하면 가운데에 꼬리 없이 둔다.
