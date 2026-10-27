@@ -7,7 +7,7 @@ import type { Host } from '../host.ts';
 import { ensureDataPage, renderDataPage } from './data.ts';
 import { createFingerprintReader } from './fingerprints.ts';
 import { NS, findFlipbook, flipbookSpots, inspectFlipbooks, listFlipbooks, loadPages, moveFlipbookFrame, syncChapters, syncFlipbook, templateFromSelection, templateIssues, flipbookSession, type FlipbookSession } from './flipbook.ts';
-import { fillDescription, readDescription, selectedDescriptionRoot, selectionTarget } from './description.ts';
+import { addTextFrame, fillDescription, readDescription, selectedDescriptionRoot, selectedFrame, selectionTarget } from './description.ts';
 import { createFlow, flowNode, updateFlow } from './flow.ts';
 import { exportPdfPages, pdfSelection } from './pdf.ts';
 import { readRichText, selectedTextNode, writeRichText } from './richText.ts';
@@ -226,11 +226,16 @@ export function figmaHost(mode: Host['mode']): Host {
     selectionTarget,
     readSelection() {
       const root = selectedDescriptionRoot();
-      return root ? readDescription(root) : readRichText(selectedTextNode());
+      if (root) return readDescription(root);
+      // 프레임에는 적용할 때마다 새로 추가하므로 불러올 내용이 정해지지 않는다(BEHAVIOR.md 「확인 필요」).
+      if (selectedFrame()) throw new Error(COPY.figmaText010);
+      return readRichText(selectedTextNode());
     },
     async writeSelection(paragraphs) {
       const root = selectedDescriptionRoot();
       if (root) return fillDescription(root, paragraphs);
+      const frame = selectedFrame();
+      if (frame) return addTextFrame(frame, paragraphs);
       const node = selectedTextNode();
       await writeRichText(node, paragraphs);
       return { kind: 'text' };

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { COPY } from '../src/core/copy.ts';
 import { parseRichText, serializeRichText } from '../src/core/richText.ts';
-import { fillDescription, readDescription, selectedDescriptionRoot, selectionTarget } from '../src/figma/description.ts';
+import { addTextFrame, fillDescription, readDescription, selectedDescriptionRoot, selectedFrame, selectionTarget } from '../src/figma/description.ts';
 
 type Font = { family: string; style: string };
 type Char = { font: Font; list: string; indent: number };
@@ -26,6 +26,8 @@ class Node {
   paddingTop = 0;
   paddingBottom = 0;
   itemSpacing = 0;
+  layoutMode = 'NONE';
+  layoutSizingHorizontal = 'FIXED';
   parent: Node | null = null;
   children: Node[] = [];
   data = new Map<string, string>();
@@ -279,7 +281,7 @@ test('플립북 밖 화면의 Description 그룹(본문 슬롯 없음) 안 텍�
   assert.equal(selectedDescriptionRoot(), null);
   assert.deepEqual(selectionTarget(), { kind: 'text', name: '줄거리' });
   setup([screen]);
-  assert.deepEqual(selectionTarget(), { kind: 'none' });
+  assert.deepEqual(selectionTarget(), { kind: 'frame', name: 'VOD 상세' });
   // 플립북 표식 안의 Description은 슬롯이 없어도 대상이다(적용할 때 본문 영역이 없다고 알린다).
   screen.setSharedPluginData('guiuipublish', 'flipbookOf', 'f1');
   setup([text]);
@@ -322,4 +324,71 @@ test('새 제목·본문 레이어는 슬롯에 있던 텍스트의 서식을 �
   setup([bare]);
   await fillDescription(bare as unknown as SceneNode, parseRichText('본문만'));
   assert.equal((empty.children[0].children[0] as Text).fontSize, 16, 'defaults only when the slot has no text');
+});
+
+test('플립북 밖 프레임 하나는 프레임 대상이고, 인스턴스 안의 프레임은 오류, 여러 개나 플립북 안이면 프레임 대상이 아니다', () => {
+  const memo = new Node('FRAME', '메모');
+  setup([memo]);
+  assert.equal(selectedFrame()?.id, memo.id);
+  assert.deepEqual(selectionTarget(), { kind: 'frame', name: '메모' });
+  setup([memo, new Node('FRAME', '다른 메모')]);
+  assert.deepEqual(selectionTarget(), { kind: 'none' });
+  const inner = new Node('FRAME', '안쪽');
+  new Node('INSTANCE', '카드', [new Node('FRAME', '내용', [inner])]);
+  setup([inner]);
+  assert.deepEqual(selectionTarget(), { kind: 'error', message: COPY.figmaText009 });
+  const { root } = fixture();
+  const box = new Node('FRAME', '상자');
+  const flipbook = new Node('FRAME', '홈 메인', [box, root]);
+  flipbook.setSharedPluginData('guiuipublish', 'flipbookOf', 'f1');
+  setup([box]);
+  assert.deepEqual(selectionTarget(), { kind: 'description', flipbookId: 'f1', name: '홈 메인' });
+});
+
+test('프레임에는 묶음들을 오토 레이아웃 프레임으로 감싸 프레임 폭으로 맨 아래에 넣고, 적용할 때마다 새로 추가한다', async () => {
+  const note = new Node('FRAME', '노트', [Object.assign(new Node('RECTANGLE', '배경'), { y: 20, height: 100 })]);
+  const hidden = Object.assign(new Node('RECTANGLE', '숨김'), { y: 500, height: 100, visible: false });
+  note.appendChild(hidden);
+  setup([note]);
+  const doc = parseRichText('**Policy**\n\n- 설명\n\t- 하위\n\n**1. 항목**\n\n- 내용\n\n**Navigation**\n\n- 이동');
+  assert.deepEqual(await addTextFrame(note as unknown as FrameNode, doc), { kind: 'frame' });
+  const wrapper = note.children[2] as Node & Record<string, unknown>;
+  assert.equal(wrapper.getPluginData('guiUiPublishTextFrame'), '1');
+  assert.equal(wrapper.name, COPY.figmaText011);
+  assert.deepEqual(
+    [wrapper.layoutMode, wrapper.primaryAxisSizingMode, wrapper.counterAxisSizingMode, wrapper.primaryAxisAlignItems, wrapper.counterAxisAlignItems],
+    ['VERTICAL', 'AUTO', 'FIXED', 'MIN', 'MIN']);
+  assert.deepEqual([wrapper.itemSpacing, wrapper.paddingLeft, wrapper.paddingTop, wrapper.paddingRight, wrapper.paddingBottom], [12, 12, 8, 12, 16]);
+  assert.deepEqual(wrapper.fills, []);
+  assert.deepEqual([wrapper.x, wrapper.y, wrapper.width], [0, 120, 440], 'below the visible content, at the frame width');
+  assert.deepEqual(wrapper.children.map(group => group.name), ['Policy', '1. 항목', 'Navigation']);
+  assert.deepEqual(wrapper.children.map(group => [group.paddingTop, group.paddingBottom]), [[0, 15], [0, 0], [15, 0]]);
+  assert.ok(wrapper.children.every(group => group.getPluginData('guiUiPublishDescriptionGroup') === '1' && group.layoutSizingHorizontal === 'FILL'));
+  const [title, body] = wrapper.children[0].children as Text[];
+  assert.equal(title.chars[0].font.style, 'Bold');
+  assert.equal(body.chars[0].list, 'UNORDERED');
+  assert.equal(body.fontSize, 16, 'Description defaults when the frame has no earlier text frame');
+  assert.equal(wrapper.children[0].itemSpacing, 3);
+
+  body.fontSize = 14;
+  wrapper.children[0].itemSpacing = 6;
+  await addTextFrame(note as unknown as FrameNode, parseRichText('**추가**\n\n- 더'));
+  assert.equal(note.children.length, 4, 'each apply adds another text frame');
+  assert.equal(wrapper.removed, false);
+  const next = note.children[3];
+  assert.equal(next.y, wrapper.y + wrapper.height);
+  assert.equal((next.children[0].children[1] as Text).fontSize, 14, 'style follows the last text frame');
+  assert.equal(next.children[0].itemSpacing, 6);
+});
+
+test('오토 레이아웃 프레임에는 마지막 자식으로 넣고 폭을 채우며, 폭이 Hug면 안쪽 폭으로 고정한다', async () => {
+  const fixed = Object.assign(new Node('FRAME', '세로'), { layoutMode: 'VERTICAL' });
+  setup([fixed]);
+  await addTextFrame(fixed as unknown as FrameNode, parseRichText('본문만'));
+  assert.equal(fixed.children[0].layoutSizingHorizontal, 'FILL');
+  const hug = Object.assign(new Node('FRAME', 'Hug'), { layoutMode: 'VERTICAL', layoutSizingHorizontal: 'HUG' });
+  setup([hug]);
+  await addTextFrame(hug as unknown as FrameNode, parseRichText('본문만'));
+  assert.deepEqual([hug.children[0].layoutSizingHorizontal, hug.children[0].width], ['FIXED', 416]);
+  assert.equal(hug.layoutSizingHorizontal, 'HUG');
 });

@@ -345,7 +345,7 @@ export const COPY = {
   uiApp304: "Tab/Shift+Tab: 목록 깊이 · Ctrl+B: 굵게",
   uiApp305: "선택 영역 불러오기",
   uiApp306: "선택 영역에 적용",
-  uiApp307: "플립북 또는 텍스트 선택",
+  uiApp307: "플립북, 텍스트 또는 프레임 선택",
   uiApp308: "텍스트 입력",
   uiApp309: "굵게",
   uiApp310: "목록",
@@ -371,6 +371,7 @@ export const COPY = {
   uiApp327: "대상:",
   uiApp328: "플립북",
   uiApp329: "텍스트 레이어",
+  uiApp360: "프레임",
   // 새 플립북 만들기 버튼·목록 행(2026-10-22)
   uiApp330: "만드는 중…",
   uiApp331: "플립북",
@@ -474,7 +475,7 @@ export const COPY = {
   uiTutorial068: 'VOD 상세 버튼 위치 수정',
   uiTutorial069: '검색 결과 화면 추가',
   uiTutorial070: "텍스트 편집",
-  uiTutorial071: "플립북이나 텍스트를 골라 불러오고 적용합니다.",
+  uiTutorial071: "플립북, 텍스트, 또는 프레임을 선택하면 불러오고 적용합니다.",
   uiTutorial072: "플로우",
   uiTutorial073: "배포된 화면을 썸네일로 추가하고, 썸네일 가장자리 점을 다른 썸네일로 드래그해 연결합니다. GUI를 다시 배포하면 썸네일만 바뀝니다.",
   uiTutorial074: "새 기능",
@@ -697,6 +698,7 @@ export const COPY = {
   controller120: "텍스트 적용 중",
   controller135: "선택한 Description에 텍스트를 적용했습니다.",
   controller121: "선택한 텍스트 레이어에 텍스트를 적용했습니다.",
+  controller140: "선택한 프레임에 텍스트를 추가했습니다.",
   controller133: '기존 플립북',
   controller134: '개를 옮겼습니다.',
   controller136: '불러오는 중',
@@ -773,7 +775,7 @@ export const COPY = {
   pdf014: '취소하는 중…',
   pdf015: 'PDF 저장을 취소했습니다.',
   // 텍스트 편집 — src/figma/richText.ts
-  figmaText001: "플립북이나 텍스트를 선택하세요.",
+  figmaText001: "플립북이나 텍스트, 프레임을 선택하세요.",
   figmaText002: "선택한 텍스트에 없는 글꼴이 있습니다. 글꼴을 바꾼 뒤 다시 시도하세요.",
   figmaText003: "글꼴을 불러오지 못했습니다:",
   figmaText004: "굵은 글씨로 쓸 Bold 스타일이 없는 글꼴입니다:",
@@ -783,6 +785,11 @@ export const COPY = {
   figmaText007: "한 플립북만 선택하세요.",
   // 적용할 때 만드는 본문 레이어와 제목 없는 묶음의 이름
   figmaText008: "본문",
+  // 플립북 밖 프레임에 추가하기
+  figmaText009: "인스턴스 안의 프레임에는 텍스트를 추가할 수 없습니다.",
+  figmaText010: "프레임에서는 불러올 수 없습니다. 플립북이나 텍스트를 선택하세요.",
+  // 프레임에 추가할 때 묶음들을 감싸는 오토 레이아웃 프레임의 이름
+  figmaText011: "텍스트",
   // 생성되는 플립북 문구 — src/figma/flipbook.ts
   figmaFlipbook001: '플립북 페이지를 찾을 수 없습니다.', // 37
   figmaFlipbook002: '플립북 템플릿 프레임을 찾을 수 없습니다. 설정에서 다시 지정하세요.', // 49

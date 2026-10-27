@@ -308,7 +308,7 @@ export function textEditor(root: HTMLElement): TextEditor {
     root.querySelector('[data-action="text-apply"]')?.toggleAttribute('disabled', !hasText(doc));
   }
 
-  // 대상: 플립북 「제목」 / 텍스트 레이어 「이름」. 대상이 없으면 무엇을 골라야 하는지, 오류면 그 이유를 보여 준다.
+  // 대상: 플립북 「제목」 / 텍스트 레이어 「이름」 / 프레임 「이름」. 대상이 없으면 무엇을 골라야 하는지, 오류면 그 이유를 보여 준다.
   let target: SelectionTarget = { kind: 'none' };
   function paintTarget() {
     const note = root.querySelector<HTMLElement>('.text-view .text-target');
@@ -316,6 +316,7 @@ export function textEditor(root: HTMLElement): TextEditor {
     note.classList.toggle('bad', target.kind === 'error');
     note.textContent = target.kind === 'description' ? `${COPY.uiApp327} ${COPY.uiApp328} 「${target.name}」`
       : target.kind === 'text' ? `${COPY.uiApp327} ${COPY.uiApp329} 「${target.name}」`
+      : target.kind === 'frame' ? `${COPY.uiApp327} ${COPY.uiApp360} 「${target.name}」`
       : target.kind === 'error' ? target.message : COPY.uiApp307;
   }
 

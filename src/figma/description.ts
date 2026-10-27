@@ -7,6 +7,9 @@ import { applyRichText, BOLD_STYLE, readRichText, textFonts, type TextFonts } fr
 // 굵은 제목 줄마다 만든 제목·본문 묶음 표식. 레이어 하나로 넣었던 본문(OLD_BODY_MARKER)도 불러오기에서 읽는다.
 const GROUP_MARKER = 'guiUiPublishDescriptionGroup';
 const OLD_BODY_MARKER = 'guiUiPublishDescriptionBody';
+// 플립북 밖에서 고른 프레임에 넣는, 묶음들을 감싼 오토 레이아웃 프레임(세로, 왼쪽 위 정렬)의 표식과 간격·여백
+const TEXT_FRAME_MARKER = 'guiUiPublishTextFrame';
+const TEXT_FRAME = { itemSpacing: 12, paddingLeft: 12, paddingRight: 12, paddingTop: 8, paddingBottom: 16 };
 
 const isDescription = (node: BaseNode): boolean =>
   node.name === 'Description' && (node.type === 'FRAME' || node.type === 'INSTANCE' || node.type === 'GROUP');
@@ -71,11 +74,23 @@ export function selectedDescriptionRoot(): SceneNode | null {
   return selectedDescription()?.root ?? null;
 }
 
+// 고른 텍스트가 아닌 프레임 하나. 플립북 안의 선택은 그 플립북 Description이 대상이므로 selectedDescription 다음에 본다.
+// 인스턴스 안의 프레임에는 레이어를 더할 수 없다.
+export function selectedFrame(): FrameNode | null {
+  const selection = figma.currentPage.selection;
+  const [node] = selection;
+  if (selection.length !== 1 || node.type !== 'FRAME') return null;
+  for (let n: BaseNode | null = node.parent; n && n.type !== 'PAGE'; n = n.parent) if (n.type === 'INSTANCE') throw new Error(COPY.figmaText009);
+  return node;
+}
+
 // 텍스트 편집 탭에 보여 줄 지금 선택의 대상
 export function selectionTarget(): SelectionTarget {
   try {
     const found = selectedDescription();
     if (found) return { kind: 'description', flipbookId: found.flipbook?.getSharedPluginData(NS, FLIPBOOK_KEY) || null, name: (found.flipbook ?? found.root).name };
+    const frame = selectedFrame();
+    if (frame) return { kind: 'frame', name: frame.name };
     const selection = figma.currentPage.selection;
     if (selection.length === 1 && selection[0].type === 'TEXT') return { kind: 'text', name: selection[0].name };
     return { kind: 'none' };
@@ -116,7 +131,7 @@ function splitGroups(doc: RichParagraph[]): DescriptionGroup[] {
   return groups;
 }
 
-function managedGroups(area: SlotNode): FrameNode[] {
+function managedGroups(area: SlotNode | FrameNode): FrameNode[] {
   return area.children.filter((node): node is FrameNode =>
     node.type === 'FRAME' && node.visible && node.getPluginData(GROUP_MARKER) === '1');
 }
@@ -184,7 +199,7 @@ function textStyleOf(node: TextNode): TextStyle | null {
   return { font, fontSize, lineHeight, letterSpacing, fills: [...fills] };
 }
 
-function styleOf(area: SlotNode): DescriptionStyle {
+function styleOf(area: SlotNode | FrameNode): DescriptionStyle {
   const group = managedGroups(area)[0];
   const texts = area.findAllWithCriteria({ types: ['TEXT'] }).filter(node => isShown(node, area) && !node.hasMissingFont);
   // 본문 글자(굵지 않은 글자)가 있는 레이어를 먼저 본다. 굵은 제목 레이어만 있으면 그 서식을 쓴다.
@@ -236,6 +251,19 @@ function makeGroup(template: FrameNode, group: DescriptionGroup, fonts: TextFont
   return frame;
 }
 
+// 묶음을 차례로 넣고 폭을 채운다. 묶음이 둘 이상이면 첫 묶음 아래와 마지막 묶음 위에 여백을 둔다.
+function placeGroups(container: SlotNode | FrameNode, groups: FrameNode[]): void {
+  if (groups.length > 1) {
+    groups[0].paddingBottom = EDGE_GROUP_PADDING;
+    groups[groups.length - 1].paddingTop = EDGE_GROUP_PADDING;
+  }
+  for (const group of groups) {
+    container.appendChild(group);
+    group.layoutSizingHorizontal = 'FILL';
+    for (const node of group.children) if (node.type === 'TEXT') node.layoutSizingHorizontal = 'FILL';
+  }
+}
+
 export async function fillDescription(root: SceneNode, doc: RichParagraph[]): Promise<SelectionWrite> {
   const area = bodyArea(root);
   const width = Math.max(1, area.width - area.paddingLeft - area.paddingRight);
@@ -243,21 +271,59 @@ export async function fillDescription(root: SceneNode, doc: RichParagraph[]): Pr
   const prepared: FrameNode[] = [];
   try {
     for (const group of splitGroups(doc)) prepared.push(makeGroup(template, group, fonts));
-    if (prepared.length > 1) {
-      prepared[0].paddingBottom = EDGE_GROUP_PADDING;
-      prepared[prepared.length - 1].paddingTop = EDGE_GROUP_PADDING;
-    }
     const old = [...area.children];
-    for (const group of prepared) {
-      area.appendChild(group);
-      group.layoutSizingHorizontal = 'FILL';
-      for (const node of group.children) if (node.type === 'TEXT') node.layoutSizingHorizontal = 'FILL';
-    }
+    placeGroups(area, prepared);
     for (const node of old) if (!node.removed) node.remove();
     figma.currentPage.selection = [root];
     return { kind: 'description' };
   } catch (error) {
     for (const group of prepared) if (!group.removed) group.remove();
+    throw error;
+  } finally {
+    template.remove();
+  }
+}
+
+// 플립북 밖에서 고른 프레임에 Description과 같은 제목·본문 묶음을 오토 레이아웃 프레임 하나로 감싸 넣는다.
+// 적용할 때마다 새로 추가하고 이미 넣은 것은 그대로 둔다. 감싸는 프레임은 고른 프레임 폭에 맞춰 맨 아래에 놓고
+// 고른 프레임 크기는 바꾸지 않는다. 서식은 그 프레임에 이전에 넣은 묶음이 있으면 마지막 것을, 없으면 Description 기본값을 쓴다.
+export async function addTextFrame(frame: FrameNode, doc: RichParagraph[]): Promise<SelectionWrite> {
+  const auto = frame.layoutMode !== 'NONE';
+  // 폭을 내용에 맞추는(Hug) 오토 레이아웃 프레임에서는 Fill로 두면 그 프레임이 고정 폭으로 바뀌므로 지금 안쪽 폭으로 고정한다.
+  const fill = auto && frame.layoutSizingHorizontal !== 'HUG';
+  const width = Math.max(1, auto ? frame.width - frame.paddingLeft - frame.paddingRight : frame.width);
+  const previous = frame.children.filter((node): node is FrameNode => node.type === 'FRAME' && node.getPluginData(TEXT_FRAME_MARKER) === '1').pop();
+  const style = previous ? styleOf(previous) : { text: null, itemSpacing: DEFAULT_ITEM_SPACING };
+  const { template, fonts } = await makeTemplate(Math.max(1, width - TEXT_FRAME.paddingLeft - TEXT_FRAME.paddingRight), style);
+  const wrapper = figma.createFrame();
+  const prepared: FrameNode[] = [];
+  try {
+    wrapper.name = COPY.figmaText011;
+    wrapper.setPluginData(TEXT_FRAME_MARKER, '1');
+    wrapper.resize(width, 1);
+    wrapper.layoutMode = 'VERTICAL';
+    wrapper.primaryAxisSizingMode = 'AUTO';
+    wrapper.counterAxisSizingMode = 'FIXED';
+    wrapper.primaryAxisAlignItems = 'MIN';
+    wrapper.counterAxisAlignItems = 'MIN';
+    wrapper.itemSpacing = TEXT_FRAME.itemSpacing;
+    wrapper.paddingLeft = TEXT_FRAME.paddingLeft;
+    wrapper.paddingRight = TEXT_FRAME.paddingRight;
+    wrapper.paddingTop = TEXT_FRAME.paddingTop;
+    wrapper.paddingBottom = TEXT_FRAME.paddingBottom;
+    wrapper.fills = [];
+    wrapper.clipsContent = false;
+    for (const group of splitGroups(doc)) prepared.push(makeGroup(template, group, fonts));
+    placeGroups(wrapper, prepared);
+    // 오토 레이아웃이 아니면 보이는 내용 아래(빈 프레임이면 왼쪽 위)에 놓는다.
+    const bottom = Math.max(0, ...frame.children.filter(node => node.visible).map(node => node.y + node.height));
+    frame.appendChild(wrapper);
+    if (fill) wrapper.layoutSizingHorizontal = 'FILL';
+    else if (!auto) { wrapper.x = 0; wrapper.y = bottom; }
+    return { kind: 'frame' };
+  } catch (error) {
+    for (const group of prepared) if (!group.removed) group.remove();
+    if (!wrapper.removed) wrapper.remove();
     throw error;
   } finally {
     template.remove();
