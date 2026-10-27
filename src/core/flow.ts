@@ -23,9 +23,10 @@ export interface FlowPlan { id: string; title: string; cells: FlowCell[]; links:
 // 캔버스 배치 값. 제목 → 이미지 → 설명은 참고 플로우 프레임의 구조를 따른다.
 // 화면 간격 80×80은 이미지 사이 간격이다(2026-10-23 사용자 요청: 세로도 80. 참고 프레임의 세로는 120). 썸네일을 누르기만 해서 놓을 때 이 간격을 띄운다.
 // 화살표는 이미지 가장자리에서 나가 도착 이미지 8px 앞에서 끝나고(arrowGap), 조건 글자는 출발점에서 8px 떨어진다.
-// captionBand: 썸네일 아래 설명 칸(간격 4 + 한 줄). clearance: 꺾인 화살표가 다른 화면의 제목·이미지·설명과 띄우는 거리.
+// captionBand: 썸네일 아래 설명 칸(간격 8 + 한 줄). clearance: 꺾인 화살표가 다른 화면의 제목·이미지·설명과 띄우는 거리.
+// 2026-10-27 사용자 요청: 썸네일과 설명 사이를 4에서 8로 늘린다.
 export const FLOW_LAYOUT = {
-  pad: 0, titleSize: 16, titleGap: 56, cellTitle: 25, cellTitleSize: 16, captionGap: 4, captionSize: 16, captionBand: 25,
+  pad: 0, titleSize: 16, titleGap: 56, cellTitle: 25, cellTitleSize: 16, captionGap: 8, captionSize: 16, captionBand: 29,
   gapX: 80, gapY: 80, line: 2, arrowGap: 8, labelSize: 16, labelGap: 8, labelMargin: 8, clearance: 8,
 };
 // 판의 격자(구현 기본값): 썸네일 왼쪽 위를 이 간격(캔버스 단위)에 맞춘다. 화면 간격 80의 절반이다.

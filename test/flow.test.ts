@@ -54,7 +54,7 @@ test('막힌 길은 다른 화면의 제목·이미지·설명 자리를 피해 
   // 사이에 화면이 있으면 바깥 통로로 돌아간다.
   assert.deepEqual(routeLink(B(0, 0), 'right', B(280, 0), 'left', [B(140, 0)]), [[100, 25], [120, 25], [120, -65], [260, -65], [260, 25], [280, 25]]);
   // 꺾이는 자리에 화면이 있으면 두 화면 사이 통로(x 150) 가운데로 내려간다.
-  assert.deepEqual(routeLink(B(0, 0), 'right', B(200, 150), 'top', [B(200, 0)]), [[100, 25], [150, 25], [150, 100], [250, 100], [250, 150]]);
+  assert.deepEqual(routeLink(B(0, 0), 'right', B(200, 150), 'top', [B(200, 0)]), [[100, 25], [150, 25], [150, 102], [250, 102], [250, 150]]);
   // 도착 화면 위 제목 칸(25)을 가로지르지 않고 그 위 통로로 들어간다.
   assert.deepEqual(routeLink(B(0, 0), 'right', B(200, 40), 'top'), [[100, 25], [150, 25], [150, -5], [250, -5], [250, 40]]);
   // 같은 변끼리는 모든 화면 바깥 통로를 쓴다.
@@ -74,7 +74,7 @@ test('조건 칸은 출발 화면 가까이: 좌우로 나가면 화살표 위, 
 
 test('캔버스 배치는 판의 자리를 그대로 옮기고, 참고 프레임의 화살표·조건 규칙을 따른다(화살촉은 8px 앞)', () => {
   const L = FLOW_LAYOUT;
-  assert.deepEqual([L.gapX, L.gapY, L.cellTitle, L.captionGap, L.arrowGap, FLOW_SNAP], [80, 80, 25, 4, 8, 40]);
+  assert.deepEqual([L.gapX, L.gapY, L.cellTitle, L.captionGap, L.arrowGap, FLOW_SNAP], [80, 80, 25, 8, 8, 40]);
   // 참고 프레임(TIM_UI Scenario_STB 3178:215687)의 배치: 위·가운데·아래 화면과 아래 오른쪽 화면. 이미지 사이는 가로·세로 80이다.
   const cells = [
     { key: 'top', x: 0, y: 0, w: 480, h: 270 }, { key: 'mid', x: 0, y: 350, w: 480, h: 270 },
@@ -87,7 +87,7 @@ test('캔버스 배치는 판의 자리를 그대로 옮기고, 참고 프레임
   ];
   const layout = layoutFlow(cells, links);
   assert.deepEqual(layout.images.get('top'), { x: 0, y: 81, w: 480, h: 270 }, '플로우 제목 아래 56 + 제목 칸 25 뒤에 첫 이미지');
-  assert.deepEqual([layout.width, layout.height], [1040, 1076]);
+  assert.deepEqual([layout.width, layout.height], [1040, 1080]);
   const [up, down, right] = layout.arrows;
   assert.deepEqual(up.points, [[240, 431], [240, 359]], 'Up: 이미지 위 끝에서 위 이미지 아래 끝 8px 앞까지');
   assert.deepEqual(down.points, [[240, 701], [240, 773]]);
@@ -98,7 +98,7 @@ test('캔버스 배치는 판의 자리를 그대로 옮기고, 참고 프레임
   // 화면마다 제 썸네일 크기를 쓴다.
   const mixed = layoutFlow([{ key: 'a', x: 0, y: 0, w: 480, h: 270 }, { key: 'b', x: 560, y: 0, w: 120, h: 400 }], []);
   assert.deepEqual(mixed.images.get('b'), { x: 560, y: 81, w: 120, h: 400 });
-  assert.deepEqual([mixed.width, mixed.height], [680, 506]);
+  assert.deepEqual([mixed.width, mixed.height], [680, 510]);
 });
 
 test('플로우 계획: 배포된 화면만, 가장 왼쪽·위 썸네일을 (0, 0)으로 옮기고 잘못된 화살표는 뺀다', () => {
