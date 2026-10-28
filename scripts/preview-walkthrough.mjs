@@ -985,10 +985,14 @@ try {
     // 머리 줄은 체크박스 칸까지 한 색으로 채우고, 체크박스와 화살표 사이는 좁다.
     const head = await group('홈').locator('.group-bar').evaluate(bar => {
       const box = bar.querySelector('input').getBoundingClientRect(), caret = bar.querySelector('.caret').getBoundingClientRect();
-      return { same: getComputedStyle(bar).backgroundColor === getComputedStyle(bar.querySelector('.group-head')).backgroundColor, gap: caret.left - box.right };
+      // 손잡이는 글자 자체의 너비로 잰다(칸은 고정 폭).
+      const range = document.createRange();
+      range.selectNodeContents(bar.querySelector('.drag-handle'));
+      return { same: getComputedStyle(bar).backgroundColor === getComputedStyle(bar.querySelector('.group-head')).backgroundColor, gap: caret.left - box.right, handleGap: box.left - range.getBoundingClientRect().right };
     });
     assert.ok(head.same, '머리 줄 배경이 체크박스 오른쪽에서 끊기지 않는다');
     assert.ok(head.gap <= 6, `체크박스와 화살표 사이 간격 ${head.gap}px`);
+    assert.ok(head.handleGap >= 2 && head.handleGap <= 5, `드래그 손잡이와 체크박스 사이 간격 ${head.handleGap}px`);
     await shot('12-category-order');
     assert.deepEqual((await app.locator('[data-field=categoryId] option').allInnerTexts()).slice(-3), ['VOD', '검색', '홈'], '카테고리 선택도 바뀐 순서');
     await app.locator('[data-action=settings]').click();

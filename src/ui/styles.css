@@ -251,8 +251,9 @@ button.link.danger { color: var(--danger); }
 .list-body > :not(.list-box) { flex: none; }
 /* 목록 박스: 추가 설명 위까지 세로로 채우고 스크롤은 이 안에서 생긴다. */
 .list-box { flex: 1; min-height: 80px; overflow: auto; --box-bg: color-mix(in srgb, var(--bg2) 45%, var(--bg)); margin: 0 8px 8px; border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); border-radius: 6px; background: var(--box-bg); }
-/* GUI 목록의 묶음 머리: 체크박스 칸까지 머리와 같은 색으로 줄 전체를 채우고, 체크박스와 화살표 사이를 좁힌다. */
-.list-box .group-bar input { margin-right: 0; }
+/* GUI 목록의 묶음 머리: 체크박스 칸까지 머리와 같은 색으로 줄 전체를 채우고, 체크박스와 화살표 사이를 좁힌다.
+   체크박스 왼쪽 여백은 드래그 손잡이(⠿)와 조금 떨어지게 넓힌다. */
+.list-box .group-bar input { margin: 0 0 0 11px; }
 .list-box .group-bar input + .group-head { padding-left: 4px; }
 /* 빈 목록 안내는 박스의 위아래 가운데 */
 .list-box:has(> .empty:only-child) { display: flex; align-items: center; justify-content: center; }
