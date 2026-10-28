@@ -1,8 +1,10 @@
 import { COPY } from '../core/copy.ts';
 import type { SelectionTarget, SelectionWrite } from '../core/description.ts';
 import type { RichParagraph } from '../core/richText.ts';
-import { DESCRIPTION_AREA, FLIPBOOK_KEY, GUI_AREA, NS } from './flipbook.ts';
+import { PART_KEY } from '../core/templateParts.ts';
+import { FLIPBOOK_KEY } from './flipbook.ts';
 import { applyRichText, BOLD_STYLE, readRichText, textFonts, type TextFonts } from './richText.ts';
+import { DESCRIPTION_AREA, GUI_AREA, NS, linksOf, markedParts } from './template.ts';
 
 // 굵은 제목 줄마다 만든 제목·본문 묶음 표식. 레이어 하나로 넣었던 본문(OLD_BODY_MARKER)도 불러오기에서 읽는다.
 const GROUP_MARKER = 'guiUiPublishDescriptionGroup';
@@ -34,11 +36,26 @@ function descriptionsIn(node: BaseNode, skip: BaseNode | null, out: SceneNode[] 
   return out;
 }
 
-type Found = { root: SceneNode; flipbook: SceneNode | null };
+// label: 대상 표시에 쓸 이름(표식 템플릿이면 플립북·템플릿 프레임 이름)
+type Found = { root: SceneNode; flipbook: SceneNode | null; label?: string };
+
+// 고른 요소를 품은 표식 템플릿이나 그 템플릿에서 만든 플립북(연결 기록이 있는 프레임)
+function linkedRootOf(node: BaseNode): SceneNode | null {
+  for (let n: BaseNode | null = node; n && n.type !== 'PAGE' && n.type !== 'DOCUMENT'; n = n.parent) if (linksOf(n, NS)) return n as SceneNode;
+  return null;
+}
+
 // 고른 요소가 속한 플립북의 Description(2026-10-22 사용자 요청: 플립북 안의 무엇을 골라도 그 플립북의 Description에 넣는다).
-// Description 안이면 그 Description, 아니면 위로 올라가며 Description이 하나뿐인 가장 가까운 묶음(플립북)에서 찾는다. Section·페이지까지는 올라가지 않는다.
+// 표식 템플릿과 그 템플릿에서 만든 플립북은 「Description 본문」에 연결한 칸이 대상이다(2026-10-28 사용자 결정).
+// 그 밖에는 Description 안이면 그 Description, 아니면 위로 올라가며 Description이 하나뿐인 가장 가까운 묶음(플립북)에서 찾는다. Section·페이지까지는 올라가지 않는다.
 // Description이 여럿인 묶음에 닿으면 정할 수 없다. 플립북 표식이 있는 프레임에 Description이 없으면 오류다.
 function descriptionOf(node: SceneNode): Found | null {
+  const linked = linkedRootOf(node);
+  if (linked && 'children' in linked) {
+    const area = markedParts(linked, NS).get('description')?.[0];
+    if (area) return { root: area, flipbook: isFlipbook(linked) ? linked : null, label: linked.name };
+    if (isFlipbook(linked)) throw new Error(COPY.figmaText006);
+  }
   const chain: BaseNode[] = [];
   for (let n: BaseNode | null = node; n && n.type !== 'PAGE' && n.type !== 'DOCUMENT' && n.type !== 'SECTION'; n = n.parent) chain.push(n);
   // GUI 영역 안은 원본 화면의 복사본이다. 그 안에 Description이라는 이름의 레이어가 있어도 플립북의 Description이 아니므로
@@ -88,7 +105,7 @@ export function selectedFrame(): FrameNode | null {
 export function selectionTarget(): SelectionTarget {
   try {
     const found = selectedDescription();
-    if (found) return { kind: 'description', flipbookId: found.flipbook?.getSharedPluginData(NS, FLIPBOOK_KEY) || null, name: (found.flipbook ?? found.root).name };
+    if (found) return { kind: 'description', flipbookId: found.flipbook?.getSharedPluginData(NS, FLIPBOOK_KEY) || null, name: found.label ?? (found.flipbook ?? found.root).name };
     const frame = selectedFrame();
     if (frame) return { kind: 'frame', name: frame.name };
     const selection = figma.currentPage.selection;
@@ -99,7 +116,9 @@ export function selectionTarget(): SelectionTarget {
   }
 }
 
-function bodyArea(root: SceneNode): SlotNode {
+// 본문 칸: 표식 템플릿에서 「Description 본문」에 연결한 칸이면 그 칸, 아니면 Description 안의 description area 슬롯
+function bodyArea(root: SceneNode): SlotNode | FrameNode {
+  if (root.getSharedPluginData(NS, PART_KEY) === 'description' && (root.type === 'SLOT' || root.type === 'FRAME')) return root;
   const area = findBodyArea(root);
   if (!area || area.type !== 'SLOT') throw new Error(COPY.figmaText005);
   return area;

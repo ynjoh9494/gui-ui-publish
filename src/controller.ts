@@ -268,6 +268,21 @@ export class Controller {
         }
         case 'resize': this.host.resize(msg.width, msg.height, msg.save, msg.compact); break;
         case 'pages': this.host.post({ type: 'pages', pages: this.host.pages() }); break;
+        case 'templateInfo': await this.postTemplateInfo(); break;
+        // 템플릿 항목에 연결된 레이어를 캔버스에서 고르고 보여 준다. 고른 선택은 플립북 목록의 선택을 바꾸지 않는다.
+        case 'revealTemplateItem': {
+          this.navSeq = msg.nav;
+          const latest = () => msg.nav === this.navSeq;
+          const templateId = this.store.state.project.templateNodeId;
+          const nodeIds = templateId && this.host.templateItemNodes ? await this.host.templateItemNodes(templateId, msg.key) : [];
+          let ok = false;
+          if (nodeIds.length && latest()) {
+            await this.host.selectNodes(nodeIds, nodeIds[nodeIds.length - 1], latest);
+            ok = await this.host.reveal(nodeIds[0], latest);
+          }
+          if (latest()) this.host.post({ type: 'nav', nav: msg.nav, ok, message: ok ? '' : COPY.controller142 });
+          break;
+        }
       }
     } catch (e) {
       this.host.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
@@ -456,6 +471,14 @@ export class Controller {
   private postUiScans() {
     this.host.post({ type: 'uiScan', scans: this.uiScans });
     this.host.post({ type: 'listSynced', at: this.store.now() });
+  }
+
+  // 관리의 템플릿에 항목별 연결 상태를 보낸다(UI Flipbook). 템플릿을 지정하지 않았으면 null이다.
+  private async postTemplateInfo(): Promise<void> {
+    if (this.host.mode !== 'UI') return;
+    const id = this.store.state.project.templateNodeId;
+    const info = id && this.host.describeTemplate ? await this.host.describeTemplate(id) : null;
+    this.host.post({ type: 'templateInfo', info });
   }
 
   // 템플릿을 다시 확인하고 결과가 바뀌면 UI에 알린다. 템플릿 컴포넌트는 플러그인 밖에서 바뀌므로 만들기·반영 직전에도 확인한다.
@@ -1419,6 +1442,35 @@ export class Controller {
         s.saveProject({ ...before, templateNodeId: template.id, templateName: template.name });
         s.audit(a, 'project.template', 'project', before.templateNodeId, template.id);
         await this.checkTemplate();
+        await this.postTemplateInfo();
+        break;
+      }
+      // 새 페이지에 기본 템플릿을 만들어 바로 지정하고 캔버스에서 보여 준다(2026-10-28 사용자 결정).
+      case 'createDefaultTemplate': {
+        if (!this.host.createDefaultTemplate) break;
+        const template = await this.host.createDefaultTemplate();
+        const before = s.state.project;
+        s.saveProject({ ...before, templateNodeId: template.id, templateName: template.name });
+        s.audit(a, 'project.template', 'project', before.templateNodeId, template.id, COPY.controller143);
+        await this.checkTemplate();
+        await this.postTemplateInfo();
+        await this.host.reveal(template.id, () => true);
+        break;
+      }
+      // 캔버스에서 고른 레이어를 템플릿 항목에 연결하거나 연결을 푼다. 이름 규칙 템플릿은 이때 표식 템플릿으로 바뀌므로
+      // 실패해도 연결 상태를 다시 보낸다.
+      case 'connectTemplateItem':
+      case 'disconnectTemplateItem': {
+        const templateId = s.state.project.templateNodeId;
+        if (!templateId) throw new Error(COPY.controller053);
+        try {
+          if (action.op === 'connectTemplateItem') await this.host.connectTemplateItem?.(templateId, action.key);
+          else await this.host.disconnectTemplateItem?.(templateId, action.key);
+          s.audit(a, action.op === 'connectTemplateItem' ? 'template.connect' : 'template.disconnect', templateId, null, action.key);
+        } finally {
+          await this.checkTemplate();
+          await this.postTemplateInfo();
+        }
         break;
       }
       case 'setGuiWidth': {

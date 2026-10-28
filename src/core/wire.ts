@@ -10,6 +10,7 @@ import type { RichParagraph } from './richText.ts';
 import type { BatchComment, Blocker, Plan } from './publish.ts';
 import type { GuiScreenInfo } from './guiScreens.ts';
 import type { State } from './store.ts';
+import type { TemplateInfo, TemplateItem } from './templateParts.ts';
 import type { Actor, Team } from './types.ts';
 import type { VersionEvidence, VersionLink } from './versionMatch.ts';
 
@@ -95,6 +96,10 @@ export type AdminOp =
   | { op: 'setFlipbookPage'; pageId: string }
   | { op: 'setFlipbookPages'; pageIds: string[] }
   | { op: 'setTemplateFromSelection'; policy?: boolean }
+  // 템플릿 관리: 새 페이지에 기본 템플릿을 만들어 지정하고, 캔버스에서 고른 레이어를 항목에 연결하거나 연결을 푼다.
+  | { op: 'createDefaultTemplate' }
+  | { op: 'connectTemplateItem'; key: TemplateItem }
+  | { op: 'disconnectTemplateItem'; key: TemplateItem }
   | { op: 'setGuiWidth'; width: number }
   | { op: 'setCaseRelation'; screenId: string; baseId: string | null; reason: string }
   | { op: 'setScreenCategory'; screenId: string; categoryId: string | null; reason: string }
@@ -158,6 +163,9 @@ export type ToMain =
   | { type: 'textTab'; open: boolean }
   // UI Flipbook 목록 새로고침: 플립북 페이지를 다시 읽어 연결 상태·순서·Section을 맞춘다. 캔버스 선택마다 하지 않는다(2026-10-23 사용자 요청).
   | { type: 'refreshList' }
+  // 관리의 템플릿: 지정한 템플릿의 항목별 연결 상태를 받고, 항목에 연결된 레이어를 캔버스에서 고른다.
+  | { type: 'templateInfo' }
+  | { type: 'revealTemplateItem'; nav: number; key: TemplateItem }
   | { type: 'textApply'; paragraphs: RichParagraph[] }
   // 플로우: 고른 배포 화면으로 지금 보고 있는 페이지에 플로우 그룹을 만든다.
   | { type: 'createFlow'; request: FlowRequest }
@@ -203,6 +211,8 @@ export type ToUi =
   | { type: 'flipbooksRemoved'; ids: string[]; message: string }
   // 플립북 템플릿의 문제(없으면 빈 목록). UI Flipbook 목록 위에 경고로 보여 준다.
   | { type: 'templateIssues'; issues: string[] }
+  // 관리의 템플릿에 보여 줄 항목별 연결 상태. 템플릿을 지정하지 않았으면 null
+  | { type: 'templateInfo'; info: TemplateInfo | null }
   // 플립북 페이지를 다시 읽어 목록을 맞춘 시각
   | { type: 'listSynced'; at: number }
   // 새 버전 페이지 비교 결과. 전환했거나 비교 결과가 맞지 않게 되면 null

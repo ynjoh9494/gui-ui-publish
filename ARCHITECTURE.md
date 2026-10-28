@@ -28,7 +28,8 @@ flowchart LR
 | `src/core/changeDigest.ts` | 변경 근거: 스냅샷을 (레이어 이름 경로 × 속성 묶음 → 값 해시) 원소로 나눠(이름이 글자를 따라 바뀌는 텍스트는 이름 대신 순서로 이음) 고정 크기 IBLT와 묶음별 요약값으로 저장하고, 현재 화면과 빼서 다른 레이어·묶음과 「보이는 값은 같음」(화면 기준 짝 해시) 판정을 풀어냄. 근거를 만들지 정하는 `changeDigest()` |
 | `src/core/drafts.ts`, `publish.ts`, `registry.ts` | 입력 검증, GUI 배포 계획·확정, 카테고리·작업자·태그·화면 레지스트리 |
 | `src/core/flow.ts` | 플로우 계획(배포된 화면만, 가장 왼쪽·위 썸네일이 (0, 0)이 되게 당김, 잘못된·중복 화살표 제외), 썸네일마다 제 크기 자리(격자는 놓는 위치 스냅)와 다른 화면 자리를 피해 화면 사이 통로를 따르는 꺾인 화살표 경로(`routeLink`, 플러그인 판과 캔버스가 함께 씀), 조건 레이어 자리, 다시 배포된 화면이 든 플로우 고르기, 만든 플로우 목록(`flowList`) |
-| `src/core/pdf.ts` | PDF 저장 탭의 정책: 저장하는 동안 숨길 요소 이름(UI Title·Update History List), 쪽 이미지 배율(2배 JPG), 쪽 순서(캔버스 왼쪽 위 → 오른쪽 아래), 파일 이름 |
+| `src/core/pdf.ts` | PDF 저장 탭의 정책: 이름 규칙 템플릿에서 저장하는 동안 숨길 요소 이름(UI Title·Update History List), 쪽 이미지 배율(2배 JPG), 쪽 순서(캔버스 왼쪽 위 → 오른쪽 아래), 파일 이름 |
+| `src/core/templateParts.ts` | 템플릿 연결 항목 정의(플립북 칸·컴포넌트·이력 행 안의 칸, 종류·필수·여러 개), 레이어 표식 키(`templatePart`)와 템플릿 프레임의 연결 기록(`templateLinks`, 컴포넌트 노드 ID) 형식, UI에 보내는 연결 상태(`TemplateInfo`) |
 | `src/core/richText.ts` | 텍스트 편집 탭의 문서 모델(문단·목록 단계·굵은 범위), 편집 동작(줄 나누기·합치기·붙여 넣기·굵게·목록 단계), 붙여 넣기·복사용 텍스트 형식 |
 | `src/core/flipbooks.ts`, `flipbook.ts`, `guiScreens.ts`, `history.ts`, `data.ts` | 플립북 기록·확인 상태, 캔버스 반영용 뷰, 화면 목록·이력·DATA 모델 |
 | `src/controller.ts` | 메시지 처리, 스캔·배포·플립북·관리 작업의 순서와 실패 보고 |
@@ -37,10 +38,12 @@ flowchart LR
 | `src/figma/host.ts` | `Host` 구현, 페이지·노드 탐색, 파일 저장소와 캔버스 API 연결 |
 | `src/figma/snapshot.ts`, `fingerprints.ts` | 노드의 시각 속성·해석된 변수 값을 스냅샷으로 수집하고 GUI 화면·플립북 UI 영역의 지문·유사도 특징 생성. 확인·배포 한 번은 판독기 하나(변수 조회 캐시)를 공유 |
 | `src/core/description.ts` | 텍스트 편집 적용 결과 타입 |
-| `src/figma/description.ts` | 플립북 안 선택(여러 개·플립북 프레임 포함)에서 그 플립북의 Description을 찾고 텍스트 편집 대상을 알려 줌. 플립북 밖에서는 본문 슬롯이 있는 Description만 대상. 본문 슬롯에 굵은 제목 줄마다 제목·본문 레이어 묶음을 적용(슬롯에 있던 텍스트 서식을 이어받음)·불러오기. 플립북 밖에서 고른 프레임 하나에는 같은 묶음을 오토 레이아웃 프레임으로 감싸 추가. 제목 문구는 판정하지 않음 |
+| `src/figma/description.ts` | 플립북 안 선택(여러 개·플립북 프레임 포함)에서 그 플립북의 Description을 찾고 텍스트 편집 대상을 알려 줌. 연결 기록이 있는 템플릿·플립북은 「Description 본문」 표식 칸이 대상. 플립북 밖에서는 본문 슬롯이 있는 Description만 대상. 본문 슬롯에 굵은 제목 줄마다 제목·본문 레이어 묶음을 적용(슬롯에 있던 텍스트 서식을 이어받음)·불러오기. 플립북 밖에서 고른 프레임 하나에는 같은 묶음을 오토 레이아웃 프레임으로 감싸 추가. 제목 문구는 판정하지 않음 |
 | `src/figma/pdf.ts` | 보고 있는 페이지 선택의 프레임 수, 고른 프레임을 순서대로 한 장씩 JPG로 내보내기(숨길 요소를 그 프레임 내보내는 동안만 숨기고 실패해도 되돌림, 프레임 사이에서 취소) |
 | `src/figma/richText.ts` | 고른 텍스트 레이어 하나의 본문·굵기·목록 단계 읽기와 쓰기(레이어 글꼴 유지) |
-| `src/figma/flipbook.ts`, `layers.ts`, `thumbs.ts`, `data.ts` | 템플릿 복제, GUI 레이어 복사·배치, JPG 썸네일, DATA 페이지 렌더링 |
+| `src/figma/template.ts` | 템플릿 구조: 플립북·템플릿 프레임의 칸 찾기(`flipbookParts`: 연결 기록이 있으면 역할 표식, 없으면 이름 규칙. GUI 영역·Description 본문·Screen ID 칸·이력 행 안으로는 내려가지 않음), 이력 행 안의 칸, PDF에서 숨길 레이어, 태그 컴포넌트 묶음(`tagKit`), 항목별 연결 상태·검사(`describeTemplate`·`templateIssues`), 캔버스 선택을 항목에 연결·해제(이름 규칙 템플릿은 먼저 표식으로 바꿈) |
+| `src/figma/templateDefault.ts` | 새 페이지에 기본 템플릿(템플릿 프레임과 태그·Screen ID 태그·이력 행 컴포넌트, 모든 칸 연결)을 만듦 |
+| `src/figma/flipbook.ts`, `layers.ts`, `thumbs.ts`, `data.ts` | 템플릿 복제(연결 기록도 옮김)와 연결한 칸 반영(제목·Chapter·상태·Screen ID·GUI·이력 행), GUI 레이어 복사·배치, JPG 썸네일, DATA 페이지 렌더링 |
 | `src/figma/flow.ts` | 플로우 그리기(플로우·화면·Connector 모두 그룹: 화면별 Title·IMAGE·Caption, Connector 안의 Arrow·Action, 도착점에 `ARROW_EQUILATERAL`을 둔 Figma 벡터 연결선)와 다시 배포된 화면의 썸네일 채움 교체, 플로우 목록에서 누른 플로우·화면 칸 찾기(`flowNode`, 기록의 노드 ID와 `flowOf` 표식이 모두 맞을 때만). 썸네일 이미지는 썸네일 페이지를 불러와 해시로 찾음 |
 | `src/ui/app.ts`, `styles.css` | UI 상태·입력 초안·목록과 상세 렌더링 |
 | `src/ui/changeReason.ts` | GUI 상세 패널의 「변경 사항」 상자 렌더링(변경 하나를 한 줄로, 보이는 값이 같은 변경은 「전체 보기」 뒤에 10개씩, 줄을 누르면 `revealNode`의 선택) |
@@ -66,7 +69,7 @@ flowchart LR
 | `fpd:{screenId}` | 화면의 변경 근거(`core/changeDigest.ts`, 약 2.6KB). 비교 기준 하나만 덮어쓰고 기준 지문을 함께 적어 맞을 때만 쓴다. `State`에 넣지 않으며 `Store.reload()`는 이 키를 읽지 않는다 |
 | `flw:{id}` | 플로우 그룹의 위치(페이지·노드)와 들어 있는 화면. 다시 배포된 화면의 썸네일을 바꾸려고 찾고 플로우 목록에 보여 주며 이력 행은 없다(만들기·삭제는 `audit:`에만 남는다). 캔버스에서 그룹이 지워졌으면 업데이트·목록 열기·이동 때 지운다. 썸네일마다의 화면·버전은 그룹 안 사각형의 `flowScreen`·`flowVersion` 표식에 둔다 |
 
-내부 화면 ID(`Screen.id`)는 플립북의 `uid`로도 쓰는 고정 식별자다. 사람이 보는 Screen ID(`Screen.code`)와 화면 이름은 별도 기록이며 GUI 원본 프레임 이름을 바꾸지 않는다. 원본 프레임의 `screenId`, 플립북 프레임의 `flipbookOf`·`flipbookNode`, GUI 복사본의 표식 등 노드 `sharedPluginData`는 기록과 캔버스를 연결한다. 다른 화면을 교체해 사용 안 함이 된 화면은 `Screen.mergedInto`에 이어받은 화면을 남기며, 캔버스에 남은 그 화면의 GUI 복사본 표식(마커 기준)과 플로우 칸 표식은 `formerUids()`로 이어받은 화면으로 읽는다. UI 창 크기만 사용자별 `figma.clientStorage`에 저장한다.
+내부 화면 ID(`Screen.id`)는 플립북의 `uid`로도 쓰는 고정 식별자다. 사람이 보는 Screen ID(`Screen.code`)와 화면 이름은 별도 기록이며 GUI 원본 프레임 이름을 바꾸지 않는다. 원본 프레임의 `screenId`, 플립북 프레임의 `flipbookOf`·`flipbookNode`, GUI 복사본의 표식 등 노드 `sharedPluginData`는 기록과 캔버스를 연결한다. 템플릿 연결은 파일 기록이 아니라 템플릿 레이어의 `templatePart`(역할 표식)와 템플릿 프레임의 `templateLinks`(컴포넌트 연결)에 둔다. 플립북은 복제(프레임 안 레이어)와 인스턴스(컴포넌트 안 레이어, Figma가 메인 컴포넌트의 표식을 그대로 보여 준다)로 표식을 이어받고, 프레임에 `templateLinks`가 있으면 표식으로, 없으면 이름 규칙으로 칸을 찾는다. 다른 화면을 교체해 사용 안 함이 된 화면은 `Screen.mergedInto`에 이어받은 화면을 남기며, 캔버스에 남은 그 화면의 GUI 복사본 표식(마커 기준)과 플로우 칸 표식은 `formerUids()`로 이어받은 화면으로 읽는다. UI 창 크기만 사용자별 `figma.clientStorage`에 저장한다.
 
 키를 화면·플립북·버전별로 나눠 관련 없는 화면의 쓰기가 같은 키를 덮어쓰지 않게 했다. `Store.reload()`는 원시 값이 바뀌었을 때 상태를 다시 만들고, 확정 직전의 충돌 검사는 `readFresh()`로 해당 키를 직접 읽는다. GUI 확정은 `Screen.rev`, 남아 있는 UI Publish 경로는 `UiState.rev`로 동시 변경을 검사한다. 이 설계는 파일 전체의 원자적 트랜잭션을 제공하지 않으므로, 아래의 배포 기록과 캔버스 반영을 별도 단계로 다룬다.
 
@@ -102,7 +105,7 @@ UI Flipbook의 현재 화면 흐름은 **플립북 만들기, GUI 갱신 알림,
 - `main.ts`는 파일을 바꾸는 메시지를 하나의 큐에서 순서대로 실행한다. 스캔·취소·탐색은 큐 밖에서 처리하며, 작업 시퀀스 번호로 오래된 결과를 버린다. 캔버스 선택 이벤트는 80ms 동안 마지막 변경만 처리하고, 선택한 노드 ID가 같으면 Controller에서 추가 처리를 멈춘다. 선택이 달라도 목록에서 가리키는 화면이 같으면 UI 목록·상세는 다시 그리지 않고, PDF 선택 개수도 값이 달라질 때만 보낸다. 실행한 명령(`Host.mode`)의 목록에서만 고른다. UI Flipbook은 캔버스 선택마다 플립북 페이지를 다시 읽지 않고(캔버스 작업이 느려져서), 목록 새로고침(`refreshList`, 쓰기 큐)과 플러그인 작업 뒤에 읽는다. 읽을 때마다 `listSynced`로 시각을 알린다. 캔버스를 읽는 `inspectFlipbooks()`는 Section 표식(키)을 붙이는 쓰기를 할 수 있다(배치는 바꾸지 않는다).
 - 긴 스캔은 일정 간격으로 이벤트 루프에 양보하고 진행률을 묶어 보낸다. 한 번의 스캔 안에서는 `Snapshotter`의 변수 조회 캐시를 공유한다. 플립북 전달 작업 안에서는 페이지·프레임·템플릿 조회 캐시를 공유하되 다음 전달에서는 다시 읽는다.
 - 썸네일 응답은 화면정보의 해당 이미지 자리만 교체하고, 플로우 판에서는 실제로 사용하는 썸네일이 도착했을 때만 다시 그린다. 텍스트 편집·플로우·PDF 탭 뒤에 가려진 플립북 목록과 화면정보는 선택·상태·썸네일 응답마다 갱신하지 않고 목록 탭으로 돌아올 때 그린다.
-- 화면 지문 규칙을 바꾸면 `FINGERPRINT_VERSION`과 구형 기준 비교 경로를 함께 검토한다. 템플릿의 플러그인 관리 영역을 바꾸면 `figma/flipbook.ts`의 탐색·동기화와 UI 작성 영역 제외 규칙을 함께 확인한다.
+- 화면 지문 규칙을 바꾸면 `FINGERPRINT_VERSION`과 구형 기준 비교 경로를 함께 검토한다. 템플릿의 플러그인 관리 영역을 바꾸면 `figma/template.ts`의 탐색(표식·이름 규칙 둘 다), `figma/flipbook.ts`의 동기화와 UI 작성 영역 제외 규칙을 함께 확인한다.
 - `sharedPluginData` 키나 모델을 바꿀 때 `store.ts`의 로딩·호환 경로, `wire.ts`의 UI 직렬화, DATA 모델, 미리보기 Host를 함께 확인한다. 기존 데이터는 전체 자동 마이그레이션하지 않는다.
 
 ## 로컬 확인

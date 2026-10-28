@@ -173,7 +173,7 @@ export const COPY = {
   uiApp111: "템플릿:", // 435
   uiApp112: '지정 안 됨', // 435
   uiApp113: "캔버스에서 선택한 템플릿 프레임을 템플릿으로 지정", // 436
-  uiApp114: "템플릿 프레임(UI Title·Flipbook-Title·Update History List 컴포넌트와 GUI Image Slot 프레임)을 복제해 플립북을 만듭니다. 제목·Chapter·Page title·Screen ID·상태·GUI·이력만 바꾸며 Description과 콜아웃은 건드리지 않습니다.", // 437
+  uiApp114: "템플릿 프레임을 복제해 플립북을 만듭니다. 아래 항목에 연결한 칸에만 제목·Chapter·상태·Screen ID·GUI·이력을 넣고, Description 내용과 콜아웃은 건드리지 않습니다. 다시 연결하려면 캔버스에서 레이어를 고른 뒤 그 항목의 「연결」을 누르세요.", // 437
   uiApp116: "변경", // 440
   uiApp117: '비활성화', // 440
   uiApp118: '활성화', // 440
@@ -283,7 +283,7 @@ export const COPY = {
   uiApp240: '연결이 끊긴 플립북',
   uiApp241: '개',
   uiApp242: '전체 삭제',
-  uiApp239: '플립북 템플릿에 문제가 있어 플립북을 만들거나 반영할 수 없습니다. 템플릿 컴포넌트를 고치거나 설정에서 템플릿을 다시 지정하세요.',
+  uiApp239: '플립북 템플릿에 문제가 있어 플립북을 만들거나 반영할 수 없습니다. 템플릿을 고치거나 관리의 템플릿에서 다시 연결하세요.',
   uiApp243: '화면 수정',
   uiApp244: '이미 배포한 화면은 사용 안 함으로 바뀌고 목록에서 빠집니다. 이 화면만 쓰던 플립북도 사용 안 함이 됩니다.',
   uiApp245: '번호 다시 매기기',
@@ -429,6 +429,18 @@ export const COPY = {
   uiApp389: '개 더 보기',
   uiApp390: '숨기기',
   uiApp391: '드래그해서 카테고리 순서를 바꿉니다.',
+  // 관리의 템플릿 — 항목별 연결(2026-10-28)
+  uiApp392: '템플릿',
+  uiApp393: '기본 템플릿 만들기',
+  uiApp394: '이 템플릿은 레이어 이름으로 칸을 찾고 있습니다. 항목 하나를 연결하거나 풀면 이름으로 찾은 칸을 모두 연결로 바꿉니다. 이미 만든 플립북은 계속 이름으로 찾습니다.',
+  uiApp395: '연결 안 됨',
+  uiApp396: '이름으로 찾지 못함',
+  uiApp397: '보기',
+  uiApp398: '연결',
+  uiApp399: '해제',
+  uiApp400: '연결된 레이어를 캔버스에서 선택해 보여 줍니다.',
+  uiApp401: '캔버스에서 선택한 레이어를 이 항목에 연결합니다.',
+  uiApp402: '이 항목의 연결을 풉니다. 연결하지 않은 칸에는 정보를 넣지 않습니다.',
   // 튜토리얼 — src/ui/tutorial.ts. 단계마다 말풍선 제목·설명 순서다.
   uiTutorial001: '도움말',
   uiTutorial002: '튜토리얼 종료',
@@ -638,6 +650,46 @@ export const COPY = {
   coreFlipbook002: '플립북을 찾을 수 없습니다.', // 50
   coreFlipbook003: '미분류', // 72
   coreFlipbook004: '새 플립북',
+  // 템플릿 연결 항목 — src/core/templateParts.ts
+  coreTemplate001: '제목',
+  coreTemplate002: '텍스트 · 여러 개 가능. 플립북 제목을 넣습니다.',
+  coreTemplate003: 'Chapter',
+  coreTemplate004: '텍스트. 플립북이 놓인 Section 이름을 넣습니다.',
+  coreTemplate005: '상태',
+  coreTemplate006: '태그 인스턴스나 텍스트. 확인 완료 때 고른 상태를 넣습니다.',
+  coreTemplate007: 'Screen ID 칸',
+  coreTemplate008: '슬롯이나 인스턴스 밖 프레임. 화면마다 Screen ID 태그를 넣습니다.',
+  coreTemplate009: 'GUI 영역',
+  coreTemplate010: '인스턴스 밖 프레임 · 필수. GUI 화면 복사본을 넣습니다.',
+  coreTemplate011: 'Description 본문',
+  coreTemplate012: '슬롯이나 인스턴스 밖 프레임. 텍스트 편집 탭이 이 칸에 넣습니다.',
+  coreTemplate013: '이력 목록',
+  coreTemplate014: '슬롯이나 인스턴스 밖 프레임. 최신 이력 행을 넣습니다.',
+  coreTemplate015: '이전 이력 칸',
+  coreTemplate016: '슬롯이나 인스턴스 밖 프레임. 두 번째 이력부터 넣습니다. 연결하지 않으면 모든 이력을 이력 목록에 넣습니다.',
+  coreTemplate017: 'PDF에서 숨김',
+  coreTemplate018: '레이어 · 여러 개 가능. PDF로 저장하는 동안 숨깁니다.',
+  coreTemplate019: 'Screen ID 태그',
+  coreTemplate020: '컴포넌트. Screen ID 칸에 화면마다 하나씩 넣고 안의 첫 텍스트에 Screen ID를 씁니다.',
+  coreTemplate021: '이력 행',
+  coreTemplate022: '컴포넌트. 이력 한 줄마다 인스턴스를 만들어 이력 목록에 넣습니다.',
+  coreTemplate023: '상태 태그',
+  coreTemplate024: '컴포넌트 · 선택. 연결하면 상태 칸의 인스턴스를 이 컴포넌트로 바꿉니다.',
+  coreTemplate025: '이력 상태 태그',
+  coreTemplate026: '컴포넌트 · 선택. 연결하면 이력 행의 상태 인스턴스를 이 컴포넌트로 바꿉니다.',
+  coreTemplate027: '상태',
+  coreTemplate028: '태그 인스턴스나 텍스트. 그 이력의 상태를 넣습니다.',
+  coreTemplate029: '코멘트',
+  coreTemplate030: '텍스트. 배포·확인 때 남긴 코멘트를 넣습니다.',
+  coreTemplate031: '작업자',
+  coreTemplate032: '텍스트. 작업자 이름을 넣습니다.',
+  coreTemplate033: '날짜',
+  coreTemplate034: '텍스트. 기록 시각을 넣습니다.',
+  coreTemplate035: '팀',
+  coreTemplate036: '텍스트면 GUI·UI를 쓰고, 인스턴스면 값이 GUI·UI인 변형을 고릅니다.',
+  coreTemplate037: '플립북 칸',
+  coreTemplate038: '컴포넌트',
+  coreTemplate039: '이력 행 안의 칸',
   // 플립북 만들기 — src/core/flipbooks.ts
   coreFlipbooks002: 'GUI 배포 기록에 없는 화면입니다. 목록을 다시 불러오세요.',
   coreFlipbooks003: '사용 종료된 화면입니다:',
@@ -729,13 +781,15 @@ export const COPY = {
   controller121: "선택한 텍스트 레이어에 텍스트를 적용했습니다.",
   controller140: "선택한 프레임에 텍스트를 추가했습니다.",
   controller141: '레이어를 찾을 수 없습니다. 변경사항을 다시 확인하세요.',
+  controller142: '연결된 레이어를 찾을 수 없습니다. 관리의 템플릿에서 다시 연결하세요.',
+  controller143: '기본 템플릿 만들기',
   controller133: '기존 플립북',
   controller134: '개를 옮겼습니다.',
   controller136: '불러오는 중',
   controller068: '플립북 삭제 중',
   controller069: '개 플립북을 목록에서 삭제했습니다.',
   controller070: '프레임이 있어 삭제하지 않은 플립북:',
-  controller053: '설정에서 플립북 템플릿을 먼저 지정하세요.',
+  controller053: '관리에서 플립북 템플릿을 먼저 지정하세요.',
   controller054: '플립북',
   controller055: '개를 만들었습니다.',
   // Figma 파일·선택 화면 오류 — src/figma/host.ts
@@ -822,7 +876,7 @@ export const COPY = {
   figmaText011: "텍스트",
   // 생성되는 플립북 문구 — src/figma/flipbook.ts
   figmaFlipbook001: '플립북 페이지를 찾을 수 없습니다.', // 37
-  figmaFlipbook002: '플립북 템플릿 프레임을 찾을 수 없습니다. 설정에서 다시 지정하세요.', // 49
+  figmaFlipbook002: '플립북 템플릿 프레임을 찾을 수 없습니다. 관리에서 다시 지정하세요.', // 49
   figmaFlipbook003: 'UI Title 제목 텍스트', // 58
   figmaFlipbook004: 'UI Title 안의 Status', // 59
   figmaFlipbook005: 'GUI Image Slot 프레임', // 60
@@ -846,6 +900,48 @@ export const COPY = {
   figmaFlipbook025: '을(를) 슬롯으로 바꿔 주세요',
   figmaFlipbook026: 'GUI 글꼴을 불러오지 못해 글자를 줄이지 못했습니다. 글꼴을 설치한 뒤 다시 반영하세요:',
   figmaFlipbook027: '프레임이 없어 반영하지 않았습니다. 목록에서 삭제하세요.',
+  figmaFlipbook028: '플립북에서 GUI 영역으로 연결한 프레임이 지워졌거나 바뀌었습니다. 복구한 뒤 다시 시도하세요.',
+  // 템플릿 연결 — src/figma/template.ts
+  figmaTemplate001: '연결한 컴포넌트를 찾을 수 없습니다. 다시 연결하세요.',
+  figmaTemplate002: '텍스트 레이어를 연결하세요.',
+  figmaTemplate003: '태그 인스턴스나 텍스트를 연결하세요.',
+  figmaTemplate004: '레이어를 넣을 수 없는 칸입니다. 슬롯이나 인스턴스 밖 프레임을 연결하세요.',
+  figmaTemplate005: '인스턴스 밖 프레임을 연결하세요.',
+  figmaTemplate006: '인스턴스나 텍스트를 연결하세요.',
+  figmaTemplate007: '연결해야 플립북을 만들 수 있습니다.',
+  figmaTemplate008: '「Screen ID 칸」을 연결했으면 이 컴포넌트도 연결해야 합니다.',
+  figmaTemplate009: '「이력 목록」을 연결했으면 이 컴포넌트도 연결해야 합니다.',
+  figmaTemplate010: '「이력 목록」도 연결해야 이 칸에 이력을 넣습니다.',
+  figmaTemplate011: '컴포넌트 안에 글자를 넣을 텍스트 레이어가 없습니다.',
+  figmaTemplate012: '레이어 이름 규칙으로 찾지 못했습니다.',
+  figmaTemplate013: '캔버스에서 연결할 레이어를 선택하세요.',
+  figmaTemplate014: '이 항목에는 레이어를 하나만 연결합니다. 하나만 선택하세요.',
+  figmaTemplate015: '템플릿 프레임 안의 레이어를 선택하세요.',
+  figmaTemplate016: 'GUI 영역·Description 본문·Screen ID 칸 안의 레이어는 연결할 수 없습니다.',
+  figmaTemplate017: '먼저 「이력 행」 컴포넌트를 연결하세요.',
+  figmaTemplate018: '이력 행 컴포넌트 안의 레이어를 선택하세요. 템플릿에 놓인 이력 행 인스턴스 안에서 골라도 됩니다.',
+  figmaTemplate019: '라이브러리 컴포넌트는 이력 행으로 연결할 수 없습니다. 이 파일의 컴포넌트를 선택하세요.',
+  figmaTemplate020: '컴포넌트나 인스턴스를 선택하세요.',
+  figmaTemplate021: 'GUI 영역은 필수라 연결을 풀 수 없습니다.',
+  figmaTemplate022: '이력 행 안의 레이어는 「이력 행 안의 칸」 항목에 연결하세요.',
+  figmaTemplate023: '이력 행 컴포넌트가 연결되지 않아 이력을 넣지 않았습니다. 관리의 템플릿에서 「이력 행」을 연결하세요.',
+  // 기본 템플릿 — src/figma/templateDefault.ts (페이지·레이어 이름과 템플릿에 적힌 글자)
+  figmaTemplate024: '기본 템플릿 글꼴(Inter Regular·Medium·Bold)을 불러오지 못했습니다. 글꼴을 확인한 뒤 다시 시도하세요.',
+  figmaTemplate025: 'Flipbook Template',
+  figmaTemplate026: 'Flipbook Template',
+  figmaTemplate027: 'Tag',
+  figmaTemplate028: 'Status',
+  figmaTemplate029: 'Screen ID Tag',
+  figmaTemplate030: 'SCREEN_ID',
+  figmaTemplate031: 'History Row',
+  figmaTemplate032: 'Comment',
+  figmaTemplate033: 'Name',
+  figmaTemplate034: 'GUI',
+  figmaTemplate035: 'MM/DD HH:mm',
+  figmaTemplate036: 'Chapter',
+  figmaTemplate037: 'Flipbook Title',
+  figmaTemplate038: 'Description',
+  figmaTemplate039: 'Update History',
   // GUI 레이어 복사 — src/figma/layers.ts
   figmaLayers001: 'GUI 썸네일 (자동 관리)',
   figmaLayers002: '컴포넌트 연결을 모두 끊지 못했습니다. 중첩이 너무 깊습니다.',
@@ -942,6 +1038,9 @@ export const COPY = {
   // 미리보기 도구: 가짜 캔버스에서 플립북 프레임을 모두 고르거나 선택을 푼다(PDF 저장 탭 확인용)
   uiPreview056: "플립북 프레임 모두 선택",
   uiPreview057: "선택 해제",
+  uiPreview058: "선택한 레이어",
+  uiPreview059: "템플릿 연결:",
+  uiPreview060: "기본 템플릿을 만들었습니다.",
 } as const;
 
 // 화면·안내·오류 문구. 원본 파일과 행은 추출 당시 위치다.

@@ -7,15 +7,17 @@ import type { NodeSnapshot } from '../core/fingerprint.ts';
 import { sha256 } from '../core/hash.ts';
 import { COPY_KEY, copyLayers, rescaleExact } from './layers.ts';
 import { Snapshotter } from './snapshot.ts';
+import {
+  NS, cellText, findPart, flipbookParts, isMarkedRow, isNamedRow, isSystemRow, markedRowParts, namedRowComponent, namedRowParts, pageOf, tagKit,
+  type RowParts, type TagKit,
+} from './template.ts';
+import { LINKS_KEY } from '../core/templateParts.ts';
 
-// 플립북 페이지 반영. 시스템 영역(제목·Status·Chapter·Page title·Screen ID·GUI 영역·이력 목록)만 고치고,
-// Description 슬롯과 마커·콜아웃은 건드리지 않는다.
-//
-// 템플릿(2026-10-20 사용자 결정)은 일반 프레임이다. 그 안의 UI Title·Flipbook-Title·Update History List는 컴포넌트이고,
-// GUI Image Slot은 컴포넌트가 아닌 프레임이다. 플립북은 템플릿 프레임을 복제하고 안의 컴포넌트를 인스턴스로 바꿔 만든다.
+export { NS, GUI_AREA, DESCRIPTION_AREA, findPart, templateFromSelection, templateIssues, templateProblems, type TagKit } from './template.ts';
 
-// 플러그인 ID가 바뀌어도 데이터가 남도록 pluginData 대신 네임스페이스가 있는 sharedPluginData를 쓴다.
-export const NS = 'guiuipublish';
+// 플립북 페이지 반영. 템플릿에서 연결한 칸(제목·상태·Chapter·Screen ID·GUI 영역·이력 목록, figma/template.ts)만 고치고,
+// Description 본문과 마커·콜아웃은 건드리지 않는다. 플립북은 템플릿 프레임을 복제하고 안의 컴포넌트를 인스턴스로 바꿔 만든다.
+
 export const FLIPBOOK_KEY = 'flipbookOf';
 // 플립북 프레임이 자기 노드 ID를 적어 두는 키. 캔버스에서 복제한 프레임은 원본의 값을 그대로 가져가므로 자기 ID와 다르다.
 const NODE_KEY = 'flipbookNode';
@@ -42,12 +44,6 @@ export function flipbookSession(known?: ReadonlyMap<string, string>) {
 }
 export type FlipbookSession = ReturnType<typeof flipbookSession>;
 
-function pageOf(node: BaseNode): PageNode | null {
-  let current: BaseNode | null = node;
-  while (current && current.type !== 'PAGE') current = current.parent;
-  return current as PageNode | null;
-}
-
 export async function loadedPage(pageId: string): Promise<PageNode> {
   const page = await figma.getNodeByIdAsync(pageId);
   if (!page || page.type !== 'PAGE') throw new Error(COPY.figmaFlipbook001);
@@ -55,148 +51,11 @@ export async function loadedPage(pageId: string): Promise<PageNode> {
   return page;
 }
 
-// ── 템플릿 ─────────────────────────────────────────────
-
-const TITLE = 'UI Title';
-const HEADER = 'Flipbook-Title';
-export const GUI_AREA = 'GUI Image Slot';
-export const DESCRIPTION_AREA = 'description area';
-const HISTORY = 'Update History List';
-const ID_CELL = 'input-cell-id';
-
-// 이름으로 찾되 GUI 영역 안으로는 내려가지 않는다. GUI 영역에는 화면 레이어 복사본이 통째로 들어 있어
-// 화면마다 전체를 훑으면 반영이 크게 느려진다.
-export function findPart(root: ChildrenMixin, match: (n: SceneNode) => boolean): SceneNode | null {
-  for (const child of root.children) {
-    if (match(child)) return child;
-    if ('children' in child && child.name !== GUI_AREA) {
-      const found = findPart(child, match);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
-const named = (name: string, types?: string[]) => (n: SceneNode) => n.name === name && (!types || types.includes(n.type));
-const COMPONENTISH = ['COMPONENT', 'INSTANCE'];
-
-interface Parts {
-  title: ComponentNode | InstanceNode | null;
-  titleText: TextNode | null;
-  status: InstanceNode | null;
-  header: ComponentNode | InstanceNode | null;
-  chapter: TextNode | null;
-  page: TextNode | null;
-  ids: SceneNode | null;
-  gui: FrameNode | null;
-  description: SceneNode | null;
-  history: ComponentNode | InstanceNode | null;
-  list: SceneNode | null;
-}
-
-const cellText = (header: ChildrenMixin | null, cell: string) =>
-  (header ? findPart(header, n => n.type === 'TEXT' && n.parent?.name === cell) : null) as TextNode | null;
-
-function parts(root: ChildrenMixin): Parts {
-  const title = findPart(root, named(TITLE, COMPONENTISH)) as ComponentNode | InstanceNode | null;
-  const header = findPart(root, named(HEADER, COMPONENTISH)) as ComponentNode | InstanceNode | null;
-  const history = findPart(root, named(HISTORY, COMPONENTISH)) as ComponentNode | InstanceNode | null;
-  return {
-    title,
-    titleText: (title?.findChild(n => n.type === 'TEXT') ?? null) as TextNode | null,
-    status: (title?.findOne(n => n.type === 'INSTANCE' && n.name === 'Status') ?? null) as InstanceNode | null,
-    header,
-    chapter: cellText(header, 'input-cell-chapter'),
-    page: cellText(header, 'input-cell-page'),
-    ids: header ? findPart(header, named(ID_CELL)) : null,
-    gui: findPart(root, named(GUI_AREA, ['FRAME'])) as FrameNode | null,
-    description: findPart(root, named(DESCRIPTION_AREA, ['SLOT'])),
-    history,
-    list: history ? findPart(history, named('List')) : null,
-  };
-}
-
-export async function templateFrame(id: string): Promise<FrameNode> {
-  const node = await figma.getNodeByIdAsync(id);
-  if (!node || node.type !== 'FRAME') throw new Error(COPY.figmaFlipbook002);
-  await pageOf(node)?.loadAsync();
-  return node;
-}
-
-// 반영에 필요한 시스템 영역이 있는지 확인한다. 인스턴스 안에 행·태그를 넣으려면 List·input-cell-id가 슬롯이어야 한다.
-export function templateProblems(root: FrameNode): string[] {
-  const p = parts(root);
-  const out: string[] = [];
-  if (!p.titleText) out.push(COPY.figmaFlipbook003);
-  if (!p.status) out.push(COPY.figmaFlipbook004);
-  if (!p.chapter || !p.page) out.push(COPY.figmaFlipbook024);
-  if (!p.ids) out.push(ID_CELL);
-  else if (p.ids.type !== 'SLOT') out.push(`${ID_CELL} ${COPY.figmaFlipbook025}`);
-  if (!p.gui) out.push(COPY.figmaFlipbook005);
-  if (!p.list) out.push(COPY.figmaFlipbook006);
-  else if (p.list.type !== 'SLOT') out.push(`List ${COPY.figmaFlipbook025}`);
-  return out;
-}
-
-// 캔버스에서 고른 템플릿 프레임(또는 그 안의 노드)을 확인한다.
-export async function templateFromSelection(): Promise<{ id: string; name: string }> {
-  const node = figma.currentPage.selection[0];
-  if (!node) throw new Error(COPY.figmaFlipbook007);
-  let frame: BaseNode | null = node;
-  let problems: string[] = [];
-  while (frame && frame.type !== 'PAGE') {
-    if (frame.type === 'FRAME' && parts(frame).history) {
-      problems = templateProblems(frame);
-      if (!problems.length) break;
-    }
-    frame = frame.parent;
-  }
-  if (!frame || frame.type !== 'FRAME') throw new Error(problems.length ? `${COPY.figmaFlipbook009} ${problems.join(', ')}` : COPY.figmaFlipbook008);
-  await tagKit(frame.id);
-  return { id: frame.id, name: frame.name };
-}
-
+// 변형 속성의 값 목록. 컴포넌트 세트의 변형이 아니면 빈 목록이다.
 async function variantOptions(instance: InstanceNode, property: string): Promise<string[]> {
   const main = await instance.getMainComponentAsync();
   const owner = main?.parent?.type === 'COMPONENT_SET' ? main.parent : null;
   return owner?.componentPropertyDefinitions[property]?.variantOptions ?? [];
-}
-
-// 태그 표시 컴포넌트: 상단 Status는 TagBig, 이력 행은 TagSmall, Screen ID는 Team(Tag=System).
-// 템플릿과 같은 페이지에서 이름으로 찾는다.
-export interface TagKit {
-  template: FrameNode; big: ComponentNode; small: ComponentNode; idTag: ComponentNode;
-  fonts: Map<string, Promise<void>>;
-}
-
-// 템플릿과 같은 페이지의 태그 컴포넌트. 없는 컴포넌트가 있으면 그 이름을 넣은 안내를 함께 돌려준다.
-function tagComponents(template: FrameNode) {
-  const page = pageOf(template)!;
-  const components = page.findAllWithCriteria({ types: ['COMPONENT'] });
-  const big = components.find(c => c.name === 'TagBig');
-  const small = components.find(c => c.name === 'TagSmall');
-  const idTag = components.find(c => c.name === 'Tag=System' && c.parent?.type === 'COMPONENT_SET' && c.parent.name === 'Team');
-  const missing = [!big && 'TagBig', !small && 'TagSmall', !idTag && 'Team / Tag=System'].filter(Boolean);
-  return { big, small, idTag, problem: missing.length ? `${COPY.figmaFlipbook010}${missing.join('·')}${COPY.figmaFlipbook011}${page.name}${COPY.figmaFlipbook012}` : null };
-}
-
-// 지정한 템플릿으로 플립북을 만들거나 반영할 수 있는지 확인한다. 템플릿 컴포넌트를 고쳐 시스템 영역이 없어지거나 슬롯이 아니게 되면
-// 반영이 중간에 멈추므로, 관리 화면이 아니어도 미리 알린다. 템플릿을 지정하지 않았으면 확인하지 않는다.
-export async function templateIssues(templateId: string | null): Promise<string[]> {
-  if (!templateId) return [];
-  let template: FrameNode;
-  try { template = await templateFrame(templateId); }
-  catch (e) { return [e instanceof Error ? e.message : String(e)]; }
-  const problems = templateProblems(template);
-  const tags = tagComponents(template).problem;
-  return [...(problems.length ? [`${COPY.figmaFlipbook009} ${problems.join(', ')}`] : []), ...(tags ? [tags] : [])];
-}
-
-export async function tagKit(templateId: string): Promise<TagKit> {
-  const template = await templateFrame(templateId);
-  const { big, small, idTag, problem } = tagComponents(template);
-  if (problem) throw new Error(problem);
-  return { template, big: big!, small: small!, idTag: idTag!, fonts: new Map() };
 }
 
 const PALETTE_HEXES = new Set<string>(TAG_PALETTE.map(c => c.hex));
@@ -227,15 +86,19 @@ export function recolorTagFills(fills: readonly Paint[], colorKey: string): Pain
   return changed ? next : null;
 }
 
-// 태그 자리의 인스턴스를 태그 컴포넌트로 바꾸고 이름과 색을 넣는다. 미리 만든 태그를 고르지 않는다.
-// 배경·글자 중 팔레트 색인 칠만 선택한 색으로 바꾼다(흰 바탕 등은 그대로).
-async function applyTag(slot: InstanceNode, component: ComponentNode, kit: TagKit, text: string, colorKey: string): Promise<void> {
-  if ((await slot.getMainComponentAsync())?.id !== component.id) {
+// 태그 칸에 이름과 색을 넣는다. 태그 컴포넌트를 주면 그 컴포넌트로 바꾼 뒤 넣는다(미리 만든 태그를 고르지 않는다).
+// 배경·글자 중 팔레트 색인 칠만 선택한 색으로 바꾼다(흰 바탕 등은 그대로). 표식 템플릿에서는 텍스트 칸도 되며 글자만 쓴다.
+// anyText: 이름이 Text인 텍스트가 없으면 첫 텍스트에 쓴다(표식 템플릿).
+async function applyTag(slot: InstanceNode | TextNode, component: ComponentNode | null, kit: Pick<TagKit, 'fonts'>, text: string, colorKey: string, anyText = false): Promise<void> {
+  if (slot.type === 'TEXT') { await setText(slot, text, kit.fonts); return; }
+  if (component && (await slot.getMainComponentAsync())?.id !== component.id) {
+    // 바꾸면 레이어 이름이 컴포넌트 이름이 되므로, 다음 반영에서도 같은 자리를 찾도록 이름을 유지한다.
+    const name = slot.name;
     slot.swapComponent(component);
-    // 다음 반영에서도 같은 자리를 찾도록 이름을 유지한다.
-    slot.name = 'Status';
+    slot.name = name;
   }
-  await setText(slot.findOne(n => n.type === 'TEXT' && n.name === 'Text') as TextNode | null, text, kit.fonts);
+  const label = slot.findOne(n => n.type === 'TEXT' && n.name === 'Text') ?? (anyText ? slot.findOne(n => n.type === 'TEXT') : null);
+  await setText(label as TextNode | null, text, kit.fonts);
   const painted = [slot as SceneNode, ...slot.findAll(n => 'fills' in n)];
   for (const node of painted) {
     if (!('fills' in node) || !Array.isArray(node.fills)) continue;
@@ -247,6 +110,19 @@ async function applyTag(slot: InstanceNode, component: ComponentNode, kit: TagKi
 async function setVariant(instance: InstanceNode, property: string, value: string): Promise<boolean> {
   if (!(await variantOptions(instance, property)).includes(value)) return false;
   if (instance.componentProperties[property]?.value !== value) instance.setProperties({ [property]: value });
+  return true;
+}
+
+// 이력 행의 팀 칸(2026-10-28 사용자 결정): 텍스트면 팀 이름을 쓰고, 인스턴스면 값에 팀 이름이 있는 변형 속성을 고른다.
+// property를 주면 그 속성만 본다(이름 규칙의 Team 인스턴스는 Tag 속성). 고를 변형이 없으면 false.
+async function applyTeam(node: InstanceNode | TextNode, team: string, kit: Pick<TagKit, 'fonts'>, property: string | null): Promise<boolean> {
+  if (node.type === 'TEXT') { await setText(node, team, kit.fonts); return true; }
+  if (property) return setVariant(node, property, team);
+  const main = await node.getMainComponentAsync();
+  const owner = main?.parent?.type === 'COMPONENT_SET' ? main.parent : null;
+  const found = Object.entries(owner?.componentPropertyDefinitions ?? {}).find(([, def]) => def.type === 'VARIANT' && def.variantOptions?.includes(team));
+  if (!found) return false;
+  if (node.componentProperties[found[0]]?.value !== team) node.setProperties({ [found[0]]: team });
   return true;
 }
 
@@ -427,7 +303,10 @@ async function createFlipbook(ns: string, page: PageNode, template: FrameNode, v
   frame.setSharedPluginData(ns, FLIPBOOK_KEY, view.flipbookId);
   frame.setSharedPluginData(ns, NODE_KEY, frame.id);
   // 템플릿 GUI 영역의 예시 내용은 비운다.
-  const gui = parts(frame).gui;
+  // 표식 템플릿의 연결 기록을 플립북에도 둬서 표식으로 찾게 한다(복제가 옮기지만 분명히 적는다).
+  const links = template.getSharedPluginData(ns, LINKS_KEY);
+  if (links) frame.setSharedPluginData(ns, LINKS_KEY, links);
+  const gui = flipbookParts(frame, ns).gui;
   if (gui) for (const child of [...gui.children]) child.remove();
 
   const section = categorySection(ns, page, view.category);
@@ -568,7 +447,7 @@ export async function findFlipbook(ns: string, pageId: string, flipbookId: strin
 // UI 작성 영역: Description 슬롯 안의 내용과 GUI 영역 위에 놓은 마커·콜아웃(GUI 복사본이 아닌 노드),
 // 플립북 프레임에 절대 위치로 놓은 노드. 플러그인이 바꾸는 영역은 넣지 않는다.
 export async function uiAreaSnapshot(snapshotter: Snapshotter, frame: FrameNode, ns = NS): Promise<NodeSnapshot> {
-  const p = parts(frame);
+  const p = flipbookParts(frame, ns);
   const children: NodeSnapshot[] = [];
   if (p.description && 'children' in p.description)
     children.push({ type: 'DESCRIPTION', props: {}, children: await Promise.all(p.description.children.map(c => snapshotter.snapshot(c))) });
@@ -729,14 +608,14 @@ export async function syncGui(ns: string, area: FrameNode, gui: FlipbookGui[], s
   area.setSharedPluginData(ns, IMAGE_KEY, missingFonts.size ? '' : signature);
 }
 
-// 상단 input-cell-id 슬롯에 Screen ID 태그(Team / Tag=System)를 화면 순서대로 넣는다.
-async function syncIds(ns: string, cell: SceneNode, codes: string[], kit: TagKit): Promise<void> {
+// Screen ID 칸(이름 규칙은 input-cell-id 슬롯)에 Screen ID 태그(이름 규칙은 Team / Tag=System)를 화면 순서대로 넣는다.
+async function syncIds(ns: string, cell: SceneNode, codes: string[], component: ComponentNode, kit: Pick<TagKit, 'fonts'>): Promise<void> {
   if (!('children' in cell)) return;
   const signature = JSON.stringify(codes);
   if (cell.getSharedPluginData(ns, IDS_KEY) === signature) return;
   for (const child of [...cell.children]) child.remove();
   for (const code of codes) {
-    const tag = kit.idTag.createInstance();
+    const tag = component.createInstance();
     tag.name = 'Screen ID';
     (cell as unknown as ChildrenMixin).appendChild(tag);
     await setText(tag.findOne(n => n.type === 'TEXT') as TextNode | null, code, kit.fonts);
@@ -744,60 +623,60 @@ async function syncIds(ns: string, cell: SceneNode, codes: string[], kit: TagKit
   cell.setSharedPluginData(ns, IDS_KEY, signature);
 }
 
-const isRow = (n: SceneNode): n is InstanceNode => n.type === 'INSTANCE' && n.name === 'Update History';
-const isSystemRow = (n: InstanceNode) => n.componentProperties.isSystem?.value === 'true';
-
-async function rowComponent(history: ChildrenMixin, template: FrameNode): Promise<ComponentNode> {
-  const fromNode = async (root: ChildrenMixin) => {
-    const row = findPart(root, n => isRow(n) && !isSystemRow(n)) as InstanceNode | null;
-    return row ? row.getMainComponentAsync() : null;
-  };
-  const found = await fromNode(history) ?? await fromNode(template);
-  if (!found) throw new Error(COPY.figmaFlipbook017);
-  return found;
-}
-
 // 이력 행: 상태 태그·코멘트·팀·작업자·날짜. Screen ID·버전은 쓰지 않는다(2026-10-20 사용자 결정).
-async function fillRow(row: InstanceNode, data: FlipbookRow, kit: TagKit, notes: Set<string>): Promise<void> {
-  const textIn = (frameName: string) => row.findOne(n => n.type === 'TEXT' && n.parent?.name === frameName) as TextNode | null;
-  await setText(textIn('Comment'), data.description, kit.fonts);
-  await setText(textIn('Name'), data.worker, kit.fonts);
-  await setText(textIn('Date'), data.at, kit.fonts);
-  const status = row.findOne(n => n.type === 'INSTANCE' && n.name === 'Status') as InstanceNode | null;
-  if (status) await applyTag(status, kit.small, kit, data.tag.name, data.colorKey);
-  const team = row.findOne(n => n.type === 'INSTANCE' && n.name === 'Team') as InstanceNode | null;
-  if (team && !(await setVariant(team, 'Tag', data.team))) notes.add(`${COPY.figmaFlipbook018}${data.team}${COPY.figmaFlipbook019}`);
+// statusTag: 상태 칸을 바꿀 태그 컴포넌트. linked: 표식 템플릿의 행(상태는 첫 텍스트에도 쓰고, 팀은 값으로 변형 속성을 찾는다)
+async function fillRow(cells: RowParts, data: FlipbookRow, kit: TagKit, notes: Set<string>, statusTag: ComponentNode | null, linked: boolean): Promise<void> {
+  await setText(cells.comment, data.description, kit.fonts);
+  await setText(cells.worker, data.worker, kit.fonts);
+  await setText(cells.date, data.at, kit.fonts);
+  if (cells.status) await applyTag(cells.status, statusTag, kit, data.tag.name, data.colorKey, linked);
+  if (cells.team && !(await applyTeam(cells.team, data.team, kit, linked ? null : 'Tag'))) notes.add(`${COPY.figmaFlipbook018}${data.team}${COPY.figmaFlipbook019}`);
 }
 
-// 최신 기록 1개는 목록 맨 위, 나머지는 Previous에 최신순으로 둔다. 템플릿의 시스템 행은 그대로 둔다.
-export async function syncRows(ns: string, history: ChildrenMixin, settings: FlipbookSettings, rows: FlipbookRow[], kit: TagKit, notes: Set<string>): Promise<void> {
-  const list = findPart(history, n => n.type === 'SLOT' && n.name === 'List') as SlotNode | null;
-  if (!list) throw new Error(COPY.figmaFlipbook020);
-  const previous = list.findChild(n => n.type === 'FRAME' && n.name === 'Previous') as FrameNode | null;
-  const component = await rowComponent(history, kit.template);
-  const stale = [...list.children, ...(previous?.children ?? [])].filter((n): n is InstanceNode => isRow(n) && !isSystemRow(n));
+type Container = SceneNode & ChildrenMixin;
+
+interface RowPlacement {
+  list: Container;
+  previous: Container | null;
+  // 플러그인이 관리하는 행. 나머지(시스템 행·머리 행 등)는 그대로 둔다.
+  managed: (n: SceneNode) => n is InstanceNode;
+  component: ComponentNode;
+  cells: (row: InstanceNode) => RowParts;
+  statusTag: ComponentNode | null;
+  linked: boolean;
+  // 행 서명에 넣는 컴포넌트 구성. 바뀌면 기존 행도 다시 채운다.
+  kitKey: string;
+  // 최신 행과 둘째 행부터 놓기 시작할 자식 순번(목록·이전 이력 칸)
+  base: number;
+  previousBase: number;
+}
+
+// 최신 기록 1개는 목록에, 나머지는 이전 이력 칸(없으면 목록)에 최신순으로 둔다. 같은 기록의 행은 다시 쓴다.
+async function placeRows(ns: string, at: RowPlacement, settings: FlipbookSettings, rows: FlipbookRow[], kit: TagKit, notes: Set<string>): Promise<void> {
+  const { list, previous, component } = at;
+  const stale = [...list.children, ...(previous?.children ?? [])].filter(at.managed);
   const byKey = new Map(stale.map(n => [n.getSharedPluginData(ns, 'historyKey'), n]));
   const used = new Set<InstanceNode>();
-  // 'hex': 색 변수로 칠했던 기존 행도 한 번 다시 칠해 변수 연결을 끊는다.
-  const kitKey = JSON.stringify([component.id, kit.small.id, 'hex']);
   for (let i = 0; i < rows.length; i++) {
     const data = rows[i];
     const key = data.key;
     const row = byKey.get(key) ?? component.createInstance();
-    const signature = sha256(JSON.stringify([data, kitKey]));
+    const signature = sha256(JSON.stringify([data, at.kitKey]));
     try {
       if (settings.force || row.getSharedPluginData(ns, 'historyValue') !== signature) {
         const rowNotes = new Set<string>();
-        await fillRow(row, data, kit, rowNotes);
+        await fillRow(at.cells(row), data, kit, rowNotes, at.statusTag, at.linked);
         for (const note of rowNotes) notes.add(note);
         // 경고가 있는 행은 다음 반영 때 다시 시도한다.
         row.setSharedPluginData(ns, 'historyValue', rowNotes.size ? '' : signature);
       }
       row.setSharedPluginData(ns, 'historyKey', key);
       const parent = i > 0 && previous ? previous : list;
-      const index = i > 0 && previous ? i - 1 : i;
+      const index = i > 0 && previous ? at.previousBase + i - 1 : at.base + i;
       if (parent.children[index] !== row) parent.insertChild(index, row);
-      if (row.layoutSizingHorizontal !== 'FILL') row.layoutSizingHorizontal = 'FILL';
+      // 표식 템플릿의 칸은 오토 레이아웃이 아닐 수 있다. 그때는 폭을 채우지 않는다.
+      const autoLayout = 'layoutMode' in parent && parent.layoutMode !== 'NONE';
+      if ((!at.linked || autoLayout) && row.layoutSizingHorizontal !== 'FILL') row.layoutSizingHorizontal = 'FILL';
       used.add(row);
     } catch (error) {
       if (!byKey.has(key)) row.remove();
@@ -805,6 +684,44 @@ export async function syncRows(ns: string, history: ChildrenMixin, settings: Fli
     }
   }
   for (const row of stale) if (!used.has(row)) row.remove();
+}
+
+// 이름 규칙: 최신 기록 1개는 List 맨 위, 나머지는 Previous에 최신순으로 둔다. 템플릿의 시스템 행은 그대로 둔다.
+export async function syncRows(ns: string, history: ChildrenMixin, settings: FlipbookSettings, rows: FlipbookRow[], kit: TagKit, notes: Set<string>): Promise<void> {
+  const list = findPart(history, n => n.type === 'SLOT' && n.name === 'List') as SlotNode | null;
+  if (!list) throw new Error(COPY.figmaFlipbook020);
+  const previous = list.findChild(n => n.type === 'FRAME' && n.name === 'Previous') as FrameNode | null;
+  const component = await namedRowComponent(history, kit.template);
+  if (!component) throw new Error(COPY.figmaFlipbook017);
+  await placeRows(ns, {
+    list, previous, component, cells: namedRowParts, statusTag: kit.small, linked: false, base: 0, previousBase: 0,
+    managed: (n): n is InstanceNode => isNamedRow(n) && !isSystemRow(n),
+    // 'hex': 색 변수로 칠했던 기존 행도 한 번 다시 칠해 변수 연결을 끊는다.
+    kitKey: JSON.stringify([component.id, kit.small?.id, 'hex']),
+  }, settings, rows, kit, notes);
+}
+
+// 표식 템플릿: 이력 행 컴포넌트의 인스턴스만 관리하고 목록의 다른 레이어(머리 행 등)는 둔다. 최신 기록은 목록에서 행이 놓인 자리
+// (템플릿의 예시 행 자리, 없으면 목록 안 이전 이력 칸 앞이나 맨 뒤)에, 둘째 기록부터는 이전 이력 칸의 행 자리(없으면 맨 뒤)에 둔다.
+export async function syncMarkedRows(ns: string, list: SceneNode, previous: SceneNode | null, settings: FlipbookSettings, rows: FlipbookRow[], kit: TagKit, notes: Set<string>): Promise<void> {
+  if (!('children' in list)) return;
+  const box = list as Container;
+  const prev = previous && 'children' in previous ? previous as Container : null;
+  const managed = (n: SceneNode): n is InstanceNode => isMarkedRow(n, ns);
+  const existing = [...box.children, ...(prev?.children ?? [])].find(managed);
+  // 템플릿의 이력 행 연결이 없으면(이름 규칙 템플릿으로 바꾼 경우 등) 플립북에 있는 행의 컴포넌트를 쓴다.
+  const component = kit.row ?? (existing ? await existing.getMainComponentAsync() : null);
+  if (!component) { if (rows.length) notes.add(COPY.figmaTemplate023); return; }
+  const firstIn = (parent: Container) => parent.children.findIndex(managed);
+  const inList = firstIn(box);
+  const base = inList >= 0 ? inList : prev && prev.parent?.id === box.id ? box.children.indexOf(prev) : box.children.length;
+  const inPrevious = prev ? firstIn(prev) : -1;
+  const statusTag = kit.links ? kit.small : null;
+  await placeRows(ns, {
+    list: box, previous: prev, managed, component, cells: row => markedRowParts(row, ns), statusTag, linked: true,
+    base, previousBase: prev ? (inPrevious >= 0 ? inPrevious : prev.children.length) : 0,
+    kitKey: JSON.stringify([component.id, statusTag?.id ?? null, 'linked']),
+  }, settings, rows, kit, notes);
 }
 
 // 플러그인이 쓴 값이거나 템플릿 기본값일 때만 바꾼다. 사용자가 고친 값은 둔다.
@@ -827,10 +744,15 @@ export async function syncChapters(ns: string, items: { pageId: string; flipbook
     if (!frames) { frames = pageFlipbooks(ns, await loadedPage(pageId)); byPage.set(pageId, frames); }
     const frame = frames.get(flipbookId);
     if (!frame) continue;
-    const p = parts(frame);
-    const headerMain = p.header?.type === 'INSTANCE' ? await p.header.getMainComponentAsync() : null;
-    const fallback = cellText(headerMain, 'input-cell-chapter');
-    await setOwnedText(ns, p.chapter, name, ['-', ...(fallback ? [fallback.characters] : [])], fonts, CHAPTER_KEY);
+    const p = flipbookParts(frame, ns);
+    // 이름 규칙은 Flipbook-Title 컴포넌트에 적힌 글자도 템플릿 기본값으로 본다. 표식 플립북은 만들 때 Chapter를 써 두었다.
+    const known = ['-'];
+    if (p.named) {
+      const headerMain = p.named.header?.type === 'INSTANCE' ? await p.named.header.getMainComponentAsync() : null;
+      const fallback = cellText(headerMain, 'input-cell-chapter');
+      if (fallback) known.push(fallback.characters);
+    }
+    await setOwnedText(ns, p.chapter, name, known, fonts, CHAPTER_KEY);
   }
 }
 
@@ -865,28 +787,38 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
   if (!existing && !view.create) throw new Error(COPY.figmaFlipbook027);
   const frame = existing ?? await createFlipbook(ns, page, kit.template, view);
   session.known.set(view.flipbookId, frame.id);
-  const p = parts(frame);
-  if (!p.titleText || !p.status || !p.history || !p.gui) throw new Error(COPY.figmaFlipbook021);
+  const p = flipbookParts(frame, ns);
+  // 이름 규칙은 제목·Status·이력 영역·GUI 영역이, 표식 템플릿은 GUI 영역이 있어야 한다.
+  if (!p.gui || (p.named && (!p.named.titleText || !p.status || !p.named.history))) throw new Error(p.named ? COPY.figmaFlipbook021 : COPY.figmaFlipbook028);
   frame.locked = false;
   p.gui.locked = false;
   const notes = new Set<string>();
   const before = { width: frame.width, height: frame.height };
 
-  // 큰 제목과 Page title에는 같은 플립북 제목을 넣는다. 사용자가 직접 고친 제목은 바꾸지 않는다.
-  // 컴포넌트에 적힌 기본 글자도 템플릿 기본값으로 본다. 컴포넌트의 기본 글자를 바꿔도 사용자가 고친 글자로 오인하지 않는다.
-  const titleMain = p.title?.type === 'INSTANCE' ? await p.title.getMainComponentAsync() : null;
-  const headerMain = p.header?.type === 'INSTANCE' ? await p.header.getMainComponentAsync() : null;
-  const defaults = (node: TextNode | null) => (node ? [node.characters] : []);
-  // 플러그인에서 제목을 바꾸면 캔버스에서 고친 제목도 새 제목으로 바꾸고, 프레임 이름도 맞춘다(2026-10-21 사용자 요청).
-  await setOwnedText(ns, p.titleText, view.name, [...view.titleNames, ...defaults((titleMain?.findChild(n => n.type === 'TEXT') ?? null) as TextNode | null)], kit, 'flipbookTitle', view.retitle);
-  await setOwnedText(ns, p.page, view.name, [...view.titleNames, '-', ...defaults(cellText(headerMain, 'input-cell-page'))], kit, 'flipbookTitle', view.retitle);
-  if (view.retitle && frame.name !== view.name) frame.name = view.name;
-  await setOwnedText(ns, p.chapter, view.chapter, ['-', ...defaults(cellText(headerMain, 'input-cell-chapter'))], kit, CHAPTER_KEY);
-  if (view.status) await applyTag(p.status, kit.big, kit, view.status.tag.name, view.status.colorKey);
-  if (p.ids) await syncIds(ns, p.ids, view.gui.map(g => g.code), kit);
+  if (p.named) {
+    // 큰 제목과 Page title에는 같은 플립북 제목을 넣는다. 사용자가 직접 고친 제목은 바꾸지 않는다.
+    // 컴포넌트에 적힌 기본 글자도 템플릿 기본값으로 본다. 컴포넌트의 기본 글자를 바꿔도 사용자가 고친 글자로 오인하지 않는다.
+    const titleMain = p.named.title?.type === 'INSTANCE' ? await p.named.title.getMainComponentAsync() : null;
+    const headerMain = p.named.header?.type === 'INSTANCE' ? await p.named.header.getMainComponentAsync() : null;
+    const defaults = (node: TextNode | null) => (node ? [node.characters] : []);
+    // 플러그인에서 제목을 바꾸면 캔버스에서 고친 제목도 새 제목으로 바꾸고, 프레임 이름도 맞춘다(2026-10-21 사용자 요청).
+    await setOwnedText(ns, p.named.titleText, view.name, [...view.titleNames, ...defaults((titleMain?.findChild(n => n.type === 'TEXT') ?? null) as TextNode | null)], kit, 'flipbookTitle', view.retitle);
+    await setOwnedText(ns, p.named.page, view.name, [...view.titleNames, '-', ...defaults(cellText(headerMain, 'input-cell-page'))], kit, 'flipbookTitle', view.retitle);
+    if (view.retitle && frame.name !== view.name) frame.name = view.name;
+    await setOwnedText(ns, p.chapter, view.chapter, ['-', ...defaults(cellText(headerMain, 'input-cell-chapter'))], kit, CHAPTER_KEY);
+  } else {
+    // 표식 템플릿: 제목 칸마다 같은 제목을 넣는다. 템플릿의 제목·Chapter 칸에 적힌 글자도 템플릿 기본값으로 본다.
+    for (const node of p.titles) await setOwnedText(ns, node, view.name, [...view.titleNames, '-', ...kit.defaults.title], kit, 'flipbookTitle', view.retitle);
+    if (view.retitle && frame.name !== view.name) frame.name = view.name;
+    await setOwnedText(ns, p.chapter, view.chapter, ['-', ...kit.defaults.chapter], kit, CHAPTER_KEY);
+  }
+  // 표식 플립북의 상태 칸은 표식 템플릿에서 연결한 태그 컴포넌트로만 바꾼다(연결이 없으면 놓인 태그를 그대로 쓴다).
+  if (view.status && p.status) await applyTag(p.status, p.named || kit.links ? kit.big : null, kit, view.status.tag.name, view.status.colorKey, !p.named);
+  if (p.ids && kit.idTag) await syncIds(ns, p.ids, view.gui.map(g => g.code), kit.idTag, kit);
   const overlays = frame.children.filter(n => 'layoutPositioning' in n && n.layoutPositioning === 'ABSOLUTE');
   await syncGui(ns, p.gui, view.gui, view.scale, notes, view.guiWidth, overlays);
-  await syncRows(ns, p.history, settings, view.rows, kit, notes);
+  if (p.named) await syncRows(ns, p.named.history!, settings, view.rows, kit, notes);
+  else if (p.list) await syncMarkedRows(ns, p.list, p.previous, settings, view.rows, kit, notes);
 
   // 이미지·이력 길이에 따라 크기가 바뀐다. 크기가 바뀌면 이웃 화면과 겹치지 않게 필요한 만큼만 민다.
   // 이웃은 루트 Section 전체(안의 Section 포함)에서 찾고, 루트 Section 크기만 맞춘다. 안쪽 Section 크기는 그대로 둔다(2026-10-23 사용자 결정).

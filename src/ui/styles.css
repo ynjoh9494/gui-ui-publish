@@ -203,6 +203,15 @@ summary { cursor: pointer; color: var(--muted); }
 .admin-mode .detail > * { max-width: 372px; }
 .admin input[type="color"] { width: 32px; padding: 0 2px; flex: none; }
 .audit { font-size: 11px; }
+/* 관리의 템플릿: 항목 이름·조건과 오른쪽 버튼, 그 아래 연결된 레이어 */
+.template-actions { flex-wrap: wrap; }
+.template-group { margin: 10px 0 2px; font-size: 11px; color: var(--muted); }
+.template-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "label actions" "value actions"; gap: 2px 8px; padding: 6px 0; border-top: 1px solid var(--border); }
+.template-item-label { grid-area: label; display: flex; flex-direction: column; min-width: 0; }
+.template-item-label small { color: var(--muted); }
+.template-item-value { grid-area: value; display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.template-item-value .muted { color: var(--muted); }
+.template-item-actions { grid-area: actions; display: flex; gap: 4px; align-items: flex-start; }
 
 /* 처리 중 표시. 확인 대화상자 위에도 보이도록 가장 위에 둔다. */
 .busy { position: absolute; top: 0; left: 0; right: 0; z-index: 6; display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: var(--selected); color: var(--text); border-bottom: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,.08); }

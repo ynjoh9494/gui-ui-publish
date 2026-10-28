@@ -9,6 +9,7 @@ import { parseRichText, type RichParagraph } from '../core/richText.ts';
 import { memoryKV, type KV } from '../core/store.ts';
 import type { Actor, Team } from '../core/types.ts';
 import type { PageInfo, ToUi } from '../core/wire.ts';
+import { TEMPLATE_ITEMS, type TemplateItem, type TemplateLayer } from '../core/templateParts.ts';
 import type { Host } from '../host.ts';
 
 // body: 화면 고유 내용(새 버전 페이지 비교의 유사도용). 이름을 바꾸거나 다른 페이지에 붙여 넣어도 그대로다.
@@ -97,6 +98,14 @@ export function createDemo(options: DemoOptions): Demo {
   let framesPicked = false;
   let deliver: (message: ToUi) => void = () => {};
   const text = { name: 'Description', paragraphs: parseRichText(COPY.uiPreview051) };
+  // 관리의 템플릿: 예시 템플릿(기본 템플릿과 같은 구성)의 항목별 연결. 연결하면 「선택한 레이어」로, 풀면 비운다.
+  const templateDefaults = (): Map<TemplateItem, TemplateLayer[]> => new Map(([
+    ['title', 'Title Row › Title'], ['chapter', 'Header › Chapter'], ['status', 'Title Row › Status'], ['ids', 'Header › Screen IDs'],
+    ['gui', 'Body › GUI Area'], ['description', 'Description › Description Body'], ['history', 'History › History List'], ['pdfHidden', 'History'],
+    ['idTag', 'Screen ID Tag'], ['row', 'History Row'], ['rowStatus', 'History Row › Status'], ['rowComment', 'History Row › Comment'],
+    ['rowWorker', 'History Row › Worker'], ['rowDate', 'History Row › Date'], ['rowTeam', 'History Row › Team'],
+  ] as [TemplateItem, string][]).map(([key, name]) => [key, [{ id: `tpl:${key}`, name }]]));
+  let templateLayers = templateDefaults();
 
   // 검정 배경에 화면 이름을 쓴 1/4 크기 썸네일을 흉내 낸다.
   async function fakeThumb(label: string, version: string): Promise<Uint8Array> {
@@ -207,6 +216,24 @@ export function createDemo(options: DemoOptions): Demo {
       return { fingerprint: sha256(`ui:${uiEdits.get(screenId ?? '') ?? 0}`), error: null };
     },
     async templateFromSelection() { return { id: 'tpl', name: 'Flipbook-Template' }; },
+    async describeTemplate(id) {
+      const items = TEMPLATE_ITEMS.map(d => {
+        const layers = templateLayers.get(d.key) ?? [];
+        return { key: d.key, layers, problem: d.required && !layers.length ? COPY.figmaTemplate007 : null };
+      });
+      return { id, name: 'Flipbook-Template', pageName: COPY.figmaTemplate025, linked: true, items, error: null };
+    },
+    async connectTemplateItem(_, key) {
+      templateLayers.set(key, [{ id: `tpl:${key}`, name: COPY.uiPreview058 }]);
+      log(`${COPY.uiPreview059} ${key}`);
+    },
+    async disconnectTemplateItem(_, key) { templateLayers.delete(key); },
+    async templateItemNodes(_, key) { return (templateLayers.get(key) ?? []).map(l => l.id); },
+    async createDefaultTemplate() {
+      templateLayers = templateDefaults();
+      log(COPY.uiPreview060);
+      return { id: 'tpl', name: 'Flipbook-Template', pageId: '0:9' };
+    },
     async syncFlipbook(settings, view) {
       await wait(options.syncMs ?? 0);
       // GUI는 원본에서 바로 복사한다. 원본 프레임이 없으면 실패한다.

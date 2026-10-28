@@ -15,6 +15,7 @@ import { emptyComment, type BatchComment, type Plan } from '../core/publish.ts';
 import { customSection, defaultSection, filterScreens, needsReview, pageSections, rowKind, screenCategoryKey, uncreatedScreens, unreviewed, type FlipbookMove, type FlipbookRowRequest, type FlipbookSection, type ScreenFilter, type ScreenKind } from '../core/flipbooks.ts';
 import { defaultTitle, guiTargetWidth, GUI_WIDTH_MAX, GUI_WIDTH_MIN, NO_SECTION_KEY, validGuiWidth } from '../core/flipbook.ts';
 import { TAG_PALETTE } from '../core/palette.ts';
+import { TEMPLATE_GROUPS, TEMPLATE_ITEMS, isTemplateItem, type TemplateInfo, type TemplateItemDef, type TemplateItemState } from '../core/templateParts.ts';
 import { findCategoryByName, systemTagId, workerLabel } from '../core/registry.ts';
 import { formatFrameName, parseFrameName } from '../core/screenName.ts';
 import type { State } from '../core/store.ts';
@@ -44,7 +45,7 @@ const NODE_PREVIEW = 'node:';
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
 const WHILE_BUSY = new Set(['tab', 'settings', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'toggle-detail', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
-const BEFORE_CHECK = new Set([...WHILE_BUSY, 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'fb-edit-screens', 'edit-screens-cancel', 'edit-screens-apply', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
+const BEFORE_CHECK = new Set([...WHILE_BUSY, 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'fb-edit-screens', 'edit-screens-cancel', 'edit-screens-apply', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'text-import', 'text-apply',
   'version-open', 'version-close', 'version-match', 'version-select', 'version-review-only', 'version-reveal', 'version-switch', 'version-cancel']);
 
@@ -82,6 +83,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   let issues: string[] = [];
   // 플립북 템플릿의 문제. UI Flipbook 목록 위에 경고로 보여 준다(관리 화면이 아니어도).
   let templateIssues: string[] = [];
+  // 관리의 템플릿에 보여 줄 항목별 연결 상태. 관리를 열 때와 템플릿을 바꾼 뒤 받는다.
+  let templateInfo: TemplateInfo | null = null;
   let entries: Entry[] = [];
   // 변경사항 확인 진행. 실행만 해서는 비교하지 않고, 탭 맨 위 버튼을 눌러야 비교한다.
   // partialAt: 선택 화면 확인을 마친 시각
@@ -1762,9 +1765,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         <div class="scope-pages" aria-label="${COPY.uiApp108}">
           ${uiPageIds.length ? uiPageIds.map(id => `<div class="scope-page"><span>${esc(pages.find(p => p.id === id)?.name ?? `${COPY.uiApp103}${id})`)}</span><button class="icon-button" data-action="admin-ui-page-remove" data-id="${esc(id)}" title="${COPY.uiApp105}" aria-label="${esc(pages.find(p => p.id === id)?.name ?? id)} ${COPY.uiApp104}">${X_ICON}</button></div>`).join('') : `<p class="note">${COPY.uiApp106}</p>`}
         </div>
-        <p class="note">${COPY.uiApp111} ${s.project.templateNodeId ? esc(s.project.templateName ?? s.project.templateNodeId) : COPY.uiApp112}</p>
-        <button data-action="admin-template">${COPY.uiApp113}</button>
-        <p class="note">${COPY.uiApp114}</p></section>
+        </section>
+      ${renderTemplateSection(s)}
       <section class="admin" data-form="gui-width"><h3>${COPY.uiApp225}</h3>
         <label>${COPY.uiApp226}</label>
         <div class="inline"><input type="number" data-f="width" data-input="admin-gui-width" min="${GUI_WIDTH_MIN}" max="${GUI_WIDTH_MAX}" step="1" value="${s.project.guiWidth}" aria-label="${COPY.uiApp226}"><button data-action="admin-gui-width">${COPY.uiApp110}</button></div>
@@ -1787,6 +1789,37 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         <button class="danger" data-action="reset-data">${resetArmed ? COPY.uiApp130 : COPY.uiApp131}</button>
         ${resetArmed ? `<button data-action="reset-cancel">${COPY.uiApp132}</button>` : ''}</section>`;
     accordion();
+  }
+
+  // 관리의 템플릿(2026-10-28 사용자 결정): 기본 템플릿 만들기, 캔버스에서 고른 프레임 지정, 항목별 연결 상태와 다시 연결
+  function renderTemplateSection(s: State): string {
+    const id = s.project.templateNodeId;
+    const info = templateInfo && templateInfo.id === id ? templateInfo : null;
+    const name = id ? esc(info?.name || s.project.templateName || id) : COPY.uiApp112;
+    const groups = info && !info.error ? TEMPLATE_GROUPS.map(g => `
+        <h4 class="template-group">${esc(g.label)}</h4>
+        <div class="template-items">${TEMPLATE_ITEMS.filter(d => d.group === g.group).map(d => templateRow(d, info.items.find(i => i.key === d.key), info.linked)).join('')}</div>`).join('') : '';
+    return `<section class="admin" data-form="template"><h3>${COPY.uiApp392}</h3>
+        <p class="note">${COPY.uiApp111} ${name}${info?.pageName ? ` · ${esc(info.pageName)}` : ''}</p>
+        <div class="inline template-actions"><button data-action="admin-template-default">${COPY.uiApp393}</button><button data-action="admin-template">${COPY.uiApp113}</button></div>
+        <p class="note">${COPY.uiApp114}</p>
+        ${info?.error ? `<p class="bad">${esc(info.error)}</p>` : ''}
+        ${info && !info.error && !info.linked ? `<p class="note">${COPY.uiApp394}</p>` : ''}
+        ${groups}</section>`;
+  }
+
+  // 템플릿 항목 한 줄: 항목 이름·조건, 연결된 레이어(이름 규칙이면 이름으로 찾은 레이어)와 문제, 보기·연결·해제
+  function templateRow(def: TemplateItemDef, item: TemplateItemState | undefined, linked: boolean): string {
+    const layers = item?.layers ?? [];
+    const value = layers.length ? layers.map(l => esc(l.name)).join(', ') : `<span class="muted">${linked ? COPY.uiApp395 : COPY.uiApp396}</span>`;
+    return `<div class="template-item" data-key="${def.key}">
+        <div class="template-item-label"><b>${esc(def.label)}</b><small>${esc(def.hint)}</small></div>
+        <div class="template-item-value">${value}${item?.problem ? `<span class="bad">${esc(item.problem)}</span>` : ''}</div>
+        <div class="template-item-actions">
+          <button data-action="admin-template-show" data-key="${def.key}" title="${COPY.uiApp400}" ${layers.length ? '' : 'disabled'}>${COPY.uiApp397}</button>
+          <button data-action="admin-template-connect" data-key="${def.key}" title="${COPY.uiApp401}">${COPY.uiApp398}</button>
+          ${def.required ? '' : `<button data-action="admin-template-disconnect" data-key="${def.key}" title="${COPY.uiApp402}" ${layers.length ? '' : 'disabled'}>${COPY.uiApp399}</button>`}
+        </div></div>`;
   }
 
   // 설정한 1x 폭에서 계산한 1/2x·1/4x 폭. 입력 중에도 바로 보여 준다.
@@ -2420,10 +2453,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         addMode = null; editMode = null;
         renderAll();
         // 플러그인을 연 뒤 추가한 페이지(새 버전 페이지 등)도 고를 수 있게 페이지 목록을 다시 받는다.
-        if (tab === 'ADMIN') bridge.send({ type: 'pages' });
+        if (tab === 'ADMIN') {
+          bridge.send({ type: 'pages' });
+          if (mode === 'UI') bridge.send({ type: 'templateInfo' });
+        }
         break;
       // 만들기 전 새 플립북은 설정을 다녀와도 남는다.
-      case 'create-page-manage': tab = 'ADMIN'; adminOpen = COPY.uiApp107; renderAll(); break;
+      case 'create-page-manage': tab = 'ADMIN'; adminOpen = COPY.uiApp107; renderAll(); bridge.send({ type: 'templateInfo' }); break;
       case 'toggle-detail': detailCollapsed = !detailCollapsed; renderAll(); break;
       // 새 플립북은 오른쪽 영역에서 정하므로 접어 두었으면 펼친다.
       case 'new-add': detailCollapsed = false; if (addNew()) { revealSelection = true; renderList(); } applyCollapse(); break;
@@ -2774,6 +2810,18 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         break;
       }
       case 'admin-template': admin({ op: 'setTemplateFromSelection' }); break;
+      case 'admin-template-default': admin({ op: 'createDefaultTemplate' }); break;
+      case 'admin-template-connect':
+      case 'admin-template-disconnect': {
+        const key = el.dataset.key ?? '';
+        if (isTemplateItem(key)) admin({ op: action === 'admin-template-connect' ? 'connectTemplateItem' : 'disconnectTemplateItem', key });
+        break;
+      }
+      case 'admin-template-show': {
+        const key = el.dataset.key ?? '';
+        if (isTemplateItem(key)) bridge.send({ type: 'revealTemplateItem', nav: ++navSeq, key });
+        break;
+      }
       case 'admin-gui-width': {
         const width = Number(formValue(el, 'width'));
         if (width !== state?.project.guiWidth) admin({ op: 'setGuiWidth', width });
@@ -3622,6 +3670,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         if (tab === 'UI') renderDetail();
         break;
       case 'templateIssues': templateIssues = msg.issues; renderToolbar(); break;
+      case 'templateInfo':
+        templateInfo = msg.info;
+        if (tab === 'ADMIN') renderDetail();
+        break;
       case 'pages':
         if (pages.length === msg.pages.length && pages.every((p, i) => p.id === msg.pages[i].id && p.name === msg.pages[i].name && !p.current === !msg.pages[i].current)) break;
         pages = msg.pages;

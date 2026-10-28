@@ -11,6 +11,8 @@ import { addTextFrame, fillDescription, readDescription, selectedDescriptionRoot
 import { createFlow, flowNode, updateFlow } from './flow.ts';
 import { exportPdfPages, pdfSelection } from './pdf.ts';
 import { readRichText, selectedTextNode, writeRichText } from './richText.ts';
+import { connectTemplateItem, describeTemplate, disconnectTemplateItem, templateItemNodes } from './template.ts';
+import { createDefaultTemplate } from './templateDefault.ts';
 import { makeThumbnail, placeThumbnails, renameThumbnails, thumbnailBytes } from './thumbs.ts';
 
 // 사용자별 플러그인 창 크기(figma.clientStorage)
@@ -187,6 +189,11 @@ export function figmaHost(mode: Host['mode']): Host {
     uiFingerprint: nodeId => createFingerprintReader(sceneNode).uiFingerprint(nodeId),
     templateFromSelection,
     templateIssues,
+    describeTemplate: id => describeTemplate(id, NS),
+    connectTemplateItem: (id, key) => connectTemplateItem(id, key, NS),
+    disconnectTemplateItem: (id, key) => disconnectTemplateItem(id, key, NS),
+    templateItemNodes: (id, key) => templateItemNodes(id, key, NS),
+    createDefaultTemplate: () => createDefaultTemplate(NS),
     beginDelivery: known => { deliverySession = flipbookSession(known); },
     endDelivery: () => { deliverySession = undefined; },
     syncFlipbook: (settings, view) => syncFlipbook(NS, settings, view, deliverySession),

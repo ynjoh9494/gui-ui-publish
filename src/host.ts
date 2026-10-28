@@ -10,6 +10,7 @@ import type { SelectionTarget, SelectionWrite } from './core/description.ts';
 import type { RichParagraph } from './core/richText.ts';
 import type { PdfPage, PdfSelection } from './core/pdf.ts';
 import type { PageInfo, ToUi } from './core/wire.ts';
+import type { TemplateInfo, TemplateItem } from './core/templateParts.ts';
 
 // Controller가 사용하는 환경 경계. Figma 호스트와 브라우저 미리보기가 각각 구현한다.
 export interface FingerprintReader {
@@ -47,6 +48,12 @@ export interface Host extends FingerprintReader {
   flipbookSpots?(pageIds: string[]): Promise<Record<string, FlipbookSpot>>;
   templateFromSelection(): Promise<{ id: string; name: string }>;
   templateIssues?(templateId: string | null): Promise<string[]>;
+  // 관리의 템플릿: 항목별 연결 상태, 캔버스 선택을 항목에 연결·해제, 항목에 연결된 레이어, 새 페이지에 기본 템플릿 만들기
+  describeTemplate?(templateId: string): Promise<TemplateInfo>;
+  connectTemplateItem?(templateId: string, key: TemplateItem): Promise<void>;
+  disconnectTemplateItem?(templateId: string, key: TemplateItem): Promise<void>;
+  templateItemNodes?(templateId: string, key: TemplateItem): Promise<string[]>;
+  createDefaultTemplate?(): Promise<{ id: string; name: string; pageId: string }>;
   syncFlipbook(settings: { pageId: string; templateId: string; force?: boolean }, view: FlipbookView): Promise<{ nodeId: string; notes: string[] }>;
   // 플립북의 Chapter만 Section 이름으로 다시 쓴다. 찾지 못한 플립북은 건너뛴다.
   syncChapters?(items: { pageId: string; flipbookId: string; name: string }[]): Promise<void>;
