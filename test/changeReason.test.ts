@@ -4,7 +4,7 @@ import { changeDigest, digestFingerprint, type ChangeReason } from '../src/core/
 import { classify, type Entry } from '../src/core/compare.ts';
 import { COPY } from '../src/core/copy.ts';
 import { defaultDraft } from '../src/core/drafts.ts';
-import { FINGERPRINT_VERSION, fingerprint, type NodeSnapshot } from '../src/core/fingerprint.ts';
+import { FINGERPRINT_VERSION, LEGACY_FINGERPRINT_VERSION, fingerprint, type NodeSnapshot } from '../src/core/fingerprint.ts';
 import { keys, memoryKV, Store } from '../src/core/store.ts';
 import type { GuiRecord, Screen } from '../src/core/types.ts';
 import type { ToUi } from '../src/core/wire.ts';
@@ -23,7 +23,7 @@ function snapshot(titleX = 100, title = '홈'): NodeSnapshot {
   };
 }
 
-function seeded(baseline: string) {
+function seeded(baseline: string, fpVersion = FINGERPRINT_VERSION) {
   const store = new Store(memoryKV(), () => 2000, (() => { let n = 0; return () => `id${++n}`; })());
   store.saveProject({ ...store.state.project, scopePageIds: [PAGE] });
   store.put(keys.category('home'), { id: 'home', name: '홈', order: 1, active: true });
@@ -34,7 +34,7 @@ function seeded(baseline: string) {
     source: { nodeId: '1:1', pageId: PAGE }, guiVersion: 1, guiTag: null, createdAt: 1000,
   } satisfies Screen);
   store.put(keys.gui('a', 1), {
-    screenId: 'a', version: 1, batchId: 'b1', workType: 'new', fingerprint: baseline, fpVersion: FINGERPRINT_VERSION, thumb: null, width: 1920, height: 1080,
+    screenId: 'a', version: 1, batchId: 'b1', workType: 'new', fingerprint: baseline, fpVersion, thumb: null, width: 1920, height: 1080,
     code: 'STB_HO_001', name: '홈', category: null, base: null, tag: { id: 't', name: '추가', color: '#000', colorKey: 'Gray' },
     description: '', worker: { id: 'w', name: 'Designer' }, actor, committedAt: 1000, extra: {}, corrections: [],
   } satisfies GuiRecord);
@@ -42,9 +42,9 @@ function seeded(baseline: string) {
   return store;
 }
 
-// 실제 근거 계산(changeDigest)을 쓰는 가짜 원본 하나
-function setup(initial = snapshot()) {
-  const store = seeded(fingerprint(initial));
+// 실제 근거 계산(changeDigest)을 쓰는 가짜 원본 하나. legacyBase를 주면 비교 기준이 그 1 규칙 지문이다.
+function setup(initial = snapshot(), legacyBase?: string) {
+  const store = legacyBase ? seeded(legacyBase, LEGACY_FINGERPRINT_VERSION) : seeded(fingerprint(initial));
   const canvas = { snap: initial };
   const posted: ToUi[] = [];
   const selected: string[][] = [];
@@ -52,9 +52,9 @@ function setup(initial = snapshot()) {
   const host = {
     kv: store.kv, mode: 'GUI', actor, post: (m: ToUi) => posted.push(m), pages: () => [{ id: PAGE, name: '원본' }],
     listFrames: async () => [{ nodeId: '1:1', pageId: PAGE, name: 'Frame 1', width: 1920, height: 1080, screenTag: 'a', fingerprint: null, error: null }],
-    fingerprint: async (_id: string, _legacy?: boolean, digest?: Parameters<typeof changeDigest>[1]) => {
+    fingerprint: async (_id: string, legacy?: boolean, digest?: Parameters<typeof changeDigest>[1]) => {
       const fp = fingerprint(canvas.snap);
-      return { fingerprint: fp, ...changeDigest(fp, digest, () => canvas.snap), error: null };
+      return { fingerprint: fp, ...(legacy ? { legacyFingerprint: `legacy:${fp}` } : {}), ...changeDigest(fp, digest, () => canvas.snap), error: null };
     },
     selectNodes: async (ids: string[]) => { selected.push(ids); },
     reveal: async (nodeId: string) => { revealed.push(nodeId); return nodeId !== 'gone'; },
@@ -112,14 +112,44 @@ test('변경 근거: 변경 감지된 화면에 근거를 보여 주고, 변경 
   assert.equal(entry().frame!.reason!.visible, true);
 });
 
-test('변경 근거: 근거가 없는 비교 기준은 「근거 기록 없음」이고, 사용 안 함이 된 화면의 근거는 지운다', async () => {
+test('변경 근거: 근거가 없는 비교 기준은 「근거 기록 없음」이고, 사용 안 함이 된 화면의 근거만 지운다', async () => {
   const { store, canvas, controller, entry } = setup();
-  store.kv.set(keys.digest('gone'), '{}');
+  store.put(keys.screen('old'), { ...store.state.screens.get('a')!, id: 'old', code: 'STB_HO_002', status: 'deleted', source: null });
+  store.reload();
+  store.kv.set(keys.digest('old'), '{}');
+  // 기록에 아직 없는 화면(확인하는 동안 다른 작업자가 배포한 화면)의 근거는 그대로 둔다.
+  store.kv.set(keys.digest('new'), '{}');
   canvas.snap = snapshot(300);
   await controller.handle({ type: 'scan' });
   assert.equal(entry().frame!.reason!.status, 'no-record');
   assert.match(changeReasonSection(entry().frame!.reason), new RegExp(COPY.uiApp386.slice(0, 10)));
-  assert.equal(store.kv.get(keys.digest('gone')), '');
+  assert.equal(store.kv.get(keys.digest('old')), '');
+  assert.equal(store.kv.get(keys.digest('new')), '{}');
+});
+
+test('변경 근거: 1 규칙 비교 기준과 다른 화면도 「근거 기록 없음」이다', async () => {
+  const { controller, entry } = setup(snapshot(), 'legacy-base');
+  await controller.handle({ type: 'scan' });
+  assert.equal(entry().estimate, 'changed');
+  assert.equal(entry().frame!.reason!.status, 'no-record');
+});
+
+test('변경 근거: 같은 상태를 다시 확인하면 지난 근거를 다시 쓰고, 레이어 이름이 바뀌면 다시 계산한다', async () => {
+  const { canvas, controller, entry } = setup();
+  await controller.handle({ type: 'scan' });
+  canvas.snap = snapshot(100.3);
+  await controller.handle({ type: 'scan' });
+  const first = entry().frame!.reason!;
+  await controller.handle({ type: 'scan' });
+  assert.equal(entry().frame!.reason, first, '지문과 레이어 이름·ID가 같으면 계산하지 않는다');
+  const renamed = snapshot(100.3);
+  renamed.children![1].name = 'Backdrop';
+  canvas.snap = renamed;
+  await controller.handle({ type: 'scan' });
+  const again = entry().frame!.reason!;
+  assert.notEqual(again, first);
+  assert.deepEqual(again.renamed.map(l => l.path.join('/')), ['Backdrop']);
+  assert.deepEqual(again.groups.find(g => g.group === 'geometry')?.layers.map(l => l.layer.path.join('/')), ['Title']);
 });
 
 test('변경 근거: 배포 확정은 확정한 지문과 같은 상태의 근거를 기록한다', async () => {

@@ -1,4 +1,4 @@
-import { digestFingerprint, type DigestRequest } from './core/changeDigest.ts';
+import { digestFingerprint, NO_RECORD, type DigestRequest, type PreviousReason } from './core/changeDigest.ts';
 import { COPY } from './core/copy.ts';
 import { baseline, changeDetected, classify, ignoreBlock, uiEstimate, uncheckedEntries, uiEntries, UI_FINGERPRINT_VERSION, type Entry, type FlipbookSpot, type ScannedFrame, type UiScan } from './core/compare.ts';
 import { FINGERPRINT_VERSION, LEGACY_FINGERPRINT_VERSION } from './core/fingerprint.ts';
@@ -99,6 +99,9 @@ export class Controller {
   private scanningGui = false;
   // 원본 노드 ID → 지금 상태의 변경 근거. 「변경 무시」와 근거 채우기 때 기록한다.
   private digests = new Map<string, string>();
+  // 원본 노드 ID → 변경 감지된 화면의 지난 근거와 그때의 비교 기준·저장 근거. 둘이 그대로면 다음 확인에서 previous로 넘겨
+  // 지문과 레이어 이름이 같을 때 다시 계산하지 않는다.
+  private reasons = new Map<string, { baseline: string; stored: string; previous: PreviousReason }>();
   // 새 버전 페이지 비교 결과. 전환은 이 결과의 프레임만 연결하고, 계산한 지문을 그대로 원본 목록으로 쓴다.
   // sources·common: 유사도 근거를 제안 때와 같은 규칙으로 다시 계산하는 데 쓴다.
   private version: { pageId: string; frames: VersionFrame[]; scanned: ScannedFrame[]; sources: Map<string, string[]>; common: Set<string> } | null = null;
@@ -299,12 +302,13 @@ export class Controller {
     this.host.post({ type: 'entries', entries: this.entries });
   }
 
-  private legacySources(): Set<string> {
-    const out = new Set<string>();
+  // 1 규칙 비교 기준이 있는 원본: 원본 노드 ID → 기준 지문
+  private legacySources(): Map<string, string> {
+    const out = new Map<string, string>();
     for (const screen of this.store.state.screens.values()) {
       if (!screen.source || screen.status !== 'active') continue;
       const base = baseline(this.store.state, screen);
-      if (base?.fingerprint && (base.fpVersion ?? 1) === LEGACY_FINGERPRINT_VERSION) out.add(screen.source.nodeId);
+      if (base?.fingerprint && (base.fpVersion ?? 1) === LEGACY_FINGERPRINT_VERSION) out.set(screen.source.nodeId, base.fingerprint);
     }
     return out;
   }
@@ -321,17 +325,28 @@ export class Controller {
   }
 
   // 지문과 함께 변경 근거를 읽는다. 저장된 근거는 배포 화면을 읽을 때만 꺼내고, 계산 여부는 core/changeDigest.ts의 changeDigest()가 정한다.
-  private async readFrame(reader: FingerprintReader, frame: ScannedFrame, legacy: Set<string>, targets: Map<string, { screenId: string; baseline: string }>): Promise<ScannedFrame> {
-    const target = targets.get(frame.nodeId);
-    const request: DigestRequest | undefined = target ? { baseline: target.baseline, stored: this.store.kv.get(keys.digest(target.screenId)) } : undefined;
-    const { digest, ...result } = await reader.fingerprint(frame.nodeId, legacy.has(frame.nodeId), request);
-    if (digest) this.digests.set(frame.nodeId, digest);
-    else this.digests.delete(frame.nodeId);
-    return { ...frame, ...result, reason: result.reason };
+  private async readFrame(reader: FingerprintReader, frame: ScannedFrame, legacy: Map<string, string>, targets: Map<string, { screenId: string; baseline: string }>): Promise<ScannedFrame> {
+    const nodeId = frame.nodeId;
+    const target = targets.get(nodeId);
+    const stored = target ? this.store.kv.get(keys.digest(target.screenId)) : '';
+    const last = this.reasons.get(nodeId);
+    const request: DigestRequest | undefined = target
+      ? { baseline: target.baseline, stored, previous: last && last.baseline === target.baseline && last.stored === stored ? last.previous : undefined }
+      : undefined;
+    const { digest, names, ...result } = await reader.fingerprint(nodeId, legacy.has(nodeId), request);
+    if (digest) this.digests.set(nodeId, digest);
+    else this.digests.delete(nodeId);
+    if (target && result.fingerprint && result.reason && digest && names !== undefined)
+      this.reasons.set(nodeId, { baseline: target.baseline, stored, previous: { fingerprint: result.fingerprint, names, reason: result.reason, digest } });
+    else this.reasons.delete(nodeId);
+    // 1 규칙 비교 기준(변경 근거를 남기기 전의 배포)과 다르면 바뀐 레이어를 알 수 없다.
+    const legacyBase = legacy.get(nodeId);
+    const reason = result.reason ?? (legacyBase && result.legacyFingerprint && result.legacyFingerprint !== legacyBase ? NO_RECORD : undefined);
+    return { ...frame, ...result, reason };
   }
 
   // 변경사항 없음으로 확인된 화면에 근거가 없거나 기준과 맞지 않으면 지금 상태로 채운다. 판정을 바꾸지 않는 기록이라
-  // 감사 기록은 남기지 않는다(upgradeBaselines와 같다). 사용 안 함이 되었거나 없어진 화면의 근거는 지운다.
+  // 감사 기록은 남기지 않는다(upgradeBaselines와 같다). 사용 안 함이 된 화면의 근거는 지운다.
   private recordDigests(): void {
     for (const e of classify(this.store.state, this.frames)) {
       const nodeId = e.frame?.nodeId;
@@ -341,7 +356,10 @@ export class Controller {
       this.digests.delete(nodeId!);
     }
     for (const key of this.store.kv.keys()) {
-      if (key.startsWith(DIGEST_PREFIX) && this.store.state.screens.get(key.slice(DIGEST_PREFIX.length))?.status !== 'active') this.store.kv.set(key, '');
+      if (!key.startsWith(DIGEST_PREFIX)) continue;
+      // 기록에 없는 화면은 확인하는 동안 다른 작업자가 배포한 화면일 수 있으므로 그대로 둔다.
+      const screen = this.store.state.screens.get(key.slice(DIGEST_PREFIX.length));
+      if (screen && screen.status !== 'active') this.store.kv.set(key, '');
     }
   }
 

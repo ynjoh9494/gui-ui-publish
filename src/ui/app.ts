@@ -2977,7 +2977,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       category.classList.add('dragging');
       return;
     }
-    const option =(ev.target as HTMLElement).closest<HTMLElement>('.create-selected-list .create-screen-option[data-uid]');
+    const option = (ev.target as HTMLElement).closest<HTMLElement>('.create-selected-list .create-screen-option[data-uid]');
     if (option) {
       if (busyLabel || newSubmitting || editSubmitting) { ev.preventDefault(); return; }
       draggingScreen = option.dataset.uid!;

@@ -5,7 +5,8 @@ import { canonical, comparedProps, type NodeSnapshot } from './fingerprint.ts';
 // 현재 화면의 표에서 기준 표를 빼면 서로 다른 원소만 남아 풀려 나오므로, 저장량은 레이어 수가 아니라 찾을 차이 수로 정해진다.
 // 묶음 나누기·짝 규칙·레이어 잇는 규칙·표 크기·해시를 바꾸면 올린다. 다른 버전의 기록은 「근거 기록 없음」으로 본다.
 // 2: 이름이 글자를 따라 바뀌는 텍스트는 이름 대신 그런 텍스트 중 순서로 잇는다.
-export const DIGEST_VERSION = 2;
+// 3: 원소의 종류를 키 대신 값의 아래 4비트에 넣어 레이어 경로 해시를 32비트로 쓴다(서로 다른 레이어의 경로 해시가 겹치는 일이 1/16로 준다).
+export const DIGEST_VERSION = 3;
 
 export const DIGEST_GROUPS = ['structure', 'display', 'geometry', 'paint', 'effects', 'shape', 'text', 'textStyle', 'variables', 'other'] as const;
 export type DigestGroup = typeof DIGEST_GROUPS[number];
@@ -82,7 +83,7 @@ export function hasCompanion(group: DigestGroup): boolean {
   return !!COMPANION[group];
 }
 
-// 원소의 종류: 묶음 0~9, 짝 10~15. 키의 아래 4비트에 넣는다.
+// 원소의 종류: 묶음 0~9, 짝 10~15. 값의 아래 4비트에 넣는다.
 const KINDS = DIGEST_GROUPS.length + COMPANION_GROUPS.length;
 const kindOf = (group: DigestGroup) => DIGEST_GROUPS.indexOf(group);
 const companionKind = (group: DigestGroup) => DIGEST_GROUPS.length + COMPANION_GROUPS.indexOf(group);
@@ -112,6 +113,7 @@ const SEED_VALUE = 0x51a7;
 const SEED_CHECK = 0x6c8e;
 const SEED_SUM = [0x13b5, 0x7f4a];
 const SEED_CELL = [0x0a31, 0x3d77, 0x5e09];
+const SEED_NAMES = 0x4b2d;
 
 // ── IBLT ─────────────────────────────────────────────
 // 해시 함수마다 칸을 나눠 한 원소가 서로 다른 세 칸에 들어간다. 132칸이면 서로 다른 원소 약 90개까지 거의 항상 풀린다
@@ -125,8 +127,9 @@ function emptyTable(): Table {
   return { count: new Uint16Array(CELLS), key: new Uint32Array(CELLS), val: new Uint32Array(CELLS), check: new Uint32Array(CELLS) };
 }
 
-function cellsOf(key: number, val: number): number[] {
-  return SEED_CELL.map((seed, j) => j * PART + (mix(key, val, seed) % PART));
+// j번째 해시 함수가 고르는 칸. 원소마다 부르므로 배열을 만들지 않는다.
+function cellOf(j: number, key: number, val: number): number {
+  return j * PART + (mix(key, val, SEED_CELL[j]) % PART);
 }
 
 // count는 2¹⁶으로 돌아가며 더한다. 뺀 표의 칸은 작은 값만 남으므로 부호를 그대로 읽을 수 있다.
@@ -162,7 +165,8 @@ function peel(t: Table): { items: Item[]; complete: boolean } {
     const key = t.key[i], val = t.val[i], side: 1 | -1 = t.count[i] === 1 ? 1 : -1;
     items.push({ key, val, side });
     const check = mix(key, val, SEED_CHECK);
-    for (const cell of cellsOf(key, val)) {
+    for (let j = 0; j < SEED_CELL.length; j++) {
+      const cell = cellOf(j, key, val);
       toggle(t, cell, key, val, check, -side);
       if (pure(cell)) queue.push(cell);
     }
@@ -179,7 +183,7 @@ export interface DigestLayer {
   path: string[];
   nodeId: string | null;
   parent: number;
-  // 경로 해시(원소 키의 위 28비트)
+  // 경로 해시(원소의 키)
   hash: number;
 }
 
@@ -217,45 +221,65 @@ function groupValues(node: NodeSnapshot, root: boolean, children: string[] | und
   return out;
 }
 
-export function digestOf(root: NodeSnapshot, fingerprint: string): CurrentDigest {
+// 화면을 원소로 나눠 표와 요약값을 만든다. layers를 주면 근거 풀이에 쓸 레이어 목록도 채운다(근거를 기록만 할 때는 만들지 않는다).
+function summarize(root: NodeSnapshot, fingerprint: string, layers: DigestLayer[] | null): ScreenDigest {
   const summary = new Uint32Array(KINDS * 2);
   const table = emptyTable();
-  const layers: DigestLayer[] = [];
-  const layerOf = new Map<number, number>();
   const add = (key: number, kind: number, text: string) => {
-    const val = hashText(text, SEED_VALUE);
+    const val = ((hashText(text, SEED_VALUE) & ~0xf) | kind) >>> 0;
     for (let s = 0; s < 2; s++) summary[kind * 2 + s] += mix(key, val, SEED_SUM[s]);
     const check = mix(key, val, SEED_CHECK);
-    for (const cell of cellsOf(key, val)) toggle(table, cell, key, val, check, 1);
+    for (let j = 0; j < SEED_CELL.length; j++) toggle(table, cellOf(j, key, val), key, val, check, 1);
   };
-  const walk = (node: NodeSnapshot, path: string, labels: string[], parent: number) => {
-    const index = layers.length;
-    const pathHash = hashText(path, SEED_PATH) & ~0xf;
-    layers.push({ path: labels, nodeId: node.id ?? null, parent, hash: pathHash });
-    layerOf.set(pathHash, index);
+  // path: 루트는 빈 문자열, 하위는 \u0001로 이은 형제 구분 ID. labels·parent는 레이어 목록을 만들 때만 쓴다.
+  const walk = (node: NodeSnapshot, path: string, labels: string[] | null, parent: number) => {
+    const key = hashText(path, SEED_PATH);
+    const index = layers ? layers.push({ path: labels!, nodeId: node.id ?? null, parent, hash: key }) - 1 : -1;
     // 레이어는 이름 경로로 잇는다. 노드 ID는 페이지를 다른 파일에서 복사해 오면 바뀐다. 같은 이름의 형제는 순서로 나눈다.
     // 이름이 글자를 따라 바뀌는 텍스트는 글자를 고치면 이름도 바뀌므로, 그런 텍스트 형제 중 순서로 잇는다.
     const seen = new Map<string, number>();
-    const shown = new Map<string, number>();
+    const nameCount = labels ? new Map<string, number>() : null;
     const kids = node.children?.map(child => {
       const name = child.name ?? '';
-      const key = child.autoName ? '\u0003' : name;
-      const n = seen.get(key) ?? 0;
-      seen.set(key, n + 1);
-      const m = shown.get(name) ?? 0;
-      shown.set(name, m + 1);
-      return { child, id: `${key}\u0002${n}`, label: m ? `${name} (${m + 1})` : name };
+      const id = child.autoName ? '\u0003' : name;
+      const n = seen.get(id) ?? 0;
+      seen.set(id, n + 1);
+      let label = name;
+      if (nameCount) {
+        const m = nameCount.get(name) ?? 0;
+        nameCount.set(name, m + 1);
+        if (m) label = `${name} (${m + 1})`;
+      }
+      return { child, id: `${id}\u0002${n}`, label };
     });
-    for (const [group, value] of groupValues(node, parent < 0, kids?.map(k => k.id))) {
-      const key = (pathHash | kindOf(group)) >>> 0;
+    for (const [group, value] of groupValues(node, path === '', kids?.map(k => k.id))) {
       add(key, kindOf(group), canonical(value, true));
       const companion = COMPANION[group];
-      if (companion) add((pathHash | companionKind(group)) >>> 0, companionKind(group), canonical(companion(value)));
+      if (companion) add(key, companionKind(group), canonical(companion(value)));
     }
-    for (const k of kids ?? []) walk(k.child, `${path}\u0001${k.id}`, [...labels, k.label], index);
+    for (const k of kids ?? []) walk(k.child, `${path}\u0001${k.id}`, labels && [...labels, k.label], index);
   };
-  walk(root, '', [], -1);
-  return { fingerprint, summary, table, layers, layerOf };
+  walk(root, '', layers && [], -1);
+  return { fingerprint, summary, table };
+}
+
+export function digestOf(root: NodeSnapshot, fingerprint: string): CurrentDigest {
+  const layers: DigestLayer[] = [];
+  const digest = summarize(root, fingerprint, layers);
+  const layerOf = new Map<number, number>();
+  layers.forEach((layer, index) => layerOf.set(layer.hash, index));
+  return { ...digest, layers, layerOf };
+}
+
+// 레이어 이름·ID의 요약값. 지문에 들어가지 않으므로, 지난 근거를 다시 쓸지 정할 때 지문과 함께 비교한다.
+function namesOf(root: NodeSnapshot): number {
+  let h = SEED_NAMES;
+  const walk = (node: NodeSnapshot) => {
+    h = mix(h, hashText(`${node.autoName ? '\u0003' : ''}${node.name ?? ''}\u0002${node.id ?? ''}`, SEED_NAMES), SEED_NAMES);
+    node.children?.forEach(walk);
+  };
+  walk(root);
+  return h;
 }
 
 // ── 저장 형식 ─────────────────────────────────────────
@@ -339,7 +363,7 @@ export interface GroupChange {
 export interface ChangeReason {
   // complete: 차이를 모두 풀었다. partial: 차이가 많아 일부 레이어만 풀었다(묶음 판정은 정확하다).
   // no-record: 비교 기준의 근거가 없다(이 기능 전의 배포, 다른 버전의 플러그인, 기록 실패).
-  // unknown: 지문은 다른데 근거에서 차이를 찾지 못했다. 묶음 표가 수집 속성을 모두 덮으면 생기지 않는다.
+  // unknown: 지문은 다른데 근거에서 차이를 찾지 못했다(묶음 표가 수집 속성을 모두 덮으면 생기지 않는다), 또는 근거를 만들지 못했다.
   status: 'complete' | 'partial' | 'no-record' | 'unknown';
   // 보이는 값이 바뀌었을 수 있다. false면 다른 속성이 모두 짝 기준으로 같다.
   visible: boolean;
@@ -350,22 +374,38 @@ export interface ChangeReason {
   removed: number;
 }
 
+// 지난 확인에서 만든 근거. names는 그때 레이어 이름·ID의 요약값이다.
+export interface PreviousReason { fingerprint: string; names: number; reason: ChangeReason; digest: string }
+
 // baseline: 지금 비교 기준의 지문(정규화 버전이 현재와 같을 때만). stored: 저장된 근거. always: 배포 확정처럼 늘 기록할 근거를 만든다.
-export interface DigestRequest { baseline?: string | null; stored?: string | null; always?: boolean }
+// previous: 같은 비교 기준·저장 근거로 지난번에 만든 근거. 지문과 레이어 이름·ID가 그대로면 다시 계산하지 않고 그대로 돌려준다.
+export interface DigestRequest { baseline?: string | null; stored?: string | null; always?: boolean; previous?: PreviousReason }
 
 // 지문을 계산한 뒤 근거가 필요한지 정하고 만든다. 기준과 같고 근거가 맞으면 아무것도 하지 않는다(대부분의 화면).
-// 기준과 다르면 reason과 「변경 무시」 때 기록할 digest를, 기준과 같은데 근거가 없거나 맞지 않으면 채울 digest를 돌려준다.
-// named는 레이어 이름·ID를 붙인 스냅샷으로, 근거를 만들 때만 부른다.
-export function changeDigest(fingerprint: string, request: DigestRequest | undefined, named: () => NodeSnapshot): { reason?: ChangeReason; digest?: string } {
+// 기준과 다르면 reason과 「변경 무시」 때 기록할 digest, 다음 확인에서 previous로 넘길 names를 돌려준다.
+// 기준과 같은데 근거가 없거나 맞지 않으면 채울 digest만 돌려준다.
+// named는 레이어 이름·ID를 붙인 스냅샷으로, 근거를 만들 때만 부른다. 근거를 만들지 못해도(레이어 읽기 실패 등) 지문 비교는
+// 그대로 쓰고, 기준과 다른 화면은 「바뀐 레이어를 찾지 못함」으로 보인다.
+export function changeDigest(fingerprint: string, request: DigestRequest | undefined, named: () => NodeSnapshot): { reason?: ChangeReason; digest?: string; names?: number } {
   if (!request) return {};
   const changed = !!request.baseline && fingerprint !== request.baseline;
   const missing = request.baseline === fingerprint && digestFingerprint(request.stored) !== fingerprint;
   if (!request.always && !changed && !missing) return {};
-  const current = digestOf(named(), fingerprint);
-  return { digest: encodeDigest(current), ...(changed ? { reason: explainChange(request.stored, request.baseline!, current) } : {}) };
+  try {
+    const snapshot = named();
+    if (!changed) return { digest: encodeDigest(summarize(snapshot, fingerprint, null)) };
+    const names = namesOf(snapshot);
+    const previous = request.previous;
+    if (previous && previous.fingerprint === fingerprint && previous.names === names) return { reason: previous.reason, digest: previous.digest, names };
+    const current = digestOf(snapshot, fingerprint);
+    return { reason: explainChange(request.stored, request.baseline!, current), digest: encodeDigest(current), names };
+  } catch {
+    return changed ? { reason: UNKNOWN } : {};
+  }
 }
 
-const NO_RECORD: ChangeReason = { status: 'no-record', visible: true, groups: [], added: [], renamed: [], removed: 0 };
+export const NO_RECORD: ChangeReason = { status: 'no-record', visible: true, groups: [], added: [], renamed: [], removed: 0 };
+const UNKNOWN: ChangeReason = { ...NO_RECORD, status: 'unknown' };
 
 export function explainChange(stored: string | null | undefined, baseline: string, current: CurrentDigest): ChangeReason {
   const base = decodeDigest(stored);
@@ -376,10 +416,9 @@ export function explainChange(stored: string | null | undefined, baseline: strin
   // 경로 해시별로 풀린 원소를 모은다.
   const byPath = new Map<number, { cur: Map<number, number>; base: Map<number, number> }>();
   for (const item of items) {
-    const path = item.key & ~0xf;
-    let entry = byPath.get(path);
-    if (!entry) byPath.set(path, entry = { cur: new Map(), base: new Map() });
-    (item.side === 1 ? entry.cur : entry.base).set(item.key & 0xf, item.val);
+    let entry = byPath.get(item.key);
+    if (!entry) byPath.set(item.key, entry = { cur: new Map(), base: new Map() });
+    (item.side === 1 ? entry.cur : entry.base).set(item.val & 0xf, item.val);
   }
   const layerRef = (index: number): LayerRef => ({ path: current.layers[index].path, nodeId: current.layers[index].nodeId });
   const STRUCTURE = kindOf('structure');
@@ -427,7 +466,7 @@ export function explainChange(stored: string | null | undefined, baseline: strin
   }
 
   const removedCount = removed.length - renamed.size;
-  if (complete && !groups.length && !added.length && !removed.length) return { ...NO_RECORD, status: 'unknown' };
+  if (complete && !groups.length && !added.length && !removed.length) return UNKNOWN;
   const visible = complete
     ? addedOnly.length > 0 || removedCount > 0 || groups.some(g => g.sameOnScreen !== true)
     : DIGEST_GROUPS.some(g => differs(kindOf(g)) && (!hasCompanion(g) || differs(companionKind(g))));

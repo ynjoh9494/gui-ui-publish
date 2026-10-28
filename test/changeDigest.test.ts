@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { DIGEST_GROUPS, decodeDigest, digestFingerprint, digestOf, encodeDigest, explainChange, propGroup, type ChangeReason, type DigestGroup } from '../src/core/changeDigest.ts';
+import { changeDigest, DIGEST_GROUPS, decodeDigest, digestFingerprint, digestOf, encodeDigest, explainChange, propGroup, type ChangeReason, type DigestGroup } from '../src/core/changeDigest.ts';
 import { fingerprint, type NodeSnapshot } from '../src/core/fingerprint.ts';
 import { TEXT, TEXT_SEGMENT, VISUAL } from '../src/figma/snapshot.ts';
 
@@ -180,6 +180,39 @@ test('변경 근거: 근거 기록이 없거나 다른 지문의 것이면 알 �
   const current = digestOf(after, fingerprint(after));
   assert.equal(explainChange(null, fingerprint(before), current).status, 'no-record');
   assert.equal(explainChange(encodeDigest(digestOf(before, 'other')), fingerprint(before), current).status, 'no-record');
+});
+
+test('변경 근거: 근거를 만들지 못해도 지문 비교는 그대로이고, 기준과 다른 화면은 바뀐 레이어를 찾지 못한 것으로 본다', () => {
+  const before = screen(), after = clone(before);
+  at(after, 0, 0).props.opacity = 0.5;
+  const baseFp = fingerprint(before), afterFp = fingerprint(after);
+  const stored = encodeDigest(digestOf(before, baseFp));
+  const fail = () => { throw new Error('레이어를 읽지 못함'); };
+  assert.equal(changeDigest(afterFp, { baseline: baseFp, stored }, fail).reason?.status, 'unknown');
+  assert.deepEqual(changeDigest(baseFp, { baseline: baseFp, stored: '' }, fail), {});
+});
+
+test('변경 근거: 근거만 기록할 때와 풀이할 때의 기록이 같고, 지난 근거는 지문과 레이어 이름·ID가 같을 때만 다시 쓴다', () => {
+  const before = screen(), after = clone(before);
+  at(after, 3, 4).props.x = 7;
+  const baseFp = fingerprint(before), afterFp = fingerprint(after);
+  const filled = changeDigest(baseFp, { baseline: baseFp, stored: '' }, () => before);
+  assert.equal(filled.digest, encodeDigest(digestOf(before, baseFp)));
+  assert.equal(filled.reason, undefined);
+
+  const first = changeDigest(afterFp, { baseline: baseFp, stored: filled.digest }, () => after);
+  assert.deepEqual(pathsOf(first.reason!, 'geometry'), ['Group 3/Layer 4']);
+  const previous = { fingerprint: afterFp, names: first.names!, reason: first.reason!, digest: first.digest! };
+  // 같은 상태: 계산하지 않고 지난 근거를 그대로 돌려준다.
+  assert.equal(changeDigest(afterFp, { baseline: baseFp, stored: filled.digest, previous }, () => after).reason, first.reason);
+  // 지문에 들어가지 않는 레이어 이름만 바뀌어도 다시 계산한다.
+  const renamed = clone(after);
+  at(renamed, 5, 4).name = 'Renamed';
+  assert.equal(fingerprint(renamed), afterFp);
+  const again = changeDigest(afterFp, { baseline: baseFp, stored: filled.digest, previous }, () => renamed);
+  assert.notEqual(again.names, first.names);
+  assert.deepEqual(again.reason!.renamed.map(l => l.path.join('/')), ['Group 5/Renamed']);
+  assert.deepEqual(pathsOf(again.reason!, 'geometry'), ['Group 3/Layer 4']);
 });
 
 // 레이어·묶음마다 속성 하나를 바꾸는 방법. 보이는 값이 같은 변경과 다른 변경을 함께 둔다.

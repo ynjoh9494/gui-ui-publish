@@ -32,18 +32,42 @@ function normalizeNumber(n: number, scale = 10000): number {
 }
 
 // geometry: 배치 속성을 0.01 단위로 맞춘다(2 규칙).
+// 결과는 저장된 지문과 비교되므로 한 글자도 바뀌면 안 된다(test/fingerprint.test.ts가 JSON.stringify로 만들던 이전 구현과 비교한다).
+// 지문과 변경 근거가 레이어·속성마다 부르므로 중간 배열과 콜백을 만들지 않는다.
 export function canonical(value: unknown, geometry = false, key = ''): string {
   if (value === null || value === undefined) return 'null';
-  if (typeof value === 'number') return JSON.stringify(normalizeNumber(value, geometry && GEOMETRY.has(key) ? 100 : 10000));
-  if (typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(v => canonical(v, geometry)).join(',')}]`;
-  if (typeof value === 'object') {
-    const entries = Object.keys(value as object).sort()
-      .filter(k => (value as Record<string, unknown>)[k] !== undefined)
-      .map(k => `${JSON.stringify(k)}:${canonical((value as Record<string, unknown>)[k], geometry, k)}`);
-    return `{${entries.join(',')}}`;
+  switch (typeof value) {
+    case 'number': {
+      // JSON.stringify와 같다: 유한하지 않은 수는 null
+      const n = normalizeNumber(value, geometry && GEOMETRY.has(key) ? 100 : 10000);
+      return Number.isFinite(n) ? String(n) : 'null';
+    }
+    case 'string': return JSON.stringify(value);
+    case 'boolean': return value ? 'true' : 'false';
+    case 'object': {
+      // 배열 원소에는 키를 넘기지 않는다(0.01 단위로 맞추지 않는다). 빈 칸은 빈 문자열이다.
+      if (Array.isArray(value)) {
+        let out = '[';
+        for (let i = 0; i < value.length; i++) {
+          if (i) out += ',';
+          const v: unknown = value[i];
+          if (v !== undefined || i in value) out += canonical(v, geometry);
+        }
+        return `${out}]`;
+      }
+      const record = value as Record<string, unknown>;
+      let out = '{';
+      let first = true;
+      for (const k of Object.keys(record).sort()) {
+        const v = record[k];
+        if (v === undefined) continue;
+        out += `${first ? '' : ','}${JSON.stringify(k)}:${canonical(v, geometry, k)}`;
+        first = false;
+      }
+      return `${out}}`;
+    }
+    default: return JSON.stringify(String(value));
   }
-  return JSON.stringify(String(value));
 }
 
 // 지문에 넣는 속성. 변경 근거도 같은 속성을 나눠 쓰므로 지문이 다르면 근거의 어느 묶음도 다르다.
