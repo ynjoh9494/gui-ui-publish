@@ -58,9 +58,11 @@ export interface State {
   dataStatus: DataStatus | null;
 }
 
+const LEGACY_GUI_WIDTH = 1920;
+
 export const DEFAULT_PROJECT: ProjectConfig = {
   schema: 1, scopePageIds: [], scopeSectionIds: [], flipbookPageIds: [], flipbookPageId: null, templateNodeId: null, templateName: null,
-  policyTemplateNodeId: null, policyTemplateName: null, dataPageId: null, utcOffsetMinutes: 540, guiWidth: 1920,
+  policyTemplateNodeId: null, policyTemplateName: null, dataPageId: null, utcOffsetMinutes: 540, guiWidth: 1440,
   screenIdPrefix: '',
 };
 
@@ -103,6 +105,8 @@ function apply(state: State, key: string, raw: string): void {
       ...DEFAULT_PROJECT, ...value,
       // 이전 버전의 단일 UI 페이지 설정을 처음 읽을 때 다중 페이지 설정으로 가져온다.
       flipbookPageIds: Array.isArray(value.flipbookPageIds) ? value.flipbookPageIds : value.flipbookPageId ? [value.flipbookPageId] : [],
+      // 기본 화면 크기를 1440으로 바꾸기(2026-10-29) 전에 저장한 파일은 크기를 적어 두지 않았으면 그때 기본값(1920)을 유지한다.
+      guiWidth: typeof value.guiWidth === 'number' ? value.guiWidth : LEGACY_GUI_WIDTH,
     }; break;
     case 'cat': state.categories.set(value.id, value); break;
     case 'wrk': state.workers.set(value.id, value); break;

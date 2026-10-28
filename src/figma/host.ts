@@ -193,7 +193,7 @@ export function figmaHost(mode: Host['mode']): Host {
     connectTemplateItem: (id, key) => connectTemplateItem(id, key, NS),
     disconnectTemplateItem: (id, key) => disconnectTemplateItem(id, key, NS),
     templateItemNodes: (id, key) => templateItemNodes(id, key, NS),
-    createDefaultTemplate: () => createDefaultTemplate(NS),
+    createDefaultTemplate: maxWidth => createDefaultTemplate(maxWidth, NS),
     beginDelivery: known => { deliverySession = flipbookSession(known); },
     endDelivery: () => { deliverySession = undefined; },
     syncFlipbook: (settings, view) => syncFlipbook(NS, settings, view, deliverySession),

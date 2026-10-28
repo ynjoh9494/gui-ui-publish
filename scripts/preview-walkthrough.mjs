@@ -363,13 +363,13 @@ try {
     // 우클릭해도 새 플립북을 넣지 않는다(화면 편집 중).
     await app.locator('.create-selected-list .create-screen-option').first().click({ button: 'right' });
     await newRows(0, '화면 편집에서는 우클릭으로 새 플립북을 넣지 않는다');
-    // 크기를 바꿔 적용한다.
-    await app.locator('.create-selected-list [data-input=create-screen-scale]').selectOption('0.25');
+    // 크기를 바꿔(작게 → 기본) 적용한다.
+    await app.locator('.create-selected-list [data-input=create-screen-scale]').selectOption('1');
     assert.equal(await applyButton.isDisabled(), false);
     await shot('03c1-screen-edit');
     await applyButton.click();
     await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('플립북 화면을 바꿨습니다'));
-    await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('플립북 화면 구성: STB_HO_001@0.25')));
+    await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('플립북 화면 구성: STB_HO_001@1')));
     await app.locator('.detail .fb-screens-head').waitFor();
     await page.waitForFunction(size => document.querySelector('#app').offsetHeight === size.height, small);
     // 다시 열어 원래 크기로 되돌린다. 취소하면 바꾸지 않는다.
@@ -378,7 +378,7 @@ try {
     await app.locator('[data-action=edit-screens-cancel]').click();
     await app.locator('.detail .fb-screens-head').waitFor();
     await app.locator('[data-action=fb-edit-screens]').click();
-    assert.equal(await app.locator('.create-selected-list [data-input=create-screen-scale]').inputValue(), '0.25', '취소한 편집은 남지 않는다');
+    assert.equal(await app.locator('.create-selected-list [data-input=create-screen-scale]').inputValue(), '1', '취소한 편집은 남지 않는다');
     await app.locator('.create-selected-list [data-input=create-screen-scale]').selectOption('0.5');
     await applyButton.click();
     await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('플립북 화면 구성: STB_HO_001@0.5')));

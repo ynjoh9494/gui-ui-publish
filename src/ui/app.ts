@@ -13,7 +13,7 @@ import { formatTime, type HistoryRow } from '../core/history.ts';
 import { arrangeFlipbooks, buildList, guiGroupKey, placeDrafts, savedGuiDisplay, savedGuiPlace, UNCATEGORIZED, type ArrangedGroup, type GuiPlace, type ListModel } from '../core/list.ts';
 import { emptyComment, type BatchComment, type Plan } from '../core/publish.ts';
 import { customSection, defaultSection, filterScreens, needsReview, pageSections, rowKind, screenCategoryKey, uncreatedScreens, unreviewed, type FlipbookMove, type FlipbookRowRequest, type FlipbookSection, type ScreenFilter, type ScreenKind } from '../core/flipbooks.ts';
-import { defaultTitle, guiTargetWidth, GUI_WIDTH_MAX, GUI_WIDTH_MIN, NO_SECTION_KEY, validGuiWidth } from '../core/flipbook.ts';
+import { defaultTitle, displayScale, GUI_WIDTH_MAX, GUI_WIDTH_MIN, NO_SECTION_KEY, SMALL_SCALE, validGuiWidth } from '../core/flipbook.ts';
 import { TAG_PALETTE } from '../core/palette.ts';
 import { TEMPLATE_GROUPS, TEMPLATE_ITEMS, isTemplateItem, type TemplateInfo, type TemplateItemDef, type TemplateItemState } from '../core/templateParts.ts';
 import { findCategoryByName, systemTagId, workerLabel } from '../core/registry.ts';
@@ -1531,8 +1531,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       </div></div>`;
   }
 
-  const scaleOptions = (chosen: FlipbookScale | null) => `${chosen === null ? '<option value="" selected disabled>-</option>' : ''}${([1, 0.5, 0.25] as const)
-    .map((value, index) => option(String(value), ['1x', '1/2x', '1/4x'][index], value === chosen)).join('')}`;
+  // 화면 크기는 기본·작게 두 가지다(2026-10-29 사용자 결정). 이전 1/4 값도 작게로 보여 준다.
+  const scaleOptions = (chosen: FlipbookScale | null) => `${chosen === null ? '<option value="" selected disabled>-</option>' : ''}${([1, 0.5] as const)
+    .map((value, index) => option(String(value), [COPY.uiApp403, COPY.uiApp404][index], chosen !== null && value === displayScale(chosen))).join('')}`;
 
   function renderCreateScreenList() {
     const list = root.querySelector<HTMLElement>('.create-screen-list');
@@ -1822,11 +1823,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         </div></div>`;
   }
 
-  // 설정한 1x 폭에서 계산한 1/2x·1/4x 폭. 입력 중에도 바로 보여 준다.
+  // 설정한 최대 폭에서 계산한 기본·작게의 최대 폭. 입력 중에도 바로 보여 준다.
   function guiWidthSizes(width: number): string {
     if (!validGuiWidth(width)) return COPY.controller067;
-    const px = (scale: 0.5 | 0.25) => `${Number(guiTargetWidth(width, scale).toFixed(1))}px`;
-    return `1x ${width}px · 1/2x ${px(0.5)} · 1/4x ${px(0.25)}`;
+    return `${COPY.uiApp403} ${width}px · ${COPY.uiApp404} ${Number((width * SMALL_SCALE).toFixed(1))}px`;
   }
 
   // 설정의 각 항목을 아코디언으로 바꾼다. 하나를 열면 다른 항목은 접힌다(2026-10-20 사용자 결정).

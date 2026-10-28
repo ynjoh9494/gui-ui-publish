@@ -43,7 +43,7 @@ flowchart LR
 | `src/figma/richText.ts` | 고른 텍스트 레이어 하나의 본문·굵기·목록 단계 읽기와 쓰기(레이어 글꼴 유지) |
 | `src/figma/template.ts` | 템플릿 구조: 플립북·템플릿 프레임의 칸 찾기(`flipbookParts`: 연결 기록이 있으면 역할 표식, 없으면 이름 규칙. GUI 영역·Description 본문·Screen ID 칸·이력 행 안으로는 내려가지 않음), 이력 행 안의 칸, PDF에서 숨길 레이어, 태그 컴포넌트 묶음(`tagKit`), 항목별 연결 상태·검사(`describeTemplate`·`templateIssues`), 캔버스 선택을 항목에 연결·해제(이름 규칙 템플릿은 먼저 표식으로 바꿈) |
 | `src/figma/templateDefault.ts` | 새 페이지에 기본 템플릿(템플릿 프레임과 태그·Screen ID 태그·이력 행 컴포넌트, 모든 칸 연결)을 만듦 |
-| `src/figma/flipbook.ts`, `layers.ts`, `thumbs.ts`, `data.ts` | 템플릿 복제(연결 기록도 옮김)와 연결한 칸 반영(제목·Chapter·상태·Screen ID·GUI·이력 행), GUI 레이어 복사·배치, JPG 썸네일, DATA 페이지 렌더링 |
+| `src/figma/flipbook.ts`, `layers.ts`, `thumbs.ts`, `data.ts` | 템플릿 복제(연결 기록도 옮김)와 연결한 칸 반영(제목·Chapter·상태·Screen ID·GUI·이력 행). GUI는 이전 템플릿이면 GUI 영역 안에 행 배치(`syncGui`), 새 템플릿이면 플립북 프레임 위에 얹고 옮긴 자리를 지킴(`syncFreeGui`, 복사본의 크기는 `flipbookCopyScale` 표식), GUI 레이어 복사·배치, JPG 썸네일, DATA 페이지 렌더링 |
 | `src/figma/flow.ts` | 플로우 그리기(플로우·화면·Connector 모두 그룹: 화면별 Title·IMAGE·Caption, Connector 안의 Arrow·Action, 도착점에 `ARROW_EQUILATERAL`을 둔 Figma 벡터 연결선)와 다시 배포된 화면의 썸네일 채움 교체, 플로우 목록에서 누른 플로우·화면 칸 찾기(`flowNode`, 기록의 노드 ID와 `flowOf` 표식이 모두 맞을 때만). 썸네일 이미지는 썸네일 페이지를 불러와 해시로 찾음 |
 | `src/ui/app.ts`, `styles.css` | UI 상태·입력 초안·목록과 상세 렌더링 |
 | `src/ui/changeReason.ts` | GUI 상세 패널의 「변경 사항」 상자 렌더링(변경 하나를 한 줄로, 보이는 값이 같은 변경은 「전체 보기」 뒤에 10개씩, 줄을 누르면 `revealNode`의 선택) |

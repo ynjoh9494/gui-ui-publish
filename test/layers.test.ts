@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { COPY } from '../src/core/copy.ts';
-import { originalFlipbookFrames, pickFlipbookFrames, syncGui } from '../src/figma/flipbook.ts';
+import { originalFlipbookFrames, pickFlipbookFrames, syncFreeGui, syncGui } from '../src/figma/flipbook.ts';
 import { COPY_KEY, copyLayers } from '../src/figma/layers.ts';
 
 // 레이어 복사의 호출 순서와 노드 생명주기를 검사한다. 실제 Figma의 복제·연결 끊기 결과는 별도로 확인한다.
@@ -395,4 +395,45 @@ test('플립북 프레임에 절대 위치로 놓은 노드는 중심이 GUI 영
   await syncGui('ns', area as unknown as FrameNode, one, 1, new Set(), 1440, [onScreen, beside] as unknown as SceneNode[]);
   assert.deepEqual([onScreen.x, onScreen.y, onScreen.width], [100 + 720 - 20, 200 + 405 - 20, 40]);
   assert.deepEqual([beside.x, beside.y], [2500, 300], 'outside the GUI area stays');
+});
+
+test('새 템플릿은 화면을 플립북 위에 얹는다: 최대 폭으로 줄이고, 옮긴 자리는 지키며, 넘칠 때만 영역·플립북을 늘린다', async () => {
+  setup();
+  const wide = screen();
+  const mobile = new Node('FRAME', '모바일'); mobile.width = 390; mobile.height = 844; page.appendChild(mobile);
+  const third = new Node('FRAME', '세 번째'); page.appendChild(third);
+  const nodes = new Map([[wide.id, wide], [mobile.id, mobile], [third.id, third]]);
+  (globalThis as any).figma.getNodeByIdAsync = async (id: string) => nodes.get(id) ?? null;
+  const frame = new Node('FRAME', 'Book'); frame.layoutMode = 'NONE'; frame.width = 1920; frame.height = 1500;
+  const area = new Node('FRAME', 'GUI Area'); area.x = 24; area.y = 200; area.width = 1488; area.height = 858;
+  const table = new Node('FRAME', '표'); area.appendChild(table);
+  frame.appendChild(area);
+  const g = (uid: string, source: Node, version = 1, scale?: 1 | 0.5) => ({ uid, code: uid.toUpperCase(), version, key: `${uid}@${version}`, sourceNodeId: source.id, scale });
+  const copies = () => frame.children.filter(n => n.getSharedPluginData('ns', COPY_KEY));
+  const sync = (gui: ReturnType<typeof g>[]) => syncFreeGui('ns', frame as unknown as FrameNode, area as unknown as FrameNode, gui, 1, new Set(), 1440);
+
+  await sync([g('a', wide), g('b', mobile)]);
+  const [a, b] = copies();
+  assert.deepEqual([a.x, a.y, a.width, a.height], [48, 224, 1440, 810], 'wide screen is clamped to the max width at the area corner');
+  assert.deepEqual([b.x, b.y, b.width, b.height], [48, 1046, 390, 844], 'narrow screen keeps its size and wraps below');
+  assert.ok(area.children.includes(table), 'area content stays');
+  assert.equal(area.height, 1046 + 844 + 24 - 200, 'area grows to the copies');
+  assert.equal(frame.height, 1046 + 844 + 24, 'frame without auto layout grows too');
+
+  // 사용자가 옮긴 화면은 새 버전에서도 그 자리를 지키고 위의 마커도 따라간다. 넘친 만큼 플립북 폭을 늘린다.
+  b.x = 1600; b.y = 300;
+  const marker = new Node('FRAME', 'Marker'); marker.x = 1700; marker.y = 400; marker.width = 20; marker.height = 20; frame.appendChild(marker);
+  await sync([g('a', wide), g('b', mobile, 2)]);
+  const b2 = copies().find(n => n.getSharedPluginData('ns', COPY_KEY) === 'b@2')!;
+  assert.equal(b.removed, true);
+  assert.deepEqual([b2.x, b2.y], [1600, 300]);
+  assert.deepEqual([marker.x, marker.y], [1700, 400]);
+  assert.equal(frame.width, 1600 + 390 + 24);
+  assert.equal(copies()[0], a, 'unchanged screen is not copied again');
+
+  // 작게는 최대 폭으로 줄인 크기의 0.49배이고 자리는 그대로다. 새 화면은 앞 화면 뒤(넘치면 다음 줄)에 놓는다.
+  await sync([g('a', wide, 1, 0.5), g('b', mobile, 2), g('c', third)]);
+  const [a2, , c] = copies();
+  assert.deepEqual([a2.x, a2.y, Math.round(a2.width * 10) / 10], [48, 224, 705.6]);
+  assert.deepEqual([c.x, c.y, c.width], [48, 300 + 844 + 12, 1440]);
 });

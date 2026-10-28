@@ -1448,7 +1448,7 @@ export class Controller {
       // 새 페이지에 기본 템플릿을 만들어 바로 지정하고 캔버스에서 보여 준다(2026-10-28 사용자 결정).
       case 'createDefaultTemplate': {
         if (!this.host.createDefaultTemplate) break;
-        const template = await this.host.createDefaultTemplate();
+        const template = await this.host.createDefaultTemplate(s.state.project.guiWidth);
         const before = s.state.project;
         s.saveProject({ ...before, templateNodeId: template.id, templateName: template.name });
         s.audit(a, 'project.template', 'project', before.templateNodeId, template.id, COPY.controller143);

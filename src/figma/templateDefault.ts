@@ -1,5 +1,6 @@
 import { COPY } from '../core/copy.ts';
 import { LINKS_KEY, PART_KEY, linksValue, type TemplateItem } from '../core/templateParts.ts';
+import { FREE_MARGIN } from '../core/flipbook.ts';
 import { NS } from './template.ts';
 
 // 기본 템플릿(2026-10-28 사용자 결정: 새로 만든 단순한 기본형을 새 페이지에 만들고 바로 템플릿으로 지정한다).
@@ -18,6 +19,10 @@ const WHITE = '#FFFFFF';
 const TAG = '#333333';
 // 템플릿과 컴포넌트 사이, 컴포넌트 사이 간격
 const COMPONENT_GAP = 200;
+// 플립북 폭(2026-10-29 사용자 결정: 가능하면 가로 1920 고정), 템플릿 여백·간격, Description 패널 폭
+const PAGE_WIDTH = 1920;
+const PAGE_PAD = 24;
+const PANEL_WIDTH = 360;
 const STACK_GAP = 60;
 
 function solid(hex: string): SolidPaint {
@@ -69,7 +74,8 @@ function tagComponent(page: PageNode, name: string, label: string, fill: string,
 }
 
 // 새 페이지에 기본 템플릿과 컴포넌트를 만들고 템플릿 프레임을 돌려준다. 글꼴을 불러오지 못하면 아무것도 만들지 않는다.
-export async function createDefaultTemplate(ns = NS): Promise<{ id: string; name: string; pageId: string }> {
+// maxWidth: 관리의 화면 최대 가로 크기. GUI 영역은 그 폭의 화면이 여백을 두고 들어가는 크기(16:9 높이)다.
+export async function createDefaultTemplate(maxWidth: number, ns = NS): Promise<{ id: string; name: string; pageId: string }> {
   try { await Promise.all(['Regular', 'Medium', 'Bold'].map(style => figma.loadFontAsync({ family: FONT, style }))); }
   catch { throw new Error(COPY.figmaTemplate024); }
   const mark = (node: SceneNode, role: TemplateItem | 'row') => node.setSharedPluginData(ns, PART_KEY, role);
@@ -113,10 +119,16 @@ export async function createDefaultTemplate(ns = NS): Promise<{ id: string; name
     mark(date, 'rowDate');
 
     // 템플릿: 머리(Chapter · 제목 + 상태 · Screen ID) / 본문(GUI 영역 · Description) / 이력
-    const template = stack(COPY.figmaTemplate026, 'VERTICAL', 32);
+    // 폭은 1920 고정(GUI 영역과 Description이 들어가지 않으면 그만큼 넓힘), 높이는 내용에 맞춘다.
+    const areaWidth = maxWidth + FREE_MARGIN * 2;
+    const areaHeight = Math.round(maxWidth * 9 / 16) + FREE_MARGIN * 2;
+    const template = stack(COPY.figmaTemplate026, 'VERTICAL', 24);
     page.appendChild(template);
+    template.resize(Math.max(PAGE_WIDTH, PAGE_PAD * 2 + areaWidth + PAGE_PAD + PANEL_WIDTH), 100);
+    template.primaryAxisSizingMode = 'AUTO';
+    template.counterAxisSizingMode = 'FIXED';
     template.fills = [solid(WHITE)];
-    pad(template, 48, 48);
+    pad(template, PAGE_PAD, PAGE_PAD);
 
     const header = stack('Header', 'VERTICAL', 8);
     template.appendChild(header);
@@ -136,18 +148,19 @@ export async function createDefaultTemplate(ns = NS): Promise<{ id: string; name
     sampleId.name = 'Screen ID';
     ids.appendChild(sampleId);
 
-    const body = stack('Body', 'HORIZONTAL', 40);
+    // 본문: GUI 영역(화면 복사본은 플립북 위에 얹고, 넘치면 이 영역을 늘림) · Description
+    const body = stack('Body', 'HORIZONTAL', PAGE_PAD);
     template.appendChild(body);
     const gui = figma.createFrame();
     gui.name = 'GUI Area';
-    gui.resize(1920, 1080);
+    gui.resize(areaWidth, areaHeight);
     gui.fills = [solid(AREA)];
     gui.clipsContent = false;
     body.appendChild(gui);
     const panel = figma.createFrame();
     panel.name = 'Description';
     panel.layoutMode = 'VERTICAL';
-    panel.resize(560, 100);
+    panel.resize(PANEL_WIDTH, 100);
     panel.primaryAxisSizingMode = 'AUTO';
     panel.counterAxisSizingMode = 'FIXED';
     panel.itemSpacing = 16;

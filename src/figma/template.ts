@@ -157,20 +157,23 @@ const asFrame = (n: SceneNode | null | undefined) => (n?.type === 'FRAME' ? n : 
 const OPAQUE = new Set(['gui', 'description', 'ids', 'row']);
 
 // 역할 → 표식이 붙은 레이어(놓인 순서). 템플릿과 플립북은 레이어가 적지만 GUI 영역·Description·이력 행은 크므로 건너뛴다.
+// 새 템플릿 플립북의 GUI 복사본은 플립북 프레임 바로 아래에 있다(figma/layers.ts COPY_KEY 표식). 그 안으로는 내려가지 않는다.
+const GUI_COPY_KEY = 'guiCopy';
 export function markedParts(root: ChildrenMixin, ns = NS): Map<string, SceneNode[]> {
   const out = new Map<string, SceneNode[]>();
-  const walk = (node: ChildrenMixin) => {
+  const walk = (node: ChildrenMixin, top: boolean) => {
     for (const child of node.children) {
+      if (top && child.getSharedPluginData(ns, GUI_COPY_KEY)) continue;
       const role = child.getSharedPluginData(ns, PART_KEY);
       if (role) {
         const list = out.get(role);
         if (list) list.push(child); else out.set(role, [child]);
       }
       if (OPAQUE.has(role) || child.name === GUI_AREA || !('children' in child)) continue;
-      walk(child);
+      walk(child, false);
     }
   };
-  walk(root);
+  walk(root, true);
   return out;
 }
 

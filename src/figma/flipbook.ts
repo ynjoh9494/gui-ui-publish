@@ -1,6 +1,7 @@
 import { COPY } from '../core/copy.ts';
 import type { FlipbookSpot } from '../core/compare.ts';
-import { GUI_GAP, guiTargetWidth, NO_SECTION_KEY, type FlipbookGui, type FlipbookRow, type FlipbookView } from '../core/flipbook.ts';
+import { displayScale, FREE_MARGIN, freeGuiWidth, GUI_GAP, guiTargetWidth, NO_SECTION_KEY, type FlipbookGui, type FlipbookRow, type FlipbookView } from '../core/flipbook.ts';
+import type { FlipbookScale } from '../core/types.ts';
 import { newSectionKey } from '../core/flipbooks.ts';
 import { TAG_PALETTE } from '../core/palette.ts';
 import type { NodeSnapshot } from '../core/fingerprint.ts';
@@ -306,7 +307,8 @@ async function createFlipbook(ns: string, page: PageNode, template: FrameNode, v
   // 표식 템플릿의 연결 기록을 플립북에도 둬서 표식으로 찾게 한다(복제가 옮기지만 분명히 적는다).
   const links = template.getSharedPluginData(ns, LINKS_KEY);
   if (links) frame.setSharedPluginData(ns, LINKS_KEY, links);
-  const gui = flipbookParts(frame, ns).gui;
+  // 이전 템플릿은 GUI 영역의 예시 내용을 비운다. 새 템플릿은 화면을 플립북 위에 얹으므로 GUI 영역(표·안내 등이 든 프레임일 수 있음)은 그대로 둔다.
+  const gui = links ? null : flipbookParts(frame, ns).gui;
   if (gui) for (const child of [...gui.children]) child.remove();
 
   const section = categorySection(ns, page, view.category);
@@ -452,7 +454,8 @@ export async function uiAreaSnapshot(snapshotter: Snapshotter, frame: FrameNode,
   if (p.description && 'children' in p.description)
     children.push({ type: 'DESCRIPTION', props: {}, children: await Promise.all(p.description.children.map(c => snapshotter.snapshot(c))) });
   if (p.gui) for (const child of p.gui.children) if (!child.getSharedPluginData(ns, COPY_KEY)) children.push(await snapshotter.snapshot(child));
-  for (const child of frame.children) if ('layoutPositioning' in child && child.layoutPositioning === 'ABSOLUTE') children.push(await snapshotter.snapshot(child));
+  // 새 템플릿의 GUI 복사본은 플립북 프레임 위에 있으므로 뺀다.
+  for (const child of frame.children) if ('layoutPositioning' in child && child.layoutPositioning === 'ABSOLUTE' && !child.getSharedPluginData(ns, COPY_KEY)) children.push(await snapshotter.snapshot(child));
   return { type: 'FLIPBOOK_UI', props: {}, children };
 }
 
@@ -606,6 +609,134 @@ export async function syncGui(ns: string, area: FrameNode, gui: FlipbookGui[], s
   if (area.height !== targetHeight) area.resizeWithoutConstraints(area.width, targetHeight);
   if (missingFonts.size) notes.add(`${COPY.figmaFlipbook026} ${[...missingFonts].join(', ')}`);
   area.setSharedPluginData(ns, IMAGE_KEY, missingFonts.size ? '' : signature);
+}
+
+// 복사본에 적어 두는 그 복사본의 크기(기본 1·작게 0.5). 같은 버전·크기면 다시 복사하지 않는다.
+const COPY_SCALE_KEY = 'flipbookCopyScale';
+const FREE_SIGNATURE = 'free-v1';
+
+interface Rect { x: number; y: number; width: number; height: number }
+
+// GUI 영역의 플립북 프레임 기준 위치. 회전은 고려하지 않는다.
+function offsetIn(frame: BaseNode, node: SceneNode): { x: number; y: number } {
+  let x = 0, y = 0;
+  for (let n: BaseNode | null = node; n && n.id !== frame.id; n = n.parent) if ('x' in n) { x += n.x; y += n.y; }
+  return { x, y };
+}
+
+// 오토 레이아웃 프레임이면 높이 맞춤(Hug)은 두고 폭만 고정해 늘린다.
+function growWidth(frame: FrameNode, width: number): void {
+  if (frame.width >= width - 0.01) return;
+  if (frame.layoutMode === 'NONE') { frame.resizeWithoutConstraints(width, frame.height); return; }
+  const vertical = frame.layoutMode === 'VERTICAL';
+  const hugHeight = vertical ? frame.primaryAxisSizingMode === 'AUTO' : frame.counterAxisSizingMode === 'AUTO';
+  frame.resizeWithoutConstraints(width, frame.height);
+  if (vertical) frame.counterAxisSizingMode = 'FIXED'; else frame.primaryAxisSizingMode = 'FIXED';
+  if (hugHeight) { if (vertical) frame.primaryAxisSizingMode = 'AUTO'; else frame.counterAxisSizingMode = 'AUTO'; }
+}
+
+// 새 템플릿(연결 기록이 있는 템플릿)의 GUI(2026-10-29 사용자 결정): 화면 복사본을 GUI 영역 안에 넣지 않고 플립북 프레임 위에
+// 오토 레이아웃 없이 얹어, 사용자가 자유롭게 옮길 수 있게 한다. 크기는 원본 폭을 설정한 화면 크기 이하로 줄인 「기본」과 그 0.49배인 「작게」다.
+// 처음 놓는 자리는 GUI 영역 왼쪽 위에서 여백만큼 띄운 곳이고, 바로 앞 화면 오른쪽에 이어 놓다가 GUI 영역 오른쪽(여백 포함)을 넘으면 다음 줄로 간다.
+// 다시 반영할 때 이미 있던 화면은 사용자가 옮긴 자리에서 내용만 바꾸고(그 위 마커도 따라감), 새 화면만 이어 놓는다.
+// 복사본이 GUI 영역 아래로 넘치면 GUI 영역을, 플립북 오른쪽·아래로 넘치면 플립북을 늘린다. 줄이지는 않는다.
+export async function syncFreeGui(ns: string, frame: FrameNode, area: FrameNode, gui: FlipbookGui[], scale: FlipbookScale, notes: Set<string>, maxWidth: number): Promise<void> {
+  const own = (n: SceneNode) => !!n.getSharedPluginData(ns, COPY_KEY);
+  const scaleOf = (g: FlipbookGui) => displayScale(g.scale ?? scale);
+  const signature = JSON.stringify([FREE_SIGNATURE, maxWidth, gui.map(g => [g.key, scaleOf(g)])]);
+  const onFrame = frame.children.filter(own);
+  // 이전 방식(GUI 영역 안)으로 넣은 복사본도 이번에 플립북 위로 바꿔 놓는다.
+  const inArea = area.children.filter(own);
+  if (frame.getSharedPluginData(ns, IMAGE_KEY) === signature && !inArea.length && onFrame.length === gui.length) {
+    for (const copy of onFrame) copy.locked = false;
+    return;
+  }
+  const base = offsetIn(frame, area);
+  const rectOf = (n: SceneNode): Rect => (n.parent?.id === frame.id ? { x: n.x, y: n.y, width: n.width, height: n.height } : { x: base.x + n.x, y: base.y + n.y, width: n.width, height: n.height });
+  const olds = [...onFrame, ...inArea].map(node => ({ node, key: node.getSharedPluginData(ns, COPY_KEY), scale: node.getSharedPluginData(ns, COPY_SCALE_KEY), rect: rectOf(node), index: frame.children.indexOf(node) }));
+  const taken = new Set<SceneNode>();
+  const take = (match: (o: (typeof olds)[number]) => boolean) => {
+    const found = olds.find(o => !taken.has(o.node) && match(o));
+    if (found) taken.add(found.node);
+    return found ?? null;
+  };
+
+  // 새 복사본은 임시 프레임에서 모두 준비한다. 복사·글꼴 오류가 나면 기존 GUI는 그대로 남는다.
+  const items: { g: FlipbookGui; copy: SceneNode; reused: boolean; from: (typeof olds)[number] | null }[] = [];
+  const missingFonts = new Set<string>();
+  let staging: FrameNode | null = null;
+  try {
+    for (const g of gui) {
+      const s = String(scaleOf(g));
+      const same = take(o => o.node.parent?.id === frame.id && o.key === g.key && o.scale === s);
+      if (same) { items.push({ g, copy: same.node, reused: true, from: null }); continue; }
+      const source = g.sourceNodeId ? await figma.getNodeByIdAsync(g.sourceNodeId) : null;
+      if (!source || !('visible' in source)) throw new Error(`${COPY.figmaFlipbook023} ${g.code}`);
+      staging ??= figma.createFrame();
+      const copy = await copyLayers(ns, source as SceneNode, staging, g.key, `${g.code} GUI`);
+      const factor = freeGuiWidth(maxWidth, scaleOf(g), copy.width) / copy.width;
+      if (Math.abs(factor - 1) > 1e-6) for (const font of await rescaleExact(copy, factor)) missingFonts.add(font);
+      copy.setSharedPluginData(ns, COPY_SCALE_KEY, s);
+      // 같은 화면(교체로 이어받은 화면 포함)의 이전 복사본 자리를 이어받는다.
+      const from = take(o => { const uid = uidOf(o.key); return uid === g.uid || !!g.formerUids?.includes(uid); });
+      items.push({ g, copy, reused: false, from });
+    }
+  } catch (error) {
+    staging?.remove();
+    throw error;
+  }
+
+  // 바꾸는 복사본 위에 놓인 마커(플립북 프레임에 놓은, 복사본이 아닌 노드 중 중심이 그 복사본 안인 것)는 크기를 두고 같은 상대 위치로 옮긴다.
+  // 오토 레이아웃 플립북이면 절대 위치로 놓은 노드만 마커다(나머지는 템플릿 칸).
+  const markers = frame.children.filter(n => !own(n) && (frame.layoutMode === 'NONE' || ('layoutPositioning' in n && n.layoutPositioning === 'ABSOLUTE')));
+  const pins = items.filter(i => i.from).flatMap(i => markers
+    .filter(m => { const cx = m.x + m.width / 2, cy = m.y + m.height / 2, r = i.from!.rect; return cx >= r.x && cx <= r.x + r.width && cy >= r.y && cy <= r.y + r.height; })
+    .map(m => ({ m, item: i, dx: m.x + m.width / 2 - i.from!.rect.x, dy: m.y + m.height / 2 - i.from!.rect.y })));
+
+  const placed: Rect[] = [];
+  const startX = base.x + FREE_MARGIN, startY = base.y + FREE_MARGIN;
+  const limit = base.x + area.width - FREE_MARGIN;
+  let prev: Rect | null = null;
+  for (const item of items) {
+    const { copy } = item;
+    if (!item.reused) {
+      // 이전 복사본의 레이어 순서를 이어받는다(그 위의 마커가 계속 위에 보이게). 새 화면은 맨 위에 놓는다.
+      const at = item.from ? frame.children.indexOf(item.from.node) : -1;
+      frame.insertChild(at >= 0 ? at : frame.children.length, copy);
+      if (frame.layoutMode !== 'NONE') (copy as FrameNode).layoutPositioning = 'ABSOLUTE';
+      let x: number, y: number;
+      if (item.from) ({ x, y } = item.from.rect);
+      else if (prev && prev.x + prev.width + GUI_GAP + copy.width <= limit + 0.01) { x = prev.x + prev.width + GUI_GAP; y = prev.y; }
+      else if (prev || placed.length) { x = startX; y = Math.max(...placed.map(r => r.y + r.height)) + GUI_GAP; }
+      else { x = startX; y = startY; }
+      copy.x = x;
+      copy.y = y;
+    }
+    copy.locked = false;
+    prev = { x: copy.x, y: copy.y, width: copy.width, height: copy.height };
+    placed.push(prev);
+  }
+  staging?.remove();
+  for (const { m, item, dx, dy } of pins) {
+    const ratio = item.copy.width / item.from!.rect.width;
+    m.x = item.copy.x + dx * ratio - m.width / 2;
+    m.y = item.copy.y + dy * ratio - m.height / 2;
+  }
+  for (const old of olds) if (!items.some(i => i.copy === old.node) && !old.node.removed) old.node.remove();
+
+  // 넘칠 때만 늘린다. GUI 영역은 처음 높이(기록) 아래로는 줄이지 않는다.
+  if (placed.length) {
+    const bottom = Math.max(...placed.map(r => r.y + r.height)) + FREE_MARGIN;
+    const right = Math.max(...placed.map(r => r.x + r.width)) + FREE_MARGIN;
+    const baseHeight = Number(area.getSharedPluginData(ns, GUI_BASE_HEIGHT_KEY)) || area.height;
+    area.setSharedPluginData(ns, GUI_BASE_HEIGHT_KEY, String(baseHeight));
+    const areaHeight = Math.max(baseHeight, bottom - base.y);
+    if (area.height < areaHeight - 0.01) area.resizeWithoutConstraints(area.width, areaHeight);
+    growWidth(frame, right);
+    if (frame.layoutMode === 'NONE' && frame.height < bottom - 0.01) frame.resizeWithoutConstraints(frame.width, bottom);
+  }
+  if (missingFonts.size) notes.add(`${COPY.figmaFlipbook026} ${[...missingFonts].join(', ')}`);
+  frame.setSharedPluginData(ns, IMAGE_KEY, missingFonts.size ? '' : signature);
 }
 
 // Screen ID 칸(이름 규칙은 input-cell-id 슬롯)에 Screen ID 태그(이름 규칙은 Team / Tag=System)를 화면 순서대로 넣는다.
@@ -815,8 +946,10 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
   // 표식 플립북의 상태 칸은 표식 템플릿에서 연결한 태그 컴포넌트로만 바꾼다(연결이 없으면 놓인 태그를 그대로 쓴다).
   if (view.status && p.status) await applyTag(p.status, p.named || kit.links ? kit.big : null, kit, view.status.tag.name, view.status.colorKey, !p.named);
   if (p.ids && kit.idTag) await syncIds(ns, p.ids, view.gui.map(g => g.code), kit.idTag, kit);
-  const overlays = frame.children.filter(n => 'layoutPositioning' in n && n.layoutPositioning === 'ABSOLUTE');
-  await syncGui(ns, p.gui, view.gui, view.scale, notes, view.guiWidth, overlays);
+  if (p.named) {
+    const overlays = frame.children.filter(n => 'layoutPositioning' in n && n.layoutPositioning === 'ABSOLUTE');
+    await syncGui(ns, p.gui, view.gui, view.scale, notes, view.guiWidth, overlays);
+  } else await syncFreeGui(ns, frame, p.gui, view.gui, view.scale, notes, view.guiWidth);
   if (p.named) await syncRows(ns, p.named.history!, settings, view.rows, kit, notes);
   else if (p.list) await syncMarkedRows(ns, p.list, p.previous, settings, view.rows, kit, notes);
 

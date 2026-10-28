@@ -53,7 +53,7 @@ export interface Host extends FingerprintReader {
   connectTemplateItem?(templateId: string, key: TemplateItem): Promise<void>;
   disconnectTemplateItem?(templateId: string, key: TemplateItem): Promise<void>;
   templateItemNodes?(templateId: string, key: TemplateItem): Promise<string[]>;
-  createDefaultTemplate?(): Promise<{ id: string; name: string; pageId: string }>;
+  createDefaultTemplate?(maxWidth: number): Promise<{ id: string; name: string; pageId: string }>;
   syncFlipbook(settings: { pageId: string; templateId: string; force?: boolean }, view: FlipbookView): Promise<{ nodeId: string; notes: string[] }>;
   // 플립북의 Chapter만 Section 이름으로 다시 쓴다. 찾지 못한 플립북은 건너뛴다.
   syncChapters?(items: { pageId: string; flipbookId: string; name: string }[]): Promise<void>;

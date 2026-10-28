@@ -61,6 +61,18 @@ export function guiTargetWidth(width: number, scale: FlipbookScale): number {
   const count = Math.round(1 / scale);
   return (width - GUI_GAP * (count - 1)) / count;
 }
+// 새 템플릿(연결 기록이 있는 템플릿)의 화면 크기(2026-10-29 사용자 결정): GUI 원본 폭은 정해져 있지 않다.
+// 「기본」은 원본 폭을 설정한 화면 크기(최대 폭)로 줄인 크기(작은 화면은 원래 크기), 「작게」는 그 SMALL_SCALE배다.
+// 1/4은 없앴고, 저장된 1/2(0.5)은 「작게」다. 이전 1/4(0.25) 값도 「작게」로 본다.
+export const SMALL_SCALE = 0.49;
+// 화면 복사본을 GUI 영역 왼쪽 위에서 띄우는 여백. 넘친 영역을 늘릴 때도 이만큼 둔다(구현 기본값).
+export const FREE_MARGIN = 24;
+export function freeGuiWidth(maxWidth: number, scale: FlipbookScale, sourceWidth: number): number {
+  const base = Math.min(sourceWidth, maxWidth);
+  return scale === 1 ? base : base * SMALL_SCALE;
+}
+// 화면 크기 선택지에서 보일 값: 1(기본) 아니면 0.5(작게)
+export const displayScale = (scale: FlipbookScale): 1 | 0.5 => (scale === 1 ? 1 : 0.5);
 export function validGuiWidth(width: number): boolean {
   return Number.isInteger(width) && width >= GUI_WIDTH_MIN && width <= GUI_WIDTH_MAX;
 }
