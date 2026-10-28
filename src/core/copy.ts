@@ -428,6 +428,8 @@ export const COPY = {
   uiApp388: '전체 보기',
   uiApp389: '개 더 보기',
   uiApp390: '숨기기',
+  uiApp391: '카테고리 순서',
+  uiApp392: '화면 목록, 카테고리 선택, UI Flipbook의 화면 선택처럼 카테고리별로 묶어 보여 주는 곳에 이 순서를 씁니다. 옮기면 바로 저장합니다.',
   // 튜토리얼 — src/ui/tutorial.ts. 단계마다 말풍선 제목·설명 순서다.
   uiTutorial001: '도움말',
   uiTutorial002: '튜토리얼 종료',
@@ -612,6 +614,7 @@ export const COPY = {
   coreRegistry032: '다른 카테고리가 쓰는 코드입니다:',
   coreRegistry033: '플랫폼 Prefix는 영문·숫자·하이픈(-) 20자 이내로 입력하세요.',
   coreRegistry034: '바꾸면 다른 화면과 Screen ID가 겹칩니다:',
+  coreRegistry035: '카테고리가 추가되거나 삭제되어 순서를 저장하지 않았습니다. 바뀐 목록에서 다시 옮기세요.',
   // 새 버전 페이지 전환 — src/core/versionMatch.ts
   coreVersion001: '사용할 수 없는 화면입니다:',
   coreVersion002: '새 버전 페이지에 없는 프레임입니다:',

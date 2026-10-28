@@ -80,6 +80,7 @@ export type AdminOp =
   | { op: 'renameCategory'; id: string; name: string }
   | { op: 'setCategoryActive'; id: string; active: boolean }
   | { op: 'setCategoryCode'; id: string; code: string }
+  | { op: 'reorderCategories'; ids: string[] }
   | { op: 'setScreenIdPrefix'; prefix: string }
   | { op: 'renumberScreenIds' }
   | { op: 'addWorker'; name: string; alias: string }

@@ -54,6 +54,22 @@ export function setCategoryActive(store: Store, id: string, active: boolean, act
   store.audit(actor, 'category.active', id, before.active, active);
 }
 
+// 사용 중인 카테고리를 ids 순서로 둔다. 화면 목록·카테고리 선택처럼 카테고리로 묶어 보여 주는 곳은 모두 order를 따른다.
+// 사용 안 함 카테고리는 지금 자리를 지키고, order는 0부터 다시 매긴다.
+export function reorderCategories(store: Store, ids: string[], actor: Actor): void {
+  const all = [...store.state.categories.values()].sort((a, b) => a.order - b.order);
+  const before = all.filter(c => c.active).map(c => c.id);
+  // 순서를 옮기는 동안 다른 작업자가 카테고리를 추가하거나 삭제했으면 저장하지 않는다.
+  if (ids.length !== before.length || new Set(ids).size !== ids.length || ids.some(id => !store.state.categories.get(id)?.active))
+    throw new RegistryError(COPY.coreRegistry035);
+  if (ids.every((id, i) => id === before[i])) return;
+  const rest = [...ids];
+  all.map(c => (c.active ? store.state.categories.get(rest.shift()!)! : c)).forEach((c, order) => {
+    if (c.order !== order) store.put(keys.category(c.id), { ...c, order });
+  });
+  store.audit(actor, 'category.order', 'categories', before, ids);
+}
+
 // Screen ID 규칙을 정하기 전에 만든 프로젝트를 실행할 때 빠진 Prefix·카테고리 코드를 채운다. 바꾼 것이 있으면 true
 export function ensureScreenIdRules(store: Store, actor: Actor): boolean {
   const prefix = ensureScreenIdPrefix(store, actor);

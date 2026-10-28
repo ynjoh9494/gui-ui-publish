@@ -12,7 +12,7 @@ import { guiRecordInfos, guiScreens } from './core/guiScreens.ts';
 import { acknowledgeChange, addDelivery, upgradeBaseline, buildPlan, commitPlan, setDeliveryState, type BatchComment, unfinishedDeliveries, type CommitInput, type Plan } from './core/publish.ts';
 import {
   addCategory, addExclusion, addTag, addWorker, correctRecord, ensureScreenIdRules, ensureSystemTags, removeExclusion, renameCategory, renameWorker, setCaseRelation,
-  relinkSource, renumberScreenIds, setCategoryActive, setCategoryCode, setScreenCategory, setScreenIdPrefix, setWorkerActive, updateTag,
+  relinkSource, renumberScreenIds, reorderCategories, setCategoryActive, setCategoryCode, setScreenCategory, setScreenIdPrefix, setWorkerActive, updateTag,
 } from './core/registry.ts';
 import type { CodeRename } from './core/screenCode.ts';
 import { formatFrameName } from './core/screenName.ts';
@@ -41,7 +41,7 @@ function yielder(): () => Promise<void> {
 function carried(frame: ScannedFrame, before: ScannedFrame): ScannedFrame {
   return { ...frame, fingerprint: before.fingerprint, legacyFingerprint: before.legacyFingerprint, reason: before.reason, error: before.error };
 }
-const DATA_OPS = new Set<AdminOp['op']>(['renameCategory', 'setCategoryActive', 'setCategoryCode', 'setScreenIdPrefix', 'renumberScreenIds', 'setScreenCategory', 'setCaseRelation', 'correctRecord', 'setDataPage']);
+const DATA_OPS = new Set<AdminOp['op']>(['renameCategory', 'setCategoryActive', 'setCategoryCode', 'reorderCategories', 'setScreenIdPrefix', 'renumberScreenIds', 'setScreenCategory', 'setCaseRelation', 'correctRecord', 'setDataPage']);
 // 오래 걸리는 요청. 처리하는 동안 UI에 진행 표시를 띄우고 중복 조작을 막는다.
 const BUSY_LABEL: Partial<Record<ToMain['type'], string>> = {
   prepare: COPY.controller001, commit: COPY.controller002, resetData: COPY.controller003, retry: COPY.controller004, refreshData: COPY.controller005,
@@ -1352,6 +1352,7 @@ export class Controller {
       case 'renameCategory': renameCategory(s, action.id, action.name, a); break;
       case 'setCategoryActive': setCategoryActive(s, action.id, action.active, a); break;
       case 'setCategoryCode': renames = setCategoryCode(s, action.id, action.code, a); break;
+      case 'reorderCategories': reorderCategories(s, action.ids, a); break;
       case 'setScreenIdPrefix': renames = setScreenIdPrefix(s, action.prefix, a); break;
       case 'renumberScreenIds': {
         s.reload();

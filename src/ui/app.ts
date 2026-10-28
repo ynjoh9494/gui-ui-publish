@@ -142,6 +142,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   let newSubmitting = false;
   // 드래그 중인 새 플립북
   let draggingNew: string | null = null;
+  let draggingCategory: string | null = null;
   let sizeBeforeCreate: { width: number; height: number } | null = null;
   const createCollapsedCategories = new Set<string>();
   let createQuery = '';
@@ -1767,6 +1768,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         <div class="inline"><input type="number" data-f="width" data-input="admin-gui-width" min="${GUI_WIDTH_MIN}" max="${GUI_WIDTH_MAX}" step="1" value="${s.project.guiWidth}" aria-label="${COPY.uiApp226}"><button data-action="admin-gui-width">${COPY.uiApp110}</button></div>
         <p class="note gui-width-sizes">${guiWidthSizes(s.project.guiWidth)}</p>
         <p class="note">${COPY.uiApp227} ${COPY.uiApp228}</p></section>`}
+      ${gui ? renderCategoryOrderSection(s) : ''}
       ${gui ? renderScreenIdSection(s) : ''}
       ${renderDataSection(s)}
       <section class="admin"><h3>${COPY.uiApp089}</h3>
@@ -2070,6 +2072,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     paintVersionList();
     renderVersionDetail();
     [...root.querySelectorAll<HTMLElement>('.version-row')].find(r => r.dataset.kind === versionSelected!.kind && r.dataset.id === versionSelected!.id)?.focus();
+  }
+
+  // 카테고리 순서: 드래그하거나 Alt+↑↓로 옮기면 바로 저장한다(2026-10-28 사용자 요청). 화면 목록·카테고리 선택 등이 이 순서를 따른다.
+  function renderCategoryOrderSection(s: State): string {
+    const cats = [...s.categories.values()].filter(c => c.active).sort((a, b) => a.order - b.order);
+    return `<section class="admin" data-form="category-order"><h3>${COPY.uiApp391}</h3>
+      ${cats.length ? `<div class="category-order" aria-label="${COPY.uiApp391}">${cats.map(c => `<div class="category-order-row" data-id="${esc(c.id)}" draggable="true" tabindex="0" title="${COPY.uiApp349}"><span class="drag-handle" aria-hidden="true">⠿</span><span>${esc(c.name)}</span></div>`).join('')}</div>
+      <p class="note">${COPY.uiApp349} ${COPY.uiApp392}</p>` : `<p class="note">${COPY.uiApp234}</p>`}</section>`;
   }
 
   // Screen ID 자동 입력 규칙: 플랫폼 Prefix와 카테고리별 코드(2026-10-20 사용자 요청). 저장하면 배포 화면의 ID도 바로 바꾼다.
@@ -2935,6 +2945,26 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const rect = node.getBoundingClientRect();
     return { node, uid: node.dataset.uid!, before: ev.clientY < rect.top + rect.height / 2 };
   };
+  // 관리의 카테고리 순서 바꾸기: 놓은 카테고리의 위·아래 절반에 따라 그 앞·뒤로 옮긴다.
+  const categoryDrop = (ev: DragEvent): { node: HTMLElement; id: string; before: boolean } | null => {
+    if (!draggingCategory) return null;
+    const node = (ev.target as HTMLElement).closest<HTMLElement>('.category-order-row[data-id]');
+    if (!node || node.dataset.id === draggingCategory) return null;
+    const rect = node.getBoundingClientRect();
+    return { node, id: node.dataset.id!, before: ev.clientY < rect.top + rect.height / 2 };
+  };
+  // 옮긴 순서는 바로 저장한다. 사용 안 함 카테고리의 자리는 core(reorderCategories)가 지킨다.
+  function moveCategory(id: string, to: { id: string; before: boolean } | { step: -1 | 1 }) {
+    if (!state || busyLabel) return;
+    const ids = [...state.categories.values()].filter(c => c.active).sort((a, b) => a.order - b.order).map(c => c.id);
+    const from = ids.indexOf(id);
+    if (from < 0) return;
+    const rest = ids.filter(value => value !== id);
+    const at = 'step' in to ? Math.max(0, Math.min(rest.length, from + to.step)) : rest.indexOf(to.id) + (to.before ? 0 : 1);
+    rest.splice(at, 0, id);
+    if (rest.every((value, i) => value === ids[i])) return;
+    admin({ op: 'reorderCategories', ids: rest });
+  }
   function moveScreen(uid: string, to: { uid: string; before: boolean } | { step: -1 | 1 }) {
     const row = editorRow();
     if (!row || !row.uids.includes(uid)) return;
@@ -2946,7 +2976,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     });
   }
   root.addEventListener('dragstart', ev => {
-    const option = (ev.target as HTMLElement).closest<HTMLElement>('.create-selected-list .create-screen-option[data-uid]');
+    const category = (ev.target as HTMLElement).closest<HTMLElement>('.category-order-row[data-id]');
+    if (category) {
+      if (busyLabel) { ev.preventDefault(); return; }
+      draggingCategory = category.dataset.id!;
+      ev.dataTransfer?.setData('text/plain', draggingCategory);
+      if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
+      category.classList.add('dragging');
+      return;
+    }
+    const option =(ev.target as HTMLElement).closest<HTMLElement>('.create-selected-list .create-screen-option[data-uid]');
     if (option) {
       if (busyLabel || newSubmitting || editSubmitting) { ev.preventDefault(); return; }
       draggingScreen = option.dataset.uid!;
@@ -2963,6 +3002,15 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     row.classList.add('dragging');
   });
   root.addEventListener('dragover', ev => {
+    if (draggingCategory) {
+      const drop = categoryDrop(ev);
+      clearDrop();
+      if (!drop) return;
+      ev.preventDefault();
+      if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
+      drop.node.classList.add(drop.before ? 'drop-before' : 'drop-after');
+      return;
+    }
     if (draggingScreen) {
       const drop = screenDrop(ev);
       clearDrop();
@@ -2980,6 +3028,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     target.node.classList.add(target.to.start ? 'drop-into' : target.to.before ? 'drop-before' : 'drop-after');
   });
   root.addEventListener('drop', ev => {
+    if (draggingCategory) {
+      const drop = categoryDrop(ev);
+      const id = draggingCategory;
+      draggingCategory = null;
+      clearDrop();
+      if (!drop) return;
+      ev.preventDefault();
+      moveCategory(id, drop);
+      return;
+    }
     if (draggingScreen) {
       const drop = screenDrop(ev);
       const uid = draggingScreen;
@@ -3003,6 +3061,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   root.addEventListener('dragend', () => {
     draggingNew = null;
     draggingScreen = null;
+    draggingCategory = null;
     clearDrop();
     for (const node of root.querySelectorAll('.dragging')) node.classList.remove('dragging');
   });
@@ -3035,6 +3094,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const el = ev.target as HTMLElement;
     if (bulk && ev.key === 'Escape' && !bulk.submitting) { ev.preventDefault(); bulk = null; renderBulk(); return; }
     if (newDialog && ev.key === 'Escape') { ev.preventDefault(); newDialog = null; renderNewDialog(); return; }
+    // 관리의 카테고리 순서 행: Alt+↑↓로 한 칸씩 옮긴다.
+    if (ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown') && el.matches('.category-order-row[data-id]')) {
+      ev.preventDefault();
+      moveCategory(el.dataset.id!, { step: ev.key === 'ArrowUp' ? -1 : 1 });
+      return;
+    }
     // 새 플립북 행: Enter·Space로 고르고, Alt+↑↓로 자리를 옮기며, Delete로 지운다.
     if (el.classList.contains('new-row')) {
       const key = el.dataset.key!;
@@ -3696,8 +3761,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   function renderDetailKeepingFocus() {
     const active = document.activeElement as HTMLElement | null;
     const field = active?.dataset.field;
+    // Alt+↑↓로 옮긴 카테고리 순서 행은 저장 뒤에도 그 행에 포커스를 둬 이어서 옮길 수 있게 한다.
+    const category = active?.matches('.category-order-row') ? active.dataset.id : undefined;
     renderDetail();
     if (field) (root.querySelector(`[data-field="${field}"]`) as HTMLElement | null)?.focus();
+    else if (category) root.querySelector<HTMLElement>(`.category-order-row[data-id="${CSS.escape(category)}"]`)?.focus();
   }
 
   renderBusy();
