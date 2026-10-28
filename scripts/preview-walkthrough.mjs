@@ -950,7 +950,7 @@ try {
     await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
     assert.deepEqual(await size(), dragged, '드래그가 끝난 뒤 움직임으로 크기가 바뀌지 않는다');
   }
-  // 카테고리 순서: 목록의 카테고리 머리를 드래그하거나 머리에서 Alt+↑↓를 누르면 바로 저장하고, 화면 목록·카테고리 선택·관리의 코드 목록이 그 순서를 따른다(2026-10-28 사용자 요청).
+  // 카테고리 순서: 목록의 카테고리 머리를 드래그하면 바로 저장하고, 화면 목록·카테고리 선택·관리의 코드 목록이 그 순서를 따른다(2026-10-28 사용자 요청).
   {
     const thirdKey = await app.locator('.row').nth(2).getAttribute('data-key');
     for (const name of ['홈', '검색', 'VOD']) {
@@ -982,20 +982,19 @@ try {
     await waitGroups(['VOD', '홈', '검색'], '머리 위쪽 절반에 놓으면 그 카테고리 앞으로 옮긴다');
     await group('검색').locator('.group-head').dragTo(group('VOD').locator('.group-bar'), { targetPosition: { x: 60, y: bar.height - 3 } });
     await waitGroups(['VOD', '검색', '홈'], '머리 아래쪽 절반에 놓으면 그 카테고리 뒤로 옮긴다');
-    await group('홈').locator('.group-head').focus();
-    await page.keyboard.press('Alt+ArrowUp');
-    await waitGroups(['VOD', '홈', '검색'], 'Alt+↑로 앞 카테고리를 넘어간다');
-    assert.equal(await page.evaluate(() => document.activeElement?.dataset.group), ids['홈'], '저장 뒤에도 옮긴 머리에 포커스가 남는다');
-    await page.keyboard.press('Alt+ArrowUp');
-    await waitGroups(['홈', 'VOD', '검색'], '이어서 Alt+↑로 옮긴다');
-    await page.keyboard.press('Alt+ArrowDown');
-    await waitGroups(['VOD', '홈', '검색'], 'Alt+↓로 뒤 카테고리를 넘어간다');
+    // 머리 줄은 체크박스 칸까지 한 색으로 채우고, 체크박스와 화살표 사이는 좁다.
+    const head = await group('홈').locator('.group-bar').evaluate(bar => {
+      const box = bar.querySelector('input').getBoundingClientRect(), caret = bar.querySelector('.caret').getBoundingClientRect();
+      return { same: getComputedStyle(bar).backgroundColor === getComputedStyle(bar.querySelector('.group-head')).backgroundColor, gap: caret.left - box.right };
+    });
+    assert.ok(head.same, '머리 줄 배경이 체크박스 오른쪽에서 끊기지 않는다');
+    assert.ok(head.gap <= 6, `체크박스와 화살표 사이 간격 ${head.gap}px`);
     await shot('12-category-order');
-    assert.deepEqual((await app.locator('[data-field=categoryId] option').allInnerTexts()).slice(-3), ['VOD', '홈', '검색'], '카테고리 선택도 바뀐 순서');
+    assert.deepEqual((await app.locator('[data-field=categoryId] option').allInnerTexts()).slice(-3), ['VOD', '검색', '홈'], '카테고리 선택도 바뀐 순서');
     await app.locator('[data-action=settings]').click();
     assert.equal(await app.locator('details[data-form=category-order]').count(), 0, '관리에는 카테고리 순서가 없다');
     await app.locator('details[data-form=screen-id-prefix] > summary').click();
-    assert.deepEqual(await app.locator('details[data-form=screen-id-prefix] .category-code > span').allInnerTexts(), ['VOD', '홈', '검색'], '관리의 카테고리 코드 목록도 같은 순서');
+    assert.deepEqual(await app.locator('details[data-form=screen-id-prefix] .category-code > span').allInnerTexts(), ['VOD', '검색', '홈'], '관리의 카테고리 코드 목록도 같은 순서');
     await app.locator('[data-action=settings]').click();
   }
   assert.deepEqual(errors, []);

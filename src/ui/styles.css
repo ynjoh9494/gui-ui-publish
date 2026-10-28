@@ -67,10 +67,10 @@ legend { color: var(--muted); padding: 0 4px; }
 .all-include { position: sticky; top: 64px; z-index: 3; padding: 6px 8px; border-bottom: 1px solid var(--border); font-weight: 600; }
 .all-include input, .group-bar input { width: auto; margin: 0 8px; }
 .group-bar { position: sticky; top: 0; z-index: 2; }
-/* GUI 목록의 카테고리 묶음: 머리를 드래그하거나 Alt+↑↓로 옮긴다. 손잡이는 체크박스 왼쪽 여백에 두고 마우스를 올리거나 포커스가 있을 때만 보인다. */
+/* GUI 목록의 카테고리 묶음: 머리를 드래그해서 옮긴다. 손잡이는 체크박스 왼쪽 여백에 두고 마우스를 올렸을 때만 보인다. */
 .group-bar[draggable="true"] { cursor: grab; }
 .group-bar .drag-handle { position: absolute; left: 0; width: 8px; text-align: center; color: var(--muted); font-size: 10px; line-height: 1; opacity: 0; pointer-events: none; }
-.group-bar:hover .drag-handle, .group-bar:focus-within .drag-handle { opacity: 1; }
+.group-bar:hover .drag-handle { opacity: 1; }
 .list-box .group[data-category] { position: relative; }
 .list-box .group.dragging { opacity: .45; }
 /* 놓을 자리 표시는 고정된 머리(z-index 2) 위에 그린다. */
@@ -251,7 +251,9 @@ button.link.danger { color: var(--danger); }
 .list-body > :not(.list-box) { flex: none; }
 /* 목록 박스: 추가 설명 위까지 세로로 채우고 스크롤은 이 안에서 생긴다. */
 .list-box { flex: 1; min-height: 80px; overflow: auto; --box-bg: color-mix(in srgb, var(--bg2) 45%, var(--bg)); margin: 0 8px 8px; border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); border-radius: 6px; background: var(--box-bg); }
-.list-box .group-bar { background: var(--box-bg); }
+/* GUI 목록의 묶음 머리: 체크박스 칸까지 머리와 같은 색으로 줄 전체를 채우고, 체크박스와 화살표 사이를 좁힌다. */
+.list-box .group-bar input { margin-right: 0; }
+.list-box .group-bar input + .group-head { padding-left: 4px; }
 /* 빈 목록 안내는 박스의 위아래 가운데 */
 .list-box:has(> .empty:only-child) { display: flex; align-items: center; justify-content: center; }
 /* 창 크기 손잡이(오른쪽 아래) */

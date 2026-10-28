@@ -428,6 +428,7 @@ export const COPY = {
   uiApp388: '전체 보기',
   uiApp389: '개 더 보기',
   uiApp390: '숨기기',
+  uiApp391: '드래그해서 카테고리 순서를 바꿉니다.',
   // 튜토리얼 — src/ui/tutorial.ts. 단계마다 말풍선 제목·설명 순서다.
   uiTutorial001: '도움말',
   uiTutorial002: '튜토리얼 종료',
