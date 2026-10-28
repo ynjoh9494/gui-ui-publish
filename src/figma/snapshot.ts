@@ -90,6 +90,7 @@ export class Snapshotter {
 export function attachNames(node: SceneNode, snapshot: NodeSnapshot): NodeSnapshot {
   snapshot.name = node.name;
   snapshot.id = node.id;
+  if (node.type === 'TEXT' && node.autoRename) snapshot.autoName = true;
   if (snapshot.children && 'children' in node) snapshot.children.forEach((child, i) => { if (node.children[i]) attachNames(node.children[i], child); });
   return snapshot;
 }

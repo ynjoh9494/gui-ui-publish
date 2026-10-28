@@ -6,7 +6,7 @@ import { startTutorial } from './tutorial.ts';
 import { textEditor } from './textEditor.ts';
 import { flowView } from './flowView.ts';
 import { pdfView } from './pdfView.ts';
-import { changeReasonSection } from './changeReason.ts';
+import { changeReasonSection, REASON_PAGE } from './changeReason.ts';
 import { esc } from './html.ts';
 import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScreen, isDeletion, isPrevious, isUnpublish, mergesInto, needsLink, OPTIONAL_FIELDS, renumberAutoCodes, STATUS_LABEL, validateDraft, type Draft, type DraftIndex, type InputStatus, type Validation } from '../core/drafts.ts';
 import { formatTime, type HistoryRow } from '../core/history.ts';
@@ -205,6 +205,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   let textTabSent = false;
   // GUI 화면정보의 이전 배포 썸네일을 펼쳐 두었는가
   let prevThumbOpen = false;
+  // 「변경 사항」에서 펼쳐 보인, 보이는 값이 같은 변경의 줄 수. 지금 고른 화면에만 두고 기억하지 않는다:
+  // 다른 화면을 고르거나 변경사항 확인을 다시 하면 접힌 상태로 돌아간다.
+  let reasonShown: { key: string; count: number } | null = null;
   let sizeBeforeVersion: { width: number; height: number } | null = null;
   let versionPageId = '';
   let versionMatch: VersionMatchView | null = null;
@@ -1192,8 +1195,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     let html = `<div class="detail-head"><h2>${esc(name)}${multi ? ` ${COPY.uiApp046} ${chosen.length - 1}${COPY.uiApp015}` : ''}</h2><div class="validation" aria-live="polite"></div></div>`;
     if (detailLocked(t)) html += `<p class="note">${locked(t) ? COPY.uiApp176 : COPY.uiApp181}</p>`;
     if (!multi) html += entry.notes.map(n => `<p class="note">${esc(n)}</p>`).join('');
-    // 변경 근거는 「변경 무시」를 고르기 전에 본다. 한 화면을 골랐을 때만 보여 준다.
-    if (t === 'GUI' && !multi && entry.estimate === 'changed' && changeDetected(entry)) html += changeReasonSection(entry.frame?.reason);
+    // 변경사항(변경 감지 이유)은 「변경 무시」를 고르기 전에 본다. 한 화면을 골랐을 때만 보여 준다.
+    if (reasonShown?.key !== entry.key) reasonShown = null;
+    if (t === 'GUI' && !multi && entry.estimate === 'changed' && changeDetected(entry)) html += changeReasonSection(entry.frame?.reason, reasonShown?.count ?? 0);
     // 변경 감지: 배포 토글 위에 「변경 무시」. 프레임 이름·카테고리가 바뀐 화면은 무시할 수 없다.
     // 배포를 켜 수정됨·이전 버전으로 정해진 화면은 변경 상태가 해결되었으므로 누를 수 없다.
     if (t === 'GUI' && chosen.every(e => changeDetected(e))) {
@@ -2739,6 +2743,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       case 'reason-layer':
         if (el.dataset.node) bridge.send({ type: 'revealNode', nav: ++navSeq, nodeId: el.dataset.node, select: true });
         break;
+      case 'reason-more':
+      case 'reason-less': {
+        // 상세 패널 전체를 다시 그리지 않고 「변경 사항」 상자만 바꾼다.
+        const entry = current();
+        const box = el.closest('.change-reason');
+        if (!entry || !box) break;
+        reasonShown = { key: entry.key, count: action === 'reason-less' ? 0 : (reasonShown?.key === entry.key ? reasonShown.count : 0) + REASON_PAGE };
+        box.outerHTML = changeReasonSection(entry.frame?.reason, reasonShown.count);
+        break;
+      }
       case 'version-reveal':
         if (el.dataset.node) bridge.send({ type: 'revealNode', nav: ++navSeq, nodeId: el.dataset.node });
         break;
@@ -3465,6 +3479,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         if (cancelPending[t] && msg.status !== 'cancelled') break;
         if (msg.status === 'cancelled') cancelPending[t] = false;
         if (msg.status === 'loading' && !scanStartedAt[t]) scanStartedAt[t] = Date.now();
+        if (msg.status === 'loading' && t === 'GUI') reasonShown = null;
         if (msg.status === 'done') {
           const elapsed = scanStartedAt[t] ? Date.now() - scanStartedAt[t] : MIN_SCAN_VISIBLE_MS;
           const remaining = Math.max(0, MIN_SCAN_VISIBLE_MS - elapsed);

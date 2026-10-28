@@ -1,13 +1,15 @@
 import { sha256 } from './hash.ts';
 
 // Figma 노드에서 결과 화면에 영향을 주는 속성만 옮긴 직렬화 가능한 트리. 수집은 figma/snapshot.ts가 맡는다.
-// name·id는 변경 근거(core/changeDigest.ts)를 만들 때만 붙인다. props 밖이라 지문에 들어가지 않는다.
+// name·id·autoName은 변경 근거(core/changeDigest.ts)를 만들 때만 붙인다. props 밖이라 지문에 들어가지 않는다.
 export interface NodeSnapshot {
   type: string;
   props: Record<string, unknown>;
   children?: NodeSnapshot[];
   name?: string;
   id?: string;
+  // 이름이 글자를 따라 바뀌는 텍스트 레이어(Figma autoRename)
+  autoName?: boolean;
 }
 
 // 정규화 규칙(무시 속성·숫자 처리, figma/snapshot.ts의 수집 속성)을 바꾸면 올린다. 다른 버전의 지문끼리는 비교하지 않는다.

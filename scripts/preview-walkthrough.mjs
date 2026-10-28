@@ -746,8 +746,8 @@ try {
   await noisy.click();
   // 배포를 켜기 전에는 입력 영역이 없다.
   assert.equal(await app.locator('.detail [data-field=code]').count(), 0, 'inputs hidden until 배포 is checked');
-  // 변경 근거: 어느 레이어의 어떤 속성 묶음이 다른지 보여 주고, 레이어를 누르면 캔버스에서 고른다.
-  await page.waitForFunction(() => document.querySelector('#app .detail .change-reason')?.textContent?.includes('텍스트 내용'));
+  // 변경 사항: 보이는 차이는 상자에 한 줄씩 바로 보이고, 줄을 누르면 캔버스에서 고른다.
+  await page.waitForFunction(() => document.querySelector('#app .detail .change-reason .reason-line')?.textContent?.includes('텍스트 내용'));
   await shot('07-change-detected');
   await app.locator('.change-reason [data-action=reason-layer]').first().click();
   await page.waitForFunction(id => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes(`프레임 선택: ${id}`)), initialNodeId);

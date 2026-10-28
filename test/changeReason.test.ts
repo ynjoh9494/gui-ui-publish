@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { changeDigest, digestFingerprint } from '../src/core/changeDigest.ts';
+import { changeDigest, digestFingerprint, type ChangeReason } from '../src/core/changeDigest.ts';
 import { classify, type Entry } from '../src/core/compare.ts';
 import { COPY } from '../src/core/copy.ts';
 import { defaultDraft } from '../src/core/drafts.ts';
@@ -94,9 +94,11 @@ test('변경 근거: 변경 감지된 화면에 근거를 보여 주고, 변경 
   assert.equal(reason.status, 'complete');
   assert.equal(reason.visible, false);
   assert.deepEqual(reason.groups.map(g => [g.group, g.sameOnScreen, g.layers.map(l => [l.layer.path.join('/'), l.layer.nodeId])]), [['geometry', true, [['Title', '1:2']]]]);
-  const html = changeReasonSection(reason);
-  assert.match(html, new RegExp(COPY.uiApp362));
-  assert.match(html, /data-action="reason-layer" data-node="1:2"/);
+  // 보이는 값이 같은 변경은 「전체 보기」를 눌러야 보인다.
+  const closed = changeReasonSection(reason);
+  assert.ok(closed.includes(COPY.uiApp362) && closed.includes(COPY.uiApp388));
+  assert.doesNotMatch(closed, /data-node="1:2"/);
+  assert.ok(changeReasonSection(reason, 10).includes(`data-node="1:2" title="Title"><span>${COPY.uiApp365}</span><span class="reason-path">Title</span><span class="reason-why">(${COPY.uiApp374})</span>`));
 
   await controller.handle({ type: 'ignoreChanges', entryKeys: [changed.key] });
   assert.equal(entry().estimate, 'unchanged');
@@ -144,4 +146,28 @@ test('변경 근거: 레이어를 누르면 캔버스에서 선택하고 화면�
   assert.deepEqual(revealed, ['1:2', 'gone']);
   const navs = posted.filter((m): m is Extract<ToUi, { type: 'nav' }> => m.type === 'nav');
   assert.deepEqual(navs.map(m => [m.ok, m.message]), [[true, ''], [false, COPY.controller141]]);
+});
+
+test('변경 사항: 보이는 차이는 바로, 보이는 값이 같은 변경은 전체 보기 뒤에 10개씩 보여 주고 다 펼치면 숨기기', () => {
+  const layer = (name: string) => ({ layer: { path: ['Menu', name], nodeId: `n:${name}` } });
+  const reason: ChangeReason = {
+    status: 'complete', visible: true, added: [], renamed: [], removed: 1,
+    groups: [
+      { group: 'text', sameOnScreen: null, layers: [layer('Title')] },
+      { group: 'geometry', sameOnScreen: false, layers: [{ ...layer('Logo'), sameOnScreen: false }, ...Array.from({ length: 23 }, (_, i) => ({ ...layer(`Row ${i + 1}`), sameOnScreen: true }))] },
+    ],
+  };
+  const rows = (html: string) => [...html.matchAll(/class="reason-lines( quiet)?">(.*?)<\/ul>/g)].map(m => [m[1] ? 'quiet' : 'main', (m[2].match(/<li>/g) ?? []).length]);
+  const more = (html: string) => html.match(/data-action="reason-(?:more|less)">([^<]*)</)?.[1] ?? null;
+  const first = changeReasonSection(reason);
+  assert.deepEqual(rows(first), [['main', 3]], '텍스트 내용·보이는 위치 변경·삭제된 레이어');
+  assert.equal(more(first), COPY.uiApp388);
+  assert.ok(!first.includes(COPY.uiApp362), '보이는 차이가 있으면 「화면에 보이는 모습은 같습니다」를 보여 주지 않는다');
+  assert.deepEqual(rows(changeReasonSection(reason, 10)), [['main', 3], ['quiet', 10]]);
+  assert.equal(more(changeReasonSection(reason, 10)), `10${COPY.uiApp389}`);
+  assert.equal(more(changeReasonSection(reason, 20)), `3${COPY.uiApp389}`);
+  // 다 펼치면 「숨기기」로 다시 접는다.
+  assert.deepEqual([rows(changeReasonSection(reason, 30)), more(changeReasonSection(reason, 30))], [[['main', 3], ['quiet', 23]], COPY.uiApp390]);
+  assert.match(changeReasonSection(reason, 30), /data-action="reason-less"/);
+  assert.ok(changeReasonSection(reason, 10).includes(`(${COPY.uiApp374})`));
 });

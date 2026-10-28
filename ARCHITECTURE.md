@@ -25,7 +25,7 @@ flowchart LR
 |---|---|
 | `src/core/types.ts`, `store.ts` | 파일 기록의 타입, 키 구성, 역직렬화, 메모리 상태와 저장소 동기화 |
 | `src/core/compare.ts`, `fingerprint.ts`, `versionMatch.ts` | GUI 변경 판정, 지문 정규화, 새 버전 페이지의 화면 연결 제안 |
-| `src/core/changeDigest.ts` | 변경 근거: 스냅샷을 (레이어 이름 경로 × 속성 묶음 → 값 해시) 원소로 나눠 고정 크기 IBLT와 묶음별 요약값으로 저장하고, 현재 화면과 빼서 다른 레이어·묶음과 「보이는 값은 같음」(화면 기준 짝 해시) 판정을 풀어냄. 근거를 만들지 정하는 `changeDigest()` |
+| `src/core/changeDigest.ts` | 변경 근거: 스냅샷을 (레이어 이름 경로 × 속성 묶음 → 값 해시) 원소로 나눠(이름이 글자를 따라 바뀌는 텍스트는 이름 대신 순서로 이음) 고정 크기 IBLT와 묶음별 요약값으로 저장하고, 현재 화면과 빼서 다른 레이어·묶음과 「보이는 값은 같음」(화면 기준 짝 해시) 판정을 풀어냄. 근거를 만들지 정하는 `changeDigest()` |
 | `src/core/drafts.ts`, `publish.ts`, `registry.ts` | 입력 검증, GUI 배포 계획·확정, 카테고리·작업자·태그·화면 레지스트리 |
 | `src/core/flow.ts` | 플로우 계획(배포된 화면만, 가장 왼쪽·위 썸네일이 (0, 0)이 되게 당김, 잘못된·중복 화살표 제외), 썸네일마다 제 크기 자리(격자는 놓는 위치 스냅)와 다른 화면 자리를 피해 화면 사이 통로를 따르는 꺾인 화살표 경로(`routeLink`, 플러그인 판과 캔버스가 함께 씀), 조건 레이어 자리, 다시 배포된 화면이 든 플로우 고르기, 만든 플로우 목록(`flowList`) |
 | `src/core/pdf.ts` | PDF 저장 탭의 정책: 저장하는 동안 숨길 요소 이름(UI Title·Update History List), 쪽 이미지 배율(2배 JPG), 쪽 순서(캔버스 왼쪽 위 → 오른쪽 아래), 파일 이름 |
@@ -43,7 +43,7 @@ flowchart LR
 | `src/figma/flipbook.ts`, `layers.ts`, `thumbs.ts`, `data.ts` | 템플릿 복제, GUI 레이어 복사·배치, JPG 썸네일, DATA 페이지 렌더링 |
 | `src/figma/flow.ts` | 플로우 그리기(플로우·화면·Connector 모두 그룹: 화면별 Title·IMAGE·Caption, Connector 안의 Arrow·Action, 도착점에 `ARROW_EQUILATERAL`을 둔 Figma 벡터 연결선)와 다시 배포된 화면의 썸네일 채움 교체, 플로우 목록에서 누른 플로우·화면 칸 찾기(`flowNode`, 기록의 노드 ID와 `flowOf` 표식이 모두 맞을 때만). 썸네일 이미지는 썸네일 페이지를 불러와 해시로 찾음 |
 | `src/ui/app.ts`, `styles.css` | UI 상태·입력 초안·목록과 상세 렌더링 |
-| `src/ui/changeReason.ts` | GUI 상세 패널의 「변경 근거」 렌더링(묶음별 레이어, 보이는 값 판정, 레이어를 누르면 `revealNode`의 선택) |
+| `src/ui/changeReason.ts` | GUI 상세 패널의 「변경 사항」 상자 렌더링(변경 하나를 한 줄로, 보이는 값이 같은 변경은 「전체 보기」 뒤에 10개씩, 줄을 누르면 `revealNode`의 선택) |
 | `src/ui/flowView.ts` | UI Flipbook 플로우 탭의 배포 화면 목록(GUI 화면 목록과 같은 카테고리 아코디언, Section 구분 없음)과 FigJam식 판(썸네일을 격자 스냅으로 배치·이동, 확대·축소, 연결·삭제, 플로우 제목), 이력 아이콘으로 여는 「만든 플로우」 모달 |
 | `src/ui/pdfView.ts` | UI Flipbook PDF 저장 탭(선택한 프레임 수, 저장·취소 버튼)과 받은 JPG를 pdf-lib로 한 쪽에 한 장씩 넣은 PDF로 묶어 내려받기 |
 | `src/ui/html.ts` | UI의 HTML 문자열에 넣는 값의 이스케이프(`esc`). UI 모듈이 함께 쓴다 |

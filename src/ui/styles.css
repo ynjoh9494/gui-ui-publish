@@ -136,13 +136,23 @@ select { appearance: none; -webkit-appearance: none; padding-right: 22px; backgr
 /* 변경 무시: 입력 상태 줄과 띄운다. */
 .ignore-row { margin-top: 12px; }
 .ignore-row .note { white-space: pre-line; }
-.change-reason .reason-verdict { margin: 2px 0 6px; font-weight: 600; }
-.change-reason .reason-group { margin: 4px 0; }
-.change-reason .reason-head { margin: 0; }
-.change-reason .reason-layers { margin: 2px 0 0; padding-left: 14px; }
-.change-reason .reason-layers li { margin: 1px 0; overflow-wrap: anywhere; }
-.change-reason .reason-layers button.link { text-align: left; }
-.change-reason .reason-note { color: var(--muted); }
+.change-reason { margin: 8px 0 0; padding: 6px 8px 8px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+.change-reason h3 { margin: 0 0 4px; padding-bottom: 4px; border-bottom: 1px solid var(--border); color: var(--text); }
+.change-reason > .note { margin: 2px 0 0; }
+/* 안내 문구(글자·아이콘)는 Figma 경고 색 그대로 쓴다. */
+.change-reason .reason-same { display: flex; align-items: flex-start; gap: 6px; margin: 0 0 4px; color: var(--danger); word-break: keep-all; }
+.change-reason .reason-same svg { flex: none; margin-top: 2px; }
+.change-reason .reason-lines { list-style: none; margin: 0; padding: 0; }
+/* 변경 하나는 한 줄이다. 넘치면 말줄임하고 전체 경로는 툴팁으로 본다. */
+.change-reason .reason-line { display: block; width: calc(100% + 8px); padding: 0 4px; margin: 0 -4px; border: 0; border-radius: 4px; background: none; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.change-reason button.reason-line:hover { background: var(--bg2); }
+.change-reason .reason-line > span + span:not(.reason-why)::before { content: '·'; margin: 0 5px; color: var(--muted); }
+.change-reason .reason-why { margin-left: 4px; }
+.change-reason button.reason-line .reason-path { color: var(--brand); }
+/* 보이는 값이 같은 변경은 같은 형식을 연하게 쓴다. */
+.change-reason .reason-lines.quiet .reason-line { color: var(--muted); }
+.change-reason .reason-lines.quiet button.reason-line .reason-path { color: color-mix(in srgb, var(--brand) 55%, var(--bg)); }
+.change-reason .reason-more { display: block; width: 100%; margin-top: 6px; padding: 0; font-size: 11px; text-align: center; color: var(--muted); }
 .exclude-row { display: flex; gap: 4px; margin: 4px 0 8px; }
 .add-worker { margin: -2px 0 6px; }
 .validation { margin: 4px 0; padding: 5px 6px; background: var(--bg2); border-radius: 6px; }

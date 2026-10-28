@@ -72,7 +72,7 @@ test('변경 근거: 수집 속성은 모두 묶음 표에 있다', () => {
   assert.ok(TEXT_SEGMENT.length > 0);
 });
 
-test('변경 근거: 0.3px 이동은 「1px 단위로는 같음」, 보이는 값 변경 없음', () => {
+test('변경 근거: 0.3px 이동은 「1px 이내」, 보이는 값 변경 없음', () => {
   const before = screen();
   const after = clone(before);
   at(after, 3, 5).props.x = (at(before, 3, 5).props.x as number) + 0.3;
@@ -141,6 +141,26 @@ test('변경 근거: 레이어 추가·삭제·이름 변경', () => {
   assert.deepEqual(pathsOf(reason, 'structure'), ['Group 1', 'Group 5', 'Group 8']);
   assert.deepEqual(pathsOf(reason, 'geometry'), ['Group 9/Layer 3']);
   assert.equal(reason.visible, true);
+});
+
+test('변경 근거: 이름이 글자를 따라 바뀌는 텍스트는 글자를 고쳐도 같은 레이어의 텍스트 내용 변경이다', () => {
+  // 메뉴 버튼의 「APPS」를 「APP」으로 고치면 Figma가 레이어 이름도 「APP」으로 바꾼다.
+  const label = (characters: string, width: number): NodeSnapshot => ({
+    type: 'TEXT', name: characters, autoName: true, props: { visible: true, x: 40, y: 8, width, height: 24, characters, fills: [solid(1)],
+      segments: [{ characters, start: 0, end: characters.length, fontName: { family: 'Pretendard', style: 'Bold' }, fontSize: 24, fills: [solid(1)] }] },
+  });
+  const button = (text: NodeSnapshot): NodeSnapshot => ({ type: 'FRAME', name: 'Main menu', props: { x: 0, y: 0, width: 300, height: 80 }, children: [
+    { type: 'FRAME', name: 'icon+title', props: { x: 20, y: 20, width: 200, height: 40 }, children: [
+      { type: 'VECTOR', name: 'icon', autoName: false, props: { x: 0, y: 8, width: 24, height: 24, fills: [solid(1)] } },
+      text,
+      { type: 'TEXT', name: 'Badge', props: { x: 160, y: 8, width: 20, height: 24, characters: 'N' } },
+    ] },
+  ] });
+  const reason = explain(button(label('APPS', 72)), button(label('APP', 54)));
+  assert.equal(reason.status, 'complete');
+  assert.deepEqual([reason.added, reason.renamed, reason.removed], [[], [], 0]);
+  assert.deepEqual(reason.groups.map(g => [g.group, g.sameOnScreen]), [['geometry', false], ['text', null]]);
+  assert.deepEqual(pathsOf(reason, 'text'), ['icon+title/APP']);
 });
 
 test('변경 근거: 차이가 많으면 일부 레이어만 풀고 묶음 판정은 정확하다', () => {

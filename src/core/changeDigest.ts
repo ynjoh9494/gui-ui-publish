@@ -3,8 +3,9 @@ import { canonical, comparedProps, type NodeSnapshot } from './fingerprint.ts';
 // 변경 근거: 지문은 같다·다르다만 알려 주므로, 비교 기준(배포·변경 무시) 시점의 화면을 (레이어 × 속성 묶음 → 값 해시)
 // 원소의 집합으로 보고 고정 크기 IBLT(Invertible Bloom Lookup Table, Eppstein 외 「What's the Difference?」)로 요약해 둔다.
 // 현재 화면의 표에서 기준 표를 빼면 서로 다른 원소만 남아 풀려 나오므로, 저장량은 레이어 수가 아니라 찾을 차이 수로 정해진다.
-// 묶음 나누기·짝 규칙·표 크기·해시를 바꾸면 올린다. 다른 버전의 기록은 「근거 기록 없음」으로 본다.
-export const DIGEST_VERSION = 1;
+// 묶음 나누기·짝 규칙·레이어 잇는 규칙·표 크기·해시를 바꾸면 올린다. 다른 버전의 기록은 「근거 기록 없음」으로 본다.
+// 2: 이름이 글자를 따라 바뀌는 텍스트는 이름 대신 그런 텍스트 중 순서로 잇는다.
+export const DIGEST_VERSION = 2;
 
 export const DIGEST_GROUPS = ['structure', 'display', 'geometry', 'paint', 'effects', 'shape', 'text', 'textStyle', 'variables', 'other'] as const;
 export type DigestGroup = typeof DIGEST_GROUPS[number];
@@ -233,12 +234,17 @@ export function digestOf(root: NodeSnapshot, fingerprint: string): CurrentDigest
     layers.push({ path: labels, nodeId: node.id ?? null, parent, hash: pathHash });
     layerOf.set(pathHash, index);
     // 레이어는 이름 경로로 잇는다. 노드 ID는 페이지를 다른 파일에서 복사해 오면 바뀐다. 같은 이름의 형제는 순서로 나눈다.
+    // 이름이 글자를 따라 바뀌는 텍스트는 글자를 고치면 이름도 바뀌므로, 그런 텍스트 형제 중 순서로 잇는다.
     const seen = new Map<string, number>();
+    const shown = new Map<string, number>();
     const kids = node.children?.map(child => {
       const name = child.name ?? '';
-      const n = seen.get(name) ?? 0;
-      seen.set(name, n + 1);
-      return { child, id: `${name}\u0002${n}`, label: n ? `${name} (${n + 1})` : name };
+      const key = child.autoName ? '\u0003' : name;
+      const n = seen.get(key) ?? 0;
+      seen.set(key, n + 1);
+      const m = shown.get(name) ?? 0;
+      shown.set(name, m + 1);
+      return { child, id: `${key}\u0002${n}`, label: m ? `${name} (${m + 1})` : name };
     });
     for (const [group, value] of groupValues(node, parent < 0, kids?.map(k => k.id))) {
       const key = (pathHash | kindOf(group)) >>> 0;
