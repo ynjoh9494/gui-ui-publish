@@ -36,7 +36,7 @@ interface Step {
   title: string;
   body: string;
   // 지난 배포에 없던 기능을 설명하는 단계. 제목 오른쪽에 「새 기능」 라벨을 단다(2026-10-27 사용자 요청).
-  // 배포 직전 도움말을 갱신할 때 지난 표시를 지우고 다시 붙인다(.claude/agents/release-help.md).
+  // 배포 직전 도움말을 갱신할 때 지난 표시를 지우고 다시 붙인다.
   isNew?: boolean;
   // 이 단계를 보여 주기 전에 예시 화면을 조작한다.
   prepare?(d: Driver): Promise<void>;
@@ -108,7 +108,7 @@ const GUI_STEPS: Step[] = [
     spots: d => [[d.q('.toolbar [data-action="scan"]'), d.q('.toolbar [data-action="scan-selected"]')]],
   },
   {
-    title: COPY.uiTutorial010, body: COPY.uiTutorial011,
+    title: COPY.uiTutorial010, body: COPY.uiTutorial011, isNew: true,
     async prepare(d) {
       await d.click('.toolbar [data-action="scan"]');
       await d.until(() => d.q('.toolbar .progress')?.textContent?.includes(COPY.uiApp014) && d.q('.list .group'));
@@ -121,7 +121,7 @@ const GUI_STEPS: Step[] = [
     spots: d => [d.q('.list .list-filters')],
   },
   {
-    title: COPY.uiTutorial014, body: COPY.uiTutorial015, isNew: true,
+    title: COPY.uiTutorial014, body: COPY.uiTutorial015,
     async prepare(d) {
       await d.click(() => d.row(COPY.uiPreview009));
       await d.click('.detail [data-action="include-selected"]');
@@ -166,6 +166,11 @@ const GUI_STEPS: Step[] = [
       await d.until(() => d.q('.detail .ignore-row'));
     },
     spots: d => [d.row(COPY.uiPreview005), d.q('.detail .ignore-row')],
+  },
+  {
+    title: COPY.uiTutorial079, body: COPY.uiTutorial080, isNew: true,
+    async prepare(d) { await d.until(() => d.q('.detail .change-reason .reason-line')); },
+    spots: d => [d.q('.detail .change-reason')],
   },
   {
     title: COPY.uiTutorial028, body: COPY.uiTutorial029,
@@ -284,7 +289,7 @@ const UI_STEPS: Step[] = [
     spots: d => [d.q('.detail .fb-top')],
   },
   {
-    title: COPY.uiTutorial075, body: COPY.uiTutorial076, isNew: true,
+    title: COPY.uiTutorial075, body: COPY.uiTutorial076,
     spots: d => [d.q('.detail .fb-screens-head')],
   },
   {
@@ -292,7 +297,7 @@ const UI_STEPS: Step[] = [
     spots: d => [d.q('.detail .fb-bottom')],
   },
   {
-    title: COPY.uiTutorial070, body: COPY.uiTutorial071, isNew: true,
+    title: COPY.uiTutorial070, body: COPY.uiTutorial071,
     async prepare(d) {
       await d.click('.tabs [data-action="text-open"]');
       await d.click('.text-view [data-action="text-import"]');
@@ -311,7 +316,7 @@ const UI_STEPS: Step[] = [
     spots: d => [d.q('.tabs .create-tabs'), d.q('.flow-view')],
   },
   {
-    title: COPY.uiTutorial077, body: COPY.uiTutorial078, isNew: true,
+    title: COPY.uiTutorial077, body: COPY.uiTutorial078,
     async prepare(d) {
       await d.click('.tabs [data-action="pdf-open"]');
       await d.until(() => d.q('.pdf-view'));
