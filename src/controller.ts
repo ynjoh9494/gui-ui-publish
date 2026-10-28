@@ -1,6 +1,7 @@
+import { digestFingerprint, type DigestRequest } from './core/changeDigest.ts';
 import { COPY } from './core/copy.ts';
 import { baseline, changeDetected, classify, ignoreBlock, uiEstimate, uncheckedEntries, uiEntries, UI_FINGERPRINT_VERSION, type Entry, type FlipbookSpot, type ScannedFrame, type UiScan } from './core/compare.ts';
-import { LEGACY_FINGERPRINT_VERSION } from './core/fingerprint.ts';
+import { FINGERPRINT_VERSION, LEGACY_FINGERPRINT_VERSION } from './core/fingerprint.ts';
 import { dataModel } from './core/data.ts';
 import { chapterName, flipbookView, guiKey, validGuiWidth } from './core/flipbook.ts';
 import { canvasSections, checkMoves, editFlipbookScreens, followCanvasSections, importGuiUpdates, markReviewed, moveFlipbooks, pageSections, planFlipbooks, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookMove, type FlipbookRequest, type ReviewRequest, type ScreenEditRequest } from './core/flipbooks.ts';
@@ -15,12 +16,12 @@ import {
 } from './core/registry.ts';
 import type { CodeRename } from './core/screenCode.ts';
 import { formatFrameName } from './core/screenName.ts';
-import { keys, lastUi, randomId, Store } from './core/store.ts';
+import { DIGEST_PREFIX, keys, lastUi, randomId, Store } from './core/store.ts';
 import type { DataStatus, ProjectConfig, Team, UiBaseline } from './core/types.ts';
 import { explainMatch, matchVersion, versionCommon, versionLinkErrors, type VersionFrame } from './core/versionMatch.ts';
 import { toUiWire, type AdminOp, type NavTarget, type ScanState, type ToMain } from './core/wire.ts';
 import { FlowController } from './flowController.ts';
-import type { Host } from './host.ts';
+import type { FingerprintReader, Host } from './host.ts';
 import { PdfController } from './pdfController.ts';
 export type { Host, FingerprintReader } from './host.ts';
 
@@ -35,6 +36,10 @@ function yielder(): () => Promise<void> {
     await new Promise<void>(resolve => setTimeout(resolve, 0));
     last = Date.now();
   };
+}
+// 다시 읽은 원본 목록에 앞서 계산한 지문·변경 근거를 이어 쓴다.
+function carried(frame: ScannedFrame, before: ScannedFrame): ScannedFrame {
+  return { ...frame, fingerprint: before.fingerprint, legacyFingerprint: before.legacyFingerprint, reason: before.reason, error: before.error };
 }
 const DATA_OPS = new Set<AdminOp['op']>(['renameCategory', 'setCategoryActive', 'setCategoryCode', 'setScreenIdPrefix', 'renumberScreenIds', 'setScreenCategory', 'setCaseRelation', 'correctRecord', 'setDataPage']);
 // 오래 걸리는 요청. 처리하는 동안 UI에 진행 표시를 띄우고 중복 조작을 막는다.
@@ -92,6 +97,8 @@ export class Controller {
   // 캔버스를 읽다가 기록과 페이지·Section(키·이름)이 다른 플립북을 찾았다. 반영(기록·Chapter)은 쓰기 순서에서 syncCanvasSections가 한다.
   private canvasSectionsPending = false;
   private scanningGui = false;
+  // 원본 노드 ID → 지금 상태의 변경 근거. 「변경 무시」와 근거 채우기 때 기록한다.
+  private digests = new Map<string, string>();
   // 새 버전 페이지 비교 결과. 전환은 이 결과의 프레임만 연결하고, 계산한 지문을 그대로 원본 목록으로 쓴다.
   // sources·common: 유사도 근거를 제안 때와 같은 규칙으로 다시 계산하는 데 쓴다.
   private version: { pageId: string; frames: VersionFrame[]; scanned: ScannedFrame[]; sources: Map<string, string[]>; common: Set<string> } | null = null;
@@ -212,8 +219,10 @@ export class Controller {
         case 'revealNode': {
           this.navSeq = msg.nav;
           const latest = () => msg.nav === this.navSeq;
+          // selectNodes로 고르면 그 선택이 화면 목록의 선택을 바꾸지 않는다.
+          if (msg.select) await this.host.selectNodes([msg.nodeId], msg.nodeId, latest);
           const ok = await this.host.reveal(msg.nodeId, latest);
-          if (latest()) this.host.post({ type: 'nav', nav: msg.nav, ok, message: ok ? '' : COPY.controller016 });
+          if (latest()) this.host.post({ type: 'nav', nav: msg.nav, ok, message: ok ? '' : msg.select ? COPY.controller141 : COPY.controller016 });
           break;
         }
         case 'refreshList':
@@ -300,6 +309,42 @@ export class Controller {
     return out;
   }
 
+  // 변경 근거를 읽을 원본: 정규화 버전이 지금과 같은 비교 기준이 있는 배포 화면. 원본 노드 ID → 화면 ID·기준 지문
+  private digestTargets(): Map<string, { screenId: string; baseline: string }> {
+    const out = new Map<string, { screenId: string; baseline: string }>();
+    for (const screen of this.store.state.screens.values()) {
+      if (!screen.source || screen.status !== 'active') continue;
+      const base = baseline(this.store.state, screen);
+      if (base?.fingerprint && (base.fpVersion ?? 1) === FINGERPRINT_VERSION) out.set(screen.source.nodeId, { screenId: screen.id, baseline: base.fingerprint });
+    }
+    return out;
+  }
+
+  // 지문과 함께 변경 근거를 읽는다. 저장된 근거는 배포 화면을 읽을 때만 꺼내고, 계산 여부는 core/changeDigest.ts의 changeDigest()가 정한다.
+  private async readFrame(reader: FingerprintReader, frame: ScannedFrame, legacy: Set<string>, targets: Map<string, { screenId: string; baseline: string }>): Promise<ScannedFrame> {
+    const target = targets.get(frame.nodeId);
+    const request: DigestRequest | undefined = target ? { baseline: target.baseline, stored: this.store.kv.get(keys.digest(target.screenId)) } : undefined;
+    const { digest, ...result } = await reader.fingerprint(frame.nodeId, legacy.has(frame.nodeId), request);
+    if (digest) this.digests.set(frame.nodeId, digest);
+    else this.digests.delete(frame.nodeId);
+    return { ...frame, ...result, reason: result.reason };
+  }
+
+  // 변경사항 없음으로 확인된 화면에 근거가 없거나 기준과 맞지 않으면 지금 상태로 채운다. 판정을 바꾸지 않는 기록이라
+  // 감사 기록은 남기지 않는다(upgradeBaselines와 같다). 사용 안 함이 되었거나 없어진 화면의 근거는 지운다.
+  private recordDigests(): void {
+    for (const e of classify(this.store.state, this.frames)) {
+      const nodeId = e.frame?.nodeId;
+      const digest = nodeId ? this.digests.get(nodeId) : undefined;
+      if (!e.screenId || e.estimate !== 'unchanged' || !digest || digestFingerprint(digest) !== e.frame!.fingerprint) continue;
+      this.store.kv.set(keys.digest(e.screenId), digest);
+      this.digests.delete(nodeId!);
+    }
+    for (const key of this.store.kv.keys()) {
+      if (key.startsWith(DIGEST_PREFIX) && this.store.state.screens.get(key.slice(DIGEST_PREFIX.length))?.status !== 'active') this.store.kv.set(key, '');
+    }
+  }
+
   private scanStatus(team: Team, status: ScanState, done = 0, total = 0) {
     if (team === 'GUI') this.scanningGui = status === 'loading' || status === 'comparing';
     this.host.post({
@@ -318,6 +363,7 @@ export class Controller {
     this.partialAt = null;
     this.store.reload();
     const legacy = this.legacySources();
+    const targets = this.digestTargets();
     const reader = this.host.createFingerprintReader?.() ?? this.host;
     const { scopePageIds, scopeSectionIds } = this.store.state.project;
     this.scanStatus('GUI', 'loading');
@@ -326,16 +372,17 @@ export class Controller {
     catch (e) { if (seq !== this.scanSeq) return; this.scanStatus('GUI', 'failed'); throw e; }
     if (seq !== this.scanSeq) return;
     this.frames = frames;
+    this.digests.clear();
     this.framesLoaded = true;
     this.postEntries();
     this.scanStatus('GUI', 'comparing', 0, frames.length);
     let lastListPost = Date.now();
     const pause = yielder();
     for (let i = 0; i < frames.length; i++) {
-      const result = await reader.fingerprint(frames[i].nodeId, legacy.has(frames[i].nodeId));
+      const frame = await this.readFrame(reader, frames[i], legacy, targets);
       await pause();
       if (seq !== this.scanSeq) return;
-      this.frames[i] = { ...frames[i], ...result };
+      this.frames[i] = frame;
       if ((i + 1) % PROGRESS_STEP === 0 && i < frames.length - 1) {
         if (Date.now() - lastListPost >= 100) { this.postEntries(); lastListPost = Date.now(); }
         this.scanStatus('GUI', 'comparing', i + 1, frames.length);
@@ -343,6 +390,7 @@ export class Controller {
     }
     this.checkedAt = this.store.now();
     this.upgradeBaselines();
+    this.recordDigests();
     this.postEntries();
     this.scanStatus('GUI', 'done', frames.length, frames.length);
   }
@@ -444,6 +492,7 @@ export class Controller {
     this.selectedScan.GUI = true;
     this.store.reload();
     const legacy = this.legacySources();
+    const targets = this.digestTargets();
     const reader = this.host.createFingerprintReader?.() ?? this.host;
     const keys = new Set(entryKeys);
     const wanted = new Set([
@@ -459,25 +508,26 @@ export class Controller {
     const known = new Map(this.frames.map(f => [f.nodeId, f]));
     this.frames = frames.map(f => {
       const before = known.get(f.nodeId);
-      return before && !wanted.has(f.nodeId) ? { ...f, fingerprint: before.fingerprint, legacyFingerprint: before.legacyFingerprint, error: before.error } : f;
+      return before && !wanted.has(f.nodeId) ? carried(f, before) : f;
     });
     this.framesLoaded = true;
     this.postEntries();
-    const targets = this.frames.map((f, i) => (wanted.has(f.nodeId) ? i : -1)).filter(i => i >= 0);
-    this.scanStatus('GUI', 'comparing', 0, targets.length);
+    const indexes = this.frames.map((f, i) => (wanted.has(f.nodeId) ? i : -1)).filter(i => i >= 0);
+    this.scanStatus('GUI', 'comparing', 0, indexes.length);
     const pause = yielder();
-    for (const [n, i] of targets.entries()) {
-      const result = await reader.fingerprint(this.frames[i].nodeId, legacy.has(this.frames[i].nodeId));
+    for (const [n, i] of indexes.entries()) {
+      const frame = await this.readFrame(reader, this.frames[i], legacy, targets);
       await pause();
       if (seq !== this.scanSeq) return;
-      this.frames[i] = { ...this.frames[i], ...result };
-      if ((n + 1) % PROGRESS_STEP === 0 && n < targets.length - 1) this.scanStatus('GUI', 'comparing', n + 1, targets.length);
+      this.frames[i] = frame;
+      if ((n + 1) % PROGRESS_STEP === 0 && n < indexes.length - 1) this.scanStatus('GUI', 'comparing', n + 1, indexes.length);
     }
     this.partialAt = this.store.now();
     this.selectedScan.GUI = false;
     this.upgradeBaselines();
+    this.recordDigests();
     this.postEntries();
-    this.scanStatus('GUI', 'done', targets.length, targets.length);
+    this.scanStatus('GUI', 'done', indexes.length, indexes.length);
   }
 
   // 선택 화면 확인(UI): 플립북 목록은 다시 읽고 고른 플립북의 UI 작성 영역만 비교한다. GUI 갱신은 전체 확인에서 반영한다.
@@ -699,7 +749,7 @@ export class Controller {
         const known = new Map(this.frames.map(frame => [frame.nodeId, frame]));
         this.frames = frames.map(frame => {
           const before = known.get(frame.nodeId);
-          return before ? { ...frame, fingerprint: before.fingerprint, legacyFingerprint: before.legacyFingerprint, error: before.error } : frame;
+          return before ? carried(frame, before) : frame;
         });
         this.framesLoaded = true;
         this.postEntries();
@@ -866,12 +916,13 @@ export class Controller {
       // 아직 지문을 계산하지 못한 포함 항목은 지금 계산한다.
       const entriesByNode = new Map(this.entries.filter(e => e.frame).map(e => [e.frame!.nodeId, e]));
       const legacy = this.legacySources();
+      const targets = this.digestTargets();
       const reader = this.host.createFingerprintReader?.() ?? this.host;
       for (let i = 0; i < this.frames.length; i++) {
         const f = this.frames[i];
         const entry = entriesByNode.get(f.nodeId);
         if (f.fingerprint === null && !f.error && entry && drafts[entry.key]?.included && !drafts[entry.key]?.notScreen && !drafts[entry.key]?.unpublish)
-          this.frames[i] = { ...f, ...await reader.fingerprint(f.nodeId, legacy.has(f.nodeId)) };
+          this.frames[i] = await this.readFrame(reader, f, legacy, targets);
       }
       this.entries = classify(this.store.state, this.frames);
       entries = this.entries;
@@ -891,11 +942,14 @@ export class Controller {
     // 신규·변경 GUI는 확정 직전 썸네일을 만든다. 썸네일을 만들지 못해도 확정하고 알린다.
     const thumbErrors: string[] = [];
     const reader = this.host.createFingerprintReader?.() ?? this.host;
+    // 확정한 지문과 같은 스냅샷으로 만든 변경 근거. 확정 뒤 새 비교 기준의 근거로 기록한다.
+    const digests = new Map<string, string>();
     for (const [i, item] of plan.items.entries()) {
       if (!item.frame) continue;
       if (item.needsThumb) await this.progress(`${COPY.controller019} ${i + 1}/${plan.items.length}`);
-      const fresh = await reader.fingerprint(item.frame.nodeId, false);
+      const fresh = await reader.fingerprint(item.frame.nodeId, false, plan.team === 'GUI' ? { always: true } : undefined);
       input.fingerprints[item.entryKey] = fresh.fingerprint;
+      if (fresh.digest) digests.set(item.entryKey, fresh.digest);
       // 확인한 내용과 같을 때만 썸네일을 만든다. 다르면 commitPlan이 충돌로 돌려준다.
       if (!item.needsThumb || fresh.fingerprint !== item.frame.fingerprint) continue;
       try { input.thumbs[item.entryKey] = await this.host.makeThumbnail(item.frame.nodeId, formatFrameName(item.code, item.name)); }
@@ -923,6 +977,12 @@ export class Controller {
     if (thumbnails.length) {
       try { await this.host.placeThumbnails?.(thumbnails); }
       catch (e) { thumbErrors.push(`${COPY.controller062} ${e instanceof Error ? e.message : String(e)}`); }
+    }
+    // 근거를 기록하지 못해도 확정에는 영향이 없다. 그 화면은 다음 확인에서 근거를 채우거나 「근거 기록 없음」으로 보인다.
+    for (const item of items) {
+      const digest = digests.get(item.entryKey);
+      if (item.team !== 'GUI' || !digest || digestFingerprint(digest) !== input.fingerprints[item.entryKey]) continue;
+      try { this.store.kv.set(keys.digest(item.screenId), digest); } catch { /* 근거만 남지 않는다 */ }
     }
     if (result.ok) {
       // 원본 프레임에는 화면 표식만 남기고 이름은 그대로 둔다. 화면 이름·Screen ID는 기록에만 둔다(2026-10-21 사용자 결정).
@@ -978,6 +1038,11 @@ export class Controller {
       const why = ignoreBlock(this.store.state, entry);
       if (why || !entry.screenId || !entry.frame?.fingerprint) { blocked.push(`${entry.frame?.name ?? entry.key}: ${why ?? ''}`); continue; }
       acknowledgeChange(this.store, entry.screenId, entry.frame.fingerprint, this.host.actor);
+      // 변경 무시한 상태가 새 비교 기준이므로 근거도 그 상태로 바꾼다.
+      const nodeId = entry.frame.nodeId;
+      const digest = this.digests.get(nodeId);
+      if (digest && digestFingerprint(digest) === entry.frame.fingerprint) this.store.kv.set(keys.digest(entry.screenId), digest);
+      this.frames = this.frames.map(f => f.nodeId === nodeId ? { ...f, reason: undefined } : f);
       done++;
     }
     this.store.reload();

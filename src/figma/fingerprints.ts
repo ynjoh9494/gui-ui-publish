@@ -1,9 +1,10 @@
+import { changeDigest } from '../core/changeDigest.ts';
 import { COPY } from '../core/copy.ts';
 import { fingerprint, legacyFingerprint } from '../core/fingerprint.ts';
 import { screenTokens } from '../core/versionMatch.ts';
 import type { FingerprintReader } from '../host.ts';
 import { NS, uiAreaSnapshot } from './flipbook.ts';
-import { Snapshotter } from './snapshot.ts';
+import { Snapshotter, attachNames } from './snapshot.ts';
 
 function pageOf(node: BaseNode): PageNode | null {
   let current: BaseNode | null = node;
@@ -11,18 +12,25 @@ function pageOf(node: BaseNode): PageNode | null {
   return current as PageNode | null;
 }
 
+// 근거를 만들지 못해도 지문 비교는 그대로 쓴다. 그 화면은 「근거 기록 없음」으로 보인다.
+function explained(...args: Parameters<typeof changeDigest>): ReturnType<typeof changeDigest> {
+  try { return changeDigest(...args); } catch { return {}; }
+}
+
 // 스캔·배포 한 번의 변수 조회 캐시를 공유하고(GUI 화면과 플립북 UI 영역 모두), 구형 비교 기준이 있는 화면만 두 번째 해시를 계산한다.
 export function createFingerprintReader(sceneNode: (nodeId: string) => Promise<SceneNode | null>): FingerprintReader {
   const snapshotter = new Snapshotter();
   return {
-    async fingerprint(nodeId, includeLegacy = true) {
+    async fingerprint(nodeId, includeLegacy = true, digest) {
       try {
         const node = await sceneNode(nodeId);
         if (!node) return { fingerprint: null, error: COPY.figmaHost005 };
         const snapshot = await snapshotter.snapshot(node);
+        const fp = fingerprint(snapshot);
         return {
-          fingerprint: fingerprint(snapshot),
+          fingerprint: fp,
           ...(includeLegacy ? { legacyFingerprint: legacyFingerprint(snapshot) } : {}),
+          ...explained(fp, digest, () => attachNames(node, snapshot)),
           error: null,
         };
       } catch (e) {

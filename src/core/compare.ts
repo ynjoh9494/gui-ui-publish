@@ -1,3 +1,4 @@
+import type { ChangeReason } from './changeDigest.ts';
 import { COPY } from './copy.ts';
 import { FINGERPRINT_VERSION, LEGACY_FINGERPRINT_VERSION } from './fingerprint.ts';
 import { excludedNodeIds } from './registry.ts';
@@ -18,6 +19,8 @@ export interface ScannedFrame {
   fingerprint: string | null;
   // 1 규칙 지문. 1 규칙으로 저장한 비교 기준과 비교한다.
   legacyFingerprint?: string | null;
+  // 비교 기준과 지문이 다를 때 어느 레이어의 어떤 속성 묶음이 다른지(core/changeDigest.ts)
+  reason?: ChangeReason;
   error: string | null;
 }
 

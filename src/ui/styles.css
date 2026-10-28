@@ -136,6 +136,13 @@ select { appearance: none; -webkit-appearance: none; padding-right: 22px; backgr
 /* 변경 무시: 입력 상태 줄과 띄운다. */
 .ignore-row { margin-top: 12px; }
 .ignore-row .note { white-space: pre-line; }
+.change-reason .reason-verdict { margin: 2px 0 6px; font-weight: 600; }
+.change-reason .reason-group { margin: 4px 0; }
+.change-reason .reason-head { margin: 0; }
+.change-reason .reason-layers { margin: 2px 0 0; padding-left: 14px; }
+.change-reason .reason-layers li { margin: 1px 0; overflow-wrap: anywhere; }
+.change-reason .reason-layers button.link { text-align: left; }
+.change-reason .reason-note { color: var(--muted); }
 .exclude-row { display: flex; gap: 4px; margin: 4px 0 8px; }
 .add-worker { margin: -2px 0 6px; }
 .validation { margin: 4px 0; padding: 5px 6px; background: var(--bg2); border-radius: 6px; }

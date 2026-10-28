@@ -2,7 +2,8 @@ import type { NodeSnapshot } from '../core/fingerprint.ts';
 
 // 결과 화면에 영향을 주는 속성. 노드 유형에 없는 속성은 undefined로 건너뛴다.
 // 오토 레이아웃 설정은 하위 노드의 x·y·크기에 결과가 반영되므로 따로 넣지 않는다.
-const VISUAL = [
+// 속성을 더하면 core/changeDigest.ts의 묶음 표에도 넣는다.
+export const VISUAL = [
   'visible', 'opacity', 'blendMode', 'isMask', 'maskType', 'x', 'y', 'width', 'height', 'rotation',
   'fills', 'strokes', 'strokeWeight', 'strokeTopWeight', 'strokeBottomWeight', 'strokeLeftWeight', 'strokeRightWeight',
   'strokeAlign', 'strokeCap', 'strokeJoin', 'strokeMiterLimit', 'dashPattern', 'effects',
@@ -10,12 +11,12 @@ const VISUAL = [
   'clipsContent', 'arcData', 'pointCount', 'innerRadius', 'booleanOperation', 'vectorPaths', 'handleMirroring',
 ] as const;
 
-const TEXT = [
+export const TEXT = [
   'characters', 'textAlignHorizontal', 'textAlignVertical', 'textAutoResize', 'textTruncation', 'maxLines',
   'paragraphSpacing', 'paragraphIndent', 'listSpacing', 'leadingTrim', 'hangingPunctuation', 'hangingList',
 ] as const;
 
-const TEXT_SEGMENT = [
+export const TEXT_SEGMENT = [
   'fontName', 'fontSize', 'fontWeight', 'fills', 'letterSpacing', 'lineHeight', 'textDecoration', 'textCase',
   'listOptions', 'indentation', 'openTypeFeatures',
 ] as const;
@@ -82,4 +83,13 @@ export class Snapshotter {
     const children = 'children' in node ? await Promise.all(node.children.map(child => this.snapshot(child))) : undefined;
     return { type: node.type, props, children };
   }
+}
+
+// 변경 근거를 만들 때만 레이어 이름·ID를 붙인다. 지문 계산 경로에서는 읽지 않아 평소 비교 비용이 늘지 않는다.
+// 스냅샷의 하위 목록은 노드의 하위 목록과 같은 순서다(숨긴 노드는 하위를 읽지 않았다).
+export function attachNames(node: SceneNode, snapshot: NodeSnapshot): NodeSnapshot {
+  snapshot.name = node.name;
+  snapshot.id = node.id;
+  if (snapshot.children && 'children' in node) snapshot.children.forEach((child, i) => { if (node.children[i]) attachNames(node.children[i], child); });
+  return snapshot;
 }

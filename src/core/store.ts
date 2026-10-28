@@ -30,7 +30,10 @@ export const keys = {
   flow: (id: string) => `flw:${id}`,
   audit: (id: string) => `aud:${id}`,
   dataStatus: 'data',
+  // 화면의 변경 근거(core/changeDigest.ts). 비교 기준 하나만 덮어쓰며 State에 넣지 않는다.
+  digest: (screenId: string) => `${DIGEST_PREFIX}${screenId}`,
 };
+export const DIGEST_PREFIX = 'fpd:';
 
 export interface State {
   project: ProjectConfig;
@@ -140,6 +143,8 @@ export class Store {
     const raws = new Map<string, string>();
     let changed = false;
     for (const key of this.kv.keys()) {
+      // 변경 근거는 변경 감지된 화면을 설명할 때만 읽는다. 자주 부르는 reload에서 화면 수만큼 읽지 않는다.
+      if (key.startsWith(DIGEST_PREFIX)) continue;
       const raw = this.kv.get(key);
       if (!raw) continue;
       raws.set(key, raw);

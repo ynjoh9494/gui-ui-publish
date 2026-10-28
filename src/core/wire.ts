@@ -149,7 +149,8 @@ export type ToMain =
   | { type: 'versionDetail'; pageId: string; screenId: string; nodeId: string }
   // 프레임 미리보기 이미지(새 버전 페이지의 기존 원본·새 프레임 비교)
   | { type: 'framePreviews'; nodeIds: string[] }
-  | { type: 'revealNode'; nav: number; nodeId: string }
+  // select: 캔버스에서 그 노드를 선택까지 한다(변경 근거의 레이어).
+  | { type: 'revealNode'; nav: number; nodeId: string; select?: boolean }
   // 텍스트 편집: 캔버스에서 고른 텍스트 레이어 하나의 문단(본문·목록 단계·굵기)을 읽거나, 편집한 문단을 그 레이어에 쓴다.
   | { type: 'textImport' }
   // 텍스트 편집 탭이 보이는지. 보이는 동안만 캔버스 선택이 바뀔 때 대상(textTarget)을 보낸다.

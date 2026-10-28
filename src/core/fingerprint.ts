@@ -1,10 +1,13 @@
 import { sha256 } from './hash.ts';
 
 // Figma 노드에서 결과 화면에 영향을 주는 속성만 옮긴 직렬화 가능한 트리. 수집은 figma/snapshot.ts가 맡는다.
+// name·id는 변경 근거(core/changeDigest.ts)를 만들 때만 붙인다. props 밖이라 지문에 들어가지 않는다.
 export interface NodeSnapshot {
   type: string;
   props: Record<string, unknown>;
   children?: NodeSnapshot[];
+  name?: string;
+  id?: string;
 }
 
 // 정규화 규칙(무시 속성·숫자 처리, figma/snapshot.ts의 수집 속성)을 바꾸면 올린다. 다른 버전의 지문끼리는 비교하지 않는다.
@@ -41,13 +44,18 @@ export function canonical(value: unknown, geometry = false, key = ''): string {
   return JSON.stringify(String(value));
 }
 
-function strip(node: NodeSnapshot, root: boolean): unknown {
+// 지문에 넣는 속성. 변경 근거도 같은 속성을 나눠 쓰므로 지문이 다르면 근거의 어느 묶음도 다르다.
+export function comparedProps(node: NodeSnapshot, root: boolean): Record<string, unknown> {
   const props: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(node.props)) {
     if (IGNORED_EVERYWHERE.has(k) || (root && IGNORED_AT_ROOT.has(k))) continue;
     props[k] = v;
   }
-  return { t: node.type, p: props, c: (node.children ?? []).map(child => strip(child, false)) };
+  return props;
+}
+
+function strip(node: NodeSnapshot, root: boolean): unknown {
+  return { t: node.type, p: comparedProps(node, root), c: (node.children ?? []).map(child => strip(child, false)) };
 }
 
 export function fingerprint(root: NodeSnapshot): string {

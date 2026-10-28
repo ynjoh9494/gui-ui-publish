@@ -1,3 +1,4 @@
+import type { ChangeReason, DigestRequest } from './core/changeDigest.ts';
 import type { FlipbookSpot, ScannedFrame } from './core/compare.ts';
 import type { DataModel } from './core/data.ts';
 import type { FlipbookView } from './core/flipbook.ts';
@@ -12,7 +13,8 @@ import type { PageInfo, ToUi } from './core/wire.ts';
 
 // Controller가 사용하는 환경 경계. Figma 호스트와 브라우저 미리보기가 각각 구현한다.
 export interface FingerprintReader {
-  fingerprint(nodeId: string, includeLegacy?: boolean): Promise<{ fingerprint: string | null; legacyFingerprint?: string | null; error: string | null }>;
+  // digest를 주면 core/changeDigest.ts의 changeDigest()가 정한 대로 변경 근거(reason)와 기록할 근거(digest)를 함께 돌려준다.
+  fingerprint(nodeId: string, includeLegacy?: boolean, digest?: DigestRequest): Promise<{ fingerprint: string | null; legacyFingerprint?: string | null; reason?: ChangeReason; digest?: string; error: string | null }>;
   screenFeatures(nodeId: string, includeLegacy?: boolean): Promise<{ fingerprint: string | null; legacyFingerprint?: string | null; tokens: string[] | null; name?: string; error: string | null }>;
   uiFingerprint(nodeId: string): Promise<{ fingerprint: string | null; error: string | null }>;
 }

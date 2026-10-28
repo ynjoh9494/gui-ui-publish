@@ -25,6 +25,7 @@ flowchart LR
 |---|---|
 | `src/core/types.ts`, `store.ts` | 파일 기록의 타입, 키 구성, 역직렬화, 메모리 상태와 저장소 동기화 |
 | `src/core/compare.ts`, `fingerprint.ts`, `versionMatch.ts` | GUI 변경 판정, 지문 정규화, 새 버전 페이지의 화면 연결 제안 |
+| `src/core/changeDigest.ts` | 변경 근거: 스냅샷을 (레이어 이름 경로 × 속성 묶음 → 값 해시) 원소로 나눠 고정 크기 IBLT와 묶음별 요약값으로 저장하고, 현재 화면과 빼서 다른 레이어·묶음과 「보이는 값은 같음」(화면 기준 짝 해시) 판정을 풀어냄. 근거를 만들지 정하는 `changeDigest()` |
 | `src/core/drafts.ts`, `publish.ts`, `registry.ts` | 입력 검증, GUI 배포 계획·확정, 카테고리·작업자·태그·화면 레지스트리 |
 | `src/core/flow.ts` | 플로우 계획(배포된 화면만, 가장 왼쪽·위 썸네일이 (0, 0)이 되게 당김, 잘못된·중복 화살표 제외), 썸네일마다 제 크기 자리(격자는 놓는 위치 스냅)와 다른 화면 자리를 피해 화면 사이 통로를 따르는 꺾인 화살표 경로(`routeLink`, 플러그인 판과 캔버스가 함께 씀), 조건 레이어 자리, 다시 배포된 화면이 든 플로우 고르기, 만든 플로우 목록(`flowList`) |
 | `src/core/pdf.ts` | PDF 저장 탭의 정책: 저장하는 동안 숨길 요소 이름(UI Title·Update History List), 쪽 이미지 배율(2배 JPG), 쪽 순서(캔버스 왼쪽 위 → 오른쪽 아래), 파일 이름 |
@@ -42,6 +43,7 @@ flowchart LR
 | `src/figma/flipbook.ts`, `layers.ts`, `thumbs.ts`, `data.ts` | 템플릿 복제, GUI 레이어 복사·배치, JPG 썸네일, DATA 페이지 렌더링 |
 | `src/figma/flow.ts` | 플로우 그리기(플로우·화면·Connector 모두 그룹: 화면별 Title·IMAGE·Caption, Connector 안의 Arrow·Action, 도착점에 `ARROW_EQUILATERAL`을 둔 Figma 벡터 연결선)와 다시 배포된 화면의 썸네일 채움 교체, 플로우 목록에서 누른 플로우·화면 칸 찾기(`flowNode`, 기록의 노드 ID와 `flowOf` 표식이 모두 맞을 때만). 썸네일 이미지는 썸네일 페이지를 불러와 해시로 찾음 |
 | `src/ui/app.ts`, `styles.css` | UI 상태·입력 초안·목록과 상세 렌더링 |
+| `src/ui/changeReason.ts` | GUI 상세 패널의 「변경 근거」 렌더링(묶음별 레이어, 보이는 값 판정, 레이어를 누르면 `revealNode`의 선택) |
 | `src/ui/flowView.ts` | UI Flipbook 플로우 탭의 배포 화면 목록(GUI 화면 목록과 같은 카테고리 아코디언, Section 구분 없음)과 FigJam식 판(썸네일을 격자 스냅으로 배치·이동, 확대·축소, 연결·삭제, 플로우 제목), 이력 아이콘으로 여는 「만든 플로우」 모달 |
 | `src/ui/pdfView.ts` | UI Flipbook PDF 저장 탭(선택한 프레임 수, 저장·취소 버튼)과 받은 JPG를 pdf-lib로 한 쪽에 한 장씩 넣은 PDF로 묶어 내려받기 |
 | `src/ui/html.ts` | UI의 HTML 문자열에 넣는 값의 이스케이프(`esc`). UI 모듈이 함께 쓴다 |
@@ -61,6 +63,7 @@ flowchart LR
 | `sui:{id}`, `uv:{id}:{version}`, `rv:{id}` | UI 상태·이력과 플립북 확인 완료 시점의 화면별 GUI 버전 |
 | `bat:{id}`, `dlv:{batchId}:{targetId}` | 확정 묶음과 후속 플립북 반영 상태 |
 | `cat:`, `wrk:`, `tag:`, `exc:`, `aud:`, `data` | 관리 항목, 제외, 감사 기록, DATA 렌더 상태 |
+| `fpd:{screenId}` | 화면의 변경 근거(`core/changeDigest.ts`, 약 2.6KB). 비교 기준 하나만 덮어쓰고 기준 지문을 함께 적어 맞을 때만 쓴다. `State`에 넣지 않으며 `Store.reload()`는 이 키를 읽지 않는다 |
 | `flw:{id}` | 플로우 그룹의 위치(페이지·노드)와 들어 있는 화면. 다시 배포된 화면의 썸네일을 바꾸려고 찾고 플로우 목록에 보여 주며 이력 행은 없다(만들기·삭제는 `audit:`에만 남는다). 캔버스에서 그룹이 지워졌으면 업데이트·목록 열기·이동 때 지운다. 썸네일마다의 화면·버전은 그룹 안 사각형의 `flowScreen`·`flowVersion` 표식에 둔다 |
 
 내부 화면 ID(`Screen.id`)는 플립북의 `uid`로도 쓰는 고정 식별자다. 사람이 보는 Screen ID(`Screen.code`)와 화면 이름은 별도 기록이며 GUI 원본 프레임 이름을 바꾸지 않는다. 원본 프레임의 `screenId`, 플립북 프레임의 `flipbookOf`·`flipbookNode`, GUI 복사본의 표식 등 노드 `sharedPluginData`는 기록과 캔버스를 연결한다. 다른 화면을 교체해 사용 안 함이 된 화면은 `Screen.mergedInto`에 이어받은 화면을 남기며, 캔버스에 남은 그 화면의 GUI 복사본 표식(마커 기준)과 플로우 칸 표식은 `formerUids()`로 이어받은 화면으로 읽는다. UI 창 크기만 사용자별 `figma.clientStorage`에 저장한다.
@@ -73,6 +76,7 @@ flowchart LR
 
 1. `Controller.scan()`이 설정된 GUI 페이지의 최상위 또는 Section 안 화면 루트를 `Host.listFrames()`로 모은다. 저장된 원본 연결과 비교해 신규·변경·원본 없음·비교 전 등의 목록을 만든다.
 2. `Snapshotter`가 화면에 영향을 주는 노드 속성과 변수의 해석 값을 수집한다. `core/fingerprint.ts`가 이름과 루트 캔버스 위치를 제외하고 정규화해 해시를 만든다. 구형 지문이 기준인 화면은 구형 해시도 계산해, 결과가 같을 때 새 정규화 기준으로 옮긴다.
+   배포 화면은 `Controller.readFrame()`이 저장된 근거(`fpd:`)를 함께 넘기고, 판독기가 `changeDigest()`로 정한 화면만 같은 스냅샷에 레이어 이름·ID를 붙여(`attachNames()`) 근거를 계산한다. 기준과 다르면 `ScannedFrame.reason`에 다른 레이어·묶음을 담고, 현재 상태의 근거는 「변경 무시」에 쓰려고 Controller가 노드별로 들고 있는다. 기준과 같은데 근거가 없거나 맞지 않으면 확인을 마친 뒤 `recordDigests()`가 채우고, 사용 안 함이 된 화면의 근거를 지운다. 배포 확정은 확정 지문과 같은 스냅샷의 근거를 기록한다(실패해도 확정과 별개).
 3. UI 입력 초안을 `buildPlan()`이 검증해 최종 확인용 계획을 만든다. 확정 시 `Controller.commit()`은 대상 원본 지문을 다시 계산하고 필요한 JPG 썸네일을 만든다. `commitPlan()`은 저장된 `rev`, 지문, Screen ID 충돌 등을 재검사한다.
 4. 통과한 화면마다 GUI 버전·화면 상태를 저장하고 묶음 기록을 남긴다. 일부 화면이 충돌하면 나머지만 확정하고 충돌 항목은 다시 입력할 수 있게 돌려준다. 원본 프레임에는 연결 표식만 남긴다. 배포 화면의 원본으로 다른 화면을 교체한 항목(`PlanItem.mergeFrom`)은 모든 화면을 기록한 뒤 교체에 쓴 화면을 사용 안 함으로 바꾸고 `Screen.mergedInto`를 남기며, 그 화면의 케이스·플립북(`followMergedFlipbooks()`)·플로우(`followMergedFlows()`) 기록을 교체한 화면으로 옮긴다. 배포 취소(`Plan.unpublished`)는 화면을 사용 안 함으로 바꾸고 원본 연결을 끊으며, Controller가 원본의 화면 표식을 지운다.
 5. 확정 뒤 썸네일을 캔버스에 놓고, 그 화면을 쓰는 플립북에 새 GUI 이력을 가져와 반영하고, 그 화면이 든 플로우의 썸네일 채움을 바꾼 다음(`updateFlows()`, 그룹이 없으면 `flw:` 기록 삭제) DATA 페이지를 갱신한다. 썸네일·플립북·플로우·DATA 실패는 확정 기록과 구분해 보고한다.

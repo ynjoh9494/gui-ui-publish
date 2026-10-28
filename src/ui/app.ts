@@ -6,6 +6,7 @@ import { startTutorial } from './tutorial.ts';
 import { textEditor } from './textEditor.ts';
 import { flowView } from './flowView.ts';
 import { pdfView } from './pdfView.ts';
+import { changeReasonSection } from './changeReason.ts';
 import { esc } from './html.ts';
 import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScreen, isDeletion, isPrevious, isUnpublish, mergesInto, needsLink, OPTIONAL_FIELDS, renumberAutoCodes, STATUS_LABEL, validateDraft, type Draft, type DraftIndex, type InputStatus, type Validation } from '../core/drafts.ts';
 import { formatTime, type HistoryRow } from '../core/history.ts';
@@ -1191,6 +1192,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     let html = `<div class="detail-head"><h2>${esc(name)}${multi ? ` ${COPY.uiApp046} ${chosen.length - 1}${COPY.uiApp015}` : ''}</h2><div class="validation" aria-live="polite"></div></div>`;
     if (detailLocked(t)) html += `<p class="note">${locked(t) ? COPY.uiApp176 : COPY.uiApp181}</p>`;
     if (!multi) html += entry.notes.map(n => `<p class="note">${esc(n)}</p>`).join('');
+    // 변경 근거는 「변경 무시」를 고르기 전에 본다. 한 화면을 골랐을 때만 보여 준다.
+    if (t === 'GUI' && !multi && entry.estimate === 'changed' && changeDetected(entry)) html += changeReasonSection(entry.frame?.reason);
     // 변경 감지: 배포 토글 위에 「변경 무시」. 프레임 이름·카테고리가 바뀐 화면은 무시할 수 없다.
     // 배포를 켜 수정됨·이전 버전으로 정해진 화면은 변경 상태가 해결되었으므로 누를 수 없다.
     if (t === 'GUI' && chosen.every(e => changeDetected(e))) {
@@ -2732,6 +2735,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       case 'version-review-only':
         versionHideSame = (el as HTMLInputElement).checked;
         paintVersionList();
+        break;
+      case 'reason-layer':
+        if (el.dataset.node) bridge.send({ type: 'revealNode', nav: ++navSeq, nodeId: el.dataset.node, select: true });
         break;
       case 'version-reveal':
         if (el.dataset.node) bridge.send({ type: 'revealNode', nav: ++navSeq, nodeId: el.dataset.node });

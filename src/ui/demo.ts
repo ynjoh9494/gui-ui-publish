@@ -1,7 +1,9 @@
 import { COPY } from '../core/copy.ts';
 // Figma 없이 실제 Controller와 UI를 돌리는 가짜 환경. 브라우저 미리보기와 튜토리얼의 예시 화면이 함께 쓴다.
 // core 로직은 그대로 쓰고 Figma에 닿는 부분(프레임 목록·지문·레이어 복사·캔버스 이동)만 가짜 데이터로 바꾼다.
+import { changeDigest } from '../core/changeDigest.ts';
 import type { FlipbookSpot, ScannedFrame } from '../core/compare.ts';
+import type { NodeSnapshot } from '../core/fingerprint.ts';
 import { sha256 } from '../core/hash.ts';
 import { parseRichText, type RichParagraph } from '../core/richText.ts';
 import { memoryKV, type KV } from '../core/store.ts';
@@ -62,6 +64,11 @@ export interface Demo {
 
 // 지문은 화면마다 다르고(body), 이름·노드와 관계없이 내용이 같으면 같다.
 const fakeFingerprint = (f: DemoFrame) => sha256(`${f.body}:${f.content}`);
+// 변경 근거는 가짜 원본을 제목 텍스트 레이어 하나로 보고 실제 계산(core/changeDigest.ts)을 쓴다.
+const fakeSnapshot = (f: DemoFrame): NodeSnapshot => ({
+  type: 'FRAME', name: f.name, id: f.nodeId, props: { width: 1920, height: 1080 },
+  children: [{ type: 'TEXT', name: 'Title', id: f.nodeId, props: { characters: `${f.body} ${f.content}` } }],
+});
 // 같은 화면이면 토큰 대부분이 같고, 내용(content)을 고친 만큼만 다르다.
 const fakeTokens = (f: DemoFrame) => ['g:FRAME:1920x1080', ...Array.from({ length: 10 }, (_, i) => `t:${f.body}:${i}`), `t:${f.content}`];
 const wait = (ms: number) => ms > 0 ? new Promise(resolve => setTimeout(resolve, ms)) : Promise.resolve();
@@ -127,12 +134,14 @@ export function createDemo(options: DemoOptions): Demo {
       return listed.map((f): ScannedFrame => ({ nodeId: f.nodeId, pageId: f.pageId, name: f.name, width: 1920, height: 1080, screenTag: f.tag, fingerprint: null, error: null }));
     },
     // Figma처럼 쉬지 않고 계산한다. 이벤트 루프 양보는 본체 비교 루프가 맡는다.
-    async fingerprint(nodeId) {
+    async fingerprint(nodeId, _legacy, digest) {
       const until = Date.now() + (options.fingerprintMs ?? 0);
       while (Date.now() < until) { /* 지문 계산 */ }
       if (options.instrument) document.body.dataset.previewFingerprints = String(Number(document.body.dataset.previewFingerprints ?? 0) + 1);
       const f = frames.find(x => x.nodeId === nodeId);
-      return f ? { fingerprint: fakeFingerprint(f), error: null } : { fingerprint: null, error: COPY.uiPreview015 };
+      if (!f) return { fingerprint: null, error: COPY.uiPreview015 };
+      const fingerprint = fakeFingerprint(f);
+      return { fingerprint, ...changeDigest(fingerprint, digest, () => fakeSnapshot(f)), error: null };
     },
     async screenFeatures(nodeId) {
       const f = frames.find(x => x.nodeId === nodeId);

@@ -121,7 +121,7 @@ export function figmaHost(mode: Host['mode']): Host {
     },
 
     createFingerprintReader: () => createFingerprintReader(sceneNode),
-    fingerprint: (nodeId, includeLegacy) => createFingerprintReader(sceneNode).fingerprint(nodeId, includeLegacy),
+    fingerprint: (nodeId, includeLegacy, digest) => createFingerprintReader(sceneNode).fingerprint(nodeId, includeLegacy, digest),
     screenFeatures: (nodeId, includeLegacy) => createFingerprintReader(sceneNode).screenFeatures(nodeId, includeLegacy),
 
     // 제자리에서 내보내므로 페이지·Section에서 물려받은 변수 모드도 캔버스와 같게 보인다.
