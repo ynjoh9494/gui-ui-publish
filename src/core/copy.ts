@@ -428,8 +428,6 @@ export const COPY = {
   uiApp388: '전체 보기',
   uiApp389: '개 더 보기',
   uiApp390: '숨기기',
-  uiApp391: '카테고리 순서',
-  uiApp392: '화면 목록, 카테고리 선택, UI Flipbook의 화면 선택처럼 카테고리별로 묶어 보여 주는 곳에 이 순서를 씁니다. 옮기면 바로 저장합니다.',
   // 튜토리얼 — src/ui/tutorial.ts. 단계마다 말풍선 제목·설명 순서다.
   uiTutorial001: '도움말',
   uiTutorial002: '튜토리얼 종료',

@@ -950,51 +950,53 @@ try {
     await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
     assert.deepEqual(await size(), dragged, '드래그가 끝난 뒤 움직임으로 크기가 바뀌지 않는다');
   }
-  // 관리의 카테고리 순서: 드래그하거나 Alt+↑↓로 옮기면 바로 저장하고, 화면 목록·카테고리 선택·Screen ID 코드 목록이 그 순서를 따른다(2026-10-28 사용자 요청).
+  // 카테고리 순서: 목록의 카테고리 머리를 드래그하거나 머리에서 Alt+↑↓를 누르면 바로 저장하고, 화면 목록·카테고리 선택·관리의 코드 목록이 그 순서를 따른다(2026-10-28 사용자 요청).
   {
+    const thirdKey = await app.locator('.row').nth(2).getAttribute('data-key');
     for (const name of ['홈', '검색', 'VOD']) {
       await app.locator('[data-action=begin-add][data-kind=category]').click();
       await app.locator('[data-field=newCategory]').fill(name);
       await app.locator('[data-field=newCategory]').press('Enter');
       await page.waitForFunction(n => [...document.querySelectorAll('#app [data-field=categoryId] option')].some(x => x.textContent === n), name);
     }
-    for (const [key, name] of [[firstKey, '홈'], [secondKey, '검색']]) {
-      await app.locator(`.row[data-key="${key}"]`).click();
+    for (const [key, name] of [[firstKey, '홈'], [secondKey, '검색'], [thirdKey, 'VOD']]) {
+      const row = app.locator(`.row[data-key="${key}"]`);
+      await row.click();
+      await row.locator('[data-action=include]').check();
       await app.locator('[data-field=categoryId]').selectOption({ label: name });
     }
-    // 카테고리를 고르지 않은 나머지 후보는 「미분류」에 남는다.
-    // 목록은 다음 프레임에 다시 그리므로 묶음이 바뀔 때까지 기다린 뒤 확인한다.
+    // 카테고리를 고르지 않은 나머지 후보는 「미분류」에 남는다. 목록은 다음 프레임에 다시 그리므로 묶음이 바뀔 때까지 기다린 뒤 확인한다.
     const waitGroups = async (expected, message) => {
       await page.waitForFunction(names => JSON.stringify([...document.querySelectorAll('#app .list .group-head')].map(h => h.textContent.replace(/[▾▸]/g, '').trim().split(/\s+/)[0]).filter(n => n !== '미분류')) === JSON.stringify(names), expected, { timeout: 3000 }).catch(() => {});
       const names = await app.locator('.list .group-head').evaluateAll(heads => heads.map(h => h.textContent.replace(/[▾▸]/g, '').trim().split(/\s+/)[0]).filter(n => n !== '미분류'));
       assert.deepEqual(names, expected, message);
-    };
-    await waitGroups(['홈', '검색'], '처음에는 만든 순서로 묶는다');
-    await app.locator('[data-action=settings]').click();
-    await app.locator('details[data-form=category-order] > summary').click();
-    const rows = app.locator('details[data-form=category-order] .category-order-row');
-    const order = () => rows.allInnerTexts().then(texts => texts.map(t => t.replace('⠿', '').trim()));
-    const waitOrder = async (expected, message) => {
-      await page.waitForFunction(names => JSON.stringify([...document.querySelectorAll('#app .category-order-row')].map(r => r.textContent.replace('⠿', '').trim())) === JSON.stringify(names), expected, { timeout: 3000 }).catch(() => {});
-      assert.deepEqual(await order(), expected, message);
       // 저장하는 동안(처리 중)에는 옮기지 않으므로 끝날 때까지 기다린다.
       await page.waitForFunction(() => !document.querySelector('#app').classList.contains('is-busy'));
     };
-    assert.deepEqual(await order(), ['홈', '검색', 'VOD']);
-    await rows.filter({ hasText: 'VOD' }).dragTo(rows.filter({ hasText: '홈' }), { targetPosition: { x: 20, y: 3 } });
-    await waitOrder(['VOD', '홈', '검색'], '행 위쪽 절반에 놓으면 그 앞으로 옮긴다');
-    await rows.filter({ hasText: '검색' }).focus();
+    await waitGroups(['홈', '검색', 'VOD'], '처음에는 만든 순서로 묶는다');
+    const ids = Object.fromEntries(await app.locator('.list .group[data-category]').evaluateAll(groups => groups.map(g => [g.querySelector('.group-head').textContent.replace(/[▾▸]/g, '').trim().split(/\s+/)[0], g.dataset.category])));
+    const group = name => app.locator(`.list .group[data-category="${ids[name]}"]`);
+    assert.equal(await app.locator('.list .group:not([data-category]) .group-bar[draggable]').count(), 0, '미분류는 옮기지 않는다');
+    const bar = await group('홈').locator('.group-bar').boundingBox();
+    await group('VOD').locator('.group-head').dragTo(group('홈').locator('.group-bar'), { targetPosition: { x: 60, y: 3 } });
+    await waitGroups(['VOD', '홈', '검색'], '머리 위쪽 절반에 놓으면 그 카테고리 앞으로 옮긴다');
+    await group('검색').locator('.group-head').dragTo(group('VOD').locator('.group-bar'), { targetPosition: { x: 60, y: bar.height - 3 } });
+    await waitGroups(['VOD', '검색', '홈'], '머리 아래쪽 절반에 놓으면 그 카테고리 뒤로 옮긴다');
+    await group('홈').locator('.group-head').focus();
     await page.keyboard.press('Alt+ArrowUp');
-    await waitOrder(['VOD', '검색', '홈'], 'Alt+↑로 한 칸 옮긴다');
-    assert.equal(await page.evaluate(() => document.activeElement?.textContent?.includes('검색')), true, '저장 뒤에도 옮긴 행에 포커스가 남는다');
+    await waitGroups(['VOD', '홈', '검색'], 'Alt+↑로 앞 카테고리를 넘어간다');
+    assert.equal(await page.evaluate(() => document.activeElement?.dataset.group), ids['홈'], '저장 뒤에도 옮긴 머리에 포커스가 남는다');
     await page.keyboard.press('Alt+ArrowUp');
-    await waitOrder(['검색', 'VOD', '홈'], '이어서 Alt+↑로 옮긴다');
+    await waitGroups(['홈', 'VOD', '검색'], '이어서 Alt+↑로 옮긴다');
+    await page.keyboard.press('Alt+ArrowDown');
+    await waitGroups(['VOD', '홈', '검색'], 'Alt+↓로 뒤 카테고리를 넘어간다');
     await shot('12-category-order');
-    await app.locator('details[data-form=screen-id-prefix] > summary').click();
-    assert.deepEqual(await app.locator('details[data-form=screen-id-prefix] .category-code > span').allInnerTexts(), ['검색', 'VOD', '홈'], 'Screen ID 코드 목록도 같은 순서');
+    assert.deepEqual((await app.locator('[data-field=categoryId] option').allInnerTexts()).slice(-3), ['VOD', '홈', '검색'], '카테고리 선택도 바뀐 순서');
     await app.locator('[data-action=settings]').click();
-    await waitGroups(['검색', '홈'], '화면 목록의 카테고리 묶음이 바뀐 순서를 따른다');
-    assert.deepEqual((await app.locator('[data-field=categoryId] option').allInnerTexts()).slice(-3), ['검색', 'VOD', '홈'], '카테고리 선택도 바뀐 순서');
+    assert.equal(await app.locator('details[data-form=category-order]').count(), 0, '관리에는 카테고리 순서가 없다');
+    await app.locator('details[data-form=screen-id-prefix] > summary').click();
+    assert.deepEqual(await app.locator('details[data-form=screen-id-prefix] .category-code > span').allInnerTexts(), ['VOD', '홈', '검색'], '관리의 카테고리 코드 목록도 같은 순서');
+    await app.locator('[data-action=settings]').click();
   }
   assert.deepEqual(errors, []);
   console.log('walkthrough passed');

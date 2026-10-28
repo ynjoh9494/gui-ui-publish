@@ -67,7 +67,7 @@ test('GUI 화면 목록의 카테고리 묶음은 바꾼 순서를 따른다', (
   assert.deepEqual(groups(), ['검색', '홈']);
 });
 
-test('관리에서 순서를 바꾸면 저장하고 바뀐 상태를 보낸다', async () => {
+test('순서를 바꾸면 저장하고 바뀐 상태를 보낸다', async () => {
   const kv = memoryKV({ project: JSON.stringify({ scopePageIds: ['page'], screenIdPrefix: 'STB' }) });
   const seed = new Store(kv);
   category(seed, 'home', '홈', 0);

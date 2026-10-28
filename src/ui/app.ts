@@ -904,9 +904,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const checked = all.filter(r => draftOf(t, r.entry).included).length;
     const lock = locked(t);
     allSlot.innerHTML = allInclude(checked, all.length, lock);
+    // 사용 중인 카테고리 묶음은 머리를 드래그하거나 Alt+↑↓로 옮겨 카테고리 순서를 바꾼다(2026-10-28 사용자 요청). 미분류·사용 안 함 묶음은 옮기지 않는다.
+    const movable = (key: string) => !!state!.categories.get(key)?.active;
+    // 옮긴 카테고리 머리는 다시 그린 뒤에도 포커스를 둬 Alt+↑↓로 이어서 옮길 수 있게 한다.
+    const focusedGroup = box.contains(document.activeElement) && document.activeElement!.matches('.group-head[data-group]') ? (document.activeElement as HTMLElement).dataset.group : undefined;
     box.innerHTML = model.groups.map(g => `
-      <div class="group">
-        <div class="group-bar"><input type="checkbox" data-action="include-group" data-group="${esc(g.key)}" ${g.visibleRows.length && g.visibleRows.every(r => draftOf(t, r.entry).included) ? 'checked' : ''} ${g.visibleRows.length && !lock ? '' : 'disabled'} aria-label="${esc(g.name)}${COPY.uiApp032}">
+      <div class="group"${movable(g.key) ? ` data-category="${esc(g.key)}"` : ''}>
+        <div class="group-bar"${movable(g.key) ? ` draggable="true" title="${COPY.uiApp349}"` : ''}>${movable(g.key) ? '<span class="drag-handle" aria-hidden="true">⠿</span>' : ''}<input type="checkbox" data-action="include-group" data-group="${esc(g.key)}" ${g.visibleRows.length && g.visibleRows.every(r => draftOf(t, r.entry).included) ? 'checked' : ''} ${g.visibleRows.length && !lock ? '' : 'disabled'} aria-label="${esc(g.name)}${COPY.uiApp032}">
         <button class="group-head" data-action="group" data-group="${esc(g.key)}" aria-expanded="${g.expanded}">
           <span class="caret">${g.expanded ? '▾' : '▸'}</span> ${esc(g.name)}
           <span class="count">${g.total}${COPY.uiApp033} ${g.included}</span>
@@ -924,6 +928,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
           </div>`;
         }).join('')}
       </div>`).join('');
+    if (focusedGroup) box.querySelector<HTMLElement>(`.group-head[data-group="${CSS.escape(focusedGroup)}"]`)?.focus();
     if (revealSelection) { revealSelection = false; box.querySelector<HTMLElement>('.row.selected')?.scrollIntoView({ block: 'nearest' }); }
     const master = root.querySelector<HTMLInputElement>('[data-action="include-all"]');
     if (master) master.indeterminate = checked > 0 && checked < all.length;
@@ -1768,7 +1773,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         <div class="inline"><input type="number" data-f="width" data-input="admin-gui-width" min="${GUI_WIDTH_MIN}" max="${GUI_WIDTH_MAX}" step="1" value="${s.project.guiWidth}" aria-label="${COPY.uiApp226}"><button data-action="admin-gui-width">${COPY.uiApp110}</button></div>
         <p class="note gui-width-sizes">${guiWidthSizes(s.project.guiWidth)}</p>
         <p class="note">${COPY.uiApp227} ${COPY.uiApp228}</p></section>`}
-      ${gui ? renderCategoryOrderSection(s) : ''}
       ${gui ? renderScreenIdSection(s) : ''}
       ${renderDataSection(s)}
       <section class="admin"><h3>${COPY.uiApp089}</h3>
@@ -2072,14 +2076,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     paintVersionList();
     renderVersionDetail();
     [...root.querySelectorAll<HTMLElement>('.version-row')].find(r => r.dataset.kind === versionSelected!.kind && r.dataset.id === versionSelected!.id)?.focus();
-  }
-
-  // 카테고리 순서: 드래그하거나 Alt+↑↓로 옮기면 바로 저장한다(2026-10-28 사용자 요청). 화면 목록·카테고리 선택 등이 이 순서를 따른다.
-  function renderCategoryOrderSection(s: State): string {
-    const cats = [...s.categories.values()].filter(c => c.active).sort((a, b) => a.order - b.order);
-    return `<section class="admin" data-form="category-order"><h3>${COPY.uiApp391}</h3>
-      ${cats.length ? `<div class="category-order" aria-label="${COPY.uiApp391}">${cats.map(c => `<div class="category-order-row" data-id="${esc(c.id)}" draggable="true" tabindex="0" title="${COPY.uiApp349}"><span class="drag-handle" aria-hidden="true">⠿</span><span>${esc(c.name)}</span></div>`).join('')}</div>
-      <p class="note">${COPY.uiApp349} ${COPY.uiApp392}</p>` : `<p class="note">${COPY.uiApp234}</p>`}</section>`;
   }
 
   // Screen ID 자동 입력 규칙: 플랫폼 Prefix와 카테고리별 코드(2026-10-20 사용자 요청). 저장하면 배포 화면의 ID도 바로 바꾼다.
@@ -2945,23 +2941,25 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const rect = node.getBoundingClientRect();
     return { node, uid: node.dataset.uid!, before: ev.clientY < rect.top + rect.height / 2 };
   };
-  // 관리의 카테고리 순서 바꾸기: 놓은 카테고리의 위·아래 절반에 따라 그 앞·뒤로 옮긴다.
+  // GUI 목록의 카테고리 묶음 옮기기: 묶음 머리의 위쪽 절반이면 그 묶음 앞, 아래쪽 절반이나 그 묶음의 화면 행이면 뒤에 놓는다.
   const categoryDrop = (ev: DragEvent): { node: HTMLElement; id: string; before: boolean } | null => {
     if (!draggingCategory) return null;
-    const node = (ev.target as HTMLElement).closest<HTMLElement>('.category-order-row[data-id]');
-    if (!node || node.dataset.id === draggingCategory) return null;
-    const rect = node.getBoundingClientRect();
-    return { node, id: node.dataset.id!, before: ev.clientY < rect.top + rect.height / 2 };
+    const node = (ev.target as HTMLElement).closest<HTMLElement>('.list-box .group[data-category]');
+    if (!node || node.dataset.category === draggingCategory) return null;
+    const bar = node.querySelector('.group-bar')!.getBoundingClientRect();
+    return { node, id: node.dataset.category!, before: ev.clientY < bar.top + bar.height / 2 };
   };
-  // 옮긴 순서는 바로 저장한다. 사용 안 함 카테고리의 자리는 core(reorderCategories)가 지킨다.
+  // 옮긴 순서는 바로 저장한다. Alt+↑↓는 목록에 보이는 바로 앞·뒤 묶음을 넘어간다.
+  // 목록에 없는 카테고리(화면이 없거나 걸러진 카테고리)는 서로의 순서를 지키고, 사용 안 함 카테고리의 자리는 core(reorderCategories)가 지킨다.
   function moveCategory(id: string, to: { id: string; before: boolean } | { step: -1 | 1 }) {
     if (!state || busyLabel) return;
+    const shown = [...root.querySelectorAll<HTMLElement>('.list-box .group[data-category]')].map(node => node.dataset.category!);
+    const beside = 'step' in to ? shown[shown.indexOf(id) + to.step] : to.id;
+    const before = 'step' in to ? to.step < 0 : to.before;
     const ids = [...state.categories.values()].filter(c => c.active).sort((a, b) => a.order - b.order).map(c => c.id);
-    const from = ids.indexOf(id);
-    if (from < 0) return;
     const rest = ids.filter(value => value !== id);
-    const at = 'step' in to ? Math.max(0, Math.min(rest.length, from + to.step)) : rest.indexOf(to.id) + (to.before ? 0 : 1);
-    rest.splice(at, 0, id);
+    if (!beside || rest.length === ids.length || !rest.includes(beside)) return;
+    rest.splice(rest.indexOf(beside) + (before ? 0 : 1), 0, id);
     if (rest.every((value, i) => value === ids[i])) return;
     admin({ op: 'reorderCategories', ids: rest });
   }
@@ -2976,10 +2974,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     });
   }
   root.addEventListener('dragstart', ev => {
-    const category = (ev.target as HTMLElement).closest<HTMLElement>('.category-order-row[data-id]');
+    const category = (ev.target as HTMLElement).closest<HTMLElement>('.list-box .group-bar[draggable="true"]')?.closest<HTMLElement>('.group[data-category]');
     if (category) {
       if (busyLabel) { ev.preventDefault(); return; }
-      draggingCategory = category.dataset.id!;
+      draggingCategory = category.dataset.category!;
       ev.dataTransfer?.setData('text/plain', draggingCategory);
       if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
       category.classList.add('dragging');
@@ -3094,10 +3092,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const el = ev.target as HTMLElement;
     if (bulk && ev.key === 'Escape' && !bulk.submitting) { ev.preventDefault(); bulk = null; renderBulk(); return; }
     if (newDialog && ev.key === 'Escape') { ev.preventDefault(); newDialog = null; renderNewDialog(); return; }
-    // 관리의 카테고리 순서 행: Alt+↑↓로 한 칸씩 옮긴다.
-    if (ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown') && el.matches('.category-order-row[data-id]')) {
+    // GUI 목록의 카테고리 머리: Alt+↑↓로 앞·뒤 묶음을 넘어 옮긴다.
+    if (ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown') && el.matches('.list-box .group[data-category] .group-head')) {
       ev.preventDefault();
-      moveCategory(el.dataset.id!, { step: ev.key === 'ArrowUp' ? -1 : 1 });
+      moveCategory(el.closest<HTMLElement>('.group[data-category]')!.dataset.category!, { step: ev.key === 'ArrowUp' ? -1 : 1 });
       return;
     }
     // 새 플립북 행: Enter·Space로 고르고, Alt+↑↓로 자리를 옮기며, Delete로 지운다.
@@ -3761,11 +3759,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   function renderDetailKeepingFocus() {
     const active = document.activeElement as HTMLElement | null;
     const field = active?.dataset.field;
-    // Alt+↑↓로 옮긴 카테고리 순서 행은 저장 뒤에도 그 행에 포커스를 둬 이어서 옮길 수 있게 한다.
-    const category = active?.matches('.category-order-row') ? active.dataset.id : undefined;
     renderDetail();
     if (field) (root.querySelector(`[data-field="${field}"]`) as HTMLElement | null)?.focus();
-    else if (category) root.querySelector<HTMLElement>(`.category-order-row[data-id="${CSS.escape(category)}"]`)?.focus();
   }
 
   renderBusy();
