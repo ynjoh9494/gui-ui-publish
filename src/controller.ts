@@ -83,8 +83,9 @@ export class Controller {
   private selectedScan: Record<Team, boolean> = { GUI: false, UI: false };
   private previousCanvasIds: string[] = [];
   private canvasSelectionSeq = 0;
-  // 텍스트 편집 탭이 보이는 동안만 캔버스 선택마다 대상을 찾는다(선택마다 조상·하위 트리를 읽는 작업이라 탭이 닫혀 있으면 하지 않는다).
+  // 텍스트 편집 탭이 보이는 동안 선택한 레이어가 달라질 때만 대상을 다시 찾는다.
   private textTabOpen = false;
+  private textTargetSelectionIds: string[] | null = null;
   // UI Flipbook의 독립 흐름(플로우 탭, PDF 저장 탭)은 따로 조정한다.
   private readonly flows: FlowController;
   private readonly pdf: PdfController;
@@ -132,6 +133,7 @@ export class Controller {
           if (ensureScreenIdRules(this.store, this.host.actor)) this.store.reload();
           this.host.post({ type: 'init', mode: this.host.mode, state: toUiWire(this.store.state), actor: this.host.actor, pages: this.host.pages(), issues: this.store.issues.map(i => `${i.key}: ${i.message}`) });
           this.postEntries();
+          this.textTargetSelectionIds = null;
           if (this.host.mode === 'UI' && this.textTabOpen) this.postTextTarget();
           if (this.host.mode === 'UI') this.pdf.selectionChanged();
           // UI Flipbook 목록은 프레임이 캔버스에 있는지 바로 보여 준다(연결 끊김 표시).
@@ -223,6 +225,7 @@ export class Controller {
           break;
         case 'textTab':
           this.textTabOpen = msg.open;
+          this.textTargetSelectionIds = null;
           if (msg.open && this.host.mode === 'UI') this.postTextTarget();
           break;
         case 'textImport': this.host.post({ type: 'textImported', paragraphs: this.host.readSelection() }); break;
@@ -657,20 +660,29 @@ export class Controller {
   }
 
   // 텍스트 편집 대상(2026-10-22 사용자 요청: 어느 플립북을 골랐는지 알려 준다). 플립북 표식이 있으면 기록의 제목을 쓴다.
-  private postTextTarget(): void {
+  private postTextTarget(selectionIds?: string[] | null): void {
+    const ids = selectionIds === undefined ? this.host.selectionNodeIds()?.map(node => node.nodeId) ?? null : selectionIds;
+    const previousIds = this.textTargetSelectionIds;
+    if (ids && previousIds && ids.length === previousIds.length && ids.every((id, index) => id === previousIds[index])) return;
     const target = this.host.selectionTarget?.();
     if (!target) return;
     const title = target.kind === 'description' && target.flipbookId ? this.store.state.flipbooks.get(target.flipbookId)?.title : undefined;
     this.host.post({ type: 'textTarget', target: target.kind === 'description' && title ? { ...target, name: title } : target });
+    this.textTargetSelectionIds = ids;
   }
 
   async canvasSelectionChanged(): Promise<void> {
-    if (this.host.mode === 'UI' && this.textTabOpen) this.postTextTarget();
-    if (this.host.mode === 'UI') this.pdf.selectionChanged();
     const nodes = this.host.selectionNodeIds();
-    if (nodes === null) return;
-    const canvasSeq = ++this.canvasSelectionSeq;
+    if (nodes === null) {
+      if (this.host.mode === 'UI' && this.textTabOpen) this.postTextTarget(null);
+      if (this.host.mode === 'UI') this.pdf.selectionChanged();
+      return;
+    }
     const ids = nodes.map(node => node.nodeId);
+    if (ids.length === this.previousCanvasIds.length && ids.every((id, index) => id === this.previousCanvasIds[index])) return;
+    if (this.host.mode === 'UI' && this.textTabOpen) this.postTextTarget(ids);
+    if (this.host.mode === 'UI') this.pdf.selectionChanged();
+    const canvasSeq = ++this.canvasSelectionSeq;
     const selectedIds = new Set(ids);
     const previousIds = new Set(this.previousCanvasIds);
     let entryByNode = new Map(this.entries.filter(entry => entry.frame).map(entry => [entry.frame!.nodeId, entry]));

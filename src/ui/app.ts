@@ -1314,7 +1314,21 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   }
   function thumbImg(hash: string | null, alt: string): string {
     const url = hash ? thumbUrls.get(hash) : null;
-    return url ? `<img src="${url}" alt="${esc(alt)}">` : `<span class="thumb-empty">${hash && !failedPreviews.has(hash) ? COPY.uiApp001 : COPY.uiApp195}</span>`;
+    return url ? `<img src="${url}" alt="${esc(alt)}">`
+      : `<span class="thumb-empty"${hash ? ` data-thumb-hash="${esc(hash)}" data-thumb-alt="${esc(alt)}"` : ''}>${hash && !failedPreviews.has(hash) ? COPY.uiApp001 : COPY.uiApp195}</span>`;
+  }
+  function updateDetailThumbs(hashes: string[]) {
+    const changed = new Set(hashes);
+    for (const placeholder of root.querySelectorAll<HTMLElement>('.detail .thumb-empty[data-thumb-hash]')) {
+      const hash = placeholder.dataset.thumbHash;
+      if (!hash || !changed.has(hash)) continue;
+      const url = thumbUrls.get(hash);
+      if (!url) { placeholder.textContent = COPY.uiApp195; continue; }
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = placeholder.dataset.thumbAlt ?? '';
+      placeholder.replaceWith(img);
+    }
   }
   // changed: 확인이 필요한(다시 배포된) 화면. 캡션에 빨간 점을 붙인다.
   function flipbookThumbs(flipbookId: string, changed = new Set<string>()): string {
@@ -3108,9 +3122,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
           const field = root.querySelector<HTMLInputElement>(`.detail [data-input="new-title"][data-key="${CSS.escape(n.key)}"]`);
           if (field) field.value = newTitle(n);
         } else {
-          const name = [...root.querySelectorAll<HTMLElement>('.list-box .new-row')].find(row => row.dataset.key === n.key)?.querySelector<HTMLElement>('.name');
-          if (name) name.textContent = newTitle(n);
-          deferListRebuild();
+          const row = [...root.querySelectorAll<HTMLElement>('.list-box .new-row')].find(item => item.dataset.key === n.key);
+          const title = newTitle(n);
+          const name = row?.querySelector<HTMLElement>('.name');
+          if (name) name.textContent = title;
+          row?.querySelector('[data-action="new-edit-title"]')?.setAttribute('aria-label', `${title} ${COPY.uiApp335}`);
+          row?.querySelector('[data-action="new-remove"]')?.setAttribute('aria-label', `${title} ${COPY.uiApp105}`);
         }
       }
       return;
@@ -3166,10 +3183,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       refreshAfterInput(); return;
     }
     const field = el.dataset.field;
-    if (field === 'description') { for (const selectedEntry of selectedEntries(t)) draftOf(t, selectedEntry).description = el.value; refreshAfterInput(); }
+    // GUI 설명·제외 사유는 선택 입력이며 목록 상태나 검증 결과를 바꾸지 않는다.
+    if (field === 'description') { for (const selectedEntry of selectedEntries(t)) draftOf(t, selectedEntry).description = el.value; if (t === 'UI') refreshAfterInput(); }
     else if (field === 'name') { for (const selectedEntry of selectedEntries(t)) draftOf(t, selectedEntry).name = el.value; refreshAfterInput(true); }
     else if (field === 'code') { draft.code = el.value; refreshAfterInput(true); }
-    else if (field === 'excludeReason') { for (const selectedEntry of selectedEntries(t)) draftOf(t, selectedEntry).excludeReason = el.value; refreshAfterInput(); }
+    else if (field === 'excludeReason') { for (const selectedEntry of selectedEntries(t)) draftOf(t, selectedEntry).excludeReason = el.value; }
   });
 
   // 오른쪽 새 플립북 제목: 자동 제목이 채워져 있으면 눌렀을 때 전체를 골라 바로 새로 입력하게 한다.
@@ -3390,8 +3408,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
           pendingWorker = null;
           if (found) addMode = null;
         }
-        if (tab !== 'ADMIN') { renderList(); renderFooter(); }
-        renderDetailKeepingFocus();
+        if (tab === 'ADMIN') renderDetailKeepingFocus();
+        else if (!textOpen && !flowOpen && !pdfOpen) { renderList(); renderFooter(); renderDetailKeepingFocus(); }
         break;
       }
       case 'entries': {
@@ -3428,7 +3446,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
           const draft = drafts.UI[scan.flipbookId];
           if (draft?.included && !scan.nodeId && uiEstimate(state, scan.flipbookId, previousScans.get(scan.flipbookId)) !== 'missing') draft.included = false;
         }
-        if (tab === 'UI') {
+        if (tab === 'UI' && !textOpen && !flowOpen && !pdfOpen) {
           renderList(); renderFooter();
           if (selected.UI && state && previousEstimate !== uiEstimate(state, selected.UI, uiScans.get(selected.UI))) renderDetailKeepingFocus();
           else renderValidation();
@@ -3468,6 +3486,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       case 'canvasSelection': {
         // 실행한 명령과 다른 목록의 선택으로는 화면을 바꾸지 않는다.
         if (!msg.entryKeys.length || !state || msg.team !== mode) break;
+        // 다른 하위 레이어를 골라도 목록에서 가리키는 화면이 같으면 입력 영역을 다시 만들지 않는다.
+        if (tab === msg.team && selectedNew === null && !editingTitle && !addingSection && !addMode && !editMode &&
+            !query[msg.team] && !changedOnly[msg.team] &&
+            selected[msg.team] === msg.lastKey && selection[msg.team].size === msg.entryKeys.length &&
+            msg.entryKeys.every(key => selection[msg.team].has(key))) break;
         tab = msg.team;
         if (msg.team === 'UI') { selectedNew = null; editingTitle = null; addingSection = false; }
         selection[msg.team] = new Set(msg.entryKeys);
@@ -3484,6 +3507,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
           if (group.visibleRows.some(row => selection[msg.team].has(row.entry.key))) expanded[msg.team].add(group.key);
         addMode = null;
         editMode = null;
+        if (textOpen || flowOpen || pdfOpen) break;
         renderTabs(); renderToolbar(); renderList(); renderDetail(); renderFooter();
         break;
       }
@@ -3515,7 +3539,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         // 화면 목록을 받기 전에 연 일괄 만들기는 카테고리를 모두 고른 상태로 채운다.
         if (bulk && !bulk.submitting && !bulk.categories.size) bulk.categories = new Set(bulkCandidates().map(screenCategoryKey));
         renderBulk();
-        if (tab === 'UI') { renderList(); if (currentNew()) renderDetail(); }
+        if (tab === 'UI' && !textOpen && !flowOpen && !pdfOpen) { renderList(); if (currentNew()) renderDetail(); }
         break;
       case 'reviewed':
         // 확인 완료한 플립북은 상태를 기본 「최신」으로, 코멘트를 빈 값으로 돌린다.
@@ -3595,9 +3619,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         }
         // 플립북 만들기·화면 편집 창은 마우스를 올린 미리보기만 쓰므로 다시 그리지 않는다(열린 화면 선택이 닫히지 않게).
         if (versionOpen) renderVersionDetail();
-        else if (!currentNew() && !currentEdit() && tab !== 'ADMIN') renderDetailKeepingFocus();
-        flows.thumbsLoaded();
-        showHoverThumb();
+        else if (!textOpen && !flowOpen && !pdfOpen) updateDetailThumbs(msg.items.map(item => item.hash));
+        flows.thumbsLoaded(msg.items.map(item => item.hash));
+        if (hoverThumb && msg.items.some(item => item.hash === hoverThumb?.hash)) showHoverThumb();
         break;
       case 'textImported': editor.setParagraphs(msg.paragraphs); break;
       case 'textTarget': editor.setTarget(msg.target); break;

@@ -5,6 +5,9 @@ import { COPY } from '../src/core/copy.ts';
 import { PDF_IMAGE_SCALE, pdfFileName } from '../src/core/pdf.ts';
 import { exportPdfPages, pdfSelection } from '../src/figma/pdf.ts';
 import { buildPdf } from '../src/ui/pdfView.ts';
+import { PdfController } from '../src/pdfController.ts';
+import type { Host } from '../src/host.ts';
+import type { ToUi } from '../src/core/wire.ts';
 
 class Node {
   visible = true;
@@ -51,6 +54,26 @@ function flipbook(name: string) {
 
 const setup = (selection: Node[]) => { (globalThis as any).figma = { currentPage: { name: 'Page', selection } }; };
 const progress = async () => true;
+
+test('PDF 선택 개수가 같으면 표시 갱신을 보내지 않고 탭을 다시 열면 현재 값을 보낸다', () => {
+  const posted: ToUi[] = [];
+  let selection = { frames: 1, others: 0 };
+  const host = { post: (message: ToUi) => posted.push(message), pdfSelection: () => selection } as unknown as Host;
+  const controller = new PdfController(host, async () => {}, () => {});
+  const reports = () => posted.filter((message): message is Extract<ToUi, { type: 'pdfSelection' }> => message.type === 'pdfSelection');
+  controller.setTab(true);
+  controller.selectionChanged();
+  assert.deepEqual(reports().map(message => message.selection), [{ frames: 1, others: 0 }]);
+  selection = { frames: 1, others: 0 };
+  controller.selectionChanged();
+  assert.equal(reports().length, 1);
+  selection = { frames: 2, others: 0 };
+  controller.selectionChanged();
+  assert.equal(reports().length, 2);
+  controller.setTab(false);
+  controller.setTab(true);
+  assert.equal(reports().length, 3);
+});
 
 test('PDF 저장은 고른 프레임을 왼쪽 위에서 오른쪽 아래 순서로 내보내고, 프레임이 아닌 레이어는 빼고 센다', async () => {
   const frames = [

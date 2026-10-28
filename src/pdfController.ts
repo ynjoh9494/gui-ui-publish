@@ -1,11 +1,12 @@
 import { COPY } from './core/copy.ts';
-import { pdfFileName } from './core/pdf.ts';
+import { pdfFileName, type PdfSelection } from './core/pdf.ts';
 import type { Host } from './host.ts';
 
 // PDF 저장 탭(UI Flipbook) 작업 조정. 쪽 순서·숨길 요소·배율은 core/pdf.ts, 내보내기는 Host가 맡고 PDF로 묶기는 UI가 한다.
 export class PdfController {
-  // 탭이 보이는 동안만 캔버스 선택마다 고른 프레임 수를 보낸다.
+  // 탭이 보이는 동안 선택한 프레임 수가 달라질 때만 보낸다.
   private tabOpen = false;
+  private lastSelection: PdfSelection | null = null;
   // 저장 중 취소를 눌렀다. 다음 프레임을 내보내기 전에 멈춘다.
   private cancelled = false;
   private exporting = false;
@@ -22,6 +23,7 @@ export class PdfController {
 
   setTab(open: boolean): void {
     this.tabOpen = open;
+    this.lastSelection = null;
     if (open) this.postSelection();
   }
 
@@ -56,6 +58,8 @@ export class PdfController {
 
   private postSelection(): void {
     const selection = this.host.pdfSelection?.();
-    if (selection) this.host.post({ type: 'pdfSelection', selection });
+    if (!selection || this.lastSelection?.frames === selection.frames && this.lastSelection.others === selection.others) return;
+    this.lastSelection = selection;
+    this.host.post({ type: 'pdfSelection', selection });
   }
 }

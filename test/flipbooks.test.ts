@@ -212,15 +212,53 @@ test('캔버스 선택은 실행한 명령의 목록에서만 고르고 다른 �
   assert.deepEqual(last?.entryKeys, []);
 });
 
+test('텍스트 편집 대상 표시는 같은 레이어의 입력 중 이름 변경에는 유지하고 선택 변경과 탭 재진입에 갱신한다', async () => {
+  const posted: ToUi[] = [];
+  let nodeId = 'text-a';
+  let name = '처음 이름';
+  let reads = 0;
+  const host = {
+    kv: memoryKV(), mode: 'UI', actor,
+    post: (message: ToUi) => posted.push(message), pages: () => [],
+    selectionNodeIds: () => [{ nodeId, flipbookId: null }],
+    selectionTarget: () => { reads++; return { kind: 'text', name }; },
+  } as unknown as Host;
+  const controller = new Controller(host);
+  const targets = () => posted.filter((message): message is Extract<ToUi, { type: 'textTarget' }> => message.type === 'textTarget');
+
+  await controller.handle({ type: 'textTab', open: true });
+  assert.deepEqual(targets().map(message => message.target), [{ kind: 'text', name: '처음 이름' }]);
+  name = '입력 중 바뀐 이름';
+  await controller.canvasSelectionChanged();
+  assert.equal(reads, 1, '같은 레이어를 고른 채 입력할 때 대상을 다시 읽지 않는다');
+  assert.equal(targets().length, 1);
+  const selectionMessages = () => posted.filter(message => message.type === 'canvasSelection').length;
+  assert.equal(selectionMessages(), 1);
+  await controller.canvasSelectionChanged();
+  assert.equal(selectionMessages(), 1, '같은 캔버스 선택을 반복 통지해도 목록 선택을 다시 보내지 않는다');
+
+  nodeId = 'text-b';
+  await controller.canvasSelectionChanged();
+  assert.deepEqual(targets()[targets().length - 1]?.target, { kind: 'text', name: '입력 중 바뀐 이름' });
+  assert.equal(reads, 2);
+
+  name = '탭을 다시 연 이름';
+  await controller.handle({ type: 'textTab', open: false });
+  await controller.handle({ type: 'textTab', open: true });
+  assert.deepEqual(targets()[targets().length - 1]?.target, { kind: 'text', name: '탭을 다시 연 이름' });
+  assert.equal(reads, 3);
+});
+
 test('캔버스에서 선택한 미등록 화면을 목록에 올리고 선택한 화면만 비교한다', async () => {
   const posted: ToUi[] = [];
   const fingerprinted: string[] = [];
+  let listed = 0;
   const frames = ['new-a', 'new-b'].map(nodeId => ({ nodeId, pageId: 'page', name: nodeId, width: 100, height: 100, screenTag: null, fingerprint: null, error: null }));
   const host = {
     kv: memoryKV({ project: JSON.stringify({ scopePageIds: ['page'] }) }), mode: 'GUI', actor,
     post: (message: ToUi) => posted.push(message), pages: () => [{ id: 'page', name: '원본' }],
     selectionNodeIds: () => frames.map(frame => ({ nodeId: frame.nodeId, flipbookId: null })),
-    listFrames: async () => frames,
+    listFrames: async () => { listed++; return frames; },
     fingerprint: async (nodeId: string) => { fingerprinted.push(nodeId); return { fingerprint: `fp:${nodeId}`, error: null }; },
   } as unknown as Host;
   const controller = new Controller(host);
@@ -229,6 +267,9 @@ test('캔버스에서 선택한 미등록 화면을 목록에 올리고 선택�
   await controller.canvasSelectionChanged();
   assert.deepEqual(controller.entries.map(entry => entry.key), ['node:new-a', 'node:new-b']);
   assert.deepEqual((posted.filter(message => message.type === 'canvasSelection').pop() as Extract<ToUi, { type: 'canvasSelection' }>).entryKeys, ['node:new-a', 'node:new-b']);
+  await controller.canvasSelectionChanged();
+  assert.equal(listed, 1, '같은 캔버스 선택으로 후보 프레임을 다시 읽지 않는다');
+  assert.equal(posted.filter(message => message.type === 'canvasSelection').length, 1);
   await controller.handle({ type: 'scanSelected', team: 'GUI', entryKeys: ['node:new-a', 'node:new-b'] });
   assert.deepEqual(fingerprinted, ['new-a', 'new-b']);
   assert.ok(controller.partialAt);

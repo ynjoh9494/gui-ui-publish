@@ -18,8 +18,8 @@ export interface FlowView {
   setScreens(screens: GuiScreenInfo[]): void;
   // 만든 플로우 목록(본체가 캔버스에서 지워진 플로우를 뺀 결과)
   setFlows(flows: FlowListItem[]): void;
-  // 썸네일 이미지를 받았을 때 판을 다시 그린다.
-  thumbsLoaded(): void;
+  // 판에서 쓰는 썸네일 이미지를 받았을 때만 다시 그린다.
+  thumbsLoaded(hashes: string[]): void;
   // 플로우 탭의 버튼(data-action="flow-…"). 처리했으면 true
   handle(action: string, el: HTMLElement): boolean;
 }
@@ -580,9 +580,11 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
       flowItems = next;
       paintList();
     },
-    thumbsLoaded() {
-      // 끄는 중에는 다시 그리지 않는다(놓을 때 그린다).
-      if (!drag) paintBoard();
+    thumbsLoaded(hashes) {
+      // 끄는 중에는 다시 그리지 않는다(놓을 때 그린다). 판에 없는 화면의 이미지는 영향이 없다.
+      if (!view() || drag || !cards.length) return;
+      const loaded = new Set(hashes);
+      if (cards.some(card => loaded.has(info().get(card.uid)?.thumb?.hash ?? ''))) paintBoard();
     },
     handle(action, el) {
       switch (action) {
