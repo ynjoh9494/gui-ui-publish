@@ -72,9 +72,9 @@ export interface VersionMatchView { pageId: string; links: VersionLink[]; frames
 // 목록·입력 영역 최소 너비는 styles.css의 #app grid-template-columns와 같아야 한다.
 export const PANE = { minList: 200, minDetail: 240, divider: 8 };
 export const COLLAPSED_WINDOW = { width: 200, height: 40 };
-export const WINDOW = { width: 640, height: 456, minWidth: PANE.minList + PANE.divider + PANE.minDetail, minHeight: { GUI: 370, UI: 320 }, minCompactWidth: PANE.minList };
-export function clampWindow(mode: Team, width: number, height: number, compact = false): { width: number; height: number } {
-  return { width: Math.max(compact ? WINDOW.minCompactWidth : WINDOW.minWidth, Math.round(width)), height: Math.max(WINDOW.minHeight[mode], Math.round(height)) };
+export const WINDOW = { width: 640, height: 456, minWidth: PANE.minList + PANE.divider + PANE.minDetail, minHeight: { GUI: 370, UI: 320 } };
+export function clampWindow(mode: Team, width: number, height: number): { width: number; height: number } {
+  return { width: Math.max(WINDOW.minWidth, Math.round(width)), height: Math.max(WINDOW.minHeight[mode], Math.round(height)) };
 }
 
 // GUI 붙이기에서 화면을 창 밖에 놓을 때 UI가 pluginDrop에 싣는 값. 본체는 figma.on('drop')의 dropMetadata에서 같은 값을 읽는다.
@@ -197,7 +197,7 @@ export type ToMain =
   // PDF 저장 취소. 쓰기 순서를 기다리지 않고 바로 처리해, 내보내는 중인 한 장이 끝나면 멈춘다.
   | { type: 'cancelPdf' }
   // save: 손잡이를 놓았을 때. 다음 실행 때 이 크기로 연다.
-  | { type: 'resize'; width: number; height: number; save?: boolean; collapsed?: boolean; compact?: boolean };
+  | { type: 'resize'; width: number; height: number; save?: boolean; collapsed?: boolean };
 
 export type ToUi =
   // mode: 실행한 플러그인 명령(GUI Publish·UI Flipbook)

@@ -66,10 +66,10 @@ export function figmaHost(mode: Host['mode']): Host {
     mode,
     actor: { id: user?.id ?? 'unknown', name: user?.name ?? COPY.figmaHost004 },
     post: message => figma.ui.postMessage(message),
-    resize(width, height, save, collapsed, compact) {
-      const size = collapsed ? COLLAPSED_WINDOW : clampWindow(mode, width, height, compact);
+    resize(width, height, save, collapsed) {
+      const size = collapsed ? COLLAPSED_WINDOW : clampWindow(mode, width, height);
       figma.ui.resize(size.width, size.height);
-      if (save && !collapsed && !compact) void figma.clientStorage.setAsync(WINDOW_KEY, size);
+      if (save && !collapsed) void figma.clientStorage.setAsync(WINDOW_KEY, size);
     },
     // 썸네일 페이지는 플러그인이 관리하므로 페이지 선택지에서 뺀다.
     pages: () => root.children.filter(p => p.getSharedPluginData(NS, 'role') !== 'thumbs').map(p => ({ id: p.id, name: p.name, ...(p === figma.currentPage ? { current: true } : {}) })),

@@ -198,9 +198,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   let flowOpen = false;
   // UI Flipbook의 PDF 저장 탭(2026-10-26 사용자 요청). 다른 탭과 같이 하나만 열린다.
   let pdfOpen = false;
-  // UI Flipbook의 GUI 붙이기 탭(2026-10-29 사용자 결정). 다른 탭과 같이 하나만 열리고, 창을 목록 너비로 접어 보여 준다.
+  // GUI 붙이기는 다른 편집 탭과 같이 하나만 열고 현재 창 크기를 유지한다.
   let pasteOpen = false;
-  let compactFrom: { width: number } | null = null;
   // 화면 목록을 캔버스에서 읽은 마지막 플립북(상세를 다시 그릴 때마다 읽지 않게)
   let followed: string | null = null;
   const listTabOpen = () => !textOpen && !flowOpen && !pdfOpen && !pasteOpen;
@@ -253,6 +252,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   const editor = textEditor(root);
   const pdf = pdfView(root);
   const flows = flowView(root, {
+    track: (uid, name) => trackList.open(uid, name),
     create: request => bridge.send({ type: 'createFlow', request }),
     thumb: hash => { requestThumbs([hash]); return thumbUrls.get(hash) || null; },
   });
@@ -330,7 +330,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     let frame = 0;
     const send = (save = false) => {
       frame = 0;
-      if (pending) bridge.send({ type: 'resize', ...pending, save, compact: !!compactFrom });
+      if (pending) bridge.send({ type: 'resize', ...pending, save });
       if (save) pending = null;
     };
     const stop = (ev: PointerEvent) => {
@@ -349,7 +349,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     handle.addEventListener('pointermove', ev => {
       if (!start) return;
       if (!(ev.buttons & 1)) { stop(ev); return; }
-      pending = clampWindow(mode, start.width + ev.screenX - start.x, start.height + ev.screenY - start.y, !!compactFrom);
+      pending = clampWindow(mode, start.width + ev.screenX - start.x, start.height + ev.screenY - start.y);
       if (!frame) frame = requestAnimationFrame(() => send());
     });
     handle.addEventListener('pointerup', stop);
@@ -580,9 +580,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   }
   function restoreEditorSize() {
     if (!sizeBeforeCreate || newFlipbooks.length || movedFlipbooks.length) return;
-    // 접어 둔 동안이면 창은 그대로 두고 펼칠 때 돌아갈 너비만 바꾼다.
-    if (compactFrom) compactFrom.width = sizeBeforeCreate.width;
-    else bridge.send({ type: 'resize', ...sizeBeforeCreate });
+    bridge.send({ type: 'resize', ...sizeBeforeCreate });
     sizeBeforeCreate = null;
   }
   function addNew(uids: string[] = [], quiet = false): boolean {
@@ -2162,23 +2160,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     pdf.render(pdfShown);
     if (pdfShown !== pdfTabSent) { pdfTabSent = pdfShown; bridge.send({ type: 'pdfTab', open: pdfShown }); }
     root.classList.toggle('admin-mode', tab === 'ADMIN');
-    applyCollapse();
-  }
-
-  // GUI 붙이기에서만 창을 목록 너비로 줄인다. 전체 창 접기는 windowCollapse가 별도로 처리한다.
-  // GUI 붙이기 탭은 늘 접어 보여 주고, 다른 탭으로 가면 그 탭의 접힘·펼침으로 돌아간다(2026-10-29 사용자 결정).
-  function applyCollapse() {
-    const want = tab !== 'ADMIN' && team() === 'UI' && pasteOpen;
-    if (want && !compactFrom) {
-      // 다른 탭에서는 목록이 숨어 있으므로 격자 첫 열(목록) 너비를 읽는다.
-      const listWidth = parseFloat(getComputedStyle(root).gridTemplateColumns) || $('.list').getBoundingClientRect().width;
-      compactFrom = { width: root.offsetWidth };
-      bridge.send({ type: 'resize', width: listWidth, height: root.offsetHeight, compact: true });
-    } else if (!want && compactFrom) {
-      bridge.send({ type: 'resize', width: compactFrom.width, height: root.offsetHeight });
-      compactFrom = null;
-    }
-    root.classList.toggle('detail-collapsed', want);
   }
 
   // 입력 중에는 입력란을 다시 그리지 않아 포커스를 유지한다.
@@ -2397,14 +2378,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     if (!el) return;
     const action = el.dataset.action!;
     if ((busyLabel || pdfBusy) && !WHILE_BUSY.has(action)) return;
-    if (action.startsWith('flow-') && flows.handle(action)) return;
+    if (action.startsWith('flow-') && flows.handle(action, el)) return;
     if (action.startsWith('paste-') && paste.handle(action, el)) return;
     if (action.startsWith('track-') && trackList.handle(action, el)) return;
     const t = team();
     if (locked(t) && !BEFORE_CHECK.has(action)) { ev.preventDefault(); return; }
     switch (action) {
       case 'tutorial':
-        startTutorial({ mode, actor: actor ?? { id: '', name: '' }, root, startApp, resize: (width, height) => bridge.send({ type: 'resize', width, height, compact: root.classList.contains('detail-collapsed') }) });
+        startTutorial({ mode, actor: actor ?? { id: '', name: '' }, root, startApp, resize: (width, height) => bridge.send({ type: 'resize', width, height }) });
         break;
       case 'settings':
         closeVersion(false);
@@ -2847,8 +2828,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     if (!box) { box = document.createElement('div'); box.className = 'thumb-hover'; root.appendChild(box); }
     const hash = hoverThumb.hash;
     const rect = root.getBoundingClientRect();
-    // 플로우 탭은 작은 카드 위에서 보므로 미리보기를 작게 띄운다(2026-10-23 사용자 요청).
-    box.style.width = `${Math.min(root.classList.contains('flowing-mode') ? 160 : 240, rect.width - 16)}px`;
+    box.style.width = `${Math.min(240, rect.width - 16)}px`;
     const img = document.createElement('img');
     img.alt = '';
     img.style.maxHeight = `${Math.max(80, rect.height - 24)}px`;
@@ -2865,8 +2845,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     box.replaceChildren(img);
     position();
   }
-  root.addEventListener('mouseover', ev => {
-    const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-thumb]');
+  root.addEventListener('pointerover', ev => {
+    const target = ev.target as HTMLElement;
+    const el = target.closest('button, [role="button"]') ? null : target.closest<HTMLElement>('[data-thumb]');
     const hash = el?.dataset.thumb;
     if (!hash) { if (hoverThumb) { hoverThumb = null; showHoverThumb(); } return; }
     const r = root.getBoundingClientRect();
@@ -3591,7 +3572,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       case 'trackList': trackList.set(msg.uid, msg.items); break;
       case 'guiScreens':
         createScreens = msg.screens;
-        flows.setScreens(createScreens);
+        flows.setScreens(createScreens, new Map(msg.counts));
         paste.setScreens(createScreens, new Map(msg.counts));
         // 화면 목록을 받기 전에 연 일괄 만들기는 카테고리를 모두 고른 상태로 채운다.
         if (bulk && !bulk.submitting && !bulk.categories.size) bulk.categories = new Set(bulkCandidates().map(screenCategoryKey));

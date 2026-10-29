@@ -30,7 +30,7 @@ export function windowCollapse(bridge: Bridge, root: HTMLElement, mode: () => Te
     event.stopPropagation();
     if (restore) return;
     previousFocus = document.activeElement instanceof HTMLElement && root.contains(document.activeElement) ? document.activeElement : null;
-    restore = { type: 'resize', width: root.offsetWidth, height: root.offsetHeight, compact: root.classList.contains('detail-collapsed') };
+    restore = { type: 'resize', width: root.offsetWidth, height: root.offsetHeight };
     title.textContent = mode() === 'UI' ? 'UI Flipbook' : 'GUI Publish';
     root.classList.add('window-collapsed');
     bridge.send({ type: 'resize', ...COLLAPSED_WINDOW, collapsed: true });

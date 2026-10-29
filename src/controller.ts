@@ -310,7 +310,7 @@ export class Controller {
           if (latest()) this.host.post({ type: 'nav', nav: msg.nav, ok, message: ok ? '' : COPY.controller016 });
           break;
         }
-        case 'resize': this.host.resize(msg.width, msg.height, msg.save, msg.collapsed, msg.compact); break;
+        case 'resize': this.host.resize(msg.width, msg.height, msg.save, msg.collapsed); break;
         case 'pages': this.host.post({ type: 'pages', pages: this.host.pages() }); break;
         case 'templateInfo': await this.postTemplateInfo(); break;
         // 템플릿 항목에 연결된 레이어를 캔버스에서 고르고 보여 준다. 고른 선택은 플립북 목록의 선택을 바꾸지 않는다.

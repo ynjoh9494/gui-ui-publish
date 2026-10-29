@@ -2,6 +2,7 @@ import { COPY } from '../core/copy.ts';
 import { flowArrows, flowImageSize, routeLink, sidePoint, FLOW_DEFAULT_TITLE, FLOW_LAYOUT, FLOW_SNAP, type FlowBox, type FlowCard, type FlowLink, type FlowPoint, type FlowRequest, type FlowSide } from '../core/flow.ts';
 import type { GuiScreenInfo } from '../core/guiScreens.ts';
 import { esc } from './html.ts';
+import { ALL_CATEGORIES, filterPickerScreens, screenCategories, screenPickerControls, screenPickerEmpty, screenLinkButton } from './screenPicker.ts';
 
 // 플로우 탭(2026-10-23 사용자 결정): 배포된 화면을 판에 놓고 FigJam처럼 잇는다. 텍스트 편집처럼 부가 기능이다.
 // - 판에는 카드 대신 GUI 썸네일을 캔버스와 같은 비율·크기 관계로 놓는다(2026-10-26 사용자 요청). 격자는 칸이 아니라 놓는 위치를 맞추는 스냅이다.
@@ -15,21 +16,22 @@ import { esc } from './html.ts';
 
 export interface FlowView {
   render(open: boolean): void;
-  setScreens(screens: GuiScreenInfo[]): void;
+  setScreens(screens: GuiScreenInfo[], counts: Map<string, number>): void;
   // 판에서 쓰는 썸네일 이미지를 받았을 때만 다시 그린다.
   thumbsLoaded(hashes: string[]): void;
   // 플로우 탭의 버튼(data-action="flow-…"). 처리했으면 true
-  handle(action: string): boolean;
+  handle(action: string, el: HTMLElement): boolean;
 }
 
 export interface FlowActions {
   create(request: FlowRequest): void;
+  track(uid: string, name: string): void;
   // 썸네일 이미지 주소. 아직 없으면 받아 오도록 요청하고 null(받으면 thumbsLoaded)
   thumb(hash: string): string | null;
 }
 
-// 판 배율(판 px / 캔버스 단위, 구현 기본값). 1920×1080 화면의 1/4 썸네일(480×270)이 144×81로 보이고 격자 40은 12px이다.
-const SCALE = { initial: 0.3, min: 0.1, max: 1 };
+// 판 배율(판 px / 캔버스 단위, 구현 기본값). 1920×1080 화면의 1/4 썸네일(480×270)이 216×121.5로 보이고 격자 40은 18px이다.
+const SCALE = { initial: 0.45, min: 0.1, max: 1 };
 // 칸 (0, 0)을 판 왼쪽 위에서 조금 띄운다(썸네일 위 제목 칸 자리).
 const INSET = { x: 12, y: 20 };
 // 판 배경 격자 선의 최소 간격(px). 축소해서 더 촘촘해지면 격자 두 칸마다 긋는다.
@@ -66,11 +68,13 @@ type Drag =
 
 export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
   let screens: GuiScreenInfo[] = [];
+  let counts = new Map<string, number>();
   let cards: FlowCard[] = [];
   let links: FlowLink[] = [];
   let selected: { kind: 'card' | 'link'; id: string } | null = null;
   let query = '';
-  const collapsedCategories = new Set<string>();
+  let category = ALL_CATEGORIES;
+  let layout: 'list' | 'grid' = 'list';
   let title = '';
   let seq = 0;
   let drag: Drag | null = null;
@@ -136,22 +140,21 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
     const box = view()?.querySelector<HTMLElement>('.flow-screens');
     if (!box) return;
     const all = published();
-    const q = query.trim().toLocaleLowerCase();
-    const shown = q ? all.filter(s => `${s.code} ${s.name}`.toLocaleLowerCase().includes(q)) : all;
-    if (!shown.length) { box.innerHTML = `<p class="empty">${all.length ? COPY.flow036 : COPY.flow035}</p>`; return; }
-    const grouped = new Map<string, { name: string; order: number; items: GuiScreenInfo[] }>();
-    for (const screen of shown) {
-      const key = screen.category?.id ?? '';
-      let group = grouped.get(key);
-      if (!group) { group = { name: screen.category?.name ?? COPY.coreList001, order: screen.category?.order ?? -1, items: [] }; grouped.set(key, group); }
-      group.items.push(screen);
-    }
-    const row = (s: GuiScreenInfo) => `<div class="flow-screen" data-uid="${esc(s.uid)}"${s.thumb ? ` data-thumb="${esc(s.thumb.hash)}"` : ''} title="${esc(s.name)}"><span class="id-tag">${esc(s.code)}</span><span class="label">${esc(s.name)}</span></div>`;
-    box.innerHTML = [...grouped].sort(([keyA, a], [keyB, b]) => a.order - b.order || a.name.localeCompare(b.name, 'ko') || keyA.localeCompare(keyB))
-      .map(([key, group]) => {
-        const open = !!q || !collapsedCategories.has(key);
-        return `<div class="group flow-category" data-category-key="${esc(key)}"><div class="group-bar"><button class="group-head flow-category-label" aria-expanded="${open}"><span class="caret">${open ? '▾' : '▸'}</span><span class="group-name">${esc(group.name)}</span><span class="count">${group.items.length}</span></button></div>${open ? group.items.map(row).join('') : ''}</div>`;
-      }).join('');
+    const cats = screenCategories(all);
+    if (category !== ALL_CATEGORIES && !cats.some(([key]) => key === category)) category = ALL_CATEGORIES;
+    const select = view()!.querySelector<HTMLSelectElement>('[data-flow="category"]')!;
+    select.innerHTML = [[ALL_CATEGORIES, COPY.paste009], ...cats].map(([key, name]) => `<option value="${esc(key)}"${key === category ? ' selected' : ''}>${esc(name)}</option>`).join('');
+    select.disabled = !all.length;
+    for (const button of view()!.querySelectorAll<HTMLElement>('[data-action="flow-layout"]')) button.setAttribute('aria-pressed', String(button.dataset.layout === layout));
+    box.classList.toggle('grid', layout === 'grid');
+    if (!all.length) { box.innerHTML = `<p class="empty">${COPY.flow035}</p>`; return; }
+    const shown = filterPickerScreens(all, category, query);
+    box.innerHTML = shown.length ? shown.map(s => {
+      if (layout === 'list') return `<div class="flow-screen" data-uid="${esc(s.uid)}"${s.thumb ? ` data-thumb="${esc(s.thumb.hash)}"` : ''} title="${esc(s.name)}"><span class="id-tag">${esc(s.code)}</span><span class="label">${esc(s.name)}</span>${screenLinkButton('flow', s.uid, counts.get(s.uid) ?? 0)}</div>`;
+      const url = s.thumb ? actions.thumb(s.thumb.hash) : null;
+      const image = url ? `<img src="${url}" alt="" draggable="false">` : `<span class="paste-thumb-empty">${s.thumb ? '' : COPY.flow005}</span>`;
+      return `<div class="flow-screen paste-card" data-uid="${esc(s.uid)}" title="${esc(s.name)}"><div class="paste-thumb">${image}<span class="id-tag picker-thumb-id">${esc(s.code)}</span></div><div class="paste-card-meta"><span class="label">${esc(s.name)}</span>${screenLinkButton('flow', s.uid, counts.get(s.uid) ?? 0)}</div></div>`;
+    }).join('') : screenPickerEmpty('flow', category, query);
   }
 
   // 썸네일 내용: 이미지(받는 중이면 회색), 왼쪽 위 Screen ID
@@ -310,6 +313,7 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
 
   function onPointerDown(ev: PointerEvent) {
     const target = ev.target as HTMLElement;
+    if (target.closest('[data-action]')) return;
     // 판 움직이기: 가운데 버튼, 또는 Space를 누른 채 왼쪽 버튼(Figma 캔버스와 같다)
     if (target.closest('.flow-board') && (ev.button === 1 || (ev.button === 0 && spaceDown))) {
       drag = { kind: 'pan', x: ev.clientX, y: ev.clientY, from: { ...pan } };
@@ -474,7 +478,7 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
   function build(el: HTMLElement) {
     el.innerHTML = `<section class="flow-pick">
         <div class="flow-head"><strong>${COPY.flow021}</strong></div>
-        <input class="flow-search" type="search" data-flow="query" value="${esc(query)}" placeholder="${COPY.flow022}" aria-label="${COPY.flow022}">
+        ${screenPickerControls('flow', query)}
         <div class="flow-screens"></div>
       </section>
       <section class="flow-order">
@@ -489,16 +493,13 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
       if (input.dataset.flow === 'query') { query = input.value; paintScreens(); }
       else if (input.dataset.flow === 'title') title = input.value;
     });
+    el.addEventListener('change', ev => {
+      const select = ev.target as HTMLSelectElement;
+      if (select.dataset.flow === 'category') { category = select.value; paintScreens(); }
+    });
     el.addEventListener('pointerdown', onPointerDown);
     el.addEventListener('click', ev => {
-      const categoryLabel = (ev.target as HTMLElement).closest<HTMLElement>('.flow-category-label');
-      if (categoryLabel && !query.trim()) {
-        const key = categoryLabel.closest<HTMLElement>('.flow-category')!.dataset.categoryKey!;
-        if (collapsedCategories.has(key)) collapsedCategories.delete(key);
-        else collapsedCategories.add(key);
-        paintScreens();
-        return;
-      }
+      if ((ev.target as HTMLElement).closest('[data-action]')) return;
       const screen = (ev.target as HTMLElement).closest<HTMLElement>('.flow-screen');
       if (!screen || suppressClick) return;
       place(screen.dataset.uid!, null);
@@ -530,20 +531,29 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
       root.appendChild(el);
       build(el);
     },
-    setScreens(next) {
+    setScreens(next, nextCounts) {
       screens = next;
+      counts = nextCounts;
       byUid = new Map(screens.map(s => [s.uid, s]));
       paintScreens();
       paintBoard();
     },
     thumbsLoaded(hashes) {
-      // 끄는 중에는 다시 그리지 않는다(놓을 때 그린다). 판에 없는 화면의 이미지는 영향이 없다.
-      if (!view() || drag || !cards.length) return;
+      // 끄는 중에는 다시 그리지 않는다. 그리드 목록과 판은 각각 필요한 이미지만 다시 그린다.
+      if (!view() || drag) return;
       const loaded = new Set(hashes);
+      if (layout === 'grid' && published().some(s => s.thumb && loaded.has(s.thumb.hash))) paintScreens();
       if (cards.some(card => loaded.has(info().get(card.uid)?.thumb?.hash ?? ''))) paintBoard();
     },
-    handle(action) {
+    handle(action, el) {
       switch (action) {
+        case 'flow-track': {
+          const screen = info().get(el.dataset.uid ?? '');
+          if (screen && (counts.get(screen.uid) ?? 0) > 0) actions.track(screen.uid, screen.name);
+          return true;
+        }
+        case 'flow-layout': layout = el.dataset.layout === 'grid' ? 'grid' : 'list'; paintScreens(); return true;
+        case 'flow-search-all': category = ALL_CATEGORIES; paintScreens(); return true;
         case 'flow-clear': cards = []; links = []; selected = null; paintBoard(); return true;
         case 'flow-create':
           if (cards.length >= 2) actions.create({ title, cards: cards.map(c => ({ ...c })), links: links.map(l => ({ ...l })) });

@@ -332,8 +332,8 @@ button.link.danger { color: var(--danger); }
 .review-screens small { color: var(--muted); }
 /* 썸네일 */
 .thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
-.thumbs figure { margin: 0; width: 160px; }
-.thumbs img, .thumbs .thumb-empty { display: flex; align-items: center; justify-content: center; width: 160px; height: 90px; object-fit: contain; background: #000; border-radius: 4px; color: #aaa; font-size: 11px; }
+.thumbs figure { margin: 0; width: 240px; max-width: 100%; }
+.thumbs img, .thumbs .thumb-empty { display: flex; align-items: center; justify-content: center; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: contain; background: #000; border-radius: 4px; color: #aaa; font-size: 11px; }
 .thumbs figcaption { display: flex; align-items: center; gap: 4px; margin-top: 3px; font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 /* 화면 썸네일: 왼쪽 위에 상태 태그·알림 뱃지, 캡션 오른쪽 >(누르면 추적 목록 팝업) */
 .fb-screen { cursor: pointer; }
@@ -476,7 +476,7 @@ details.prev-thumb > summary small { color: var(--muted); font-weight: 400; }
 details.prev-thumb > summary .dropdown-caret { transition: transform .15s; }
 details.prev-thumb[open] > summary .dropdown-caret { transform: rotate(180deg); }
 details.prev-thumb .thumbs { margin-top: 6px; }
-details.prev-thumb .thumbs :is(img, .thumb-empty) { width: 100%; max-width: 480px; height: auto; aspect-ratio: 16 / 9; }
+details.prev-thumb .thumbs :is(img, .thumb-empty) { width: 100%; max-width: 720px; height: auto; aspect-ratio: 16 / 9; }
 details.accordion { padding: 0; }
 details.accordion > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 0; font-size: 12px; font-weight: 600; color: var(--text); list-style: none; cursor: pointer; }
 details.accordion > summary::-webkit-details-marker { display: none; }
@@ -520,7 +520,7 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .version-detail > .empty { margin: auto; }
 .version-detail-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 .version-detail-head strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.version-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 8px 0; }
+.version-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 8px; margin: 8px 0; }
 .version-compare figure { margin: 0; min-width: 0; }
 .version-compare img, .version-compare .thumb-empty { display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #000; border-radius: 4px; color: #aaa; font-size: 11px; }
 .version-compare figcaption { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 3px; font-size: 11px; color: var(--muted); }
@@ -563,33 +563,33 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .pdf-view { grid-column: 1 / -1; grid-row: 2 / 5; min-height: 0; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .pdf-view > .note { flex: none; margin: 0; }
 /* 플로우 탭: 텍스트 편집 탭처럼 툴바 아래 영역 전체를 쓴다. 왼쪽은 배포된 화면, 오른쪽은 옅은 회색 격자 판에 흰 카드를 놓고 잇는다. */
-/* GUI 붙이기 탭: 창을 목록 너비로 접어 보여 준다(app.ts applyCollapse). 목록 보기는 썸네일을 마우스를 올렸을 때만(.thumb-hover) 띄운다. */
+/* GUI 붙이기 탭: 현재 창 크기에서 표시한다. 목록 보기는 썸네일을 마우스를 올렸을 때만(.thumb-hover) 띄운다. */
 .pasting-mode :is(.toolbar, .list, .pane-divider, .detail, .footer) { display: none; }
 .paste-view { grid-column: 1 / -1; grid-row: 2 / 5; min-height: 0; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
-.paste-bar, .paste-size { flex: none; display: flex; gap: 6px; align-items: center; }
+.paste-bar { flex: none; display: flex; gap: 6px; align-items: center; }
 .paste-bar select { flex: 1; min-width: 0; }
-.paste-size { justify-content: space-between; }
 .paste-toggle { flex: none; display: flex; gap: 2px; }
 .paste-toggle button[aria-pressed="true"] { color: var(--brand); background: var(--selected); }
 .paste-tip, .paste-hint { flex: none; margin: 0; }
 .paste-screens { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 5px; }
+.paste-search { flex: none; min-width: 0; width: 100%; }
+.paste-screens.grid > .empty, .flow-screens.grid > .empty { grid-column: 1 / -1; }
 .paste-screens .empty { margin: 0; padding: 12px; }
 .paste-screen { display: flex; align-items: center; gap: 6px; padding: 5px 8px; cursor: grab; user-select: none; }
 .paste-screen:hover, .paste-card:hover { background: var(--bg2); }
 .paste-screen .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .paste-count { flex: none; min-width: 14px; text-align: right; font-variant-numeric: tabular-nums; }
-.paste-count.none { color: var(--muted); }
-.paste-track { flex: none; padding: 2px; color: var(--muted); }
-.paste-track:hover { color: var(--text); }
+.paste-track { flex: none; display: inline-flex; align-items: center; gap: 2px; padding: 3px 5px; color: var(--muted); }
+.paste-track:hover:not(:disabled) { color: var(--text); }
 /* 추적 목록 팝업: 화면·플로우로 나누고 자리를 한 줄 경로로 보여 준다(길면 말줄임, 전체는 title). */
 .track-list-dialog h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .track-section h3 { margin: 10px 0 4px; font-size: 11px; color: var(--muted); }
 .track-section .empty { margin: 0; padding: 4px 0; }
 .track-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .track-place { display: block; width: 100%; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.paste-screens.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; padding: 6px; align-content: start; }
+.paste-screens.grid, .flow-screens.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); gap: 6px; padding: 6px; align-content: start; }
 .paste-card { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 3px; border-radius: 4px; cursor: grab; user-select: none; }
-.paste-thumb { aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 3px; background: #000; outline: 1px solid var(--border); }
+.paste-thumb { position: relative; aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 3px; background: #000; outline: 1px solid var(--border); }
 .paste-thumb img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
 .paste-thumb-empty { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; background: #dbdbdb; color: #555; font-size: 10px; text-align: center; }
 .paste-card-meta { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; }
@@ -605,7 +605,7 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .flow-search { flex: none; }
 .flow-screens { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 5px; }
 .flow-screens .group-bar { background: var(--box-bg); }
-.flow-screen { display: flex; align-items: center; gap: 6px; padding: 5px 8px 5px 21px; cursor: grab; user-select: none; }
+.flow-screen { display: flex; align-items: center; gap: 6px; padding: 5px 8px; cursor: grab; user-select: none; }
 .flow-screen:hover { background: var(--bg2); }
 .flow-screen .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .flow-screens .empty { margin: 0; padding: 12px; }
@@ -676,7 +676,14 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .window-bar button { flex: none; display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; padding: 4px; color: var(--muted); }
 .window-bar button:hover:not(:disabled) { background: transparent; color: var(--text); }
 
-/* GUI 붙이기는 목록 너비로, 창 접기는 작은 바로 표시한다. */
-#app.detail-collapsed, .tutorial-app.detail-collapsed { grid-template-columns: minmax(0, 1fr); }
-#app.detail-collapsed .pane-divider, #app.detail-collapsed .detail, .tutorial-app.detail-collapsed .pane-divider, .tutorial-app.detail-collapsed .detail { display: none; }
-.detail-collapsed .create-tabs button { padding-left: 6px; padding-right: 6px; }
+
+.flow-screen.paste-card { align-items: stretch; padding: 3px; }
+.flow-screen.paste-card .id-tag { align-self: flex-start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+
+.picker-thumb-id { position: absolute; top: 4px; left: 4px; max-width: calc(100% - 8px); overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.flow-screen:not(.paste-card) .label { flex: 1; }
+
+.paste-track .paste-count { min-width: 0; text-align: center; }
+.paste-track:not(:disabled) svg { color: var(--brand); }
+
+.paste-card-meta > .label { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

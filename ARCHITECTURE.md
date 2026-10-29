@@ -117,3 +117,5 @@ UI Flipbook의 현재 화면 흐름은 **플립북 만들기, GUI 갱신 알림,
 ## 로컬 확인
 
 `npm run check`는 타입 검사, 현재 `test/*.test.ts` 테스트, Figma·미리보기 빌드를 실행한다. `npm run walkthrough`는 브라우저 미리보기에서 주요 흐름을 조작하고, `npm run benchmark`는 Node 측 성능을 측정한다. 미리보기는 Figma API를 대체하므로 레이어 복사, 변수 모드, JPG 내보내기, 실제 큰 파일의 시간·메모리는 Figma 시험 파일에서 확인해야 한다.
+
+GUI 붙이기와 플로우 편집기의 화면 목록은 `src/ui/screenPicker.ts`에서 카테고리·검색 필터와 보기 전환 컨트롤을 공유한다. 화면 붙이기와 플로우 판 조작은 각 탭 모듈에서 처리한다.

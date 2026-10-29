@@ -66,6 +66,13 @@ const tutorial = async name => {
         inside: b.left >= box.left && b.right <= box.right && b.top >= box.top && b.bottom <= box.bottom };
     });
     assert.equal(info.missing, '0', `${name} ${step}단계 영역`);
+    const pasteTutorial = page.locator('.tutorial .paste-view');
+    if (await pasteTutorial.isVisible()) {
+      assert.ok(await pasteTutorial.locator('.paste-screen').count() > 0);
+      assert.ok(await pasteTutorial.locator('.paste-track:disabled .paste-count').count() > 0, '0개 버튼은 숫자와 함께 비활성화');
+      assert.equal(await pasteTutorial.locator('.paste-track:not(:disabled)').count(), 0, '0개 버튼은 목록을 열지 않는다');
+    }
+
     assert.ok(info.tail && info.inside, `${name} ${step}단계 말풍선 위치 ${JSON.stringify(info)}`);
     if (step === 1) await shot(`${name}-first`);
     const [, total] = info.progress.split('/').map(Number);
@@ -460,20 +467,40 @@ try {
 
   // 플로우 탭: 배포된 화면을 썸네일로 판에 놓고(격자는 위치 스냅), 썸네일 점을 끌어 다른 썸네일에 이어 플로우를 만든다(FigJam처럼).
   {
+    await app.evaluate(root => { root.style.width = '960px'; root.style.height = '800px'; });
     await app.locator('.tabs [data-action=flow-open]').click();
     const screens = app.locator('.flow-view .flow-screen');
     await screens.first().waitFor();
-    const flowCategory = app.locator('.flow-view .flow-category-label').first();
-    assert.equal(await flowCategory.locator('.group-name').innerText(), '홈', 'GUI 화면 목록과 같은 카테고리로 구분한다');
-    await flowCategory.click();
-    assert.equal(await flowCategory.getAttribute('aria-expanded'), 'false', '카테고리를 접으면 화면을 숨긴다');
-    await flowCategory.click();
-    assert.equal(await flowCategory.getAttribute('aria-expanded'), 'true', '카테고리를 다시 펼칠 수 있다');
+    const flowCategory = app.locator('.flow-view [data-flow=category]');
+    const flowSearch = app.locator('.flow-view [data-flow=query]');
+    assert.equal(await flowCategory.locator('option:checked').innerText(), '전체');
+    await flowCategory.selectOption({ label: '홈' });
+    await flowSearch.fill('없는 검색 결과');
+    assert.equal(await screens.count(), 0);
+    await app.locator('[data-action=flow-search-all]').click();
+    assert.equal(await flowCategory.locator('option:checked').innerText(), '전체');
+    assert.equal(await flowSearch.inputValue(), '없는 검색 결과');
+    assert.equal(await app.locator('[data-action=flow-search-all]').count(), 0);
+    await flowSearch.fill('  stb_ho_001  ');
+    assert.equal(await screens.count(), 1);
+    await app.locator('[data-action=flow-layout][data-layout=grid]').click();
+    await app.locator('.flow-screens .paste-thumb img').first().waitFor();
+    assert.equal(await app.locator('.flow-screens .paste-thumb .picker-thumb-id').first().innerText(), 'STB_HO_001');
+    assert.equal(await screens.first().locator('.paste-track:disabled .paste-count').innerText(), '0');
+    assert.equal(await screens.first().getAttribute('data-thumb'), null, '그리드는 마우스 오버 미리보기 없음');
+    await flowSearch.fill('');
+    await app.locator('[data-action=flow-layout][data-layout=list]').click();
     const cards = app.locator('.flow-view .flow-card');
     const links = app.locator('.flow-view .flow-link:not(.preview)');
     const create = app.locator('.flow-view [data-action=flow-create]');
     assert.equal(await app.locator('.list').isVisible(), false, '플로우 탭은 목록 대신 보인다');
     assert.ok(await screens.first().getAttribute('data-thumb'), '배포된 화면에 마우스를 올리면 썸네일을 보여 준다');
+    await screens.first().locator('.label').hover();
+    await app.locator('.thumb-hover img').waitFor();
+    assert.equal(await app.locator('.thumb-hover').evaluate(el => Math.round(el.getBoundingClientRect().width)), 240, '플로우 마우스 오버도 다른 곳과 같은 크기');
+    await screens.first().locator('.paste-track').hover();
+    assert.equal(await app.locator('.thumb-hover').count(), 0, '비활성 링크 버튼 위에서는 미리보기 닫기');
+
     await screens.nth(0).click();
     assert.equal(await create.isDisabled(), true, '화면 2개부터 만든다');
     // 이 시점에는 배포된 화면이 하나다. 같은 화면을 여러 번 놓을 수 있다.
@@ -481,12 +508,12 @@ try {
     assert.equal(await cards.count(), 2);
     assert.equal(await create.isEnabled(), true);
     const spots = await cards.evaluateAll(els => els.map(el => [el.offsetLeft, el.offsetTop]));
-    // 480×270 썸네일이 판 배율 0.3으로 144×81, 화면 간격 80은 24px이다.
-    assert.deepEqual(spots[1], [spots[0][0] + 168, spots[0][1]], '누르면 첫 빈 자리(같은 줄, 화면 간격 80 뒤)에 놓는다');
+    // 확대된 썸네일은 216×121.5이며, 좁은 판에서는 다음 줄로 놓는다.
+    assert.ok(spots[1][0] - spots[0][0] >= 252 || spots[1][1] - spots[0][1] >= 157, '확대된 썸네일도 화면 간격을 두고 겹치지 않는 빈 자리에 놓는다');
     assert.equal(await cards.nth(0).locator('.flow-card-id').innerText(), 'STB_HO_001', '썸네일 왼쪽 위에 Screen ID');
     await cards.first().locator('img').waitFor();
     assert.equal(await cards.first().getAttribute('data-thumb'), null, '판에 썸네일이 보이므로 마우스를 올린 미리보기는 띄우지 않는다');
-    assert.deepEqual(await cards.first().evaluate(el => [el.offsetWidth, el.offsetHeight]), [144, 81], '썸네일은 캔버스 크기에 판 배율을 곱한 크기');
+    assert.deepEqual(await cards.first().evaluate(el => [el.offsetWidth, el.offsetHeight]), [216, 122], '썸네일은 캔버스 크기에 확대된 기본 판 배율을 곱한 크기');
     assert.equal(await app.locator('.flow-view .flow-board').evaluate(el => getComputedStyle(el).overflow), 'hidden', '판에는 스크롤 막대가 없다');
     // 판은 Figma 캔버스처럼 움직인다: 가운데 버튼으로 끌기, 휠
     {
@@ -512,11 +539,11 @@ try {
       await page.mouse.move(back.x, back.y);
       await page.keyboard.down('Control');
       await page.mouse.wheel(0, -100);
-      await page.waitForFunction(() => document.querySelector('#app .flow-card').offsetWidth > 144);
+      await page.waitForFunction(() => document.querySelector('#app .flow-card').offsetWidth > 216);
       const zoomed = await cards.nth(0).boundingBox();
       assert.deepEqual([Math.round(zoomed.x), Math.round(zoomed.y)], [Math.round(back.x), Math.round(back.y)], '포인터 아래 자리는 그대로다');
       await page.mouse.wheel(0, 100);
-      await page.waitForFunction(() => document.querySelector('#app .flow-card').offsetWidth === 144);
+      await page.waitForFunction(() => document.querySelector('#app .flow-card').offsetWidth === 216);
       await page.keyboard.up('Control');
     }
     const drag = async (from, to) => {
@@ -539,7 +566,7 @@ try {
       await drag(from, { x: from.x + 5, y: from.y + 125 });
     }
     assert.equal(await links.count(), 1);
-    assert.deepEqual(await cards.nth(1).evaluate(el => [el.offsetLeft, el.offsetTop]), [168, 120], '끌어 놓은 자리는 격자(40 = 12px)에 맞춘다');
+    assert.deepEqual(await cards.nth(1).evaluate(el => [el.offsetLeft, el.offsetTop]), [spots[1][0], spots[1][1] + 126], '끌어 놓은 자리는 확대된 격자(40 = 18px)에 맞춘다');
     assert.ok((await links.first().getAttribute('d')).split('L').length > straight.split('L').length, '줄이 어긋나면 꺾인 화살표가 된다');
     // 화살표를 골라 Delete로 지우고 다시 잇는다.
     await app.locator('.flow-view .flow-link-hit').first().dispatchEvent('pointerdown', { button: 0, pointerId: 1, isPrimary: true });
@@ -552,7 +579,7 @@ try {
     await shot('04b-flow-tab');
     await create.click();
     await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('플로우를 만들었습니다'));
-    await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('플로우: 홈 진입 플로우') && x.textContent.includes('(0,0).right→STB_HO_001(560,400).left')));
+    await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('플로우: 홈 진입 플로우') && x.textContent.includes('(0,0).right→STB_HO_001(560,280).left')));
     // 만든 플로우는 화면별 추적 목록 팝업에서 찾는다(머리의 이력 아이콘은 없다).
     assert.equal(await app.locator('.flow-view [data-action=flow-list]').count(), 0, '플로우 탭에는 만든 플로우 목록 버튼이 없다');
     // PDF 저장 탭: 다른 탭처럼 목록 대신 열리고, 고른 프레임이 없으면 저장할 수 없다(미리보기 캔버스에는 프레임 선택이 없다).
@@ -578,28 +605,59 @@ try {
     const [download] = await Promise.all([page.waitForEvent('download'), exportButton.click()]);
     assert.match(download.suggestedFilename(), /\.pdf$/, '고른 프레임을 한 PDF로 내려받는다');
     await page.locator('#tools [data-pick-flipbooks]').click();
-    // GUI 붙이기 탭: 창을 목록 너비로 접어 보여 주고, 고른 카테고리의 배포된 화면을 누르면 고른 크기로 보고 있는 화면 가운데에 붙인다.
-    // 화면마다 붙인 수(추적 GUI와 그 화면이 든 플로우)를 보여 준다. 다른 탭으로 가면 그 탭의 접힘·펼침으로 돌아간다.
+    // GUI 붙이기 탭: 창 크기를 유지하고, 고른 카테고리의 배포된 화면을 누르면 고른 크기로 보고 있는 화면 가운데에 붙인다.
+    // 화면마다 붙인 수(추적 GUI와 그 화면이 든 플로우)를 보여 준다. 다른 탭으로 가도 창 크기를 유지한다.
     {
-      // 지금(PDF 저장 탭)은 목록이 숨어 있으므로 격자 첫 열(목록) 너비를 읽는다.
-      const listWidth = await app.evaluate(root => Math.round(parseFloat(getComputedStyle(root).gridTemplateColumns)));
+      // 탭을 오가도 현재 창 너비가 유지되는지 확인한다.
+      const pasteWindow = await app.evaluate(root => root.getBoundingClientRect().width);
       await app.locator('.tabs [data-action=paste-open]').click();
       const rows = app.locator('.paste-view .paste-screen');
       await rows.first().waitFor();
       await collapseWindow('ui-paste');
-      await page.waitForFunction(w => Math.abs(document.querySelector('#app').getBoundingClientRect().width - w) < 2, listWidth, { timeout: 3000 });
+      await page.waitForFunction(w => Math.abs(document.querySelector('#app').getBoundingClientRect().width - w) < 2, pasteWindow, { timeout: 3000 });
       assert.equal(await app.locator('.list').isVisible(), false, 'GUI 붙이기 탭은 목록 대신 보인다');
-      assert.equal(await app.locator('.paste-view [data-paste=category] option:checked').innerText(), '홈', '고른 카테고리의 화면만 보여 준다');
+      assert.equal(await app.locator('.paste-view [data-paste=category] option:checked').innerText(), '전체', '처음에는 전체 카테고리');
+      const categorySelect = app.locator('.paste-view [data-paste=category]');
+      const searchInput = app.locator('.paste-view [data-paste=search]');
+      await categorySelect.selectOption({ label: '홈' });
+      await searchInput.fill('없는 검색 결과');
+      assert.equal(await rows.count(), 0);
+      const searchAll = app.locator('[data-action=paste-search-all]');
+      assert.equal(await searchAll.innerText(), '전체 카테고리에서 검색하기');
+      await searchAll.click();
+      assert.equal(await categorySelect.locator('option:checked').innerText(), '전체');
+      assert.equal(await searchInput.inputValue(), '없는 검색 결과', '전체 검색도 검색어 유지');
+      assert.equal(await searchAll.count(), 0, '전체에서도 없으면 일반 검색 빈 상태');
+      assert.equal(await app.locator('.paste-screens .empty').innerText(), '검색 결과가 없습니다.');
+      await searchInput.fill('  stb_ho_001  ');
+      assert.equal(await rows.count(), 1, 'Screen ID 검색은 대소문자와 앞뒤 공백을 무시');
+      await searchInput.fill('홈 메인');
+      assert.equal(await rows.count(), 1, '화면 이름도 검색');
+      await searchInput.fill('');
       assert.ok(await rows.first().getAttribute('data-thumb'), '목록 보기는 마우스를 올리면 썸네일을 보여 준다');
+      await rows.first().locator('.label').hover();
+      await app.locator('.thumb-hover img').waitFor();
+      await rows.first().locator('.paste-track').hover();
+      assert.equal(await app.locator('.thumb-hover').count(), 0, '활성 링크 버튼도 미리보기를 띄우지 않는다');
+
       // 탭을 열 때 받은 화면 목록의 붙인 수: 그 화면이 든 플로우를 센다.
       await page.waitForFunction(() => document.querySelector('#app .paste-view .paste-screen .paste-count')?.textContent === '1', null, { timeout: 3000 });
-      await app.locator('.paste-view [data-action=paste-scale][data-scale="0.5"]').click();
-      assert.equal(await app.locator('.paste-view [data-action=paste-scale][data-scale="0.5"]').getAttribute('aria-pressed'), 'true');
+      assert.equal(await app.locator('.paste-view [data-action=paste-scale]').count(), 0, 'GUI 붙이기에는 크기 선택 없음');
+      assert.equal(await app.locator('.paste-tip').innerText(), 'K 단축키로 캔버스에 배치한 화면의 크기를 바꿀 수 있습니다.');
       await rows.first().click();
-      await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('GUI 붙이기: STB_HO_001 작게')));
+      await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('GUI 붙이기: STB_HO_001 기본')));
       await page.waitForFunction(() => document.querySelector('#app .paste-view .paste-screen .paste-count')?.textContent === '2');
       await app.locator('.paste-view [data-action=paste-layout][data-layout=grid]').click();
       await app.locator('.paste-view .paste-card .paste-thumb img').first().waitFor();
+      assert.equal(await app.locator('.paste-card .paste-thumb .picker-thumb-id').first().innerText(), 'STB_HO_001');
+      assert.equal(await app.locator('.paste-card .paste-track .paste-count').first().innerText(), '2');
+      const cardMeta = await app.locator('.paste-card-meta').first().evaluate(el => {
+        const label = el.querySelector('.label').getBoundingClientRect();
+        const button = el.querySelector('button').getBoundingClientRect();
+        return { sameLine: Math.abs(label.y + label.height / 2 - button.y - button.height / 2) < 1, separated: label.right <= button.left };
+      });
+      assert.deepEqual(cardMeta, { sameLine: true, separated: true }, '화면명과 링크 개수 버튼은 같은 행에서 겹치지 않는다');
+
       assert.equal(await app.locator('.paste-view .paste-card').first().getAttribute('data-thumb'), null, '그리드 보기는 썸네일이 보이므로 마우스를 올린 미리보기를 띄우지 않는다');
       await shot('04e-paste-tab');
       // 추적 목록 팝업: 화면 줄의 목록 아이콘으로 연다. 제목은 화면 이름이고, 붙인 화면과 그 화면이 든 플로우를 나눠 경로로 보여 준다.
@@ -622,7 +680,7 @@ try {
       await page.keyboard.press('Escape');
       assert.equal(await app.locator('.track-list-overlay').count(), 0, 'Esc로 팝업을 닫는다');
       await app.locator('.tabs [data-action=text-close]').click();
-      await page.waitForFunction(w => document.querySelector('#app').getBoundingClientRect().width > w + 2, listWidth, { timeout: 3000 });
+      await page.waitForFunction(w => document.querySelector('#app').getBoundingClientRect().width === w, pasteWindow, { timeout: 3000 });
     }
     assert.equal(await app.locator('.list').isVisible(), true);
   }

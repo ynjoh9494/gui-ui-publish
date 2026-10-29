@@ -146,6 +146,8 @@ try {
   await app.locator('.flow-view [data-flow=title]').fill('홈 진입 플로우');
   // 썸네일 미리보기가 판을 가리지 않게 마우스를 안내 문구로 옮긴다.
   await app.locator('.flow-view .flow-hint').hover();
+  await app.locator('[data-action=flow-layout][data-layout=grid]').click();
+  await app.locator('.flow-screens .paste-thumb img').first().waitFor();
   await shot('ui-flow');
   await app.locator('[data-action=text-close]').click();
 
