@@ -1,5 +1,5 @@
 import type {
-  Actor, AuditEntry, Batch, Category, DataStatus, Delivery, Exclusion, Flipbook, FlipbookReview, FlowRecord, GuiRecord, ImportedGuiRecord, ProjectConfig, Screen, TagDef, UiBaseline, UiRecord, UiState, Worker,
+  Actor, AuditEntry, Batch, Category, DataStatus, Delivery, Exclusion, Flipbook, FlipbookReview, FlowRecord, GuiRecord, ImportedGuiRecord, ProjectConfig, Screen, TagDef, TrackRecord, UiBaseline, UiRecord, UiState, Worker,
 } from './types.ts';
 
 // figma.root의 sharedPluginData 한 네임스페이스에 대응한다. 없는 키는 ''를 반환하고 ''를 쓰면 삭제된다.
@@ -28,6 +28,7 @@ export const keys = {
   delivery: (batchId: string, targetId: string) => `dlv:${batchId}:${targetId}`,
   exclusion: (id: string) => `exc:${id}`,
   flow: (id: string) => `flw:${id}`,
+  track: (id: string) => `trk:${id}`,
   audit: (id: string) => `aud:${id}`,
   dataStatus: 'data',
   // 화면의 변경 근거(core/changeDigest.ts). 비교 기준 하나만 덮어쓰며 State에 넣지 않는다.
@@ -54,6 +55,7 @@ export interface State {
   deliveries: Map<string, Delivery>;
   exclusions: Map<string, Exclusion>;
   flows: Map<string, FlowRecord>;
+  tracks: Map<string, TrackRecord>;
   audit: AuditEntry[];
   dataStatus: DataStatus | null;
 }
@@ -72,7 +74,7 @@ function emptyState(): State {
   return {
     project: { ...DEFAULT_PROJECT }, categories: new Map(), workers: new Map(), tags: new Map(), screens: new Map(), gui: new Map(),
     flipbooks: new Map(), imported: new Map(), uiStates: new Map(), uiBaselines: new Map(), ui: new Map(), reviews: new Map(),
-    batches: new Map(), deliveries: new Map(), exclusions: new Map(), flows: new Map(), audit: [], dataStatus: null,
+    batches: new Map(), deliveries: new Map(), exclusions: new Map(), flows: new Map(), tracks: new Map(), audit: [], dataStatus: null,
   };
 }
 
@@ -123,6 +125,7 @@ function apply(state: State, key: string, raw: string): void {
     case 'dlv': state.deliveries.set(key, value); break;
     case 'exc': state.exclusions.set(value.id, value); break;
     case 'flw': state.flows.set(value.id, value); break;
+    case 'trk': state.tracks.set(value.id, value); break;
     case 'aud': state.audit.push(value); break;
     case 'data': state.dataStatus = value; break;
   }

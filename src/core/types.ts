@@ -188,6 +188,9 @@ export interface Flipbook {
   actor: Actor;
   // 마지막으로 반영한 1x 화면 가로 크기. 이 값을 남기기 전에 반영한 플립북에는 없다.
   guiWidth?: number;
+  // 새 템플릿(연결 기록이 있는 템플릿)으로 만든 플립북. 화면 목록은 캔버스에서 이 플립북 안의 추적 GUI로 읽고(core/tracks.ts),
+  // GUI 복사본은 추적 GUI로 바뀐다(플립북 반영이 다시 놓지 않음).
+  tracked?: boolean;
 }
 
 // 플립북에 쌓은 GUI 이력 사본. 플립북을 만든 뒤 배포된 버전만 쌓는다(2026-10-19 사용자 결정).
@@ -214,6 +217,10 @@ export interface FlipbookReview { flipbookId: string; versions: Record<string, n
 
 // 플로우의 위치. GUI를 다시 배포하면 그 화면의 썸네일을 바꾸려고 찾는 데만 쓰며 이력은 남기지 않는다(2026-10-23 사용자 결정).
 // uids: 들어 있는 화면(겹치지 않게). 썸네일마다의 화면·버전은 프레임 안 이미지의 표식에 둔다.
+// 캔버스에 붙여 GUI 배포를 따라가는 화면 복사본(추적 GUI, 2026-10-29 사용자 결정). 위치를 찾아 바꾸는 데만 쓰며 이력은 남기지 않는다.
+// 노드에는 복사본 표식(guiCopy: 화면@버전)과 이 기록의 ID(trackOf)를 둔다. 캔버스에서 복제한 복사본은 같은 trackOf를 가지므로 노드 ID가 다르면 새 기록으로 받는다.
+export interface TrackRecord { id: string; uid: string; nodeId: string; pageId: string; createdAt: number; actor: Actor }
+
 export interface FlowRecord { id: string; nodeId: string; pageId: string; title: string; uids: string[]; createdAt: number; actor: Actor }
 
 export interface Exclusion { id: string; nodeId: string; name: string; reason: string; createdAt: number; active: boolean }

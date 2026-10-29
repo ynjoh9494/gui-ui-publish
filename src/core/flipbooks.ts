@@ -405,7 +405,8 @@ export function markReviewed(store: Store, requests: ReviewRequest[], actor: Act
 export function retireFlipbooks(store: Store, actor: Actor): string[] {
   const out: string[] = [];
   for (const fb of store.state.flipbooks.values()) {
-    if (fb.status !== 'active' || !fb.screens.length) continue;
+    // 새 템플릿 플립북은 화면이 모두 삭제돼도 두고 「삭제된 화면」 알림을 보여 준다(2026-10-29 사용자 결정, 플립북 목록 탭).
+    if (fb.status !== 'active' || !fb.screens.length || fb.tracked) continue;
     if (!fb.screens.every(x => store.state.screens.get(x.uid)?.status === 'deleted')) continue;
     store.put(keys.flipbook(fb.id), { ...fb, rev: fb.rev + 1, status: 'deleted' } satisfies Flipbook);
     store.audit(actor, 'flipbook.retire', fb.id, 'active', 'deleted');

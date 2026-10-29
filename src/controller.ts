@@ -21,6 +21,7 @@ import type { DataStatus, ProjectConfig, Team, UiBaseline } from './core/types.t
 import { explainMatch, matchVersion, versionCommon, versionLinkErrors, type VersionFrame } from './core/versionMatch.ts';
 import { toUiWire, type AdminOp, type NavTarget, type ScanState, type ToMain } from './core/wire.ts';
 import { FlowController } from './flowController.ts';
+import { TrackController } from './trackController.ts';
 import type { FingerprintReader, Host } from './host.ts';
 import { PdfController } from './pdfController.ts';
 export type { Host, FingerprintReader } from './host.ts';
@@ -93,6 +94,7 @@ export class Controller {
   private textTargetSelectionIds: string[] | null = null;
   // UI Flipbook의 독립 흐름(플로우 탭, PDF 저장 탭)은 따로 조정한다.
   private readonly flows: FlowController;
+  private readonly tracks: TrackController;
   private readonly pdf: PdfController;
   // 캔버스를 읽다가 기록과 페이지·Section(키·이름)이 다른 플립북을 찾았다. 반영(기록·Chapter)은 쓰기 순서에서 syncCanvasSections가 한다.
   private canvasSectionsPending = false;
@@ -110,6 +112,7 @@ export class Controller {
     this.host = host;
     this.store = new Store(host.kv);
     this.flows = new FlowController(this.store, host);
+    this.tracks = new TrackController(this.store, host);
     this.pdf = new PdfController(host, label => this.progress(label), label => this.busy(label));
   }
 
@@ -153,6 +156,13 @@ export class Controller {
             // 템플릿 페이지와 플립북 페이지는 서로 기다리지 않고 함께 불러온다.
             const [, canvas] = await Promise.all([this.checkTemplate(), this.linkFlipbooks()]);
             await this.syncCanvasSections(canvas);
+            // 새 템플릿 플립북의 화면 목록을 캔버스의 추적 GUI로 맞추고(1.1), 바뀐 플립북의 Screen ID 칸·자동 제목을 다시 반영한다.
+            const members = await this.tracks.refresh();
+            if (members.length) {
+              const report = await this.deliverFlipbooks({}, { targets: members, canvasFollowed: true });
+              if (report.failed.length) this.host.post({ type: 'error', message: deliveryMessage(report) });
+              this.postState();
+            }
           }
           break;
         case 'scan': await this.scan(); break;
@@ -1039,10 +1049,16 @@ export class Controller {
     // 삭제·화면이 아님·배포 취소로 화면이 모두 사용 안 함이 된 플립북도 사용 안 함으로 바꾼다.
     const retired = exclusions.some(item => item.screenId) || unpublished.length > 0;
     if (result.ok && plan.team === 'GUI' && (retired || items.some(item => item.workType === 'deleted'))) retireFlipbooks(this.store, this.host.actor);
+    // 사용 안 함이 된 화면(삭제·화면이 아님·배포 취소)은 추적을 멈춘다. 캔버스의 레이어는 그대로 둔다(2026-10-29 사용자 결정).
+    if (result.ok && plan.team === 'GUI') this.tracks.forget(new Set([
+      ...items.filter(i => i.workType === 'deleted').map(i => i.screenId), ...exclusions.map(i => i.screenId), ...unpublished.map(i => i.screenId),
+    ].filter((id): id is string => !!id)));
     let report: string | null = null;
     if (result.ok && items.length) {
+      const published = new Set(items.filter(i => i.workType !== 'deleted').map(i => i.screenId));
+      // 추적 GUI를 먼저 바꾸고 그때 플립북 안에 있는 화면을 맞춘 뒤 플립북에 이력을 쌓는다(배포 순간의 캔버스 기준).
       report = plan.team === 'GUI'
-        ? [(await this.pullGui(undefined, { deferData: true }))?.message, await this.flows.update(new Set(items.filter(i => i.workType !== 'deleted').map(i => i.screenId)))].filter(Boolean).join(' ') || null
+        ? [await this.tracks.publish(published), (await this.pullGui(undefined, { deferData: true }))?.message, await this.flows.update(published)].filter(Boolean).join(' ') || null
         : deliveryMessage(await this.deliverFlipbooks({ batchId }));
       await this.progress(COPY.controller005);
     }
@@ -1292,6 +1308,10 @@ export class Controller {
           if (options.create?.has(flipbookId)) view.create = true;
           const result = await this.host.syncFlipbook({ pageId: view.pageId, templateId: templateNodeId, force: options.force }, view);
           for (const d of pending) setDeliveryState(s, d.batchId, d.targetId, 'done');
+          // 새 템플릿 플립북은 화면 목록을 캔버스의 추적 GUI로 읽는다. 만들며 놓은 GUI 복사본은 추적 GUI로 기록한다.
+          const tracked = s.state.flipbooks.get(flipbookId);
+          if (result.tracked && tracked && !tracked.tracked) s.put(keys.flipbook(flipbookId), { ...tracked, rev: tracked.rev + 1, tracked: true });
+          if (result.copies?.length) await this.tracks.register(result.copies, view.pageId);
           // 반영한 1x 화면 크기를 남긴다.
           const latest = s.state.flipbooks.get(flipbookId);
           if (latest && latest.guiWidth !== view.guiWidth) s.put(keys.flipbook(flipbookId), { ...latest, rev: latest.rev + 1, guiWidth: view.guiWidth });

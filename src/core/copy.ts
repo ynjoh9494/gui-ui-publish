@@ -711,7 +711,7 @@ export const COPY = {
   controller001: '최종 확인 준비 중', // 56
   controller002: '배포 중', // 56
   controller003: '데이터 초기화 중', // 56
-  controller004: '플립북 반영 중', // 56
+  controller004: 'UI 반영 중', // 56
   controller005: 'DATA 페이지 갱신 중', // 56
   controller006: '저장 중', // 56
   controller007: '반영 대기 항목이 없습니다.', // 104
@@ -736,7 +736,7 @@ export const COPY = {
   controller026: "개를 지웠습니다.", // 368
   controller027: "플립북 반영 대기", // 409
   controller028: "건: 설정에서 플립북 템플릿을 지정하세요.", // 409
-  controller029: "플립북 반영 중", // 420
+  controller029: "UI 반영 중", // 420
   controller030: "플립북", // 512
   controller031: "개 화면 반영.", // 512
   controller032: "실패", // 513
@@ -845,6 +845,9 @@ export const COPY = {
   flow051: '닫기',
   flow052: '화면',
   flow053: '개',
+  // 추적 GUI — src/trackController.ts
+  track001: '붙인 화면',
+  track002: '개를 새 버전으로 바꿨습니다.',
   // PDF 저장 — src/ui/pdfView.ts, src/figma/pdf.ts
   pdf001: 'PDF 저장',
   pdf002: '선택한 프레임',

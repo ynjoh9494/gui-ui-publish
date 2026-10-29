@@ -24,7 +24,7 @@ export function toWire(state: State): WireState {
     project: state.project, categories: [...state.categories], workers: [...state.workers], tags: [...state.tags],
     screens: [...state.screens], gui: [...state.gui], flipbooks: [...state.flipbooks], imported: [...state.imported],
     uiStates: [...state.uiStates], uiBaselines: [...state.uiBaselines], ui: [...state.ui], reviews: [...state.reviews],
-    batches: [...state.batches], deliveries: [...state.deliveries], exclusions: [...state.exclusions], flows: [...state.flows], audit: state.audit,
+    batches: [...state.batches], deliveries: [...state.deliveries], exclusions: [...state.exclusions], flows: [...state.flows], tracks: [...state.tracks], audit: state.audit,
     dataStatus: state.dataStatus,
   };
 }
@@ -34,7 +34,7 @@ export function fromWire(w: WireState): State {
     project: w.project, categories: new Map(w.categories), workers: new Map(w.workers), tags: new Map(w.tags),
     screens: new Map(w.screens), gui: new Map(w.gui), flipbooks: new Map(w.flipbooks), imported: new Map(w.imported),
     uiStates: new Map(w.uiStates), uiBaselines: new Map(w.uiBaselines), ui: new Map(w.ui), reviews: new Map(w.reviews),
-    batches: new Map(w.batches), deliveries: new Map(w.deliveries), exclusions: new Map(w.exclusions), flows: new Map(w.flows), audit: w.audit,
+    batches: new Map(w.batches), deliveries: new Map(w.deliveries), exclusions: new Map(w.exclusions), flows: new Map(w.flows), tracks: new Map(w.tracks), audit: w.audit,
     dataStatus: w.dataStatus,
   };
 }
@@ -51,8 +51,8 @@ export function toUiWire(state: State): WireState {
     uiStates: [...state.uiStates], uiBaselines: [...state.uiBaselines],
     ui: [...state.ui].map(([id, rows]) => [id, rows.slice(-1)]), reviews: [...state.reviews],
     batches: [], deliveries: [...state.deliveries].filter(([, d]) => d.state !== 'done'),
-    // 플로우 위치는 본체만 쓴다.
-    exclusions: [...state.exclusions], flows: [], audit: state.audit.slice(-15), dataStatus: state.dataStatus,
+    // 플로우 위치는 본체만 쓴다. 추적 GUI 기록은 화면별 추적 개수를 보여 주려고 보낸다.
+    exclusions: [...state.exclusions], flows: [], tracks: [...state.tracks], audit: state.audit.slice(-15), dataStatus: state.dataStatus,
   };
 }
 

@@ -21,7 +21,7 @@ export { NS, GUI_AREA, DESCRIPTION_AREA, findPart, templateFromSelection, templa
 
 export const FLIPBOOK_KEY = 'flipbookOf';
 // 플립북 프레임이 자기 노드 ID를 적어 두는 키. 캔버스에서 복제한 프레임은 원본의 값을 그대로 가져가므로 자기 ID와 다르다.
-const NODE_KEY = 'flipbookNode';
+export const NODE_KEY = 'flipbookNode';
 const CATEGORY_KEY = 'categoryOf';
 const IMAGE_KEY = 'flipbookImage';
 const IDS_KEY = 'flipbookIds';
@@ -612,7 +612,7 @@ export async function syncGui(ns: string, area: FrameNode, gui: FlipbookGui[], s
 }
 
 // 복사본에 적어 두는 그 복사본의 크기(기본 1·작게 0.5). 같은 버전·크기면 다시 복사하지 않는다.
-const COPY_SCALE_KEY = 'flipbookCopyScale';
+export const COPY_SCALE_KEY = 'flipbookCopyScale';
 const FREE_SIGNATURE = 'free-v1';
 
 interface Rect { x: number; y: number; width: number; height: number }
@@ -640,7 +640,8 @@ function growWidth(frame: FrameNode, width: number): void {
 // 처음 놓는 자리는 GUI 영역 왼쪽 위에서 여백만큼 띄운 곳이고, 바로 앞 화면 오른쪽에 이어 놓다가 GUI 영역 오른쪽(여백 포함)을 넘으면 다음 줄로 간다.
 // 다시 반영할 때 이미 있던 화면은 사용자가 옮긴 자리에서 내용만 바꾸고(그 위 마커도 따라감), 새 화면만 이어 놓는다.
 // 복사본이 GUI 영역 아래로 넘치면 GUI 영역을, 플립북 오른쪽·아래로 넘치면 플립북을 늘린다. 줄이지는 않는다.
-export async function syncFreeGui(ns: string, frame: FrameNode, area: FrameNode, gui: FlipbookGui[], scale: FlipbookScale, notes: Set<string>, maxWidth: number): Promise<void> {
+// 플립북 위에 놓인 복사본을 돌려준다(추적 GUI로 기록한다).
+export async function syncFreeGui(ns: string, frame: FrameNode, area: FrameNode, gui: FlipbookGui[], scale: FlipbookScale, notes: Set<string>, maxWidth: number): Promise<SceneNode[]> {
   const own = (n: SceneNode) => !!n.getSharedPluginData(ns, COPY_KEY);
   const scaleOf = (g: FlipbookGui) => displayScale(g.scale ?? scale);
   const signature = JSON.stringify([FREE_SIGNATURE, maxWidth, gui.map(g => [g.key, scaleOf(g)])]);
@@ -649,7 +650,7 @@ export async function syncFreeGui(ns: string, frame: FrameNode, area: FrameNode,
   const inArea = area.children.filter(own);
   if (frame.getSharedPluginData(ns, IMAGE_KEY) === signature && !inArea.length && onFrame.length === gui.length) {
     for (const copy of onFrame) copy.locked = false;
-    return;
+    return onFrame;
   }
   const base = offsetIn(frame, area);
   const rectOf = (n: SceneNode): Rect => (n.parent?.id === frame.id ? { x: n.x, y: n.y, width: n.width, height: n.height } : { x: base.x + n.x, y: base.y + n.y, width: n.width, height: n.height });
@@ -737,6 +738,7 @@ export async function syncFreeGui(ns: string, frame: FrameNode, area: FrameNode,
   }
   if (missingFonts.size) notes.add(`${COPY.figmaFlipbook026} ${[...missingFonts].join(', ')}`);
   frame.setSharedPluginData(ns, IMAGE_KEY, missingFonts.size ? '' : signature);
+  return items.map(i => i.copy);
 }
 
 // Screen ID 칸(이름 규칙은 input-cell-id 슬롯)에 Screen ID 태그(이름 규칙은 Team / Tag=System)를 화면 순서대로 넣는다.
@@ -887,7 +889,8 @@ export async function syncChapters(ns: string, items: { pageId: string; flipbook
   }
 }
 
-export interface SyncResult { nodeId: string; notes: string[] }
+// tracked: 새 템플릿 플립북이다. copies: 이번에 만들며 플립북 위에 놓은 GUI 복사본(추적 GUI로 기록한다)
+export interface SyncResult { nodeId: string; notes: string[]; tracked: boolean; copies: { nodeId: string; key: string }[] }
 
 // 노드 ID로 찾은 플립북 프레임. 지워졌거나 다른 페이지로 옮겨졌거나 표식이 다르면 null이다.
 async function knownFrame(ns: string, nodeId: string | undefined, page: PageNode, flipbookId: string): Promise<FrameNode | null> {
@@ -946,10 +949,12 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
   // 표식 플립북의 상태 칸은 표식 템플릿에서 연결한 태그 컴포넌트로만 바꾼다(연결이 없으면 놓인 태그를 그대로 쓴다).
   if (view.status && p.status) await applyTag(p.status, p.named || kit.links ? kit.big : null, kit, view.status.tag.name, view.status.colorKey, !p.named);
   if (p.ids && kit.idTag) await syncIds(ns, p.ids, view.gui.map(g => g.code), kit.idTag, kit);
+  // 새 템플릿 플립북은 만들 때만 GUI를 놓는다. 그 뒤로는 추적 GUI라 GUI 배포가 바꾸고(figma/tracked.ts), 사용자가 캔버스에서 넣고 뺀다.
+  let copies: SceneNode[] = [];
   if (p.named) {
     const overlays = frame.children.filter(n => 'layoutPositioning' in n && n.layoutPositioning === 'ABSOLUTE');
     await syncGui(ns, p.gui, view.gui, view.scale, notes, view.guiWidth, overlays);
-  } else await syncFreeGui(ns, frame, p.gui, view.gui, view.scale, notes, view.guiWidth);
+  } else if (view.create) copies = await syncFreeGui(ns, frame, p.gui, view.gui, view.scale, notes, view.guiWidth);
   if (p.named) await syncRows(ns, p.named.history!, settings, view.rows, kit, notes);
   else if (p.list) await syncMarkedRows(ns, p.list, p.previous, settings, view.rows, kit, notes);
 
@@ -962,5 +967,5 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
     if (self && (frame.width !== before.width || frame.height !== before.height)) makeRoom(frames, self, before);
     fitSection(ns, root);
   }
-  return { nodeId: frame.id, notes: [...notes] };
+  return { nodeId: frame.id, notes: [...notes], tracked: !p.named, copies: copies.map(c => ({ nodeId: c.id, key: c.getSharedPluginData(ns, COPY_KEY) })) };
 }
