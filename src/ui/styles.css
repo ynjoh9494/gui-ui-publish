@@ -38,11 +38,12 @@ legend { color: var(--muted); padding: 0 4px; }
 .tabs { grid-column: 1 / -1; display: flex; align-items: center; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border); container-type: inline-size; }
 .tabs button { border: 0; padding: 0 6px; background: none; color: var(--muted); }
 .create-tabs { display: flex; align-items: center; gap: 2px; min-width: 0; }
-.create-tabs button { padding: 0; display: inline-flex; align-items: center; justify-content: center; gap: 0; height: 28px; flex: none; white-space: nowrap; border-radius: 6px; color: var(--text); }
+.create-tabs button { padding: 0; display: inline-flex; align-items: center; justify-content: center; gap: 0; height: 28px; flex: none; white-space: nowrap; border-radius: 6px; color: var(--muted); }
 .create-tabs button svg { flex: none; }
+.create-tabs button[aria-selected="true"] { color: var(--text); }
 .create-tabs button[aria-selected="true"], .create-tabs button:hover:not(:disabled) { background: var(--bg2); box-shadow: none; }
 .tab-icon { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; }
-.create-tabs .tab-label { display: none; padding: 0 8px 0 4px; }
+.create-tabs .tab-label { display: none; padding: 0 8px 0 0; }
 .create-tabs button[aria-selected="true"] .tab-label { display: inline; }
 .tab-tools { display: flex; align-items: center; flex: none; gap: 2px; margin-left: auto; }
 .tab-separator { width: 1px; height: 16px; background: var(--border); margin: 0 6px; }
@@ -299,7 +300,6 @@ button.link.danger { color: var(--danger); }
 .tabs .app-title { font-weight: 600; }
 .tabs .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border-radius: 6px; color: var(--muted); box-shadow: none; flex: none; }
 .tabs .icon-button[aria-pressed="true"] { color: var(--brand); background: var(--selected); }
-.tabs .help-button { color: var(--brand); }
 /* GUI 추가 설명: 배포 한 번에 하나 */
 .footer { flex-direction: column; align-items: stretch; border-top: 1px solid var(--border); }
 .batch-comment { display: block; }
