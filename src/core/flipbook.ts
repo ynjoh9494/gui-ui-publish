@@ -1,6 +1,7 @@
 import { COPY } from './copy.ts';
 import { formerUids } from './guiScreens.ts';
-import { flipbookHistoryRows } from './history.ts';
+import { flipbookHistoryRows, type HistoryRow } from './history.ts';
+import { systemTagId } from './registry.ts';
 import type { State } from './store.ts';
 import type { Flipbook, FlipbookKind, FlipbookScale, TagSnapshot, Team } from './types.ts';
 
@@ -40,7 +41,7 @@ export interface FlipbookView {
   scale: FlipbookScale;
   // 1x 화면의 가로 크기(설정). GUI 영역 폭이기도 하다.
   guiWidth: number;
-  // 상단 Status: GUI·UI 구분 없이 마지막 기록의 태그
+  // 상단 Status: GUI·UI 구분 없이 마지막 기록의 태그. 새 템플릿 플립북은 만든 뒤 받은 기록이 없으면 「작성 전」이다.
   status: FlipbookRow | null;
   // 최신순. 첫 행은 최신 영역, 나머지는 Previous 영역에 놓는다.
   rows: FlipbookRow[];
@@ -107,12 +108,29 @@ export function defaultTitle(kind: FlipbookKind, screens: { name: string }[]): s
   return screens[0].name;
 }
 
+// 플립북이 가장 최근에 받은 기록(2026-10-29 사용자 결정, PRD §4.7). 새 템플릿 플립북은 만든 뒤 받은 기록만 본다(없으면 null = 「작성 전」).
+// 이전 템플릿 플립북은 지금처럼 마지막 기록이다.
+function latestRecord(fb: Flipbook, history: HistoryRow[]): HistoryRow | null {
+  const [latest] = history;
+  return latest && (!fb.tracked || latest.committedAt >= fb.createdAt) ? latest : null;
+}
+
+// 화면 목록의 상태 태그(2026-10-29 사용자 결정, PRD §4.7): 플립북이 가장 최근에 받은 태그를 만든 화면에만 붙인다(같은 배포로 바뀐 화면이 여럿이면 모두).
+// 가장 최근 태그가 UI 상태 태그(확인 완료·작성 전)면 화면에는 붙이지 않는다. 화면 ID → 태그
+export function screenTags(state: State, flipbookId: string): Map<string, TagSnapshot> {
+  const fb = state.flipbooks.get(flipbookId);
+  const latest = fb ? latestRecord(fb, flipbookHistoryRows(state, flipbookId)) : null;
+  if (!latest || latest.team !== 'GUI') return new Map();
+  return new Map((state.imported.get(flipbookId) ?? []).filter(r => (r.batchId ?? `${r.uid}@${r.version}`) === latest.batchId).map(r => [r.uid, latest.tag]));
+}
+
 export function flipbookView(state: State, flipbookId: string): FlipbookView {
   const fb: Flipbook | undefined = state.flipbooks.get(flipbookId);
   if (!fb) throw new Error(COPY.coreFlipbook002);
   const offset = state.project.utcOffsetMinutes;
   const former = formerUids(state);
-  const rows: FlipbookRow[] = flipbookHistoryRows(state, flipbookId).map(r => ({
+  const history = flipbookHistoryRows(state, flipbookId);
+  const rows: FlipbookRow[] = history.map(r => ({
     key: `${r.team}:${r.batchId}`, team: r.team, tag: r.tag, colorKey: r.tag.colorKey, description: r.description,
     worker: r.worker, at: formatShort(r.committedAt, offset),
   }));
@@ -123,6 +141,14 @@ export function flipbookView(state: State, flipbookId: string): FlipbookView {
       uid: s.uid, code: s.code, version: s.version, key: guiKey(s.uid, s.version), sourceNodeId: state.screens.get(s.uid)?.source?.nodeId ?? null, scale: s.scale ?? fb.scale,
       ...(former.has(s.uid) ? { formerUids: former.get(s.uid) } : {}),
     })),
-    scale: fb.scale, guiWidth: state.project.guiWidth, status: rows[0] ?? null, rows,
+    scale: fb.scale, guiWidth: state.project.guiWidth, status: fb.tracked && !latestRecord(fb, history) ? draftRow(state, fb, offset) ?? rows[0] ?? null : rows[0] ?? null, rows,
   };
+}
+
+// 「작성 전」 상태(기록 없이 상단 Status에만 쓴다). 기본 태그가 없으면 null
+function draftRow(state: State, fb: Flipbook, offset: number): FlipbookRow | null {
+  const id = systemTagId(state, 'draft');
+  const tag = id ? state.tags.get(id) : undefined;
+  if (!tag) return null;
+  return { key: 'UI:draft', team: 'UI', tag: { id: tag.id, name: tag.name, color: tag.color, colorKey: tag.colorKey }, colorKey: tag.colorKey, description: '', worker: fb.actor.name, at: formatShort(fb.createdAt, offset) };
 }

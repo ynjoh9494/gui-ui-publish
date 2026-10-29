@@ -2,7 +2,7 @@ import { COPY } from './core/copy.ts';
 import { guiKey } from './core/flipbook.ts';
 import { guiScreens } from './core/guiScreens.ts';
 import { keys, type Store } from './core/store.ts';
-import { followMembers, forgetScreens, placePath, reconcileTracks, successorOf, trackPages, type FoundCopy, type TrackListItem } from './core/tracks.ts';
+import { flagRetiredScreens, followMembers, forgetScreens, placePath, reconcileTracks, successorOf, trackPages, type FoundCopy, type TrackListItem } from './core/tracks.ts';
 import type { FlipbookScale, TrackRecord } from './core/types.ts';
 import type { CopyUpdate, Host, PasteSpot } from './host.ts';
 
@@ -79,6 +79,12 @@ export class TrackController {
     return read?.changed ?? [];
   }
 
+  // 목록에서 새 템플릿 플립북을 골랐다(PRD 1.1): 그 페이지만 읽어 맞춘다. 화면 목록이 바뀐 플립북 ID
+  async refreshPage(pageId: string): Promise<string[]> {
+    const read = await this.read(null, () => this.store.now(), [pageId]);
+    return read?.changed ?? [];
+  }
+
   // GUI 붙이기(2026-10-29 사용자 결정): 배포된 화면의 GUI를 캔버스에 붙이고 추적 기록에 넣는다. at이 없으면 보고 있는 화면 가운데에 붙인다.
   // 새 템플릿 플립북 안에 붙였으면 그 페이지의 플립북 화면 목록을 다시 읽는다(넣기는 이력을 남기지 않으므로 지금 뒤의 배포부터 받는다).
   // 화면 목록이 바뀐 플립북 ID와 알릴 내용(찾지 못한 글꼴 등)을 돌려준다.
@@ -131,6 +137,23 @@ export class TrackController {
     return null;
   }
 
+  // 플러그인이 열려 있는 동안 캔버스에서 새로 생긴(복제·붙여 넣은) 추적 GUI를 기록에 넣는다(PRD §7 B). 이미 기록된 노드는 그대로 두고,
+  // 복제본에는 새 추적 기록 ID를 적는다. 플립북의 화면 목록은 플립북을 고르거나 목록을 새로 불러올 때 맞춘다(PRD 1.1). 새로 넣었으면 true
+  async adopt(nodeIds: string[]): Promise<boolean> {
+    if (!this.host.createdCopies || !nodeIds.length) return false;
+    const s = this.store;
+    s.reload();
+    const live = successorOf(s.state);
+    const found = (await this.host.createdCopies(nodeIds)).filter(c => s.state.screens.get(live(c.uid))?.status === 'active');
+    s.reload();
+    const known = new Set([...s.state.tracks.values()].map(t => t.nodeId));
+    const fresh = found.filter(c => !known.has(c.nodeId));
+    if (!fresh.length) return false;
+    const { retag } = reconcileTracks(s, fresh, new Set(), null, this.host.actor, s.newId);
+    if (retag.length) await this.host.markTracked?.(retag);
+    return true;
+  }
+
   // 새 템플릿 플립북을 만들며 놓은 GUI 복사본을 추적 기록에 넣는다.
   async register(copies: { nodeId: string; key: string }[], pageId: string): Promise<void> {
     if (!copies.length) return;
@@ -147,6 +170,18 @@ export class TrackController {
   }
 
   // 사용 안 함이 된 화면(삭제·화면이 아님·배포 취소)의 추적을 멈춘다. 캔버스의 레이어는 그대로 둔다.
+  async retire(uids: Set<string>): Promise<string[]> {
+    if (!uids.size) return [];
+    const s = this.store;
+    s.reload();
+    const pages = trackPages(s.state, uids);
+    const found = this.host.scanCopies ? await this.host.scanCopies(pages, [...uids]) : undefined;
+    s.reload();
+    const changed = flagRetiredScreens(s, uids, found);
+    forgetScreens(s, uids);
+    return changed;
+  }
+
   forget(uids: Set<string>): TrackRecord[] {
     if (!uids.size) return [];
     this.store.reload();

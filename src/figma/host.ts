@@ -14,7 +14,7 @@ import { exportPdfPages, pdfSelection } from './pdf.ts';
 import { readRichText, selectedTextNode, writeRichText } from './richText.ts';
 import { connectTemplateItem, describeTemplate, disconnectTemplateItem, templateItemNodes } from './template.ts';
 import { createDefaultTemplate } from './templateDefault.ts';
-import { markTracked, nodePlaces, pasteCopy, scanCopies, updateCopies } from './tracked.ts';
+import { createdCopies, markTracked, nodePlaces, pasteCopy, scanCopies, updateCopies } from './tracked.ts';
 import { makeThumbnail, placeThumbnails, renameThumbnails, thumbnailBytes } from './thumbs.ts';
 
 // 사용자별 플러그인 창 크기(figma.clientStorage)
@@ -200,6 +200,7 @@ export function figmaHost(mode: Host['mode']): Host {
     markTracked: items => markTracked(NS, items),
     pasteGui: (item, at) => pasteCopy(NS, item, at),
     nodePlaces: items => nodePlaces(NS, items),
+    createdCopies: nodeIds => createdCopies(NS, nodeIds),
     beginDelivery: known => { deliverySession = flipbookSession(known); },
     endDelivery: () => { deliverySession = undefined; },
     syncFlipbook: (settings, view) => syncFlipbook(NS, settings, view, deliverySession),

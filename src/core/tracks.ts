@@ -85,6 +85,35 @@ export function forgetScreens(store: Store, uids: Set<string>): TrackRecord[] {
   return gone;
 }
 
+// 사용 안 함이 된 화면이 들어 있던 새 템플릿 플립북(2026-10-29 사용자 결정, PRD §4.2): 그 화면을 화면 목록에서 빼고(추적이 멈춘 화면이라 보여 주지 않음)
+// 「삭제된 화면」 알림을 켠다. 쌓인 이력은 남긴다. 알림을 켠 플립북 ID(Screen ID 칸·자동 제목을 다시 반영한다)
+export function flagRetiredScreens(store: Store, uids: Set<string>, found?: FoundCopy[]): string[] {
+  const out: string[] = [];
+  const owners = found ? new Set(found.filter(c => uids.has(c.uid)).map(c => c.flipbookId)) : null;
+  for (const fb of [...store.state.flipbooks.values()]) {
+    if (fb.status !== 'active' || !fb.tracked) continue;
+    const alert = owners ? owners.has(fb.id) : fb.screens.some(s => uids.has(s.uid));
+    if (!alert && !fb.screens.some(s => uids.has(s.uid))) continue;
+    const screens = fb.screens.filter(s => !uids.has(s.uid));
+    const kind = kindOf(fb, screens.length);
+    const title = fb.autoTitle ? defaultTitle(kind, screens) : fb.title;
+    store.put(keys.flipbook(fb.id), {
+      ...fb, rev: fb.rev + 1, kind, screens, title, deletedAlert: fb.deletedAlert || alert,
+      titleNames: fb.titleNames.includes(title) ? fb.titleNames : [...fb.titleNames, title],
+    } satisfies Flipbook);
+    out.push(fb.id);
+  }
+  return out;
+}
+
+// 상세의 「삭제된 화면」 경고에서 확인을 눌렀다: 경고와 목록의 알림 뱃지를 지운다. 바꿨으면 true
+export function dismissDeletedAlert(store: Store, flipbookId: string): boolean {
+  const fb = store.state.flipbooks.get(flipbookId);
+  if (!fb?.deletedAlert) return false;
+  store.put(keys.flipbook(fb.id), { ...fb, rev: fb.rev + 1, deletedAlert: false } satisfies Flipbook);
+  return true;
+}
+
 function kindOf(fb: Flipbook, count: number): FlipbookKind {
   return count > 1 ? 'multi' : count === 1 ? 'single' : fb.kind;
 }

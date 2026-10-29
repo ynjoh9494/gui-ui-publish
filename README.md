@@ -36,6 +36,10 @@ GUI팀과 UI팀이 한 Figma 파일에서 함께 쓰는 플러그인입니다. G
 4. [CONVENTION.md](CONVENTION.md): 코드를 바꿀 때 지킬 기준
 5. [PERFORMANCE_REVIEW.md](PERFORMANCE_REVIEW.md): 측정된 병목과 개선 근거
 
+### 화면 추적과 GUI 붙이기
+
+UI Flipbook은 플립북 목록 · GUI 붙이기 · 텍스트 편집기 · 플로우 편집기 · PDF 저장 탭으로 구성됩니다. GUI 붙이기에서 캔버스에 놓은 화면은 플립북 밖에서도 GUI 배포를 따라갑니다. 새 템플릿 플립북의 화면 목록은 캔버스의 실제 소속으로 읽으며, 화면을 넣고 빼는 일은 이력을 만들지 않습니다. 화면별 추적 목록에서 붙인 GUI와 플로우의 위치를 찾습니다. 상세 정책과 이전 STB 템플릿 호환 범위는 [BEHAVIOR.md](BEHAVIOR.md)의 「추적 GUI」를 확인합니다.
+
 ### 준비
 
 Node.js 22.18 이상이 필요합니다(TypeScript 테스트를 Node로 바로 실행). 실행 의존성은 PDF 저장 탭에서 쪽 이미지를 한 PDF로 묶는 `pdf-lib` 하나이며 `dist/ui.html`에 함께 묶입니다(네트워크를 쓰지 않음). 브라우저 미리보기 조작 스크립트는 Chrome을 씁니다(`CHROME_PATH`로 경로 지정).

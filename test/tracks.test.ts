@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { importGuiUpdates, unreviewed } from '../src/core/flipbooks.ts';
+import { flipbookView, screenTags } from '../src/core/flipbook.ts';
+import { importGuiUpdates, markReviewed, unreviewed } from '../src/core/flipbooks.ts';
+import { ensureSystemTags, systemTagId } from '../src/core/registry.ts';
 import type { GuiRecordInfo, GuiScreenInfo } from '../src/core/guiScreens.ts';
 import { keys, memoryKV, Store } from '../src/core/store.ts';
-import { trackCounts, type FoundCopy } from '../src/core/tracks.ts';
+import { dismissDeletedAlert, flagRetiredScreens, trackCounts, type FoundCopy } from '../src/core/tracks.ts';
 import { COPY } from '../src/core/copy.ts';
 import type { Flipbook, Screen, TrackRecord } from '../src/core/types.ts';
 import type { CopyUpdate, Host } from '../src/host.ts';
@@ -146,4 +148,80 @@ test('추적 목록은 그 화면의 추적 GUI를 경로로 보여 주고, 지�
   live.delete('n1');
   assert.equal(await tracks.find('t1'), null, 'a copy deleted after the list opened is dropped when clicked');
   assert.equal(store.state.tracks.has('t1'), false);
+});
+
+test('기본 태그 「최신」은 「현행」으로 바뀌고, 새 템플릿 플립북은 만든 뒤 받은 기록이 없으면 「작성 전」, 화면 태그는 가장 최근 GUI 배포로 바뀐 화면에만 붙는다', () => {
+  const { store } = setup([]);
+  // 이미 쓰는 파일의 기본 태그(이전 이름 「최신」)도 이름이 바뀐다.
+  store.put(keys.tag('old'), { id: 'old', team: 'UI', name: '최신', colorKey: 'Black', color: '#333333', active: true, system: 'latest' });
+  assert.equal(ensureSystemTags(store, actor), true);
+  const tag = (kind: 'draft' | 'latest') => store.state.tags.get(systemTagId(store.state, kind)!)!;
+  assert.deepEqual([tag('latest').id, tag('latest').name, tag('draft').name, tag('draft').colorKey, tag('draft').team], ['old', '현행', '작성 전', 'Blue', 'UI']);
+  assert.equal(ensureSystemTags(store, actor), false);
+
+  store.put(keys.screen('s1'), screenRecord('s1', 'STB_HO_001', 2));
+  store.put(keys.screen('s2'), screenRecord('s2', 'STB_HO_002', 1));
+  store.put(keys.flipbook('fb'), flipbook('fb', 'p1', [{ uid: 's1', code: 'STB_HO_001', name: '화면 s1', version: 1 }, { uid: 's2', code: 'STB_HO_002', name: '화면 s2', version: 1 }]));
+  assert.equal(flipbookView(store.state, 'fb').status?.tag.name, '작성 전');
+  assert.equal(flipbookView(store.state, 'fb').rows.length, 0, '작성 전 is a status, not a history row');
+  assert.equal(screenTags(store.state, 'fb').size, 0);
+  importGuiUpdates(store, 'fb', new Map([['s1', info('s1', 'STB_HO_001', 2)], ['s2', info('s2', 'STB_HO_002', 1)]]), [record('s1', 'STB_HO_001', 2)]);
+  assert.equal(flipbookView(store.state, 'fb').status?.tag.name, '변경');
+  assert.deepEqual([...screenTags(store.state, 'fb')].map(([uid, t]) => [uid, t.name]), [['s1', '변경']], 'only the screen the latest publish changed');
+  markReviewed(store, [{ flipbookId: 'fb', tagId: tag('latest').id, comment: '' }], actor, 'r1');
+  assert.equal(flipbookView(store.state, 'fb').status?.tag.name, '현행');
+  assert.equal(screenTags(store.state, 'fb').size, 0, 'a UI status tag goes on no screen');
+  // 이전 템플릿 플립북은 지금처럼 마지막 기록이다(기록이 없으면 비어 있다).
+  store.put(keys.flipbook('old'), { ...flipbook('old', 'p1'), tracked: false });
+  assert.equal(flipbookView(store.state, 'old').status, null);
+});
+
+test('사용 안 함이 된 화면이 든 새 템플릿 플립북은 그 화면을 빼고 알림을 켜며, 확인하면 알림을 지운다. 플립북을 고르면 그 페이지만 읽는다', async () => {
+  const { store, tracks, calls } = setup([]);
+  store.put(keys.flipbook('fb'), flipbook('fb', 'p1', [{ uid: 's1', code: 'STB_HO_001', name: '화면 s1', version: 1 }, { uid: 's2', code: 'STB_HO_002', name: '화면 s2', version: 1 }]));
+  store.put(keys.flipbook('old'), { ...flipbook('old', 'p1', [{ uid: 's1', code: 'STB_HO_001', name: '화면 s1', version: 1 }]), tracked: false });
+  assert.deepEqual(flagRetiredScreens(store, new Set(['s1'])), ['fb']);
+  const fb = store.state.flipbooks.get('fb')!;
+  assert.deepEqual([fb.screens.map(s => s.uid), fb.kind, fb.title, fb.deletedAlert], [['s2'], 'single', '화면 s2', true]);
+  assert.deepEqual(store.state.flipbooks.get('old')!.screens.map(s => s.uid), ['s1'], 'an old-template flipbook is left as it is');
+  assert.equal(dismissDeletedAlert(store, 'fb'), true);
+  assert.equal(store.state.flipbooks.get('fb')!.deletedAlert, false);
+  assert.equal(dismissDeletedAlert(store, 'fb'), false);
+  await tracks.refreshPage('p1');
+  assert.deepEqual(calls.scans, [['p1']]);
+});
+
+test('플러그인이 열려 있는 동안 복제한 추적 GUI는 새 기록을 받고, 이미 기록된 노드와 사용 안 함 화면의 복사본은 그대로 둔다', async () => {
+  const { store, host, tracks, calls } = setup([]);
+  const created: FoundCopy[] = [
+    { nodeId: 'n1', pageId: 'p1', uid: 's1', version: 2, trackId: 't1', flipbookId: null },
+    { nodeId: 'dup', pageId: 'p2', uid: 's1', version: 2, trackId: 't1', flipbookId: null },
+    { nodeId: 'old', pageId: 'p2', uid: 's2', version: 1, trackId: 't2', flipbookId: null },
+  ];
+  Object.assign(host, { createdCopies: async () => created });
+  store.put(keys.screen('s1'), screenRecord('s1', 'STB_HO_001', 2));
+  store.put(keys.screen('s2'), screenRecord('s2', 'STB_HO_002', 1, 'deleted'));
+  store.put(keys.track('t1'), { id: 't1', uid: 's1', nodeId: 'n1', pageId: 'p1', createdAt: 1, actor } satisfies TrackRecord);
+  assert.equal(await tracks.adopt(['n1', 'dup', 'old']), true);
+  const dup = [...store.state.tracks.values()].find(t => t.nodeId === 'dup')!;
+  assert.deepEqual([dup.uid, dup.pageId, store.state.tracks.size], ['s1', 'p2', 2]);
+  assert.deepEqual(calls.marks, [{ nodeId: 'dup', trackId: dup.id }], 'the duplicate gets its own track ID');
+  assert.equal(await tracks.adopt(['n1', 'dup']), false, 'nothing new the second time');
+});
+
+
+test('삭제 배포는 동기화 전 옮긴 GUI의 현재 소속에만 경고하고 추적을 멈춘다', async () => {
+  const found: FoundCopy[] = [{ nodeId: 'n1', pageId: 'p2', uid: 's1', version: 1, trackId: 't1', flipbookId: 'b' }];
+  const { store, tracks, calls } = setup(found);
+  store.put(keys.screen('s1'), screenRecord('s1', 'STB_HO_001', 1, 'deleted'));
+  store.put(keys.flipbook('a'), flipbook('a', 'p1', [{ uid: 's1', code: 'STB_HO_001', name: '화면 s1', version: 1 }]));
+  store.put(keys.flipbook('b'), flipbook('b', 'p2'));
+  store.put(keys.track('t1'), { id: 't1', uid: 's1', nodeId: 'n1', pageId: 'p1', createdAt: 1, actor } satisfies TrackRecord);
+  assert.deepEqual(await tracks.retire(new Set(['s1'])), ['a', 'b']);
+  assert.equal(!!store.state.flipbooks.get('a')!.deletedAlert, false);
+  assert.equal(store.state.flipbooks.get('b')!.deletedAlert, true);
+  assert.equal(store.state.flipbooks.get('a')!.screens.length, 0);
+  assert.equal(store.state.tracks.size, 0);
+  assert.deepEqual(calls.scans, [['p1', 'p2']]);
+  assert.equal(store.state.imported.size, 0, 'no new history for a retired screen');
 });

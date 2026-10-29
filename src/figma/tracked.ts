@@ -115,6 +115,31 @@ export async function nodePlaces(ns: string, items: { nodeId: string; copy: bool
   }));
 }
 
+// 캔버스에서 새로 생긴 노드(복제·붙여 넣기) 안의 추적 GUI(복사본 표식과 추적 기록 ID가 있는 노드). 플립북 프레임처럼 여러 복사본을 품은 노드를
+// 복제해도 Figma는 가장 바깥 노드 하나만 알리므로 그 안도 찾는다. 이전 템플릿 플립북이 넣은 복사본은 뺀다.
+export async function createdCopies(ns: string, nodeIds: string[]): Promise<FoundCopy[]> {
+  const out: FoundCopy[] = [];
+  const seen = new Set<string>();
+  for (const id of nodeIds) {
+    const node = await figma.getNodeByIdAsync(id);
+    if (!node || node.removed || node.type === 'PAGE' || node.type === 'DOCUMENT') continue;
+    const inside = 'findAllWithCriteria' in node ? node.findAllWithCriteria({ sharedPluginData: { namespace: ns, keys: [TRACK_KEY] } }) : [];
+    for (const copy of [node as SceneNode, ...inside]) {
+      if (seen.has(copy.id)) continue;
+      seen.add(copy.id);
+      const key = copy.getSharedPluginData(ns, COPY_KEY), trackId = copy.getSharedPluginData(ns, TRACK_KEY);
+      const at = key.lastIndexOf('@');
+      const uid = key.slice(0, at), version = Number(key.slice(at + 1));
+      if (!trackId || at <= 0 || !Number.isFinite(version)) continue;
+      const flipbook = owner(ns, copy);
+      let page: BaseNode | null = copy;
+      while (page && page.type !== 'PAGE') page = page.parent;
+      if (flipbook !== 'legacy' && page) out.push({ nodeId: copy.id, pageId: page.id, uid, version, trackId, flipbookId: flipbook });
+    }
+  }
+  return out;
+}
+
 export async function markTracked(ns: string, items: { nodeId: string; trackId: string }[]): Promise<void> {
   for (const { nodeId, trackId } of items) {
     const node = await figma.getNodeByIdAsync(nodeId);

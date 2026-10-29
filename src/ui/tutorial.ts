@@ -297,6 +297,11 @@ const UI_STEPS: Step[] = [
     spots: d => [d.q('.detail .fb-bottom')],
   },
   {
+    title: COPY.uiTutorial081, body: COPY.uiTutorial082,
+    async prepare(d) { await d.click('.tabs [data-action="paste-open"]'); await d.until(() => d.q('.paste-view .paste-screen')); },
+    spots: d => [d.q('.paste-view')],
+  },
+  {
     title: COPY.uiTutorial070, body: COPY.uiTutorial071,
     async prepare(d) {
       await d.click('.tabs [data-action="text-open"]');

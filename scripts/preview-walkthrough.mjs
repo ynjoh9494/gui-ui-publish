@@ -342,50 +342,9 @@ try {
   await app.locator('.list [data-input=fb-title]').fill('');
   await app.locator('.list [data-input=fb-title]').press('Enter');
   await page.waitForFunction(name => document.querySelector('#app .detail h2')?.textContent === name, initialName);
-  // 화면 편집(2026-10-26): 기존 플립북의 화면을 빼고 넣거나 크기를 바꿔 적용하면 GUI 영역을 다시 반영한다. 끝나면 원래대로 둔다.
-  // (이 시점에는 배포한 화면이 하나뿐이다. 두 화면의 순서 바꾸기는 새 플립북과 같은 「선택된 화면」 드래그·Alt+↑↓다.)
-  {
-    const selectedUids = () => app.locator('.create-selected-list .create-screen-option').evaluateAll(nodes => nodes.map(n => n.dataset.uid));
-    const applyButton = app.locator('[data-action=edit-screens-apply]');
-    const small = await app.evaluate(root => ({ width: root.offsetWidth, height: root.offsetHeight }));
-    await app.locator('[data-action=fb-edit-screens]').click();
-    await app.locator('.detail.screen-edit-detail').waitFor();
-    await page.waitForFunction(() => document.querySelector('#app').offsetHeight >= 800);
-    assert.equal(await applyButton.isDisabled(), true, '바꾸기 전에는 적용할 수 없다');
-    const [first] = await selectedUids();
-    // 빼면 적용할 수 있고, 다시 넣으면 바뀐 것이 없다.
-    await app.locator(`.create-selected-list input[value="${first}"]`).click();
-    assert.deepEqual(await selectedUids(), []);
-    assert.equal(await applyButton.isDisabled(), false);
-    await app.locator(`.create-screen-list input[value="${first}"]`).click();
-    assert.deepEqual(await selectedUids(), [first]);
-    assert.equal(await applyButton.isDisabled(), true, '원래와 같으면 적용할 수 없다');
-    // 우클릭해도 새 플립북을 넣지 않는다(화면 편집 중).
-    await app.locator('.create-selected-list .create-screen-option').first().click({ button: 'right' });
-    await newRows(0, '화면 편집에서는 우클릭으로 새 플립북을 넣지 않는다');
-    // 크기를 바꿔(작게 → 기본) 적용한다.
-    await app.locator('.create-selected-list [data-input=create-screen-scale]').selectOption('1');
-    assert.equal(await applyButton.isDisabled(), false);
-    await shot('03c1-screen-edit');
-    await applyButton.click();
-    await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('플립북 화면을 바꿨습니다'));
-    await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('플립북 화면 구성: STB_HO_001@1')));
-    await app.locator('.detail .fb-screens-head').waitFor();
-    await page.waitForFunction(size => document.querySelector('#app').offsetHeight === size.height, small);
-    // 다시 열어 원래 크기로 되돌린다. 취소하면 바꾸지 않는다.
-    await app.locator('[data-action=fb-edit-screens]').click();
-    await app.locator('.create-selected-list [data-input=create-screen-scale]').selectOption('0.5');
-    await app.locator('[data-action=edit-screens-cancel]').click();
-    await app.locator('.detail .fb-screens-head').waitFor();
-    await app.locator('[data-action=fb-edit-screens]').click();
-    assert.equal(await app.locator('.create-selected-list [data-input=create-screen-scale]').inputValue(), '1', '취소한 편집은 남지 않는다');
-    await app.locator('.create-selected-list [data-input=create-screen-scale]').selectOption('0.5');
-    await applyButton.click();
-    await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('플립북 화면 구성: STB_HO_001@0.5')));
-    await app.locator('.detail .fb-screens-head').waitFor();
-    assert.match(await app.locator('.detail .fb-screens-head .note').innerText(), /화면 1개/);
-    await page.waitForFunction(name => document.querySelector('#app .detail h2')?.textContent === name, initialName);
-  }
+  // 화면 편집은 없다(2026-10-29 사용자 결정: 화면은 캔버스·GUI 붙이기에서 넣고 뺀다). 상세에는 들어 있는 화면 수만 보인다.
+  assert.equal(await app.locator('[data-action=fb-edit-screens]').count(), 0, '플립북 상세에 화면 편집이 없다');
+  assert.match(await app.locator('.detail .fb-screens-head .note').innerText(), /화면 1개/);
   // 기존 플립북도 드래그해 다른 Section으로 옮긴다(2026-10-22). 만들기 전까지는 목록에서만 옮기고, 캔버스 배치에 반영할지 묻는다.
   {
     const groupOfRow = name => app.locator('.list .section-group').filter({ has: page.locator('.row:not(.new-row) .name', { hasText: name }) }).locator('.section-label').innerText();
@@ -466,9 +425,9 @@ try {
   // 플립북을 고르면 들어 있는 화면의 GUI 썸네일을 보여 준다.
   await app.locator('.detail .thumbs img').waitFor();
   assert.equal(await app.locator('.detail [data-field=workerId]').count(), 0, '작업자 입력이 없다');
-  // 오른쪽 아래 확인 영역은 수정된 화면이 없어도 항상 보이며, 상태는 기본 태그 「최신」이다.
+  // 오른쪽 아래 확인 영역은 수정된 화면이 없어도 항상 보이며, 상태는 기본 태그 「현행」이다.
   await app.locator('.detail .fb-bottom').waitFor();
-  assert.equal(await app.locator('.fb-bottom .tag-picker summary .chip').innerText(), '최신');
+  assert.equal(await app.locator('.fb-bottom .tag-picker summary .chip').innerText(), '현행');
   assert.equal(await app.locator('.fb-bottom [data-action=mark-reviewed]').isEnabled(), true);
   await shot('04-ui-list');
   // 목록 새로고침: 캔버스 선택만으로는 목록을 맞추지 않으므로 새로고침 아이콘으로 플립북 페이지를 다시 읽고 동기화 시각을 보여 준다.
@@ -748,13 +707,20 @@ try {
   await flagged.click();
   await app.locator('.detail .fb-bottom.flagged').waitFor();
   assert.equal(await app.locator('.fb-bottom .review-screens li').count(), 1, '아래 영역에 수정된 화면을 보여 준다');
-  assert.equal(await app.locator('.detail .thumbs figcaption .review-dot').count(), 1, '썸네일에도 수정된 화면을 표시한다');
-  // 상태를 비우면 확인 완료를 막는다(필수). 다시 「최신」을 고르고 코멘트(선택)를 쓴다.
+  // 썸네일 왼쪽 위 상태: 가장 최근 GUI 배포의 태그(그 배포로 바뀐 화면에만)와 확인이 필요한 화면의 알림 뱃지
+  assert.equal(await app.locator('.detail .thumbs .thumb-state .review-dot').count(), 1, '썸네일에도 수정된 화면을 표시한다');
+  assert.equal(await app.locator('.detail .thumbs .thumb-state .chip').innerText(), '검토', '가장 최근 GUI 배포의 태그를 그 화면에 붙인다');
+  await shot('06a-ui-screen-state');
+  // 화면을 누르면 그 화면의 추적 목록 팝업을 연다.
+  await app.locator('.detail .thumbs .fb-screen').first().click();
+  await app.locator('.track-list-overlay .track-list-dialog h2').waitFor();
+  await page.keyboard.press('Escape');
+  // 상태를 비우면 확인 완료를 막는다(필수). 다시 「현행」을 고르고 코멘트(선택)를 쓴다.
   await app.locator('.fb-bottom .tag-picker summary').click();
   await app.locator('.fb-bottom .tag-options [data-action=select-tag][data-id=""]').click();
   assert.equal(await app.locator('.fb-bottom [data-action=mark-reviewed]').isDisabled(), true, '상태는 필수');
   await app.locator('.fb-bottom .tag-picker summary').click();
-  await app.locator('.fb-bottom .tag-options [data-action=select-tag]').filter({ hasText: '최신' }).click();
+  await app.locator('.fb-bottom .tag-options [data-action=select-tag]').filter({ hasText: '현행' }).click();
   await app.locator('.fb-bottom [data-field=description]').fill('콜아웃 위치 확인');
   await shot('06-ui-review');
   await app.locator('[data-action=mark-reviewed]').click();
@@ -765,7 +731,7 @@ try {
   assert.equal(await app.locator('.fb-bottom [data-field=description]').inputValue(), '', '코멘트를 비운다');
   // 확인 완료의 상태·코멘트는 플립북 이력에 남는다.
   await page.waitForFunction(() => document.querySelector('#app .detail .history')?.textContent?.includes('콜아웃 위치 확인'));
-  await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('최신(Black)')));
+  await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('현행(Black)')));
   await app.locator('[data-action=changed-only]').uncheck();
   await page.waitForFunction(() => document.querySelectorAll('#app .list .row').length === 3);
   assert.equal(await app.locator('.row .review-dot').count(), 0);

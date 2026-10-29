@@ -344,6 +344,16 @@ button.link.danger { color: var(--danger); }
 .thumbs figure { margin: 0; width: 160px; }
 .thumbs img, .thumbs .thumb-empty { display: flex; align-items: center; justify-content: center; width: 160px; height: 90px; object-fit: contain; background: #000; border-radius: 4px; color: #aaa; font-size: 11px; }
 .thumbs figcaption { display: flex; align-items: center; gap: 4px; margin-top: 3px; font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* 화면 썸네일: 왼쪽 위에 상태 태그·알림 뱃지, 캡션 오른쪽 >(누르면 추적 목록 팝업) */
+.fb-screen { cursor: pointer; }
+.fb-screen .thumb-box { position: relative; }
+.fb-screen .thumb-state { position: absolute; left: 4px; top: 4px; display: flex; align-items: center; gap: 3px; pointer-events: none; }
+.fb-screen figcaption .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.fb-screen figcaption svg { flex: none; color: var(--muted); }
+.fb-screen:hover figcaption svg { color: var(--text); }
+/* 상세 맨 위 「삭제된 화면」 경고 */
+.deleted-alert { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 6px 8px; border: 1px solid var(--danger); border-radius: 5px; color: var(--danger); }
+.deleted-alert p { flex: 1; margin: 0; }
 .thumb-hover { position: absolute; z-index: 20; width: 240px; max-height: calc(100% - 16px); overflow: hidden; padding: 4px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,.18); pointer-events: none; }
 .thumb-hover img { display: block; width: 100%; object-fit: contain; background: #000; border-radius: 4px; }
 /* UI Flipbook: 목록 위 「새 플립북」·일괄 만들기 */
@@ -436,7 +446,6 @@ button.link.danger { color: var(--danger); }
 .create-screen-option.drop-before { box-shadow: inset 0 2px var(--brand); }
 .create-screen-option.drop-after { box-shadow: inset 0 -2px var(--brand); }
 /* 화면 편집: 머리 아래 대상 플립북 제목 한 줄 */
-.edit-target { margin: 6px 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .create-unused-dot { width: 8px; height: 8px; border-radius: 50%; background: #d9ae00; flex: none; }
 .create-unused-dot.planned { background: #999; }
 /* 플립북 없는 화면 일괄 만들기 모달: 범위 선택 아래 대상 화면 목록이 남은 높이를 쓴다. */

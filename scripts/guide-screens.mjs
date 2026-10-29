@@ -113,6 +113,14 @@ try {
   await app.locator('.fb-bottom [data-field=description]').fill('콜아웃 위치 확인');
   await shot('ui-review');
 
+  await app.locator('[data-action=paste-open]').click();
+  await app.locator('.paste-view .paste-screen').first().waitFor();
+  await app.locator('[data-action=paste-layout][data-layout=grid]').click();
+  await app.locator('.paste-view .paste-card .paste-thumb img').first().waitFor();
+  await shot('ui-paste');
+  await app.locator('[data-action=text-close]').click();
+  await resize(900, 640);
+
   // 텍스트 편집 탭: 가짜 캔버스에서 골라 둔 텍스트 레이어를 불러온 모습
   await app.locator('[data-action=text-open]').click();
   await app.locator('[data-action=text-import]').click();

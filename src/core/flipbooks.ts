@@ -209,49 +209,8 @@ export function renameFlipbook(store: Store, flipbookId: string, title: string, 
   return after;
 }
 
-// 기존 플립북의 화면 편집(2026-10-26 사용자 요청: 플립북을 새로 만들지 않고 화면을 더하거나 바꾼다). uids는 새 화면 순서다.
-export interface ScreenEditRequest { flipbookId: string; uids: string[]; scale: FlipbookScale; scales?: Record<string, FlipbookScale> }
-
-// 화면 목록·순서·크기를 바꾸고 바뀐 플립북을 돌려준다. 바뀐 것이 없으면 그대로 돌려준다.
-// 남긴 화면은 플립북에 반영한 버전을 두고, 새로 넣은 화면은 지금 배포 버전으로 넣는다. 화면 수에 따라 단일·여러 화면·정책이 바뀐다.
-// 자동 제목이면 새 첫 화면 이름을 따른다. Section·페이지는 바꾸지 않는다. 캔버스의 GUI 영역·Screen ID는 반영할 때 맞춘다.
-// 사용 종료되었거나 원본이 없는 화면은 새로 넣을 수 없고, 이미 든 화면이면 크기를 바꾸지 않을 때만 남길 수 있다(복사본을 다시 만들지 않는다).
-export function editFlipbookScreens(store: Store, request: ScreenEditRequest, screens: Map<string, GuiScreenInfo>, actor: Actor, now: number): Flipbook {
-  const before = store.state.flipbooks.get(request.flipbookId);
-  if (!before || before.status !== 'active') throw new Error(COPY.coreFlipbook002);
-  if (new Set(request.uids).size !== request.uids.length) throw new Error(COPY.coreFlipbooks006);
-  const kind: FlipbookKind = !request.uids.length ? 'policy' : request.uids.length > 1 ? 'multi' : 'single';
-  const scale = kind === 'multi' ? request.scale : 1;
-  if (!SCALES.includes(scale)) throw new Error(COPY.coreFlipbooks007);
-  const next = request.uids.map(uid => {
-    const s = screens.get(uid);
-    const kept = before.screens.find(x => x.uid === uid);
-    const itemScale = request.scales?.[uid] ?? scale;
-    if (!SCALES.includes(itemScale)) throw new Error(COPY.coreFlipbooks007);
-    const usable = !!s && s.status === 'active' && !!s.sourceNodeId;
-    if (kept) {
-      if (!usable && itemScale !== (kept.scale ?? before.scale)) throw new Error(`${COPY.coreFlipbooks015} ${kept.code}`);
-      return { ...kept, code: s?.code ?? kept.code, name: s?.name ?? kept.name, scale: itemScale };
-    }
-    if (!s) throw new Error(COPY.coreFlipbooks002);
-    if (s.status !== 'active') throw new Error(`${COPY.coreFlipbooks003} ${s.code}`);
-    if (!s.sourceNodeId) throw new Error(`${COPY.coreFlipbooks004} ${s.code}`);
-    return { uid, code: s.code, name: s.name, version: s.version, scale: itemScale, addedAt: now };
-  });
-  const same = next.length === before.screens.length && next.every((x, i) => x.uid === before.screens[i].uid && x.scale === (before.screens[i].scale ?? before.scale));
-  if (same) return before;
-  const title = before.autoTitle ? defaultTitle(kind, next) : before.title;
-  const after: Flipbook = {
-    ...before, rev: before.rev + 1, kind, scale, screens: next, title,
-    titleNames: before.titleNames.includes(title) ? before.titleNames : [...before.titleNames, title],
-  };
-  store.put(keys.flipbook(before.id), after);
-  store.audit(actor, 'flipbook.screens', before.id, before.screens.map(x => x.code), next.map(x => x.code));
-  return after;
-}
-
 // 배포 화면 from의 원본으로 화면 to를 교체했을 때 from이 든 플립북을 to로 바꾼다(2026-10-27 사용자 결정).
-// 같은 플립북에 to가 이미 있으면 from만 뺀다(화면 편집처럼 화면 수에 따라 단일·여러 화면이 바뀐다).
+// 같은 플립북에 to가 이미 있으면 from만 뺀다(화면 수에 따라 단일·여러 화면이 바뀐다).
 // to는 이번 배포 전 버전(heldVersion)으로 넣는다. 다음 GUI 반영 때 이번 배포가 이 플립북의 새 GUI·이력 행·빨간 점이 된다.
 // 넣은 자리의 크기와 넣은 시각은 from 것을 이어 쓴다. from의 지난 GUI 이력은 플립북 이력에 남는다.
 export function followMergedFlipbooks(store: Store, fromId: string, toId: string, heldVersion: number, actor: Actor): string[] {

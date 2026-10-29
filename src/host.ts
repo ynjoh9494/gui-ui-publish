@@ -71,6 +71,8 @@ export interface Host extends FingerprintReader {
   pasteGui?(item: PasteItem, at: PasteSpot | null): Promise<{ nodeId: string; pageId: string; flipbookId: string | null; notes: string[] }>;
   // 추적 목록: 노드가 놓인 자리. 찾지 못했거나 copy인데 GUI 복사본 표식이 없어진 노드는 null
   nodePlaces?(items: { nodeId: string; copy: boolean }[]): Promise<(NodePlace | null)[]>;
+  // 캔버스에서 새로 생긴 노드 안의 추적 GUI(복제·붙여 넣은 복사본)
+  createdCopies?(nodeIds: string[]): Promise<FoundCopy[]>;
   // 플립북의 Chapter만 Section 이름으로 다시 쓴다. 찾지 못한 플립북은 건너뛴다.
   syncChapters?(items: { pageId: string; flipbookId: string; name: string }[]): Promise<void>;
   // 기존 플립북 프레임을 다른 페이지·Section의 정한 자리로 옮긴다. 프레임을 찾지 못하면 false.

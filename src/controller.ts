@@ -4,7 +4,7 @@ import { baseline, changeDetected, classify, ignoreBlock, uiEstimate, uncheckedE
 import { FINGERPRINT_VERSION, LEGACY_FINGERPRINT_VERSION } from './core/fingerprint.ts';
 import { dataModel } from './core/data.ts';
 import { chapterName, flipbookView, guiKey, validGuiWidth } from './core/flipbook.ts';
-import { canvasSections, checkMoves, editFlipbookScreens, followCanvasSections, importGuiUpdates, markReviewed, moveFlipbooks, pageSections, planFlipbooks, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookMove, type FlipbookRequest, type ReviewRequest, type ScreenEditRequest } from './core/flipbooks.ts';
+import { canvasSections, checkMoves, followCanvasSections, importGuiUpdates, markReviewed, moveFlipbooks, pageSections, planFlipbooks, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookMove, type FlipbookRequest, type ReviewRequest } from './core/flipbooks.ts';
 import type { Draft } from './core/drafts.ts';
 import type { SelectionWrite } from './core/description.ts';
 import { flipbookHistoryRows, guiHistoryRows } from './core/history.ts';
@@ -21,7 +21,7 @@ import type { DataStatus, ProjectConfig, Team, UiBaseline } from './core/types.t
 import { explainMatch, matchVersion, versionCommon, versionLinkErrors, type VersionFrame } from './core/versionMatch.ts';
 import { toUiWire, type AdminOp, type NavTarget, type ScanState, type ToMain } from './core/wire.ts';
 import { FlowController } from './flowController.ts';
-import { trackCounts } from './core/tracks.ts';
+import { dismissDeletedAlert, trackCounts } from './core/tracks.ts';
 import { TrackController } from './trackController.ts';
 import type { FingerprintReader, Host } from './host.ts';
 import { PdfController } from './pdfController.ts';
@@ -48,7 +48,7 @@ const DATA_OPS = new Set<AdminOp['op']>(['renameCategory', 'setCategoryActive', 
 const BUSY_LABEL: Partial<Record<ToMain['type'], string>> = {
   prepare: COPY.controller001, commit: COPY.controller002, resetData: COPY.controller003, retry: COPY.controller004, refreshData: COPY.controller005,
   admin: COPY.controller006, createFlipbooks: COPY.controller038, markReviewed: COPY.controller066, removeFlipbooks: COPY.controller068,
-  matchVersion: COPY.controller106, switchVersion: COPY.controller107, renameFlipbook: COPY.controller118, editFlipbookScreens: COPY.controller137,
+  matchVersion: COPY.controller106, switchVersion: COPY.controller107, renameFlipbook: COPY.controller118,
   textApply: COPY.controller120, createFlow: COPY.flow006, exportPdf: COPY.pdf005, pasteGui: COPY.track004,
 };
 
@@ -203,7 +203,6 @@ export class Controller {
           break;
         case 'createFlipbooks': await this.createFlipbooks(msg.request); break;
         case 'renameFlipbook': await this.renameFlipbook(msg.id, msg.title); break;
-        case 'editFlipbookScreens': await this.editFlipbookScreens(msg.request); break;
         case 'markReviewed': await this.markReviewed(msg.requests); break;
         case 'removeFlipbooks': await this.removeFlipbooks(msg.ids); break;
         case 'matchVersion': await this.matchVersion(msg.pageId); break;
@@ -266,6 +265,20 @@ export class Controller {
         case 'cancelPdf': this.pdf.cancel(); break;
         case 'createFlow': await this.flows.create(msg.request); break;
         case 'trackList': await this.postTrackList(msg.uid); break;
+        case 'trackCreated':
+          if (await this.tracks.adopt(msg.nodeIds)) { this.postState(); this.postGuiScreens(); }
+          break;
+        case 'dismissDeletedAlert':
+          this.store.reload();
+          if (dismissDeletedAlert(this.store, msg.id)) this.postState();
+          break;
+        // 목록에서 새 템플릿 플립북을 고르면 그 플립북 페이지의 추적 GUI로 화면 목록을 맞춘다(PRD 1.1).
+        case 'followFlipbook': {
+          this.store.reload();
+          const fb = this.store.state.flipbooks.get(msg.id);
+          if (fb?.tracked && fb.status === 'active' && fb.pageId) await this.followMembers(await this.tracks.refreshPage(fb.pageId));
+          break;
+        }
         case 'revealTrack': {
           this.navSeq = msg.nav;
           const latest = () => msg.nav === this.navSeq;
@@ -1092,9 +1105,14 @@ export class Controller {
     const retired = exclusions.some(item => item.screenId) || unpublished.length > 0;
     if (result.ok && plan.team === 'GUI' && (retired || items.some(item => item.workType === 'deleted'))) retireFlipbooks(this.store, this.host.actor);
     // 사용 안 함이 된 화면(삭제·화면이 아님·배포 취소)은 추적을 멈춘다. 캔버스의 레이어는 그대로 둔다(2026-10-29 사용자 결정).
-    if (result.ok && plan.team === 'GUI') this.tracks.forget(new Set([
-      ...items.filter(i => i.workType === 'deleted').map(i => i.screenId), ...exclusions.map(i => i.screenId), ...unpublished.map(i => i.screenId),
-    ].filter((id): id is string => !!id)));
+    // 그 화면이 들어 있던 새 템플릿 플립북은 화면 목록에서 빼고 「삭제된 화면」 알림을 켠다(PRD §4.2).
+    let alerted: string[] = [];
+    if (result.ok && plan.team === 'GUI') {
+      const gone = new Set([
+        ...items.filter(i => i.workType === 'deleted').map(i => i.screenId), ...exclusions.map(i => i.screenId), ...unpublished.map(i => i.screenId),
+      ].filter((id): id is string => !!id));
+      alerted = await this.tracks.retire(gone);
+    }
     let report: string | null = null;
     if (result.ok && items.length) {
       const published = new Set(items.filter(i => i.workType !== 'deleted').map(i => i.screenId));
@@ -1104,6 +1122,7 @@ export class Controller {
         : deliveryMessage(await this.deliverFlipbooks({ batchId }));
       await this.progress(COPY.controller005);
     }
+    await this.followMembers(alerted);
     const data = result.ok && (items.length || retired) ? await this.refreshData() : true;
     const pending = unfinishedDeliveries(this.store.state, { batchId }).length;
     const failed = result.conflicts.length ? `${COPY.controller035} ${result.conflicts.length}${COPY.controller036} ${result.conflicts.map(c => `${c.name}: ${c.messages.join(', ')}`).join('; ')}` : '';
@@ -1264,36 +1283,6 @@ export class Controller {
     this.postState();
     const failed = report.failed.length || report.skipped;
     this.host.post({ type: failed ? 'error' : 'notice', message: failed ? deliveryMessage(report) : `${COPY.controller119} ${fb.title}` });
-  }
-
-  // 화면 편집(2026-10-26 사용자 요청): 기록의 화면 목록을 바꾸고 GUI 영역·Screen ID·자동 제목을 다시 반영한다.
-  // 프레임이 없는(연결이 끊긴) 플립북은 반영할 수 없으므로 기록도 바꾸지 않는다. 반영에 실패하면 미완료로 남아 재시도로 맞춘다.
-  private async editFlipbookScreens(request: ScreenEditRequest): Promise<void> {
-    const s = this.store;
-    s.reload();
-    const canvas = await this.inspectFlipbooks();
-    // 페이지를 불러오는 동안 다른 작업자가 기록을 바꿨을 수 있으므로 판정·기록 직전에 다시 읽는다.
-    s.reload();
-    if (s.state.flipbooks.get(request.flipbookId)?.status !== 'active') throw new Error(COPY.coreFlipbook002);
-    if (!canvas.found.has(request.flipbookId)) throw new Error(COPY.figmaFlipbook027);
-    const before = s.state.flipbooks.get(request.flipbookId)!;
-    const fb = editFlipbookScreens(s, request, guiScreens(s.state), this.host.actor, s.now());
-    let report = emptyReport();
-    if (fb !== before) {
-      const batchId = `screens:${randomId()}`;
-      addDelivery(s, batchId, 'flipbook', 'UI', fb.id, s.state.uiStates.get(fb.id)?.version ?? 0);
-      report = await this.deliverFlipbooks({ batchId }, { canvas });
-      await this.refreshData();
-    }
-    this.postState();
-    // 화면 수가 바뀌면 프레임 크기가 바뀌어 Section 안 배치가 달라질 수 있다. 바뀌는 것은 그 플립북의 페이지뿐이므로
-    // 그 페이지만 다시 읽고 다른 페이지는 앞서 읽은 위치를 쓴다.
-    const pageId = s.state.flipbooks.get(fb.id)?.pageId ?? s.state.project.flipbookPageId;
-    this.applyLinks(canvas.found, { ...canvas.spots, ...(pageId ? await this.spots([pageId]) : {}) });
-    const failed = !!(report.failed.length || report.skipped);
-    const latest = s.state.flipbooks.get(fb.id) ?? fb;
-    const message = [`${COPY.controller138} ${latest.title}`, failed || report.notes.length ? deliveryMessage(report) : ''].filter(Boolean).join(' ');
-    this.host.post({ type: 'flipbookScreensEdited', id: fb.id, failed, message });
   }
 
   // 확인 완료: 상태·코멘트를 기록한 뒤 그 플립북의 Status와 이력 행을 맞춘다.

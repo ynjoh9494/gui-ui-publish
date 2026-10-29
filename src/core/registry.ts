@@ -221,11 +221,13 @@ export function updateTag(store: Store, id: string, patch: { name?: string; colo
 }
 
 // GUI 기본 태그: 추가(Teal)·삭제(Red). 신규 등록·삭제의 기본 태그로 넣고 이름·색 변경·사용 중지를 막는다(2026-10-20 사용자 결정).
-// UI 「최신」(검정)은 플립북 확인 완료의 기본 상태다(2026-10-20 사용자 결정).
-const SYSTEM_TAGS: { kind: SystemTag; team: Team; name: string; colorKey: 'Teal' | 'Red' | 'Black' }[] = [
+// UI 「현행」(검정, 이전 이름 「최신」)은 플립북 확인 완료의 기본 상태다(2026-10-20 사용자 결정, 이름은 2026-10-29에 바꿈).
+// UI 「작성 전」(파랑)은 새 템플릿 플립북을 만든 뒤 아무 이력도 받지 않았을 때의 상태다(2026-10-29 사용자 결정).
+const SYSTEM_TAGS: { kind: SystemTag; team: Team; name: string; colorKey: 'Teal' | 'Red' | 'Black' | 'Blue' }[] = [
   { kind: 'add', team: 'GUI', name: COPY.coreRegistry028, colorKey: 'Teal' },
   { kind: 'delete', team: 'GUI', name: COPY.coreRegistry029, colorKey: 'Red' },
   { kind: 'latest', team: 'UI', name: COPY.coreRegistry030, colorKey: 'Black' },
+  { kind: 'draft', team: 'UI', name: COPY.coreRegistry036, colorKey: 'Blue' },
 ];
 
 export function systemTagId(state: State, kind: SystemTag): string | null {
@@ -234,11 +236,20 @@ export function systemTagId(state: State, kind: SystemTag): string | null {
 }
 
 // 기본 태그가 없으면 만든다. 같은 팀에 같은 이름의 태그가 이미 있으면 그 태그를 기본 태그로 지정하고 색은 그대로 둔다.
+// 기본 태그의 이름을 바꿨으면(「최신」 → 「현행」) 이미 쓰는 파일의 기본 태그 이름도 바꾼다(사용자는 기본 태그 이름을 바꿀 수 없다).
 // 바꾼 것이 있으면 true
 export function ensureSystemTags(store: Store, actor: Actor): boolean {
   let changed = false;
   for (const def of SYSTEM_TAGS) {
-    if (systemTagId(store.state, def.kind)) continue;
+    const id = systemTagId(store.state, def.kind);
+    const current = id ? store.state.tags.get(id)! : null;
+    if (current && current.name !== def.name) {
+      const renamed: TagDef = { ...current, name: def.name };
+      store.put(keys.tag(renamed.id), renamed);
+      store.audit(actor, 'tag.system', renamed.id, current, renamed);
+      changed = true;
+    }
+    if (current) continue;
     const same = [...store.state.tags.values()].find(t => t.team === def.team && t.name === def.name && !t.system);
     const tag: TagDef = same
       ? { ...same, active: true, system: def.kind }

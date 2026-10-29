@@ -52,8 +52,9 @@ export interface DataStatus {
 export interface Category { id: string; name: string; order: number; active: boolean; code?: string }
 // alias: 동명이인 구분명
 export interface Worker { id: string; name: string; alias: string; active: boolean }
-// system: 플러그인이 넣는 기본 태그(GUI 추가·삭제, UI 최신). 이름·색을 바꾸거나 사용 중지할 수 없다(2026-10-20 사용자 결정).
-export type SystemTag = 'add' | 'delete' | 'latest';
+// system: 플러그인이 넣는 기본 태그(GUI 추가·삭제, UI 현행·작성 전). 이름·색을 바꾸거나 사용 중지할 수 없다(2026-10-20 사용자 결정).
+// latest는 이전 이름 「최신」의 종류 이름을 그대로 쓴다(2026-10-29 사용자 결정으로 「현행」으로 바꿈).
+export type SystemTag = 'add' | 'delete' | 'latest' | 'draft';
 export interface TagDef { id: string; team: Team; name: string; colorKey: string; color: string; active: boolean; system?: SystemTag }
 
 export interface ScreenSource { nodeId: string; pageId: string }
@@ -191,6 +192,8 @@ export interface Flipbook {
   // 새 템플릿(연결 기록이 있는 템플릿)으로 만든 플립북. 화면 목록은 캔버스에서 이 플립북 안의 추적 GUI로 읽고(core/tracks.ts),
   // GUI 복사본은 추적 GUI로 바뀐다(플립북 반영이 다시 놓지 않음).
   tracked?: boolean;
+  // 들어 있던 화면이 사용 안 함(삭제·화면이 아님·배포 취소)이 되었다(2026-10-29 사용자 결정). 상세의 경고와 목록의 알림 뱃지를 확인으로 지운다.
+  deletedAlert?: boolean;
 }
 
 // 플립북에 쌓은 GUI 이력 사본. 플립북을 만든 뒤 배포된 버전만 쌓는다(2026-10-19 사용자 결정).

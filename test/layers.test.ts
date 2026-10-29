@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { COPY } from '../src/core/copy.ts';
 import { originalFlipbookFrames, pickFlipbookFrames, syncFreeGui, syncGui } from '../src/figma/flipbook.ts';
+import { updateCopies } from '../src/figma/tracked.ts';
 import { COPY_KEY, copyLayers } from '../src/figma/layers.ts';
 
 // 레이어 복사의 호출 순서와 노드 생명주기를 검사한다. 실제 Figma의 복제·연결 끊기 결과는 별도로 확인한다.
@@ -436,4 +437,29 @@ test('새 템플릿은 화면을 플립북 위에 얹는다: 최대 폭으로 �
   const [a2, , c] = copies();
   assert.deepEqual([a2.x, a2.y, Math.round(a2.width * 10) / 10], [48, 224, 705.6]);
   assert.deepEqual([c.x, c.y, c.width], [48, 300 + 844 + 12, 1440]);
+});
+
+
+test('추적 GUI 재배포는 K로 바꾼 폭·자리·순서·잠금과 마커를 보존하고 원본이 없으면 기존 레이어를 남긴다', async () => {
+  setup();
+  const source = screen();
+  const frame = new Node('FRAME', '플립북'); page.appendChild(frame);
+  const before = new Node('FRAME', 'Description'); frame.appendChild(before);
+  const old = new Node('FRAME', '사용자 이름'); old.width = 600; old.height = 400; old.x = 120; old.y = 230; old.locked = true;
+  old.setSharedPluginData('ns', COPY_KEY, 's1@1'); frame.appendChild(old);
+  const marker = new Node('FRAME', 'Marker'); marker.x = 150; marker.y = 260; frame.appendChild(marker);
+  (globalThis as any).figma.getNodeByIdAsync = async (id: string) => [page, ...page.all()].find(n => n.id === id) ?? null;
+  const result = await updateCopies('ns', [{ uid: 's1', code: 'STB_HO_001', key: 's1@2', sourceNodeId: source.id, copies: [{ nodeId: old.id, trackId: 't1' }] }]);
+  const copy = frame.children[1];
+  assert.equal(old.removed, true);
+  assert.deepEqual([copy.width, copy.x, copy.y, copy.name, copy.locked], [600, 120, 230, '사용자 이름', true]);
+  assert.deepEqual(frame.children, [before, copy, marker]);
+  assert.deepEqual([marker.x, marker.y], [150, 260]);
+  assert.equal(copy.getSharedPluginData('ns', COPY_KEY), 's1@2');
+  assert.equal(copy.getSharedPluginData('ns', 'trackOf'), 't1');
+  assert.deepEqual(result.updated, [{ trackId: 't1', nodeId: copy.id }]);
+  const failed = await updateCopies('ns', [{ uid: 's1', code: 'STB_HO_001', key: 's1@3', sourceNodeId: 'missing', copies: [{ nodeId: copy.id, trackId: 't1' }] }]);
+  assert.equal(failed.updated.length, 0);
+  assert.equal(copy.removed, false);
+  assert.deepEqual(frame.children, [before, copy, marker]);
 });

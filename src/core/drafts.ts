@@ -257,7 +257,7 @@ export function defaultDraft(team: Team, state: State, entry: Entry, recentWorke
       draft.baseScreenId = screen.baseScreenId ?? undefined;
     }
   } else {
-    // 플립북 확인 완료의 상태는 기본 태그 「최신」을 먼저 고른다(2026-10-20 사용자 결정).
+    // 플립북 확인 완료의 상태는 기본 태그 「현행」(이전 이름 「최신」)을 먼저 고른다(2026-10-20 사용자 결정).
     draft.tagId = systemTagId(state, 'latest') ?? undefined;
   }
   return draft;
