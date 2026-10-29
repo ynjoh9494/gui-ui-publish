@@ -1,4 +1,5 @@
 import { windowCollapse } from './windowCollapse.ts';
+import { headerTab } from './headerTab.ts';
 import { COPY } from '../core/copy.ts';
 import { changeDetected, entryName, ignoreBlock, uiEntries as buildUiEntries, uiEstimate, type Entry, type UiScan } from '../core/compare.ts';
 import type { GuiScreenInfo } from '../core/guiScreens.ts';
@@ -723,13 +724,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   function renderTabs() {
     const settings = tab === 'ADMIN';
     // 머리에는 명령 이름(GUI Publish·UI Flipbook)을 쓰지 않고 탭만 둔다(2026-10-22 사용자 요청). 탭이 없는 관리 화면만 「관리」를 쓴다.
+    $('.tabs').classList.toggle('ui-tabs', mode === 'UI');
     $('.tabs').innerHTML = `${settings ? `<span class="app-title">${COPY.uiApp004}</span>` : ''}` +
-      `${mode === 'GUI' && !settings ? `<div class="create-tabs"><button data-action="version-close" aria-selected="${!versionOpen}">${COPY.uiApp272}</button><button data-action="version-open" aria-selected="${versionOpen}">${COPY.uiApp248}</button></div>` : ''}` +
-      `${mode === 'UI' && !settings ? `<div class="create-tabs"><button data-action="text-close" title="${COPY.uiApp302}" aria-selected="${listTabOpen()}">${COPY.uiApp302}</button><button data-action="paste-open" title="${COPY.paste001}" aria-selected="${pasteOpen}">${COPY.paste001}</button><button data-action="text-open" title="${COPY.uiApp303}" aria-selected="${textOpen}">${COPY.uiApp303}</button><button data-action="flow-open" title="${COPY.flow020}" aria-selected="${flowOpen}">${COPY.flow020}</button><button data-action="pdf-open" title="${COPY.pdf001}" aria-selected="${pdfOpen}">${COPY.pdf001}</button></div>` : ''}` +
-      `<span class="who" title="${COPY.uiApp005}">${esc(actor?.name ?? '')}</span>` +
+      `${mode === 'GUI' && !settings ? `<div class="create-tabs" role="tablist">${headerTab('version-close', COPY.uiApp272, !versionOpen, 'list')}${headerTab('version-open', COPY.uiApp248, versionOpen, 'versions')}</div>` : ''}` +
+      `${mode === 'UI' && !settings ? `<div class="create-tabs" role="tablist">${headerTab('text-close', COPY.uiApp302, listTabOpen(), 'book')}${headerTab('paste-open', COPY.paste001, pasteOpen, 'paste')}<span class="tab-separator tab-group-separator" aria-hidden="true"></span>${headerTab('text-open', COPY.uiApp303, textOpen, 'text')}${headerTab('flow-open', COPY.flow020, flowOpen, 'flow')}${headerTab('pdf-open', COPY.pdf001, pdfOpen, 'pdf')}</div>` : ''}` +
+      `<div class="tab-tools">${mode === 'GUI' ? '<span class="tab-separator" aria-hidden="true"></span>' : ''}` +
       `<button class="icon-button" data-action="settings" aria-pressed="${settings}" title="${COPY.uiApp004}" aria-label="${COPY.uiApp004}">${GEAR}</button>` +
       `<button class="icon-button" data-action="collapse-window" title="${COPY.windowCollapse}" aria-label="${COPY.windowCollapse}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/><path d="M3 15v6h6M3 21l9-9"/></svg></button>` +
-      `<button class="icon-button help-button" data-action="tutorial" title="${COPY.uiTutorial001}" aria-label="${COPY.uiTutorial001}">${HELP}</button>`;
+      `<button class="icon-button help-button" data-action="tutorial" title="${COPY.uiTutorial001}" aria-label="${COPY.uiTutorial001}">${HELP}</button></div>`;
   }
 
   function renderToolbar() {

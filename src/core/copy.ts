@@ -521,8 +521,8 @@ export const COPY = {
   uiTutorial074: "새 기능",
   uiTutorial075: "소속 화면",
   uiTutorial076: "캔버스에서 이 플립북 안에 놓은 화면입니다. 화면을 누르면 추적 목록에서 붙인 자리와 플로우를 찾습니다.",
-  uiTutorial081: "GUI 붙이기",
-  uiTutorial082: "카테고리를 고르고 화면을 누르거나 캔버스로 끌어 놓습니다. GUI 재배포를 따라가며, 목록 아이콘으로 붙인 자리와 플로우를 찾습니다.",
+  uiTutorial081: "GUI 목록",
+  uiTutorial082: "카테고리를 고르고 화면을 클릭하거나 캔버스로 드래그합니다. GUI 재배포를 따라가며, 목록 아이콘으로 붙인 자리와 플로우를 찾습니다.",
   uiTutorial077: "PDF 저장",
   uiTutorial078: "지금 보고 있는 페이지에서 캔버스로 고른 프레임을 왼쪽 위에서 오른쪽 아래 순서로 한 PDF에 저장합니다. UI Title·Update History List는 저장하는 동안만 숨깁니다.",
   uiTutorial079: "변경 사항",
@@ -841,7 +841,7 @@ export const COPY = {
   // 추적 GUI — src/trackController.ts
   track001: '붙인 화면',
   track002: '개를 새 버전으로 바꿨습니다.',
-  track003: '배포된 GUI가 없는 화면이라 붙이지 못했습니다. GUI 붙이기 탭을 다시 열어 목록을 새로 받으세요.',
+  track003: '배포된 GUI가 없는 화면이라 붙이지 못했습니다. GUI 목록 탭을 다시 열어 목록을 새로 받으세요.',
   track004: '화면 붙이는 중',
   track005: '캔버스에서 삭제된 화면입니다. 목록에서 제거했습니다.',
   // 추적 목록 팝업 — src/ui/trackListView.ts
@@ -851,19 +851,20 @@ export const COPY = {
   trackList004: '이 화면이 든 플로우가 없습니다.',
   trackList005: '닫기',
   trackList006: '추적 목록',
-  // GUI 붙이기 탭 — src/ui/pasteView.ts
-  paste001: 'GUI 붙이기',
+  // GUI 목록 탭 — src/ui/pasteView.ts
+  paste001: 'GUI 목록',
   paste002: '카테고리',
   paste003: '목록 보기',
   paste004: '그리드 보기',
   paste005: '화면 크기',
   paste006: 'K 단축키로 캔버스에 배치한 화면의 크기를 바꿀 수 있습니다.',
-  paste007: '끌어서 캔버스에 놓거나, 누르면 보고 있는 화면 가운데에 붙입니다.',
+  paste007: '캔버스로 드래그 혹은 클릭하여 GUI를 배치할 수 있습니다.',
   paste008: '붙인 화면·플로우',
   paste009: '전체',
   paste010: 'Screen ID·화면 이름 검색',
   paste011: '전체 카테고리에서 검색하기',
   paste012: '검색 결과가 없습니다.',
+  paste013: 'TIP',
   // PDF 저장 — src/ui/pdfView.ts, src/figma/pdf.ts
   pdf001: 'PDF 저장',
   pdf002: '선택한 프레임',

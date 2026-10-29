@@ -73,9 +73,9 @@ export function pasteView(root: HTMLElement, actions: PasteActions): PasteView {
 
   function build(el: HTMLElement) {
     el.innerHTML = `${screenPickerControls('paste', query)}
-      <p class="note paste-tip">${COPY.paste006}</p>
+      <p class="note paste-hint">${COPY.paste007}</p>
       <div class="paste-screens"></div>
-      <p class="note paste-hint">${COPY.paste007}</p>`;
+      <p class="note paste-tip"><span class="paste-tip-label">${COPY.paste013}</span> ${COPY.paste006}</p>`;
     el.addEventListener('input', ev => {
       const input = ev.target as HTMLInputElement;
       if (input.dataset.paste !== 'search') return;
