@@ -148,7 +148,7 @@ export async function createDefaultTemplate(maxWidth: number, ns = NS): Promise<
     sampleId.name = 'Screen ID';
     ids.appendChild(sampleId);
 
-    // 본문: GUI 영역(화면 복사본은 플립북 위에 얹고, 넘치면 이 영역을 늘림) · Description
+    // 본문: GUI 영역(화면 복사본을 이 영역 안에 넣고 넘치면 늘림) · Description
     const body = stack('Body', 'HORIZONTAL', PAGE_PAD);
     template.appendChild(body);
     const gui = figma.createFrame();

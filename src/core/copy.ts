@@ -679,7 +679,7 @@ export const COPY = {
   coreTemplate007: 'Screen ID 칸',
   coreTemplate008: '슬롯이나 인스턴스 밖 프레임. 화면마다 Screen ID 태그를 넣습니다.',
   coreTemplate009: 'GUI 영역',
-  coreTemplate010: '인스턴스 밖 프레임 · 필수. 이 프레임 왼쪽 위(여백 24)부터 GUI 화면 복사본을 플립북 위에 얹고, 넘치면 이 프레임을 늘립니다.',
+  coreTemplate010: '인스턴스 밖 프레임 · 필수. GUI 화면 복사본을 이 영역 안에 넣습니다. 넘치는 화면에 맞춰 영역이 늘어납니다.',
   coreTemplate011: 'Description 본문',
   coreTemplate012: '슬롯이나 인스턴스 밖 프레임. 텍스트 편집 탭이 이 칸에 넣습니다.',
   coreTemplate013: '이력 목록',

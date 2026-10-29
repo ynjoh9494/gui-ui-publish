@@ -493,13 +493,13 @@ function areaOffset(area: FrameNode, parent: BaseNode & ChildrenMixin): Point {
 // 글꼴이 없어 글자를 줄이지 못하면 알리고 표식을 남기지 않아 다음 반영 때 다시 복사한다.
 // 마커는 크기를 두고 위치만 화면을 따라간다(2026-10-21 사용자 결정): 다시 복사한 같은 화면에서 같은 상대 위치에 놓는다.
 // overlays는 플립북 프레임에 절대 위치로 놓은 노드다. 중심이 GUI 영역 안에 있는 것만 같은 방식으로 옮긴다.
-export async function syncGui(ns: string, area: FrameNode, gui: FlipbookGui[], scale: FlipbookView['scale'], notes = new Set<string>(), width = SOURCE_WIDTH, overlays: SceneNode[] = []): Promise<void> {
+export async function syncGui(ns: string, area: FrameNode, gui: FlipbookGui[], scale: FlipbookView['scale'], notes = new Set<string>(), width = SOURCE_WIDTH, overlays: SceneNode[] = []): Promise<FrameNode[]> {
   const signature = JSON.stringify(['rows-v7', width, gui.map(g => [g.key, g.scale ?? scale])]);
   const copies = area.children.filter(n => !!n.getSharedPluginData(ns, COPY_KEY));
   if (area.getSharedPluginData(ns, IMAGE_KEY) === signature && copies.length === gui.length &&
       copies.every((copy, i) => copy.getSharedPluginData(ns, COPY_KEY) === gui[i].key)) {
     for (const copy of copies) copy.locked = false;
-    return;
+    return copies as FrameNode[];
   }
   // 저장한 배치 규칙과 크기가 같으면 버전이 바뀌지 않은 화면 복사본은 그대로 쓴다.
   // 이전 버전의 서명도 읽어 기존 플립북을 한꺼번에 다시 복사하지 않는다.
@@ -609,6 +609,7 @@ export async function syncGui(ns: string, area: FrameNode, gui: FlipbookGui[], s
   if (area.height !== targetHeight) area.resizeWithoutConstraints(area.width, targetHeight);
   if (missingFonts.size) notes.add(`${COPY.figmaFlipbook026} ${[...missingFonts].join(', ')}`);
   area.setSharedPluginData(ns, IMAGE_KEY, missingFonts.size ? '' : signature);
+  return placed;
 }
 
 // 복사본에 적어 두는 그 복사본의 크기(기본 1·작게 0.5). 같은 버전·크기면 다시 복사하지 않는다.
@@ -956,10 +957,11 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
   if (p.ids && kit.idTag) await syncIds(ns, p.ids, view.gui.map(g => g.code), kit.idTag, kit);
   // 새 템플릿 플립북은 만들 때만 GUI를 놓는다. 그 뒤로는 추적 GUI라 GUI 배포가 바꾸고(figma/tracked.ts), 사용자가 캔버스에서 넣고 뺀다.
   let copies: SceneNode[] = [];
-  if (p.named) {
+  if (p.named || view.create) {
     const overlays = frame.children.filter(n => 'layoutPositioning' in n && n.layoutPositioning === 'ABSOLUTE');
-    await syncGui(ns, p.gui, view.gui, view.scale, notes, view.guiWidth, overlays);
-  } else if (view.create) copies = await syncFreeGui(ns, frame, p.gui, view.gui, view.scale, notes, view.guiWidth);
+    const placed = await syncGui(ns, p.gui, view.gui, view.scale, notes, view.guiWidth, overlays);
+    if (view.create) copies = placed;
+  }
   if (p.named) await syncRows(ns, p.named.history!, settings, view.rows, kit, notes);
   else if (p.list) await syncMarkedRows(ns, p.list, p.previous, settings, view.rows, kit, notes);
 
