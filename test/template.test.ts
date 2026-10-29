@@ -222,6 +222,22 @@ test('연결은 템플릿 안·찾을 수 있는 자리의 맞는 종류 레이�
   assert.equal(comment.getSharedPluginData(NS, PART_KEY), 'rowComment', 'a layer picked inside the sample row marks the component layer');
 });
 
+test('이전 이력칸은 슬롯 안 레이어를 연결할 수 있지만 다른 항목은 슬롯 안 레이어를 거부한다', async () => {
+  const w = world();
+  const previousLayer = w.make('FRAME', 'Previous content');
+  const previous = w.make('SLOT', 'Previous', [previousLayer]);
+  const template = w.make('FRAME', 'Mine', [previous]);
+  w.page.appendChild(template);
+  template.setSharedPluginData(NS, LINKS_KEY, '{"components":{}}');
+
+  w.select(previousLayer);
+  await connectTemplateItem(template.id, 'previous');
+  assert.equal(previousLayer.getSharedPluginData(NS, PART_KEY), 'previous');
+
+  previousLayer.setSharedPluginData(NS, PART_KEY, '');
+  await assert.rejects(connectTemplateItem(template.id, 'chapter'), { message: COPY.figmaTemplate016 });
+});
+
 test('표식 템플릿의 이력은 이력 행 컴포넌트의 인스턴스만 다루고 머리 행은 두며, 둘째 기록부터 이전 이력 칸에 넣는다', async () => {
   const w = world();
   const label = text(w, 'Text', 'Tag');
