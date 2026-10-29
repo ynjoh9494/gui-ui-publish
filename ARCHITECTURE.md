@@ -21,6 +21,8 @@ flowchart LR
 
 ## 코드 경계
 
+`src/ui/windowCollapse.ts`는 DOM을 유지해 접기 전 입력·선택을 보존하고, 접힌 동안 발생한 크기 변경을 펼칠 때 반영한다. `Host.resize`는 접힌 창의 크기를 Figma에 전달하되 다음 실행 크기로 저장하지 않는다.
+
 | 위치 | 책임 |
 |---|---|
 | `src/core/types.ts`, `store.ts` | 파일 기록의 타입, 키 구성, 역직렬화, 메모리 상태와 저장소 동기화 |

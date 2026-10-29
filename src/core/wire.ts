@@ -69,9 +69,9 @@ export interface VersionMatchView { pageId: string; links: VersionLink[]; frames
 // 세로는 UI Flipbook이 머리·툴바·목록(80px 이상)이 들어가는 320px, GUI Publish는 추가 설명·하단 줄이 더 있어 370px이다.
 // GUI 370px은 가장 좁은 창(448px)에서 목록 위 줄이 두 줄로 접혀도 목록 상자 80px가 하단에 가리지 않는 높이다(2026-10-27 사용자 요청으로 420px에서 낮춤).
 // 이전 최소(600×420, 목록 260px·입력 320px)는 기본 크기와 거의 같아 창과 구분선을 조절할 여지가 없었다(2026-10-26 사용자 요청으로 낮춤).
-// UI Flipbook 오른쪽 영역을 접으면(compact) 창을 목록 너비로 줄이므로 가로 최소는 목록 최소 너비다(2026-10-21 사용자 요청).
 // 목록·입력 영역 최소 너비는 styles.css의 #app grid-template-columns와 같아야 한다.
 export const PANE = { minList: 200, minDetail: 240, divider: 8 };
+export const COLLAPSED_WINDOW = { width: 200, height: 40 };
 export const WINDOW = { width: 640, height: 456, minWidth: PANE.minList + PANE.divider + PANE.minDetail, minHeight: { GUI: 370, UI: 320 }, minCompactWidth: PANE.minList };
 export function clampWindow(mode: Team, width: number, height: number, compact = false): { width: number; height: number } {
   return { width: Math.max(compact ? WINDOW.minCompactWidth : WINDOW.minWidth, Math.round(width)), height: Math.max(WINDOW.minHeight[mode], Math.round(height)) };
@@ -197,7 +197,7 @@ export type ToMain =
   // PDF 저장 취소. 쓰기 순서를 기다리지 않고 바로 처리해, 내보내는 중인 한 장이 끝나면 멈춘다.
   | { type: 'cancelPdf' }
   // save: 손잡이를 놓았을 때. 다음 실행 때 이 크기로 연다.
-  | { type: 'resize'; width: number; height: number; save?: boolean; compact?: boolean };
+  | { type: 'resize'; width: number; height: number; save?: boolean; collapsed?: boolean; compact?: boolean };
 
 export type ToUi =
   // mode: 실행한 플러그인 명령(GUI Publish·UI Flipbook)

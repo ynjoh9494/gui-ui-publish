@@ -20,7 +20,7 @@ export interface TutorialOptions {
   // 실제 플러그인 창의 루트. 예시 화면과 오버레이를 이 자리에 겹친다.
   root: HTMLElement;
   // 실제 플러그인 창 크기를 바꾼다(다음 실행 크기로 기억하지 않는다).
-  resize(width: number, height: number, compact: boolean): void;
+  resize(width: number, height: number): void;
   startApp(bridge: Bridge, root: HTMLElement): void;
 }
 
@@ -487,7 +487,7 @@ export function startTutorial(options: TutorialOptions): void {
   const before = { width: root.offsetWidth, height: root.offsetHeight };
   const widened = before.width < MIN_WIDTH || before.height < MIN_HEIGHT;
   root.inert = true;
-  if (widened) options.resize(Math.max(before.width, MIN_WIDTH), Math.max(before.height, MIN_HEIGHT), false);
+  if (widened) options.resize(Math.max(before.width, MIN_WIDTH), Math.max(before.height, MIN_HEIGHT));
 
   const demo = createDemo({ mode, actor: options.actor });
 
@@ -619,7 +619,7 @@ export function startTutorial(options: TutorialOptions): void {
     demo.listen(() => {});
     container.remove();
     root.inert = false;
-    if (widened) options.resize(before.width, before.height, root.classList.contains('detail-collapsed'));
+    if (widened) options.resize(before.width, before.height);
     root.querySelector<HTMLElement>('.tabs [data-action="tutorial"]')?.focus();
   }
 

@@ -17,6 +17,24 @@ page.on('console', m => { if (m.type() === 'error' || (m.type() === 'warning' &&
 const app = page.locator('#app');
 const shot = async name => { await page.screenshot({ path: `${outDir}/${name}.png` }); console.log('step', name); };
 const ready = async () => page.waitForFunction(() => document.querySelector('#app .toolbar .progress')?.textContent?.includes('마지막 검토'));
+const collapseWindow = async name => {
+  const snapshot = () => app.evaluate(root => ({ width: root.offsetWidth, height: root.offsetHeight,
+    list: root.querySelector('.list').textContent, detail: root.querySelector('.detail').textContent,
+    inputs: [...root.querySelectorAll('input, textarea')].map(el => ({ value: el.value, checked: el.checked })) }));
+  const before = await snapshot();
+  await app.locator('[data-action=collapse-window]').click();
+  await page.waitForFunction(() => document.querySelector('#app').offsetHeight === 40);
+  assert.equal(await app.evaluate(root => root.offsetWidth), 200);
+  assert.equal(await app.locator('.tabs').isVisible(), false);
+  assert.equal(await app.locator('.list').isVisible(), false);
+  assert.equal(await app.locator('.window-bar').isVisible(), true);
+  assert.equal(await app.locator('.window-bar strong').textContent(), name.startsWith('gui') ? 'GUI Publish' : 'UI Flipbook');
+  await shot('window-' + name);
+  await app.locator('.window-bar button').click();
+  await page.waitForFunction(height => document.querySelector('#app').offsetHeight === height, before.height);
+  assert.deepEqual(await snapshot(), before, 'Window restores dimensions, inputs, selection and panels');
+};
+
 const scan = async () => { await app.locator('[data-action=scan]').click(); await ready(); };
 // 플러그인 메뉴에서 다른 명령을 실행한 것처럼 바꾼다(미리보기 도구 버튼).
 // 목록은 다음 프레임에 다시 그린다. 새 플립북 행이 기대한 상태가 될 때까지 잠시 기다린 뒤 확인한다.
@@ -150,6 +168,7 @@ try {
   await app.locator('[data-form=tag-add] [data-f=name]').fill('검토');
   await app.locator('[data-action=tag-add]').click();
   await page.waitForFunction(() => document.querySelector('#app .tag-picker summary .chip')?.textContent === '검토');
+  await collapseWindow('gui');
   await shot('01-gui-ready');
 
   await app.locator('[data-action=prepare]').click();
@@ -158,6 +177,7 @@ try {
   await shot('02-gui-published');
 
   await mode('UI');
+  await collapseWindow('ui');
   await app.locator('[data-action=settings]').click();
   await app.locator('[data-form=flipbook] [data-f=page]').selectOption('0:3');
   await page.waitForFunction(() => document.querySelectorAll('#app [data-form=flipbook] .scope-page').length === 2);
@@ -566,6 +586,7 @@ try {
       await app.locator('.tabs [data-action=paste-open]').click();
       const rows = app.locator('.paste-view .paste-screen');
       await rows.first().waitFor();
+      await collapseWindow('ui-paste');
       await page.waitForFunction(w => Math.abs(document.querySelector('#app').getBoundingClientRect().width - w) < 2, listWidth, { timeout: 3000 });
       assert.equal(await app.locator('.list').isVisible(), false, 'GUI 붙이기 탭은 목록 대신 보인다');
       assert.equal(await app.locator('.paste-view [data-paste=category] option:checked').innerText(), '홈', '고른 카테고리의 화면만 보여 준다');
@@ -667,39 +688,17 @@ try {
     await page.waitForFunction(() => document.querySelectorAll('#app .list .row').length === 3);
   }
   await app.locator('[data-action=changed-only]').check();
-  // 확인이 필요한 플립북 줄 오른쪽 끝 버튼으로 오른쪽 영역을 접고 펼친다. 접으면 창 너비가 목록 너비로 준다.
-  const detailToggle = app.locator('.review-line [data-action=toggle-detail]');
-  const before = await widths();
-  const pressed = value => page.waitForFunction(v => document.querySelector('#app .review-line [data-action=toggle-detail]')?.getAttribute('aria-pressed') === v, value, { timeout: 3000 }).catch(() => {});
-  const panes = () => app.evaluate(root => ({
-    hidden: getComputedStyle(root.querySelector('.detail')).display === 'none' && getComputedStyle(root.querySelector('.pane-divider')).display === 'none',
-    root: Math.round(root.getBoundingClientRect().width),
-    inside: ['.list', '.review-line [data-action=toggle-detail]', '[data-action=settings]', '[data-action=tutorial]'].every(sel => root.querySelector(sel).getBoundingClientRect().right <= root.getBoundingClientRect().right + 1),
-  }));
-  await detailToggle.click();
-  await pressed('true');
-  assert.deepEqual(await panes(), { hidden: true, root: Math.round(before.list), inside: true }, '접으면 오른쪽 영역이 사라지고 창이 목록 너비로 준다');
-  await shot('06b-ui-detail-collapsed');
-  // 접은 채 플립북을 골라도 오른쪽 영역은 나타나지 않고 목록이 그대로 보인다.
-  await app.locator('.list .row').first().click();
-  await page.waitForFunction(() => document.querySelector('#app .list .row.selected'));
-  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
-  assert.deepEqual(await panes(), { hidden: true, root: Math.round(before.list), inside: true }, '접은 채 플립북을 골라도 오른쪽 영역이 나타나지 않는다');
-  assert.equal(await app.locator('.list').isVisible(), true);
-  // 접어서 줄인 창에서도 튜토리얼을 넓혀 보여 준 뒤 접은 너비로 되돌린다.
+  assert.equal(await app.locator('[data-action=toggle-detail]').count(), 0);
+  assert.equal(await app.locator('.detail').isVisible(), true);
+  assert.equal(await app.locator('.pane-divider').isVisible(), true);
+  await page.waitForFunction(() => document.querySelectorAll('#app .list .row').length === 1);
+  await collapseWindow('ui-review');
   await tutorial('06c-tutorial-ui');
-  assert.deepEqual(await panes(), { hidden: true, root: Math.round(before.list), inside: true }, '튜토리얼을 끝내면 접은 창 너비로 돌아간다');
-  await detailToggle.click();
-  await pressed('false');
-  assert.deepEqual(await panes(), { hidden: false, root: Math.round(before.root), inside: true }, '펼치면 접기 전 창 너비로 돌아간다');
-  // 접은 채 새 플립북을 넣으면 오른쪽 영역을 펼친다.
-  await detailToggle.click();
-  await pressed('true');
+  assert.equal(await app.locator('.detail').isVisible(), true);
   await app.locator('[data-action=new-add]').click();
-  await pressed('false');
-  assert.equal((await panes()).hidden, false, '새 플립북은 오른쪽 영역을 펼쳐 정한다');
+  assert.equal(await app.locator('.detail').isVisible(), true);
   await app.locator('.list .new-row [data-action=new-remove]').click();
-  await newRows(0, '확인용 새 플립북을 지운다');
+  await newRows(0, 'Temporary flipbook removed');
   // 업데이트된 화면만 보기는 확인이 필요한 플립북만 남긴다.
   assert.equal(await app.locator('.list .switch span').innerText(), '업데이트된 화면만 보기');
   await page.waitForFunction(() => document.querySelectorAll('#app .list .row').length === 1);

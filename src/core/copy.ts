@@ -60,6 +60,8 @@ export const INDICATOR_LABEL: Record<'new' | 'changed' | 'unchanged' | 'pending'
 // 화면·안내·오류 문구. 각 항목의 주석은 문구가 처음 표시되던 코드의 행이다.
 // 문구를 바꿀 때 HTML 태그·동적 값은 사용처에 두고 여기의 텍스트만 수정한다.
 export const COPY = {
+  windowCollapse: '창 접기',
+  windowExpand: '창 펼치기',
   // 화면 상단·변경사항 확인 — src/ui/app.ts
   uiApp001: '불러오는 중', // 78
   uiApp002: "화면 목록", // 84
@@ -496,7 +498,7 @@ export const COPY = {
   uiTutorial052: '플립북 목록',
   uiTutorial053: '페이지 → Section → 캔버스 순서로 보여 줍니다. 빨간 점은 GUI가 다시 배포된 플립북, 연결 끊김 아이콘은 캔버스에서 찾지 못한 플립북입니다.',
   uiTutorial054: '확인이 필요한 플립북',
-  uiTutorial055: 'GUI가 다시 배포되어 확인할 플립북 수입니다. 업데이트된 화면만 보기로 그 플립북만 남기고, 오른쪽 버튼으로 오른쪽 영역을 접습니다.',
+  uiTutorial055: 'GUI가 다시 배포되어 확인할 플립북 수입니다. 업데이트된 화면만 보기로 그 플립북만 남길 수 있습니다.',
   uiTutorial056: '플립북 상세',
   uiTutorial057: '제목을 바꾸고 GUI 썸네일과 배포 이력을 봅니다. 썸네일의 빨간 점은 수정된 화면입니다.',
   uiTutorial058: '확인 완료',

@@ -32,7 +32,7 @@ export interface Host extends FingerprintReader {
   actor: Actor;
   mode: Team;
   post(message: ToUi): void;
-  resize(width: number, height: number, save?: boolean, compact?: boolean): void;
+  resize(width: number, height: number, save?: boolean, collapsed?: boolean, compact?: boolean): void;
   pages(): PageInfo[];
   listFrames(pageIds: string[], sectionIds: string[], isCurrent?: () => boolean): Promise<ScannedFrame[]>;
   selectNodes(nodeIds: string[], lastNodeId: string, isLatest: () => boolean): Promise<void>;

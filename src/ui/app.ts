@@ -1,3 +1,4 @@
+import { windowCollapse } from './windowCollapse.ts';
 import { COPY } from '../core/copy.ts';
 import { changeDetected, entryName, ignoreBlock, uiEntries as buildUiEntries, uiEstimate, type Entry, type UiScan } from '../core/compare.ts';
 import type { GuiScreenInfo } from '../core/guiScreens.ts';
@@ -47,7 +48,7 @@ type Tab = Team | 'ADMIN';
 const NODE_PREVIEW = 'node:';
 
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
-const WHILE_BUSY = new Set(['tab', 'settings', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'toggle-detail', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel']);
+const WHILE_BUSY = new Set(['tab', 'settings', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
 const BEFORE_CHECK = new Set([...WHILE_BUSY, 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'text-import', 'text-apply',
@@ -59,9 +60,7 @@ import { WORK_LABEL } from '../core/copy.ts';
 // 지우기(x) 아이콘
 const X_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>';
 const CHEVRON_RIGHT_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
-// 가운데 세로선이 있는 직사각형: UI Flipbook 오른쪽 영역 접기·펼치기
 const REFRESH_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>';
-const PANELS_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>';
 const PENCIL_ICON ='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5 4 4M4 20l4.5-1 10-10a2.8 2.8 0 0 0-4-4l-10 10L4 20Z"/></svg>';
 
 // 「+ 추가」 버튼 내용. 더하기 아이콘을 글자 앞에 붙인다.
@@ -201,6 +200,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   let pdfOpen = false;
   // UI Flipbook의 GUI 붙이기 탭(2026-10-29 사용자 결정). 다른 탭과 같이 하나만 열리고, 창을 목록 너비로 접어 보여 준다.
   let pasteOpen = false;
+  let compactFrom: { width: number } | null = null;
   // 화면 목록을 캔버스에서 읽은 마지막 플립북(상세를 다시 그릴 때마다 읽지 않게)
   let followed: string | null = null;
   const listTabOpen = () => !textOpen && !flowOpen && !pdfOpen && !pasteOpen;
@@ -229,10 +229,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   let deleteArmed: string | null = null;
   // 목록 하단의 연결 끊긴 플립북 전체 삭제를 한 번 눌렀다. 한 번 더 누르면 삭제한다.
   let removeAllArmed = false;
-  // UI Flipbook 오른쪽 영역(플립북 상세)을 접었다. 창이 커서 접는 것이므로 창 너비를 목록 너비로 줄인다(2026-10-21 사용자 요청).
-  let detailCollapsed = false;
-  // 창을 목록 너비로 줄여 둔 동안 펼칠 때 돌아갈 창 너비
-  let compactFrom: { width: number } | null = null;
   // 플러그인 본체가 처리 중인 작업. 처리 중에는 목록 탐색 외의 조작을 막는다.
   // 처음에는 본체의 첫 응답을 기다리는 중이다.
   let busyLabel: string | null = COPY.uiApp001;
@@ -253,6 +249,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     <div class="overlay arrange-overlay" hidden></div>
     <div class="resize-handle" title="${COPY.uiApp208}" aria-label="${COPY.uiApp208}"></div>`;
   const $ = (sel: string) => root.querySelector(sel) as HTMLElement;
+  bridge = windowCollapse(bridge, root, () => mode);
   const editor = textEditor(root);
   const pdf = pdfView(root);
   const flows = flowView(root, {
@@ -333,8 +330,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     let frame = 0;
     const send = (save = false) => {
       frame = 0;
-      // 접어서 줄인 너비는 기억하지 않는다. 다음 실행은 마지막으로 기억한 펼친 크기로 연다.
-      if (pending) bridge.send({ type: 'resize', ...pending, save: save && !compactFrom, compact: !!compactFrom });
+      if (pending) bridge.send({ type: 'resize', ...pending, save, compact: !!compactFrom });
       if (save) pending = null;
     };
     const stop = (ev: PointerEvent) => {
@@ -579,11 +575,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   // 새 플립북을 처음 열 때 창이 960×800보다 작으면 넓히고, 모두 닫으면(restoreEditorSize) 되돌린다.
   function widenForEditor() {
     if (sizeBeforeCreate) return;
-    // 오른쪽 영역을 펼치며 넣는 중이면 접기 전 너비를 기준으로 넓힌다.
-    const expanding = !!compactFrom && !detailCollapsed;
-    sizeBeforeCreate = { width: compactFrom?.width ?? root.offsetWidth, height: root.offsetHeight };
-    if (expanding) compactFrom = null;
-    if (expanding || sizeBeforeCreate.width < 960 || sizeBeforeCreate.height < 800) bridge.send({ type: 'resize', width: Math.max(sizeBeforeCreate.width, 960), height: Math.max(sizeBeforeCreate.height, 800) });
+    sizeBeforeCreate = { width: root.offsetWidth, height: root.offsetHeight };
+    if (sizeBeforeCreate.width < 960 || sizeBeforeCreate.height < 800) bridge.send({ type: 'resize', width: Math.max(sizeBeforeCreate.width, 960), height: Math.max(sizeBeforeCreate.height, 800) });
   }
   function restoreEditorSize() {
     if (!sizeBeforeCreate || newFlipbooks.length || movedFlipbooks.length) return;
@@ -703,7 +696,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       <button class="primary" data-action="create-submit" ${newSubmitting || !flipbookPageOptions().length ? 'disabled' : ''}>${label}</button>`;
   }
   // 오른쪽에 「플립북 편집」이 보이면 버튼은 그 머리에 있고 하단 줄은 없다(2026-10-22 사용자 요청).
-  const editingNewShown = () => !!currentNew() && !detailCollapsed;
+  const editingNewShown = () => !!currentNew();
   function renameExisting(id: string, title: string) {
     const fb = state?.flipbooks.get(id);
     editingTitle = null;
@@ -737,6 +730,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       `${mode === 'UI' && !settings ? `<div class="create-tabs"><button data-action="text-close" title="${COPY.uiApp302}" aria-selected="${listTabOpen()}">${COPY.uiApp302}</button><button data-action="paste-open" title="${COPY.paste001}" aria-selected="${pasteOpen}">${COPY.paste001}</button><button data-action="text-open" title="${COPY.uiApp303}" aria-selected="${textOpen}">${COPY.uiApp303}</button><button data-action="flow-open" title="${COPY.flow020}" aria-selected="${flowOpen}">${COPY.flow020}</button><button data-action="pdf-open" title="${COPY.pdf001}" aria-selected="${pdfOpen}">${COPY.pdf001}</button></div>` : ''}` +
       `<span class="who" title="${COPY.uiApp005}">${esc(actor?.name ?? '')}</span>` +
       `<button class="icon-button" data-action="settings" aria-pressed="${settings}" title="${COPY.uiApp004}" aria-label="${COPY.uiApp004}">${GEAR}</button>` +
+      `<button class="icon-button" data-action="collapse-window" title="${COPY.windowCollapse}" aria-label="${COPY.windowCollapse}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/><path d="M3 15v6h6M3 21l9-9"/></svg></button>` +
       `<button class="icon-button help-button" data-action="tutorial" title="${COPY.uiTutorial001}" aria-label="${COPY.uiTutorial001}">${HELP}</button>`;
   }
 
@@ -928,7 +922,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const list = $('.list');
     if (list.dataset.team !== 'UI' || !list.querySelector('.list-body')) {
       list.dataset.team = 'UI';
-      list.innerHTML = `<div class="list-filters"><div class="review-line"><p class="review-count" aria-live="polite"></p><button class="icon-button" data-action="toggle-detail">${PANELS_ICON}</button></div><div class="list-actions"><button class="add-button" data-action="new-add" title="고른 플립북 다음에 새 플립북을 넣습니다. 만들기를 누르기 전에는 저장하지 않습니다.">${ADD_LABEL.replace(COPY.uiApp101, '새 플립북')}</button><button data-action="bulk-open">플립북 없는 화면 일괄 만들기</button></div><input type="search" placeholder="${COPY.uiApp020}" value="${esc(query.UI)}" data-input="query" aria-label="${COPY.uiApp021}"><div class="filter-line"><span class="sync-status"></span><label class="switch"><span>${COPY.uiApp301}</span><input type="checkbox" role="switch" data-action="changed-only" ${changedOnly.UI ? 'checked' : ''}></label></div></div><div class="list-body"><div class="list-box"></div><div class="unlinked-all"></div></div>`;
+      list.innerHTML = `<div class="list-filters"><div class="review-line"><p class="review-count" aria-live="polite"></p></div><div class="list-actions"><button class="add-button" data-action="new-add" title="고른 플립북 다음에 새 플립북을 넣습니다. 만들기를 누르기 전에는 저장하지 않습니다.">${ADD_LABEL.replace(COPY.uiApp101, '새 플립북')}</button><button data-action="bulk-open">플립북 없는 화면 일괄 만들기</button></div><input type="search" placeholder="${COPY.uiApp020}" value="${esc(query.UI)}" data-input="query" aria-label="${COPY.uiApp021}"><div class="filter-line"><span class="sync-status"></span><label class="switch"><span>${COPY.uiApp301}</span><input type="checkbox" role="switch" data-action="changed-only" ${changedOnly.UI ? 'checked' : ''}></label></div></div><div class="list-body"><div class="list-box"></div><div class="unlinked-all"></div></div>`;
     }
     const canCreate = flipbookPageOptions().length > 0;
     for (const button of list.querySelectorAll<HTMLButtonElement>('.list-actions button')) {
@@ -939,11 +933,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     list.querySelector<HTMLElement>('.review-count')!.innerHTML = `<span class="review-dot${reviews ? '' : ' none'}" aria-hidden="true"></span><span>${COPY.uiApp192} <b>${reviews}</b>${COPY.uiApp015}</span>`;
     list.querySelector<HTMLInputElement>('[data-action="changed-only"]')!.checked = changedOnly.UI;
     paintSyncStatus();
-    const toggle = list.querySelector<HTMLButtonElement>('[data-action="toggle-detail"]')!;
-    const toggleLabel = detailCollapsed ? '오른쪽 영역 펼치기' : '오른쪽 영역 접기';
-    toggle.title = toggleLabel;
-    toggle.setAttribute('aria-label', toggleLabel);
-    toggle.setAttribute('aria-pressed', String(detailCollapsed));
     const box = list.querySelector<HTMLElement>('.list-box')!;
     const made = [...state!.flipbooks.values()].some(fb => fb.status === 'active');
     // 목록 하단: 연결 끊긴 플립북 전체 삭제(두 번 눌러 삭제). 검색·필터와 관계없이 연결이 끊긴 플립북 전체가 대상이다.
@@ -2176,10 +2165,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     applyCollapse();
   }
 
-  // 오른쪽 영역 접기: 창 너비를 목록 너비로 줄이고, 펼치면 접기 전 너비로 되돌린다. 설정 화면과 텍스트 편집 탭에서는 펼친 너비로 보여 준다.
+  // GUI 붙이기에서만 창을 목록 너비로 줄인다. 전체 창 접기는 windowCollapse가 별도로 처리한다.
   // GUI 붙이기 탭은 늘 접어 보여 주고, 다른 탭으로 가면 그 탭의 접힘·펼침으로 돌아간다(2026-10-29 사용자 결정).
   function applyCollapse() {
-    const want = tab !== 'ADMIN' && team() === 'UI' && (pasteOpen || (detailCollapsed && listTabOpen()));
+    const want = tab !== 'ADMIN' && team() === 'UI' && pasteOpen;
     if (want && !compactFrom) {
       // 다른 탭에서는 목록이 숨어 있으므로 격자 첫 열(목록) 너비를 읽는다.
       const listWidth = parseFloat(getComputedStyle(root).gridTemplateColumns) || $('.list').getBoundingClientRect().width;
@@ -2415,7 +2404,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     if (locked(t) && !BEFORE_CHECK.has(action)) { ev.preventDefault(); return; }
     switch (action) {
       case 'tutorial':
-        startTutorial({ mode, actor: actor ?? { id: '', name: '' }, root, startApp, resize: (width, height, compact) => bridge.send({ type: 'resize', width, height, compact }) });
+        startTutorial({ mode, actor: actor ?? { id: '', name: '' }, root, startApp, resize: (width, height) => bridge.send({ type: 'resize', width, height, compact: root.classList.contains('detail-collapsed') }) });
         break;
       case 'settings':
         closeVersion(false);
@@ -2430,9 +2419,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         break;
       // 만들기 전 새 플립북은 설정을 다녀와도 남는다.
       case 'create-page-manage': tab = 'ADMIN'; adminOpen = COPY.uiApp107; renderAll(); bridge.send({ type: 'templateInfo' }); break;
-      case 'toggle-detail': detailCollapsed = !detailCollapsed; renderAll(); break;
-      // 새 플립북은 오른쪽 영역에서 정하므로 접어 두었으면 펼친다.
-      case 'new-add': detailCollapsed = false; if (addNew()) { revealSelection = true; renderList(); } applyCollapse(); break;
+      case 'new-add': if (addNew()) { revealSelection = true; renderList(); } break;
       case 'new-select': if (target.closest('button')) break; selectNew(el.dataset.key!); break;
       case 'new-remove': ev.stopPropagation(); removeNew(el.dataset.key!); break;
       // 새 플립북 행의 연필: 그 행에서 제목을 고친다. 고치는 중에 다시 누르면 닫는다(입력은 바로 반영되어 있다).

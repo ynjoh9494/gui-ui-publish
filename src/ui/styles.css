@@ -39,10 +39,9 @@ legend { color: var(--muted); padding: 0 4px; }
 .tabs button { border: 0; border-radius: 5px 5px 0 0; padding: 6px 10px; background: none; color: var(--muted); }
 .tabs button[aria-selected="true"] { color: var(--text); font-weight: 600; box-shadow: inset 0 -2px 0 var(--brand); }
 /* 창이 좁으면 사용자 이름, 탭 이름 순으로 줄어(말줄임, 탭 전체 이름은 title) 톱니바퀴·도움말이 창 안에 남는다.
-   오른쪽 영역을 접어 창이 목록 너비일 때는 탭 여백도 줄인다. */
+ */
 .create-tabs { display: flex; gap: 2px; min-width: 0; }
 .create-tabs button { white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.detail-collapsed .create-tabs button { padding-left: 6px; padding-right: 6px; }
 .tabs .who { margin-left: auto; color: var(--muted); padding-bottom: 6px; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1000; }
 
 .toolbar { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; padding: 6px 8px; flex-wrap: wrap; }
@@ -316,15 +315,7 @@ button.link.danger { color: var(--danger); }
 .review-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
 .review-dot.none { background: var(--border); }
 .review-count { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text); }
-/* 확인이 필요한 플립북 줄: 오른쪽 끝에 오른쪽 영역 접기·펼치기 */
 .review-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 4px; }
-.review-line .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--muted); flex: none; }
-.review-line .icon-button:hover { color: var(--text); }
-.review-line .icon-button[aria-pressed="true"] { color: var(--brand); background: var(--selected); }
-/* 오른쪽 영역을 접으면 창이 목록 너비로 줄어든다. 숨긴 열의 최소 너비가 남지 않게 한 열로 바꾼다. */
-#app.detail-collapsed, .tutorial-app.detail-collapsed { grid-template-columns: minmax(0, 1fr); }
-/* 상세 종류별 display(.detail.flipbook-detail 등)보다 우선해야 접은 채 플립북을 골라도 상세가 나타나지 않는다. */
-#app.detail-collapsed .pane-divider, #app.detail-collapsed .detail, .tutorial-app.detail-collapsed .pane-divider, .tutorial-app.detail-collapsed .detail { display: none; }
 /* UI Flipbook 상세: 위(썸네일·이력)와 아래(확인 완료 입력, 항상 표시)로 나눈다. */
 .detail.flipbook-detail { display: flex; flex-direction: column; overflow: hidden; padding: 0; }
 .fb-top { flex: 1 1 auto; min-height: 80px; overflow: auto; padding: 0 10px 8px; }
@@ -676,3 +667,16 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .tutorial-progress { position: absolute; top: 10px; right: 14px; font-size: 11px; color: #6b6b6b; font-variant-numeric: tabular-nums; }
 .tutorial-close { position: absolute; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: #fff; color: #000; transform: translate(-50%, -50%); }
 .tutorial-close:hover:not(:disabled) { background: #fff; }
+
+.window-bar { display: none; }
+#app.window-collapsed, .tutorial-app.window-collapsed { display: block; min-width: 0; min-height: 0; overflow: hidden; }
+#app.window-collapsed > :not(.window-bar), .tutorial-app.window-collapsed > :not(.window-bar) { display: none !important; }
+.window-collapsed > .window-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 100%; padding: 6px 8px; color: var(--muted); background: var(--bg2); }
+.window-bar strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.window-bar button { flex: none; display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; padding: 4px; color: var(--muted); }
+.window-bar button:hover:not(:disabled) { background: transparent; color: var(--text); }
+
+/* GUI 붙이기는 목록 너비로, 창 접기는 작은 바로 표시한다. */
+#app.detail-collapsed, .tutorial-app.detail-collapsed { grid-template-columns: minmax(0, 1fr); }
+#app.detail-collapsed .pane-divider, #app.detail-collapsed .detail, .tutorial-app.detail-collapsed .pane-divider, .tutorial-app.detail-collapsed .detail { display: none; }
+.detail-collapsed .create-tabs button { padding-left: 6px; padding-right: 6px; }
