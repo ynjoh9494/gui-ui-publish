@@ -20,7 +20,7 @@ export const DEMO_FLIPBOOK_PAGE: PageInfo = { id: '0:2', name: COPY.uiPreview014
 const SECOND_UI_PAGE: PageInfo = { id: '0:3', name: 'UI 두 번째 페이지' };
 // 다른 파일에서 페이지째 붙여 넣은 것처럼 만드는 새 버전 페이지
 export const DEMO_VERSION_PAGE: PageInfo = { id: '0:5', name: 'GUI 새 버전' };
-const DATA_PAGE: PageInfo = { id: '0:4', name: COPY.uiPreview012 };
+const DATA_PAGE: PageInfo = { id: '0:4', name: COPY.figmaData001 };
 
 export interface DemoOptions {
   mode: Team;
@@ -83,6 +83,7 @@ export function createDemo(options: DemoOptions): Demo {
   ].map(([nodeId, name]) => ({ nodeId, pageId: DEMO_PAGE.id, name, content: 'v1', body: name, tag: null }));
   let versionPageMade = false;
   let dataPageMade = false;
+  let thumbPageMade = false;
   // 썸네일 해시 → JPG 바이트
   const thumbs = new Map<string, Uint8Array>();
   let thumbSeq = 0;
@@ -127,6 +128,9 @@ export function createDemo(options: DemoOptions): Demo {
     post: message => deliver(message),
     resize(width, height) { options.resize?.(width, height); },
     pages: () => [DEMO_PAGE, DEMO_FLIPBOOK_PAGE, SECOND_UI_PAGE, ...(versionPageMade ? [DEMO_VERSION_PAGE] : []), ...(dataPageMade ? [DATA_PAGE] : [])],
+    managedPages: () => [...(dataPageMade ? [{ id: DATA_PAGE.id, name: COPY.figmaData001, kind: 'data' as const }] : []), ...(thumbPageMade ? [{ id: '0:thumbs', name: COPY.figmaLayers001, kind: 'thumbs' as const }] : [])],
+    async ensureThumbnailPage() { thumbPageMade = true; return '0:thumbs'; },
+    async placeThumbnails() { thumbPageMade = true; },
     async selectNodes(nodeIds) { log(`프레임 선택: ${nodeIds.join(', ')}`); },
     selectionNodeIds: () => [],
     async listFrames(pageIds) {
@@ -182,6 +186,7 @@ export function createDemo(options: DemoOptions): Demo {
       flipbooks.clear();
       placed.length = 0;
       dataPageMade = false;
+      thumbPageMade = false;
       changed();
       log(`${COPY.uiPreview017} ${n}${COPY.uiPreview018}`);
       return n;

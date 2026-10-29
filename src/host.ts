@@ -9,7 +9,7 @@ import type { Actor, FlipbookScale, FlowRecord, GuiThumb, Team } from './core/ty
 import type { SelectionTarget, SelectionWrite } from './core/description.ts';
 import type { RichParagraph } from './core/richText.ts';
 import type { PdfPage, PdfSelection } from './core/pdf.ts';
-import type { PageInfo, ToUi } from './core/wire.ts';
+import type { ManagedPageInfo, PageInfo, ToUi } from './core/wire.ts';
 import type { TemplateInfo, TemplateItem } from './core/templateParts.ts';
 import type { FoundCopy, NodePlace, PasteSpot } from './core/tracks.ts';
 export type { PasteSpot } from './core/tracks.ts';
@@ -34,6 +34,9 @@ export interface Host extends FingerprintReader {
   post(message: ToUi): void;
   resize(width: number, height: number, save?: boolean, collapsed?: boolean): void;
   pages(): PageInfo[];
+  managedPages?(): ManagedPageInfo[];
+  normalizeManagedPageNames?(): void;
+  ensureThumbnailPage?(): Promise<string>;
   listFrames(pageIds: string[], sectionIds: string[], isCurrent?: () => boolean): Promise<ScannedFrame[]>;
   selectNodes(nodeIds: string[], lastNodeId: string, isLatest: () => boolean): Promise<void>;
   selectionNodeIds(): { nodeId: string; flipbookId: string | null }[] | null;

@@ -92,10 +92,10 @@ function ordered(entries: Entry[], display: (entry: Entry) => { name: string; co
   const byName = (a: Entry, b: Entry) => nameCollator.compare(display(a).name, display(b).name);
   const byCode = (a: Entry, b: Entry) => codeCollator.compare(display(a).code, display(b).code) || byName(a, b);
   const sorted = (list: Entry[]) => [...list.filter(e => !!e.screenId).sort(byCode), ...list.filter(e => !e.screenId)];
-  const roots = new Set(entries.filter(e => e.screenId && !place(e).baseScreenId).map(e => e.screenId!));
+  const roots = new Set(entries.filter(e => !place(e).baseScreenId).map(e => e.screenId ?? e.key));
   const baseOf = (e: Entry) => {
     const base = place(e).baseScreenId;
-    return base && base !== e.screenId && roots.has(base) ? base : null;
+    return base && base !== (e.screenId ?? e.key) && roots.has(base) ? base : null;
   };
   const cases = new Map<string, Entry[]>();
   for (const entry of entries) {
@@ -108,7 +108,7 @@ function ordered(entries: Entry[], display: (entry: Entry) => { name: string; co
   }
   return sorted(entries.filter(e => !baseOf(e))).flatMap(entry => [
     { entry, depth: 0 as const },
-    ...sorted((entry.screenId && cases.get(entry.screenId)) || []).map(child => ({ entry: child, depth: 1 as const })),
+    ...sorted(cases.get(entry.screenId ?? entry.key) || []).map(child => ({ entry: child, depth: 1 as const })),
   ]);
 }
 

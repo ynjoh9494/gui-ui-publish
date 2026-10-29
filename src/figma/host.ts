@@ -1,3 +1,5 @@
+import { thumbPage } from './thumbs.ts';
+import { managedPages, normalizeManagedPageNames } from './managedPages.ts';
 import { COPY } from '../core/copy.ts';
 import type { ScannedFrame } from '../core/compare.ts';
 import { canvasOrder } from '../core/screenCode.ts';
@@ -72,6 +74,9 @@ export function figmaHost(mode: Host['mode']): Host {
       if (save && !collapsed) void figma.clientStorage.setAsync(WINDOW_KEY, size);
     },
     // 실제 작업 페이지가 아닌 Figma 디바이더와 자동 관리 썸네일 페이지는 선택지에서 뺀다.
+    managedPages: () => managedPages(NS),
+    normalizeManagedPageNames: () => normalizeManagedPageNames(NS),
+    ensureThumbnailPage: async () => (await thumbPage(NS)).id,
     pages: () => root.children.filter(p => !p.isPageDivider && p.getSharedPluginData(NS, 'role') !== 'thumbs').map(p => ({ id: p.id, name: p.name, ...(p === figma.currentPage ? { current: true } : {}) })),
 
     async listFrames(pageIds, sectionIds, isCurrent = () => true) {
@@ -208,7 +213,13 @@ export function figmaHost(mode: Host['mode']): Host {
     moveFlipbook: move => moveFlipbookFrame(NS, move),
 
     async reveal(nodeId, isLatest) {
-      const node = await sceneNode(nodeId);
+      const raw = await figma.getNodeByIdAsync(nodeId);
+      if (raw?.type === 'PAGE') {
+        if (!isLatest() || raw.isPageDivider) return false;
+        await figma.setCurrentPageAsync(raw);
+        return isLatest();
+      }
+      const node = raw && 'visible' in raw ? raw as SceneNode : null;
       if (!node || !isLatest()) return false;
       const page = pageOf(node);
       const samePage = !page || figma.currentPage === page;

@@ -60,6 +60,20 @@ export const INDICATOR_LABEL: Record<'new' | 'changed' | 'unchanged' | 'pending'
 // 화면·안내·오류 문구. 각 항목의 주석은 문구가 처음 표시되던 코드의 행이다.
 // 문구를 바꿀 때 HTML 태그·동적 값은 사용처에 두고 여기의 텍스트만 수정한다.
 export const COPY = {
+  adminAutoPages: '자동 관리 페이지',
+  adminWorkSetup: '작업 환경',
+  adminCommon: '공통 관리',
+  adminMaintenance: '유지보수',
+  adminDataTitle: 'DATA',
+  adminThumbTitle: 'GUI 썸네일',
+  adminAutoHint: '플러그인이 생성하고 관리하는 페이지입니다.',
+  adminThumbHint: '배포된 화면의 최신 썸네일을 보관하며, 목록 미리보기와 플로우에서 사용합니다.',
+  adminPageOpen: '페이지로 이동',
+  adminThumbCreate: '썸네일 페이지 만들기',
+  adminNotCreated: '아직 생성되지 않았습니다.',
+  adminPending: '반영 상태',
+  adminDanger: '데이터 초기화',
+
   windowCollapse: '창 접기',
   windowExpand: '창 펼치기',
   // 화면 상단·변경사항 확인 — src/ui/app.ts
@@ -966,11 +980,11 @@ export const COPY = {
   figmaTemplate038: 'Description',
   figmaTemplate039: 'Update History',
   // GUI 레이어 복사 — src/figma/layers.ts
-  figmaLayers001: 'GUI 썸네일 (자동 관리)',
+  figmaLayers001: '[자동 관리] GUI 썸네일',
   figmaLayers002: '컴포넌트 연결을 모두 끊지 못했습니다. 중첩이 너무 깊습니다.',
   figmaLayers003: '프레임·컴포넌트·인스턴스만 복사할 수 있습니다.',
   // 생성되는 DATA 페이지 문구 — src/figma/data.ts
-  figmaData001: '[DATA] GUI·UI 배포 기록', // 15
+  figmaData001: '[자동 관리] DATA', // 15
   figmaData002: '표시용 글꼴을 불러오지 못했습니다.', // 41
   figmaData003: '기록 없음', // 132
   figmaData004: '화면', // 145

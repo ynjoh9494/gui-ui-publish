@@ -258,8 +258,8 @@ export async function ensureDataPage(ns: string, pageId: string | null): Promise
   page ??= figma.root.children.find(p => p.getSharedPluginData(ns, ROLE_KEY) === PAGE_ROLE) ?? null;
   if (!page) {
     page = figma.createPage();
-    page.name = PAGE_NAME;
   }
+  page.name = PAGE_NAME;
   page.setSharedPluginData(ns, ROLE_KEY, PAGE_ROLE);
   return page.id;
 }

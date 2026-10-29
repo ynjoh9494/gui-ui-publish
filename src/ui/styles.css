@@ -202,8 +202,16 @@ summary { cursor: pointer; color: var(--muted); }
 .scope-page span { min-width: 0; overflow-wrap: anywhere; }
 .scope-page button { flex: none; }.admin .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; background: none; color: var(--muted); }
 .admin .icon-button:hover { color: var(--danger); }
-/* 설정 화면은 창 크기와 별개로 기본 폭의 절반까지만 넓힌다. */
-.admin-mode .detail > * { max-width: 372px; }
+/* 관리 항목은 읽기 편한 최대 폭을 두고 작은 창에서는 줄바꿈한다. */
+.admin-mode .detail > * { max-width: 760px; }
+.admin-mode .detail { padding: 12px 16px; }
+.admin-group-label { margin: 18px 0 6px; color: var(--muted); font-size: 11px; font-weight: 500; }
+.admin-group-label:first-child { margin-top: 0; }
+.managed-page-card { border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin: 8px 0; }
+.managed-page-card h4 { margin: 0 0 6px; font-size: 12px; }
+.managed-page-name { overflow-wrap: anywhere; }
+.admin .inline { flex-wrap: wrap; }
+.admin .inline > input, .admin .inline > select { flex-basis: 160px; }
 .admin input[type="color"] { width: 32px; padding: 0 2px; flex: none; }
 .audit { font-size: 11px; }
 /* 관리의 템플릿: 항목 이름·조건과 오른쪽 버튼, 그 아래 연결된 레이어 */

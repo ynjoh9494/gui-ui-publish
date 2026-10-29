@@ -12,7 +12,7 @@ import { trackListView } from './trackListView.ts';
 import { pdfView } from './pdfView.ts';
 import { changeReasonSection, REASON_PAGE } from './changeReason.ts';
 import { esc } from './html.ts';
-import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScreen, isDeletion, isPrevious, isUnpublish, mergesInto, needsLink, OPTIONAL_FIELDS, renumberAutoCodes, STATUS_LABEL, validateDraft, type Draft, type DraftIndex, type InputStatus, type Validation } from '../core/drafts.ts';
+import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScreen, isDeletion, isPrevious, isUnpublish, mergesInto, needsLink, OPTIONAL_FIELDS, pendingScreens, renumberAutoCodes, STATUS_LABEL, validateDraft, type Draft, type DraftIndex, type InputStatus, type Validation } from '../core/drafts.ts';
 import { formatTime, type HistoryRow } from '../core/history.ts';
 import { arrangeFlipbooks, buildList, guiGroupKey, placeDrafts, savedGuiDisplay, savedGuiPlace, UNCATEGORIZED, type ArrangedGroup, type GuiPlace, type ListModel } from '../core/list.ts';
 import { emptyComment, type BatchComment, type Plan } from '../core/publish.ts';
@@ -25,7 +25,7 @@ import { formatFrameName, parseFrameName } from '../core/screenName.ts';
 import type { State } from '../core/store.ts';
 import type { Actor, FlipbookScale, ImportedGuiRecord, SystemTag, Team } from '../core/types.ts';
 import { SIMILAR_MIN, type VersionEvidence, type VersionLink } from '../core/versionMatch.ts';
-import { clampWindow, fromWire, PANE, pasteDropMetadata, type AdminOp, type NavTarget, type PageInfo, type ScanState, type ToMain, type ToUi, type VersionMatchView } from '../core/wire.ts';
+import { clampWindow, fromWire, PANE, pasteDropMetadata, type AdminOp, type NavTarget, type PageInfo, type ManagedPageInfo, type ScanState, type ToMain, type ToUi, type VersionMatchView } from '../core/wire.ts';
 
 export interface Bridge {
   send(message: ToMain): void;
@@ -84,6 +84,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   let state: State | null = null;
   let actor: Actor | null = null;
   let pages: PageInfo[] = [];
+  let managedPages: ManagedPageInfo[] = [];
   let issues: string[] = [];
   // 플립북 템플릿의 문제. UI Flipbook 목록 위에 경고로 보여 준다(관리 화면이 아니어도).
   let templateIssues: string[] = [];
@@ -1235,6 +1236,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       const deleting = t === 'GUI' && chosen.every(e => isDeletion(e, draftOf(t, e)));
       void deleting;
       html += `<section class="detail-section"><h3>${COPY.uiApp055}</h3><div class="section-body">`;
+      if (t === 'GUI' && !deleting && chosen.every(e => {
+        const d = draftOf(t, e);
+        return e.estimate !== 'missing' && !d.notScreen;
+      })) html += categoryField(entry, draft, multi, common(d => d.categoryId), mixed(d => d.categoryId));
       if (t === 'GUI' && chosen.every(e => !isDeletion(e, draftOf(t, e)))) {
         const names = chosen.map(e => draftName(state!, e, draftOf(t, e)));
         const nameMixed = multi && names.some(value => value !== names[0]);
@@ -1244,10 +1249,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         const code = draftCode(state, entry, draft);
         html += `<label class="wide">Screen ID<input data-field="code" data-required-field="code" value="${esc(code)}" required></label>`;
       }
-      if (t === 'GUI' && !deleting && chosen.every(e => {
-        const d = draftOf(t, e);
-        return e.estimate !== 'missing' && !d.notScreen;
-      })) html += categoryField(entry, draft, multi, common(d => d.categoryId), mixed(d => d.categoryId));
+
       // 교체는 화면 관계를 입력받지 않는다(교체할 화면의 관계를 그대로 둔다).
       if (t === 'GUI' && chosen.every(e => registersNew(t, e) || (!!e.screenId && e.estimate !== 'missing' && !mergesInto(e, draftOf(t, e))))) {
         const relation = common(d => d.relation);
@@ -1256,7 +1258,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         html += `<fieldset class="wide"><legend>${COPY.uiApp057}${mixedMark(mixed(d => d.relation))}</legend>
         <label class="check"><input type="radio" name="relation" value="standalone" data-field="relation" ${relation === 'standalone' ? 'checked' : ''}> ${COPY.uiApp058}</label>
         <label class="check"><input type="radio" name="relation" value="case" data-field="relation" ${allCase ? 'checked' : ''}> ${COPY.uiApp059}</label>
-        ${screenPicker('baseScreenId', registeredItems(id => !state!.screens.get(id)?.baseScreenId), allCase ? common(d => d.baseScreenId) || undefined : undefined, COPY.uiApp061, { disabled: !allCase, mixed: baseMixed, preferredCategoryId: common(d => d.categoryId) })}</fieldset>`;
+        ${screenPicker('baseScreenId', [...registeredItems(id => !state!.screens.get(id)?.baseScreenId), ...pendingScreens(state!, entriesFor('GUI'), drafts.GUI).filter(s => drafts.GUI[s.id]?.relation !== 'case' && s.id !== entry.key).map(s => ({ value: s.id, code: s.code, name: s.name, categoryId: s.categoryId ?? undefined }))], allCase ? common(d => d.baseScreenId) || undefined : undefined, COPY.uiApp061, { disabled: !allCase, mixed: baseMixed, preferredCategoryId: common(d => d.categoryId) })}</fieldset>`;
       }
       html += tagField(t, draft, multi, common(d => d.tagId), mixed(d => d.tagId));
       html += workerField(draft, common(d => d.workerId), mixed(d => d.workerId));
@@ -1471,14 +1473,15 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const overlay = $('.overlay');
     if (!plan || !state) { overlay.hidden = true; overlay.innerHTML = ''; return; }
     const c = plan.counts;
+    const baseName = (id: string) => plan!.items.find(item => item.screenId === id)?.name ?? state!.screens.get(id)?.name ?? COPY.coreCompare001;
     const relationLabel = (baseId: string | null) => baseId
-      ? `${COPY.uiApp059} (${state!.screens.get(baseId)?.name ?? COPY.coreCompare001})` : COPY.uiApp058;
+      ? `${COPY.uiApp059} (${baseName(baseId)})` : COPY.uiApp058;
     const relationNote = (item: Plan['items'][number]) => {
       if (item.team !== 'GUI') return '';
       const before = item.isNew ? null : state!.screens.get(item.screenId)?.baseScreenId ?? null;
       if (!item.isNew && before !== item.baseScreenId)
         return ` <small>${COPY.uiApp057}: ${esc(relationLabel(before))} → ${esc(relationLabel(item.baseScreenId))}</small>`;
-      return item.baseScreenId ? ` <small>${COPY.uiApp091} ${esc(state!.screens.get(item.baseScreenId)?.name ?? '')}</small>` : '';
+      return item.baseScreenId ? ` <small>${COPY.uiApp091} ${esc(baseName(item.baseScreenId))}</small>` : '';
     };
     // 다른 화면을 교체해 사용 안 함이 되는 배포 화면
     const mergeNote = (item: Plan['items'][number]) => {
@@ -1729,20 +1732,33 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         <p class="note">${COPY.uiApp227} ${COPY.uiApp228}</p></section>`}
       ${gui ? renderScreenIdSection(s) : ''}
       ${renderDataSection(s)}
-      <section class="admin"><h3>${COPY.uiApp089}</h3>
+      <section class="admin" data-form="workers"><h3>${COPY.uiApp089}</h3>
         ${workers.map(w => `<div class="inline" data-form="wrk" data-id="${w.id}"><input data-f="name" value="${esc(w.name)}"><button data-action="admin-wrk-rename">${COPY.uiApp116}</button><button data-action="admin-wrk-active" data-active="${!w.active}">${w.active ? COPY.uiApp117 : COPY.uiApp118}</button></div>`).join('')}
         <div class="inline" data-form="wrk-add"><input data-f="name" placeholder="${COPY.uiApp119}"><button class="add-button" data-action="admin-wrk-add">${ADD_LABEL}</button></div></section>
-      ${gui ? `<section class="admin"><h3>${COPY.uiApp120}</h3>
+      ${gui ? `<section class="admin" data-form="exclusions"><h3>${COPY.uiApp120}</h3>
         ${exclusions.length ? exclusions.map(e => `<div class="inline" data-form="exc" data-id="${e.id}"><span>${esc(e.name)}</span><small>${esc(e.reason)}</small><button data-action="admin-unexclude">${COPY.uiApp121}</button></div>`).join('') : `<p class="note">${COPY.uiApp122}</p>`}</section>` : ''}
-      <section class="admin"><h3>${COPY.uiApp123}</h3><p>${pending.length}${COPY.uiApp081}</p>${pending.length ? `<button data-action="retry">${COPY.uiApp124}</button>` : ''}</section>
-      <section class="admin"><h3>${COPY.uiApp125}</h3>
+      <section class="admin" data-form="pending"><h3>${COPY.adminPending}</h3><p>${pending.length}${COPY.uiApp081}</p>${pending.length ? `<button data-action="retry">${COPY.uiApp124}</button>` : ''}</section>
+      <section class="admin" data-form="audit"><h3>${COPY.uiApp125}</h3>
         ${s.audit.slice(-15).reverse().map(a => `<div class="audit"><small>${esc(new Date(a.at).toLocaleString('ko-KR'))}</small> ${esc(a.actor.name)} · ${esc(a.action)}${a.reason ? ` · ${esc(a.reason)}` : ''}</div>`).join('') || `<p class="note">${COPY.uiApp122}</p>`}</section>
-      ${issues.length ? `<section class="admin"><h3>${COPY.uiApp126}</h3>${issues.map(i => `<div class="bad">${esc(i)}</div>`).join('')}</section>` : ''}
-      <section class="admin danger-zone"><h3>Danger Zone</h3>
+      ${issues.length ? `<section class="admin" data-form="issues"><h3>${COPY.uiApp126}</h3>${issues.map(i => `<div class="bad">${esc(i)}</div>`).join('')}</section>` : ''}
+      <section class="admin danger-zone" data-form="reset"><h3>${COPY.adminDanger}</h3>
         <p class="note"><b>${COPY.uiApp127}</b>${COPY.uiApp128}
           ${COPY.uiApp129}</p>
         <button class="danger" data-action="reset-data">${resetArmed ? COPY.uiApp130 : COPY.uiApp131}</button>
         ${resetArmed ? `<button data-action="reset-cancel">${COPY.uiApp132}</button>` : ''}</section>`;
+    const sections = [...$('.detail').querySelectorAll<HTMLElement>(':scope > section.admin')];
+    const group = (label: string, forms: string[]) => {
+      const items = sections.filter(section => forms.includes(section.dataset.form ?? ''));
+      if (!items.length) return;
+      const heading = document.createElement('h2');
+      heading.className = 'admin-group-label'; heading.textContent = label;
+      $('.detail').append(heading, ...items);
+    };
+    group(COPY.adminWorkSetup, ['scope', 'flipbook', 'template', 'gui-width', 'screen-id-prefix', 'exclusions']);
+    const auto = sections.find(section => section.dataset.form === 'automatic-pages');
+    if (auto) $('.detail').append(auto);
+    group(COPY.adminCommon, ['workers']);
+    group(COPY.adminMaintenance, ['pending', 'audit', 'issues', 'reset']);
     accordion();
   }
 
@@ -2091,12 +2107,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       status?.renderedAt ? `${COPY.uiApp137} ${esc(formatTime(status.renderedAt, offset))} · ${esc(status.actor.name)}` : '',
       failed ? `<span class="bad">${COPY.uiApp138} ${esc(formatTime(status!.failedAt!, offset))}: ${esc(status!.error)}</span>` : '',
     ].filter(Boolean);
-    return `<section class="admin" data-form="data"><h3>${COPY.uiApp141}</h3>
+    return `<section class="admin" data-form="automatic-pages"><h3>${COPY.adminAutoPages}</h3><p class="note">${COPY.adminAutoHint}</p><div class="managed-page-card" data-form="data"><h4>${COPY.adminDataTitle}</h4>
       ${lines.map(l => `<p class="note">${l}</p>`).join('')}
       <button data-action="data-refresh">${pageId ? COPY.uiApp142 : COPY.uiApp143}</button>
       <div class="inline"><select data-f="page" aria-label="${COPY.uiApp144}">${pages.map(p => option(p.id, p.name, p.id === pageId)).join('')}</select>
         <button data-action="admin-data-connect">${COPY.uiApp145}</button></div>
-      <p class="note">${COPY.uiApp146}</p></section>`;
+      <p class="note">${COPY.uiApp146}</p>${pageId ? `<button data-action="managed-page-open" data-id="${esc(pageId)}">${COPY.adminPageOpen}</button>` : ''}</div>
+      <div class="managed-page-card" data-form="thumbnails"><h4>${COPY.adminThumbTitle}</h4><p class="note">${COPY.adminThumbHint}</p>
+      ${(() => { const page = managedPages.find(p => p.kind === 'thumbs'); return page ? `<p class="managed-page-name">${esc(page.name)}</p><button data-action="managed-page-open" data-id="${esc(page.id)}">${COPY.adminPageOpen}</button>` : `<p class="note">${COPY.adminNotCreated}</p><button data-action="thumb-page-create">${COPY.adminThumbCreate}</button>`; })()}</div></section>`;
   }
 
   // 태그: 이 탭(GUI 또는 UI)의 태그를 고르고, 같은 자리에서 추가·이름 변경·색 변경·사용 안 함을 한다.
@@ -2651,6 +2669,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       case 'commit': if (plan) { bridge.send({ type: 'commit', batchId: plan.batchId }); el.setAttribute('disabled', ''); } break;
       case 'goto': plan = null; renderConfirm(); if (el.dataset.key) { for (const g of listModel(t).groups) expanded[t].add(g.key); select(el.dataset.key); renderList(); } break;
       case 'retry': bridge.send({ type: 'retry' }); break;
+      case 'managed-page-open': if (el.dataset.id) bridge.send({ type: 'revealNode', nav: ++navSeq, nodeId: el.dataset.id }); break;
+      case 'thumb-page-create': bridge.send({ type: 'createThumbnailPage' }); break;
       case 'data-refresh': bridge.send({ type: 'refreshData' }); break;
       case 'reset-data':
         if (!resetArmed) { resetArmed = true; renderDetail(); break; }
@@ -3368,6 +3388,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   // ── 수신 ─────────────────────────────────────────────
 
   bridge.listen(msg => {
+    if ('managedPages' in msg && msg.managedPages) managedPages = msg.managedPages;
     switch (msg.type) {
       case 'init':
         state = fromWire(msg.state); actor = msg.actor; pages = msg.pages; issues = msg.issues;
@@ -3556,6 +3577,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         if (msg.ok) {
           // 확정한 화면의 입력만 지운다. 확정하지 못한 화면은 입력을 남겨 다시 Publish할 수 있게 한다.
           const t = plan?.team ?? team();
+          if (t === 'GUI' && plan) {
+            const committed = new Set(msg.committed);
+            const ids = new Map(plan.items.filter(item => item.isNew && committed.has(item.entryKey)).map(item => [item.entryKey, item.screenId]));
+            for (const draft of Object.values(drafts.GUI))
+              if (draft.baseScreenId && ids.has(draft.baseScreenId)) draft.baseScreenId = ids.get(draft.baseScreenId)!;
+          }
           for (const entryKey of msg.committed) {
             delete drafts[t][entryKey];
             delete touched[t][entryKey];

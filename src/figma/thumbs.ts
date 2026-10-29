@@ -15,13 +15,13 @@ const PAGE_ROLE = 'thumbs';
 const THUMB_KEY = 'thumbOf';
 const GAP = 80;
 
-async function thumbPage(ns: string): Promise<PageNode> {
+export async function thumbPage(ns: string): Promise<PageNode> {
   let page = figma.root.children.find(p => p.getSharedPluginData(ns, PAGE_ROLE_KEY) === PAGE_ROLE) ?? null;
   if (!page) {
     page = figma.createPage();
-    page.name = COPY.figmaLayers001;
     page.setSharedPluginData(ns, PAGE_ROLE_KEY, PAGE_ROLE);
   }
+  page.name = COPY.figmaLayers001;
   await page.loadAsync();
   return page;
 }

@@ -8,6 +8,8 @@ import { fitSection, makeRoom, placeFrame, recolorTagFills, syncRows, templatePr
 import type { DataModel } from '../src/core/data.ts';
 import type { FlipbookRow } from '../src/core/flipbook.ts';
 import { Store, memoryKV } from '../src/core/store.ts';
+import { managedPages, normalizeManagedPageNames } from '../src/figma/managedPages.ts';
+import { COPY } from '../src/core/copy.ts';
 
 // Figma 브리지의 호출·노드 생명주기를 검사한다. 실제 레이아웃 엔진 검증은 별도다.
 class Node {
@@ -392,4 +394,19 @@ test('페이지 선택은 Figma 디바이더·자동 썸네일을 제외하고 �
   const ui = page('c', 'UI');
   Object.assign(globalThis, { figma: { root: { children: [normal, separator, namedLikeDivider, thumbnails, ui] }, currentPage: ui, currentUser: null } });
   assert.deepEqual(figmaHost('UI').pages(), [{ id: 'a', name: 'GUI' }, { id: 'b', name: '---' }, { id: 'c', name: 'UI', current: true }]);
+});
+
+test('자동 관리 페이지는 역할 표식으로만 이름을 통일하고 ID·일반 페이지를 보존한다', () => {
+  const page = (id: string, name: string, role: string) => ({ id, name, getSharedPluginData: (_ns: string, key: string) => key === 'role' ? role : '' });
+  const data = page('data-id', 'DATA', 'data');
+  const thumbs = page('thumb-id', 'GUI 썸네일 (자동 관리)', 'thumbs');
+  const ordinary = page('ordinary', 'DATA', '');
+  Object.assign(globalThis, { figma: { root: { children: [data, ordinary, thumbs] } } });
+  normalizeManagedPageNames('test');
+  normalizeManagedPageNames('test');
+  assert.equal(ordinary.name, 'DATA');
+  assert.deepEqual(managedPages('test'), [
+    { id: 'data-id', name: COPY.figmaData001, kind: 'data' },
+    { id: 'thumb-id', name: COPY.figmaLayers001, kind: 'thumbs' },
+  ]);
 });

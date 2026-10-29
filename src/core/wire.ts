@@ -59,6 +59,7 @@ export function toUiWire(state: State): WireState {
 
 // current: 사용자가 지금 보고 있는 페이지. 새 플립북의 기본 페이지로 쓴다.
 export interface PageInfo { id: string; name: string; current?: boolean }
+export interface ManagedPageInfo extends PageInfo { kind: 'data' | 'thumbs' }
 
 // 새 버전 페이지 비교 결과. frames: 그 페이지의 화면 프레임(캔버스 순서)
 export interface VersionMatchView { pageId: string; links: VersionLink[]; frames: { nodeId: string; name: string }[] }
@@ -140,6 +141,7 @@ export type ToMain =
   | { type: 'cancelPlan'; batchId: string }
   | { type: 'retry'; batchId?: string }
   | { type: 'refreshData' }
+  | { type: 'createThumbnailPage' }
   // 플러그인 데이터 전체 초기화(관리 탭 Danger Zone)
   | { type: 'resetData' }
   | { type: 'admin'; action: AdminOp }
@@ -201,10 +203,10 @@ export type ToMain =
 
 export type ToUi =
   // mode: 실행한 플러그인 명령(GUI Publish·UI Flipbook)
-  | { type: 'init'; mode: Team; state: WireState; actor: Actor; pages: PageInfo[]; issues: string[] }
+  | { type: 'init'; mode: Team; state: WireState; actor: Actor; pages: PageInfo[]; managedPages?: ManagedPageInfo[]; issues: string[] }
   // 첫 실행 시 UI Flipbook의 템플릿·플립북 페이지 확인과 Section 맞추기가 끝났다(실패해도 보냄).
   | { type: 'startupReady' }
-  | { type: 'state'; state: WireState; pages: PageInfo[] }
+  | { type: 'state'; state: WireState; pages: PageInfo[]; managedPages?: ManagedPageInfo[] }
   | { type: 'entries'; entries: Entry[] }
   | { type: 'uiScan'; scans: UiScan[] }
   // 변경사항 확인 진행. checkedAt: 비교를 끝까지 마친 시각(없으면 아직 확인 전)
@@ -237,7 +239,7 @@ export type ToUi =
   // evidence: 원본이나 프레임을 읽지 못해 내용 비교를 못 하면 null
   | { type: 'versionDetail'; pageId: string; screenId: string; nodeId: string; evidence: VersionEvidence | null }
   | { type: 'framePreviews'; items: { nodeId: string; bytes: Uint8Array | null }[] }
-  | { type: 'pages'; pages: PageInfo[] }
+  | { type: 'pages'; pages: PageInfo[]; managedPages?: ManagedPageInfo[] }
   | { type: 'thumbnails'; items: { hash: string; bytes: Uint8Array | null }[] }
   | { type: 'textImported'; paragraphs: RichParagraph[] }
   // 텍스트 편집 대상. 탭이 보이는 동안 캔버스 선택이 바뀔 때와 탭을 열 때 보낸다.

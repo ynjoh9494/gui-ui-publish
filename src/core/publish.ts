@@ -153,6 +153,8 @@ export function buildPlan(
     if (item.metadataChanged) plan.counts.metadata++;
   }
   if (team === 'GUI') {
+    const pending = new Map(plan.items.filter(item => item.isNew).map(item => [item.entryKey, item.screenId]));
+    for (const item of plan.items) if (item.baseScreenId && pending.has(item.baseScreenId)) item.baseScreenId = pending.get(item.baseScreenId)!;
     const planned = new Map(plan.items.map(item => [item.screenId, item]));
     for (const item of plan.items) if (item.baseScreenId && planned.get(item.baseScreenId)?.baseScreenId)
       plan.blockers.push({ entryKey: item.entryKey, name: item.name, messages: [COPY.coreRegistry018] });
@@ -279,7 +281,7 @@ function alreadyWritten(store: Store, item: PlanItem, batchId: string): boolean 
   return store.readFresh<{ batchId: string }>(recordKey(item))?.batchId === batchId;
 }
 
-function checkItem(store: Store, item: PlanItem, input: CommitInput): string[] {
+function checkItem(store: Store, item: PlanItem, input: CommitInput, planned: Map<string, PlanItem>): string[] {
   const out: string[] = [];
   if (item.team === 'GUI') {
     if (item.isNew) {
@@ -293,7 +295,10 @@ function checkItem(store: Store, item: PlanItem, input: CommitInput): string[] {
     // 최종 확인 뒤 다른 작업자가 카테고리를 삭제했을 수 있다. 삭제는 카테고리를 다시 정하지 않는다.
     if (item.workType !== 'deleted' && item.categoryId && !store.state.categories.get(item.categoryId)?.active) out.push(COPY.corePublish007);
     if (item.workType !== 'deleted' && item.baseScreenId) {
-      const error = caseRelationError(store.state, item.isNew ? null : item.screenId, item.baseScreenId);
+      const pending = planned.get(item.baseScreenId);
+      const error = pending?.isNew && pending.workType !== 'deleted'
+        ? (pending.baseScreenId ? COPY.coreRegistry018 : pending.screenId === item.screenId ? COPY.coreRegistry015 : null)
+        : caseRelationError(store.state, item.isNew ? null : item.screenId, item.baseScreenId);
       if (error) out.push(error);
     }
     if (item.needsThumb) {
@@ -331,9 +336,10 @@ export function commitPlan(store: Store, plan: Plan, input: CommitInput): Commit
   const conflicts: Blocker[] = [];
   const written: PlanItem[] = [];
   const ready: PlanItem[] = [];
+  const plannedItems = new Map(plan.items.map(item => [item.screenId, item]));
   for (const item of plan.items) {
     if (alreadyWritten(store, item, plan.batchId)) { written.push(item); continue; }
-    const messages = checkItem(store, item, input);
+    const messages = checkItem(store, item, input, plannedItems);
     if (messages.length) conflicts.push({ entryKey: item.entryKey, name: item.name, messages });
     else ready.push(item);
   }
@@ -364,6 +370,10 @@ export function commitPlan(store: Store, plan: Plan, input: CommitInput): Commit
       for (let index = ready.length - 1; index >= 0; index--) {
         const item = ready[index];
         if (item.workType === 'deleted') continue;
+        if (item.baseScreenId && plannedItems.get(item.baseScreenId)?.isNew && !readyById.has(item.baseScreenId) && !written.some(w => w.screenId === item.baseScreenId)) {
+          conflicts.push({ entryKey: item.entryKey, name: item.name, messages: [COPY.coreRegistry016] });
+          ready.splice(index, 1); removed = true; continue;
+        }
         const owner = [...store.state.screens.values()].find(screen => screen.status === 'active' && !retiring.has(screen.id) && screen.id !== item.screenId && screen.code === item.code);
         if (!owner) continue;
         const ownerPlan = readyById.get(owner.id);
@@ -389,7 +399,7 @@ export function commitPlan(store: Store, plan: Plan, input: CommitInput): Commit
     if (exclusion.screenId) retireNotScreen(store, exclusion.screenId, exclusion.reason, plan.actor);
   }
   for (const item of unpublished) unpublishScreen(store, item.screenId, plan.actor);
-  for (const item of ready) {
+  for (const item of [...ready].sort((a, b) => Number(!!a.baseScreenId) - Number(!!b.baseScreenId))) {
     if (item.team === 'GUI') writeGui(store, plan, item, input, now);
     else writeUi(store, plan, item, input, now);
   }

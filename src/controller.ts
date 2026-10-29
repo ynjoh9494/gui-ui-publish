@@ -49,7 +49,7 @@ const BUSY_LABEL: Partial<Record<ToMain['type'], string>> = {
   prepare: COPY.controller001, commit: COPY.controller002, resetData: COPY.controller003, retry: COPY.controller004, refreshData: COPY.controller005,
   admin: COPY.controller006, createFlipbooks: COPY.controller038, markReviewed: COPY.controller066, removeFlipbooks: COPY.controller068,
   matchVersion: COPY.controller106, switchVersion: COPY.controller107, renameFlipbook: COPY.controller118,
-  textApply: COPY.controller120, createFlow: COPY.flow006, exportPdf: COPY.pdf005, pasteGui: COPY.track004,
+  textApply: COPY.controller120, createFlow: COPY.flow006, exportPdf: COPY.pdf005, pasteGui: COPY.track004, createThumbnailPage: COPY.adminThumbCreate,
 };
 
 // 텍스트 편집 적용 결과 안내.
@@ -132,6 +132,7 @@ export class Controller {
       switch (msg.type) {
         case 'ready':
           this.store.reload();
+          this.host.normalizeManagedPageNames?.();
           // 기록 저장 뒤 원본 표식을 지우기 전에 플러그인이 닫혔다면, 다시 열 때 마저 지운다.
           // 이미 다른 화면으로 재배포한 프레임의 표식은 Host가 expectedScreenId로 보호한다.
           for (const batch of this.store.state.batches.values()) {
@@ -145,7 +146,7 @@ export class Controller {
           if (ensureSystemTags(this.store, this.host.actor)) this.store.reload();
           // Screen ID 자동 입력 전에 만든 프로젝트는 기존 화면 ID에서 Prefix·카테고리 코드를 읽고, 없으면 카테고리 이름으로 코드를 만든다.
           if (ensureScreenIdRules(this.store, this.host.actor)) this.store.reload();
-          this.host.post({ type: 'init', mode: this.host.mode, state: toUiWire(this.store.state), actor: this.host.actor, pages: this.host.pages(), issues: this.store.issues.map(i => `${i.key}: ${i.message}`) });
+          this.host.post({ type: 'init', mode: this.host.mode, state: toUiWire(this.store.state), actor: this.host.actor, pages: this.host.pages(), managedPages: this.host.managedPages?.(), issues: this.store.issues.map(i => `${i.key}: ${i.message}`) });
           this.postEntries();
           this.textTargetSelectionIds = null;
           if (this.host.mode === 'UI' && this.textTabOpen) this.postTextTarget();
@@ -311,7 +312,11 @@ export class Controller {
           break;
         }
         case 'resize': this.host.resize(msg.width, msg.height, msg.save, msg.collapsed); break;
-        case 'pages': this.host.post({ type: 'pages', pages: this.host.pages() }); break;
+        case 'createThumbnailPage':
+          await this.host.ensureThumbnailPage?.();
+          this.postState();
+          break;
+        case 'pages': this.host.post({ type: 'pages', pages: this.host.pages(), managedPages: this.host.managedPages?.() }); break;
         case 'templateInfo': await this.postTemplateInfo(); break;
         // 템플릿 항목에 연결된 레이어를 캔버스에서 고르고 보여 준다. 고른 선택은 플립북 목록의 선택을 바꾸지 않는다.
         case 'revealTemplateItem': {
@@ -341,7 +346,7 @@ export class Controller {
 
   // DATA 페이지가 새로 생길 수 있으므로 페이지 목록도 함께 보낸다.
   private postState() {
-    this.host.post({ type: 'state', state: toUiWire(this.store.state), pages: this.host.pages() });
+    this.host.post({ type: 'state', state: toUiWire(this.store.state), pages: this.host.pages(), managedPages: this.host.managedPages?.() });
   }
 
   // 원본 목록을 읽기 전에는 저장된 등록 화면을 「비교 전」으로 보여 준다.
@@ -1387,7 +1392,7 @@ export class Controller {
     this.version = null;
     this.store.reload();
     // 처음 실행과 같은 상태로 다시 보낸다. 플러그인 창은 입력 초안·선택을 비운다.
-    this.host.post({ type: 'init', mode: this.host.mode, state: toUiWire(this.store.state), actor: this.host.actor, pages: this.host.pages(), issues: [] });
+    this.host.post({ type: 'init', mode: this.host.mode, state: toUiWire(this.store.state), actor: this.host.actor, pages: this.host.pages(), managedPages: this.host.managedPages?.(), issues: [] });
     this.postEntries();
     this.host.post({ type: 'notice', message: `${COPY.controller024} ${keys.length}${COPY.controller025} ${markers}${COPY.controller026}` });
   }

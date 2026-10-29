@@ -4,7 +4,7 @@ import { caseRelationError, findCategoryByName, systemTagId } from './registry.t
 import { nextScreenCode } from './screenCode.ts';
 import { parseFrameName } from './screenName.ts';
 import type { State } from './store.ts';
-import type { Team, WorkType } from './types.ts';
+import type { Team, WorkType, Screen } from './types.ts';
 
 // 화면별 입력 초안. 행 전환·포함 해제·그룹 접기에도 유지하며 Publish 전까지 기록을 만들지 않는다.
 export interface Draft {
@@ -119,6 +119,21 @@ export function draftName(state: State, entry: Entry, draft: Draft): string {
   return entry.frame ? parseFrameName(entry.frame.name).name : '';
 }
 
+// 아직 배포되지 않았지만 이번 배포에 포함된 화면. 임시 참조는 entry.key이며 확정 계획에서 실제 화면 ID로 바꾼다.
+export function pendingScreens(state: State, entries: Entry[], drafts: Record<string, Draft>): Screen[] {
+  return entries.flatMap(entry => {
+    const d = drafts[entry.key];
+    if (!d?.included || !needsLink(entry) || d.link !== 'new' || d.notScreen || d.unpublish || !entry.frame) return [];
+    return [{ id: entry.key, rev: 0, code: draftCode(state, entry, d), name: draftName(state, entry, d), categoryId: d.categoryId ?? null,
+      baseScreenId: d.relation === 'case' ? d.baseScreenId ?? null : null, status: 'active' as const,
+      source: { nodeId: entry.frame.nodeId, pageId: entry.frame.pageId }, guiVersion: 0, guiTag: null, createdAt: 0 }];
+  });
+}
+function pendingCaseState(state: State, entries: Entry[], drafts: Record<string, Draft>, basesOnly = false): State {
+  const pending = pendingScreens(state, entries, drafts).filter(s => !basesOnly || drafts[s.id]?.relation !== 'case');
+  return { ...state, screens: new Map([...state.screens, ...pending.map(s => [s.id, s] as const)]) };
+}
+
 // 같은 배포에서 기존 ID를 비우는 화면은 충돌로 보지 않는다. 최종 ID 중복은 buildPlan에서 다시 검사한다.
 export interface DraftIndex { ownersByCode: Map<string, string[]>; entriesByKey: Map<string, Entry> }
 
@@ -195,9 +210,11 @@ export function renumberAutoCodes(state: State, items: { entry: Entry; draft: Dr
   const auto = items.filter(({ entry, draft }) => isNewRegistration('GUI', entry, draft) && !draft.notScreen && (!draft.code?.trim() || draft.code === draft.autoCode));
   const targets = new Set(auto.map(item => item.draft));
   const reserved = items.filter(({ draft }) => draft.included && !targets.has(draft) && draft.code?.trim()).map(({ draft }) => draft.code!.trim());
-  for (const { entry, draft } of [...auto.filter(item => item.draft.included), ...auto.filter(item => !item.draft.included)]) {
+  const order = [...auto.filter(item => item.draft.included), ...auto.filter(item => !item.draft.included)].sort((a, b) => Number(a.draft.relation === 'case') - Number(b.draft.relation === 'case'));
+  const drafts = Object.fromEntries(items.map(item => [item.entry.key, item.draft]));
+  for (const { entry, draft } of order) {
     draft.code = undefined;
-    fillAutoCode(state, entry, draft, reserved);
+    fillAutoCode(draft.relation === 'case' ? pendingCaseState(state, items.map(item => item.entry), drafts, true) : state, entry, draft, reserved);
     if (draft.included && draft.code) reserved.push(draft.code);
   }
 }
@@ -345,7 +362,7 @@ function validateGui(state: State, entry: Entry, draft: Draft, drafts: Record<st
     if (!draft.relation) missing.push(COPY.coreDrafts023);
     else if (draft.relation === 'case') {
       if (!draft.baseScreenId) missing.push(COPY.coreDrafts024);
-      else { const e = caseRelationError(state, null, draft.baseScreenId); if (e) errors.push(e); }
+      else { const e = caseRelationError(pendingCaseState(state, entries, drafts), entry.key, draft.baseScreenId); if (e) errors.push(e); }
     }
     return;
   }
@@ -354,7 +371,7 @@ function validateGui(state: State, entry: Entry, draft: Draft, drafts: Record<st
   else if (draft.categoryId && !state.categories.get(draft.categoryId)?.active) errors.push(COPY.coreDrafts021);
   if (draft.relation === 'case') {
     if (!draft.baseScreenId) missing.push(COPY.coreDrafts024);
-    else { const e = caseRelationError(state, entry.screenId, draft.baseScreenId); if (e) errors.push(e); }
+    else { const e = caseRelationError(pendingCaseState(state, entries, drafts), entry.screenId ?? entry.key, draft.baseScreenId); if (e) errors.push(e); }
   }
   if (entry.frame?.error) errors.push(`${COPY.coreDrafts027} ${entry.frame.error}`);
   if (!screen) errors.push(COPY.coreDrafts028);
