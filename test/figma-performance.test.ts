@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { figmaHost } from '../src/figma/host.ts';
 import { Snapshotter } from '../src/figma/snapshot.ts';
 import { createFingerprintReader } from '../src/figma/fingerprints.ts';
 import { renderDataPage } from '../src/figma/data.ts';
@@ -379,4 +380,16 @@ test('Section이 아래로 늘어나면 아래 Section을 밀어 Section 사이 
   assert.equal(below.y, 3300);
   // 간격이 이미 넉넉하면 움직이지 않는다.
   assert.equal(fixture(600).below.y, 1800);
+});
+
+
+test('페이지 선택은 Figma 디바이더·자동 썸네일을 제외하고 일반 페이지 순서와 현재 페이지 표시는 유지한다', () => {
+  const page = (id: string, name: string, divider = false, role = '') => ({ id, name, isPageDivider: divider, getSharedPluginData: (_ns: string, key: string) => key === 'role' ? role : '' });
+  const normal = page('a', 'GUI');
+  const separator = page('divider', '---', true);
+  const namedLikeDivider = page('b', '---', false);
+  const thumbnails = page('thumb', '자동 썸네일', false, 'thumbs');
+  const ui = page('c', 'UI');
+  Object.assign(globalThis, { figma: { root: { children: [normal, separator, namedLikeDivider, thumbnails, ui] }, currentPage: ui, currentUser: null } });
+  assert.deepEqual(figmaHost('UI').pages(), [{ id: 'a', name: 'GUI' }, { id: 'b', name: '---' }, { id: 'c', name: 'UI', current: true }]);
 });

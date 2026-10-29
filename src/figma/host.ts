@@ -71,8 +71,8 @@ export function figmaHost(mode: Host['mode']): Host {
       figma.ui.resize(size.width, size.height);
       if (save && !collapsed) void figma.clientStorage.setAsync(WINDOW_KEY, size);
     },
-    // 썸네일 페이지는 플러그인이 관리하므로 페이지 선택지에서 뺀다.
-    pages: () => root.children.filter(p => p.getSharedPluginData(NS, 'role') !== 'thumbs').map(p => ({ id: p.id, name: p.name, ...(p === figma.currentPage ? { current: true } : {}) })),
+    // 실제 작업 페이지가 아닌 Figma 디바이더와 자동 관리 썸네일 페이지는 선택지에서 뺀다.
+    pages: () => root.children.filter(p => !p.isPageDivider && p.getSharedPluginData(NS, 'role') !== 'thumbs').map(p => ({ id: p.id, name: p.name, ...(p === figma.currentPage ? { current: true } : {}) })),
 
     async listFrames(pageIds, sectionIds, isCurrent = () => true) {
       const sections = new Set(sectionIds);
