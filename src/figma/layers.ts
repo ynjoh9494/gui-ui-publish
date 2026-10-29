@@ -5,6 +5,8 @@ import { COPY } from '../core/copy.ts';
 
 // 복사본 표식. 값은 `${screenId}@${version}`
 export const COPY_KEY = 'guiCopy';
+// GUI 원본 표식(GUI Publish가 원본 프레임에 적는 화면 ID)
+export const SCREEN_KEY = 'screenId';
 
 // 컴포넌트 연결을 끊는 반복 횟수 한도. 한 번에 가장 바깥 인스턴스만 끊으므로 중첩 깊이만큼 돈다.
 const MAX_DEPTH = 100;

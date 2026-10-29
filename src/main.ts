@@ -1,5 +1,5 @@
 import { Controller } from './controller.ts';
-import { clampWindow, WINDOW, type ToMain } from './core/wire.ts';
+import { clampWindow, pasteDrop, WINDOW, type ToMain } from './core/wire.ts';
 import { figmaHost, WINDOW_KEY } from './figma/host.ts';
 
 // 한 플러그인 안의 두 명령: GUI Publish(gui), UI Flipbook(ui). 플러그인 메뉴에서 고른다(2026-10-20 사용자 결정).
@@ -10,7 +10,7 @@ const controller = new Controller(figmaHost(mode));
 // 같은 파일을 바꾸는 요청은 순서대로 실행한다. 스캔·취소·탐색은 최신 요청이 앞선 요청을 중단할 수 있게 둔다.
 const writes = new Set<ToMain['type']>([
   'ready', 'prepare', 'commit', 'cancelPlan', 'retry', 'refreshData', 'resetData', 'admin', 'ignoreChanges',
-  'refreshList', 'createFlipbooks', 'renameFlipbook', 'editFlipbookScreens', 'markReviewed', 'removeFlipbooks', 'switchVersion', 'textApply', 'createFlow', 'flows', 'revealFlow', 'exportPdf',
+  'refreshList', 'pasteGui', 'createFlipbooks', 'renameFlipbook', 'editFlipbookScreens', 'markReviewed', 'removeFlipbooks', 'switchVersion', 'textApply', 'createFlow', 'flows', 'revealFlow', 'exportPdf',
 ]);
 // UI 쪽 스캔은 플립북 페이지를 읽으며 표식 없는(캔버스에서 만든·복제한) Section에 표식을 쓰므로 쓰기 순서에 넣는다.
 const isWrite = (msg: ToMain) => writes.has(msg.type) || msg.type === 'scanUi' || (msg.type === 'scanSelected' && msg.team === 'UI');
@@ -32,6 +32,14 @@ figma.on('selectionchange', () => {
       figma.ui.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) });
     });
   }, 80);
+});
+// GUI 붙이기: 창에서 끌어 캔버스에 놓으면(UI의 pluginDrop) 놓인 자리에 붙인다. 다른 것을 놓으면 Figma 기본 동작을 둔다.
+figma.on('drop', event => {
+  const paste = pasteDrop(event.dropMetadata);
+  if (!paste) return true;
+  const msg: ToMain = { type: 'pasteGui', ...paste, at: { nodeId: event.node.id, x: event.absoluteX, y: event.absoluteY } };
+  writeQueue = writeQueue.then(() => controller.handle(msg), () => controller.handle(msg));
+  return false;
 });
 // 보고 있는 페이지가 바뀌면 페이지 목록을 다시 보낸다(새 플립북의 기본 페이지).
 figma.on('currentpagechange', () => { void controller.handle({ type: 'pages' }); });

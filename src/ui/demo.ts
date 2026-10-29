@@ -311,6 +311,12 @@ export function createDemo(options: DemoOptions): Demo {
       if (!flows.has(flow.nodeId)) return null;
       return uid ? `${flow.nodeId}/${uid}` : flow.nodeId;
     },
+    // GUI 붙이기: 붙인 화면·크기·자리(창 밖에 놓은 좌표, 없으면 보고 있는 화면 가운데)를 알린다. 원본 프레임이 없으면 실패한다.
+    async pasteGui(item, at) {
+      if (!frames.some(f => f.nodeId === item.sourceNodeId)) throw new Error(`${COPY.figmaFlipbook023} ${item.code}`);
+      log(`${COPY.paste001}: ${item.code} ${item.scale === 1 ? COPY.uiApp403 : COPY.uiApp404}${at ? ` (${Math.round(at.x)}, ${Math.round(at.y)})` : ''}`);
+      return { nodeId: `paste:${item.trackId}`, pageId: DEMO_FLIPBOOK_PAGE.id, flipbookId: null, notes: [] };
+    },
     // PDF 저장: 미리보기 도구로 플립북 프레임을 모두 골랐을 때만 저장할 수 있다. 프레임마다 가짜 JPG 한 장을 만든다
     // (취소를 볼 수 있게 한 장씩 조금 기다린다).
     pdfSelection: () => ({ frames: framesPicked ? flipbooks.size : 0, others: 0 }),

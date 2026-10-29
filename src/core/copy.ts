@@ -848,6 +848,17 @@ export const COPY = {
   // 추적 GUI — src/trackController.ts
   track001: '붙인 화면',
   track002: '개를 새 버전으로 바꿨습니다.',
+  track003: '배포된 GUI가 없는 화면이라 붙이지 못했습니다. GUI 붙이기 탭을 다시 열어 목록을 새로 받으세요.',
+  track004: '화면 붙이는 중',
+  // GUI 붙이기 탭 — src/ui/pasteView.ts
+  paste001: 'GUI 붙이기',
+  paste002: '카테고리',
+  paste003: '목록 보기',
+  paste004: '그리드 보기',
+  paste005: '화면 크기',
+  paste006: '붙인 뒤에도 캔버스에서 K(크기 조절)로 크기를 바꿀 수 있습니다.',
+  paste007: '끌어서 캔버스에 놓거나, 누르면 보고 있는 화면 가운데에 붙입니다.',
+  paste008: '붙인 화면·플로우',
   // PDF 저장 — src/ui/pdfView.ts, src/figma/pdf.ts
   pdf001: 'PDF 저장',
   pdf002: '선택한 프레임',

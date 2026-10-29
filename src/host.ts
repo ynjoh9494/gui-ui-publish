@@ -5,16 +5,19 @@ import type { FlipbookView } from './core/flipbook.ts';
 import type { CanvasPosition } from './core/screenCode.ts';
 import type { KV } from './core/store.ts';
 import type { FlowPlan, FlowThumb } from './core/flow.ts';
-import type { Actor, FlowRecord, GuiThumb, Team } from './core/types.ts';
+import type { Actor, FlipbookScale, FlowRecord, GuiThumb, Team } from './core/types.ts';
 import type { SelectionTarget, SelectionWrite } from './core/description.ts';
 import type { RichParagraph } from './core/richText.ts';
 import type { PdfPage, PdfSelection } from './core/pdf.ts';
 import type { PageInfo, ToUi } from './core/wire.ts';
 import type { TemplateInfo, TemplateItem } from './core/templateParts.ts';
-import type { FoundCopy } from './core/tracks.ts';
+import type { FoundCopy, PasteSpot } from './core/tracks.ts';
+export type { PasteSpot } from './core/tracks.ts';
 
 // 추적 GUI를 새 버전으로 바꿀 때 화면마다 넘기는 값(figma/tracked.ts)
 export interface CopyUpdate { uid: string; code: string; key: string; sourceNodeId: string | null; copies: { nodeId: string; trackId: string }[] }
+// 붙일 GUI: 복사본 표식(화면@버전), 새 추적 기록 ID, 크기(기본·작게)와 화면 최대 가로 크기(관리)
+export interface PasteItem { key: string; code: string; sourceNodeId: string; trackId: string; scale: FlipbookScale; maxWidth: number }
 
 // Controller가 사용하는 환경 경계. Figma 호스트와 브라우저 미리보기가 각각 구현한다.
 export interface FingerprintReader {
@@ -64,6 +67,8 @@ export interface Host extends FingerprintReader {
   scanCopies?(pageIds: string[], uids?: string[]): Promise<FoundCopy[]>;
   updateCopies?(items: CopyUpdate[]): Promise<{ updated: { trackId: string; nodeId: string }[]; notes: string[] }>;
   markTracked?(items: { nodeId: string; trackId: string }[]): Promise<void>;
+  // GUI 붙이기: at(없으면 보고 있는 화면 가운데) 아래의 노드에 붙이고 고른다. flipbookId: 붙인 자리의 새 템플릿 플립북(밖이면 null)
+  pasteGui?(item: PasteItem, at: PasteSpot | null): Promise<{ nodeId: string; pageId: string; flipbookId: string | null; notes: string[] }>;
   // 플립북의 Chapter만 Section 이름으로 다시 쓴다. 찾지 못한 플립북은 건너뛴다.
   syncChapters?(items: { pageId: string; flipbookId: string; name: string }[]): Promise<void>;
   // 기존 플립북 프레임을 다른 페이지·Section의 정한 자리로 옮긴다. 프레임을 찾지 못하면 false.

@@ -9,16 +9,16 @@ import { createFingerprintReader } from './fingerprints.ts';
 import { NS, findFlipbook, flipbookSpots, inspectFlipbooks, listFlipbooks, loadPages, moveFlipbookFrame, syncChapters, syncFlipbook, templateFromSelection, templateIssues, flipbookSession, type FlipbookSession } from './flipbook.ts';
 import { addTextFrame, fillDescription, readDescription, selectedDescriptionRoot, selectedFrame, selectionTarget } from './description.ts';
 import { createFlow, flowNode, updateFlow } from './flow.ts';
+import { SCREEN_KEY } from './layers.ts';
 import { exportPdfPages, pdfSelection } from './pdf.ts';
 import { readRichText, selectedTextNode, writeRichText } from './richText.ts';
 import { connectTemplateItem, describeTemplate, disconnectTemplateItem, templateItemNodes } from './template.ts';
 import { createDefaultTemplate } from './templateDefault.ts';
-import { markTracked, scanCopies, updateCopies } from './tracked.ts';
+import { markTracked, pasteCopy, scanCopies, updateCopies } from './tracked.ts';
 import { makeThumbnail, placeThumbnails, renameThumbnails, thumbnailBytes } from './thumbs.ts';
 
 // 사용자별 플러그인 창 크기(figma.clientStorage)
 export const WINDOW_KEY = 'windowSize';
-const SCREEN_KEY = 'screenId';
 // 새 버전 페이지 비교 미리보기 폭(px). 확대 미리보기(240px)를 고해상도 화면에서도 선명하게 보이는 크기
 const PREVIEW_WIDTH = 480;
 
@@ -198,6 +198,7 @@ export function figmaHost(mode: Host['mode']): Host {
     scanCopies: (pageIds, uids) => scanCopies(NS, pageIds, uids),
     updateCopies: items => updateCopies(NS, items),
     markTracked: items => markTracked(NS, items),
+    pasteGui: (item, at) => pasteCopy(NS, item, at),
     beginDelivery: known => { deliverySession = flipbookSession(known); },
     endDelivery: () => { deliverySession = undefined; },
     syncFlipbook: (settings, view) => syncFlipbook(NS, settings, view, deliverySession),

@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import { importGuiUpdates, unreviewed } from '../src/core/flipbooks.ts';
 import type { GuiRecordInfo, GuiScreenInfo } from '../src/core/guiScreens.ts';
 import { keys, memoryKV, Store } from '../src/core/store.ts';
-import type { FoundCopy } from '../src/core/tracks.ts';
+import { trackCounts, type FoundCopy } from '../src/core/tracks.ts';
+import { COPY } from '../src/core/copy.ts';
 import type { Flipbook, Screen, TrackRecord } from '../src/core/types.ts';
 import type { CopyUpdate, Host } from '../src/host.ts';
 import { TrackController } from '../src/trackController.ts';
@@ -97,4 +98,30 @@ test('목록 새로고침은 플립북 안의 화면을 ID 이름순으로 맞�
   importGuiUpdates(store, 'fb', new Map([['s1', info('s1', 'STB_HO_001', 1)], ['s2', info('s2', 'STB_HO_002', 3)]]), [record('s2', 'STB_HO_002', 3)]);
   assert.deepEqual(unreviewed(store.state, 'fb'), []);
   assert.deepEqual(await tracks.refresh(), [], 'same canvas changes nothing');
+});
+
+test('GUI 붙이기는 추적 기록을 만들고, 새 템플릿 플립북 안에 붙이면 그 페이지의 플립북만 화면 목록을 다시 읽는다', async () => {
+  const found: FoundCopy[] = [{ nodeId: 'np', pageId: 'p1', uid: 's1', version: 2, trackId: 'id1', flipbookId: 'fb' }];
+  const { store, host, calls, tracks, tick } = setup(found);
+  const pasted: unknown[] = [];
+  Object.assign(host, { pasteGui: async (item: unknown, at: unknown) => { pasted.push([item, at]); return { nodeId: 'np', pageId: 'p1', flipbookId: 'fb', notes: [] }; } });
+  store.put(keys.screen('s1'), screenRecord('s1', 'STB_HO_001', 2));
+  store.put(keys.screen('s2'), screenRecord('s2', 'STB_HO_002', 0));
+  store.put(keys.flipbook('fb'), flipbook('fb', 'p1'));
+  // 다른 페이지의 플립북은 이번에 읽지 않았으므로 화면 목록을 건드리지 않는다.
+  store.put(keys.flipbook('fb2'), flipbook('fb2', 'p2', [{ uid: 's1', code: 'STB_HO_001', name: '화면 s1', version: 1 }]));
+  store.put(keys.flow('f1'), { id: 'f1', nodeId: 'flow', pageId: 'p3', title: '흐름', uids: ['s1', 's1'], createdAt: 1, actor });
+  tick(9000);
+
+  const result = await tracks.paste('s1', 0.5, { nodeId: 'frame', x: 10, y: 20 });
+  assert.deepEqual(pasted, [[{ key: 's1@2', code: 'STB_HO_001', sourceNodeId: 'src-s1', trackId: 'id1', scale: 0.5, maxWidth: 1440 }, { nodeId: 'frame', x: 10, y: 20 }]]);
+  assert.deepEqual(result, { changed: ['fb'], notes: [] });
+  assert.deepEqual([...store.state.tracks.values()].map(t => [t.id, t.uid, t.nodeId, t.pageId, t.createdAt]), [['id1', 's1', 'np', 'p1', 9000]]);
+  assert.deepEqual(calls.scans, [['p1']], 'reads only the page it pasted on');
+  assert.deepEqual(calls.marks, [], 'the copy already carries its track ID');
+  assert.deepEqual(store.state.flipbooks.get('fb')!.screens.map(s => [s.uid, s.version, s.addedAt]), [['s1', 2, 9000]], 'putting a screen in makes no history');
+  assert.deepEqual(store.state.flipbooks.get('fb2')!.screens.map(s => s.uid), ['s1']);
+  assert.deepEqual([...trackCounts(store.state)], [['s1', 2]], 'tracked copies and flows that hold the screen, each flow once');
+
+  await assert.rejects(tracks.paste('s2', 1, null), { message: COPY.track003 }, 'a screen with no published GUI is not pasted');
 });

@@ -11,7 +11,8 @@ import type { BatchComment, Blocker, Plan } from './publish.ts';
 import type { GuiScreenInfo } from './guiScreens.ts';
 import type { State } from './store.ts';
 import type { TemplateInfo, TemplateItem } from './templateParts.ts';
-import type { Actor, Team } from './types.ts';
+import type { PasteSpot } from './tracks.ts';
+import type { Actor, FlipbookScale, Team } from './types.ts';
 import type { VersionEvidence, VersionLink } from './versionMatch.ts';
 
 type Entries<M> = M extends Map<infer K, infer V> ? [K, V][] : never;
@@ -76,6 +77,15 @@ export function clampWindow(mode: Team, width: number, height: number, compact =
   return { width: Math.max(compact ? WINDOW.minCompactWidth : WINDOW.minWidth, Math.round(width)), height: Math.max(WINDOW.minHeight[mode], Math.round(height)) };
 }
 
+// GUI 붙이기에서 화면을 창 밖에 놓을 때 UI가 pluginDrop에 싣는 값. 본체는 figma.on('drop')의 dropMetadata에서 같은 값을 읽는다.
+const PASTE_DROP = 'guiuipublish.paste';
+export const pasteDropMetadata = (uid: string, scale: FlipbookScale) => ({ kind: PASTE_DROP, uid, scale });
+export function pasteDrop(meta: unknown): { uid: string; scale: FlipbookScale } | null {
+  const m = meta && typeof meta === 'object' ? meta as { kind?: unknown; uid?: unknown; scale?: unknown } : null;
+  if (m?.kind !== PASTE_DROP || typeof m.uid !== 'string' || !m.uid) return null;
+  return { uid: m.uid, scale: m.scale === 1 ? 1 : 0.5 };
+}
+
 export type AdminOp =
   | { op: 'addCategory'; name: string }
   | { op: 'renameCategory'; id: string; name: string }
@@ -137,6 +147,8 @@ export type ToMain =
   | { type: 'history'; team: Team; id: string }
   // 플립북 만들기: GUI 배포한 화면 목록을 받고, 고른 화면으로 만든다.
   | { type: 'guiScreens' }
+  // GUI 붙이기: 배포된 화면을 고른 크기로 붙인다. at: 창 밖에 놓은 자리(없으면 보고 있는 화면 가운데)
+  | { type: 'pasteGui'; uid: string; scale: FlipbookScale; at?: PasteSpot }
   | { type: 'createFlipbooks'; request: FlipbookRequest }
   // 플립북 제목 변경. 비우면 첫 화면 이름(자동 제목)으로 돌아간다.
   | { type: 'renameFlipbook'; id: string; title: string }
@@ -199,7 +211,8 @@ export type ToUi =
   // ok: 한 건 이상 확정했다. committed: 확정한 항목의 entryKey, conflicts: 확정하지 못한 항목과 이유
   | { type: 'committed'; ok: boolean; committed: string[]; conflicts: Blocker[]; batchId: string; pending: number; message: string }
   | { type: 'history'; id: string; rows: HistoryRow[] }
-  | { type: 'guiScreens'; screens: GuiScreenInfo[] }
+  // counts: 화면별로 캔버스에 붙은 수(추적 GUI와 그 화면 썸네일이 든 플로우)
+  | { type: 'guiScreens'; screens: GuiScreenInfo[]; counts: [string, number][] }
   | { type: 'flows'; flows: FlowListItem[] }
   // 플립북을 만들었다. ids: 새 플립북 ID
   | { type: 'flipbooksCreated'; ids: string[]; moved?: string[]; message: string }

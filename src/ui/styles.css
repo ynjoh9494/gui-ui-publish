@@ -563,6 +563,29 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .pdf-view { grid-column: 1 / -1; grid-row: 2 / 5; min-height: 0; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .pdf-view > .note { flex: none; margin: 0; }
 /* 플로우 탭: 텍스트 편집 탭처럼 툴바 아래 영역 전체를 쓴다. 왼쪽은 배포된 화면, 오른쪽은 옅은 회색 격자 판에 흰 카드를 놓고 잇는다. */
+/* GUI 붙이기 탭: 창을 목록 너비로 접어 보여 준다(app.ts applyCollapse). 목록 보기는 썸네일을 마우스를 올렸을 때만(.thumb-hover) 띄운다. */
+.pasting-mode :is(.toolbar, .list, .pane-divider, .detail, .footer) { display: none; }
+.paste-view { grid-column: 1 / -1; grid-row: 2 / 5; min-height: 0; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.paste-bar, .paste-size { flex: none; display: flex; gap: 6px; align-items: center; }
+.paste-bar select { flex: 1; min-width: 0; }
+.paste-size { justify-content: space-between; }
+.paste-toggle { flex: none; display: flex; gap: 2px; }
+.paste-toggle button[aria-pressed="true"] { color: var(--brand); background: var(--selected); }
+.paste-tip, .paste-hint { flex: none; margin: 0; }
+.paste-screens { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 5px; }
+.paste-screens .empty { margin: 0; padding: 12px; }
+.paste-screen { display: flex; align-items: center; gap: 6px; padding: 5px 8px; cursor: grab; user-select: none; }
+.paste-screen:hover, .paste-card:hover { background: var(--bg2); }
+.paste-screen .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.paste-count { flex: none; min-width: 14px; text-align: right; font-variant-numeric: tabular-nums; }
+.paste-count.none { color: var(--muted); }
+.paste-screens.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; padding: 6px; align-content: start; }
+.paste-card { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 3px; border-radius: 4px; cursor: grab; user-select: none; }
+.paste-thumb { aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 3px; background: #000; outline: 1px solid var(--border); }
+.paste-thumb img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.paste-thumb-empty { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; background: #dbdbdb; color: #555; font-size: 10px; text-align: center; }
+.paste-card-meta { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; }
+.paste-card .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .flowing-mode :is(.toolbar, .list, .pane-divider, .detail, .footer) { display: none; }
 .flow-view { grid-column: 1 / -1; grid-row: 2 / 5; min-height: 0; padding: 10px; display: grid; grid-template-columns: minmax(140px, 1fr) minmax(260px, 2.4fr); gap: 10px; }
 .flow-pick, .flow-order { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 6px; }

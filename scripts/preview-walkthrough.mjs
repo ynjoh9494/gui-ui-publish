@@ -610,7 +610,32 @@ try {
     const [download] = await Promise.all([page.waitForEvent('download'), exportButton.click()]);
     assert.match(download.suggestedFilename(), /\.pdf$/, '고른 프레임을 한 PDF로 내려받는다');
     await page.locator('#tools [data-pick-flipbooks]').click();
-    await app.locator('.tabs [data-action=text-close]').click();
+    // GUI 붙이기 탭: 창을 목록 너비로 접어 보여 주고, 고른 카테고리의 배포된 화면을 누르면 고른 크기로 보고 있는 화면 가운데에 붙인다.
+    // 화면마다 붙인 수(추적 GUI와 그 화면이 든 플로우)를 보여 준다. 다른 탭으로 가면 그 탭의 접힘·펼침으로 돌아간다.
+    {
+      // 지금(PDF 저장 탭)은 목록이 숨어 있으므로 격자 첫 열(목록) 너비를 읽는다.
+      const listWidth = await app.evaluate(root => Math.round(parseFloat(getComputedStyle(root).gridTemplateColumns)));
+      await app.locator('.tabs [data-action=paste-open]').click();
+      const rows = app.locator('.paste-view .paste-screen');
+      await rows.first().waitFor();
+      await page.waitForFunction(w => Math.abs(document.querySelector('#app').getBoundingClientRect().width - w) < 2, listWidth, { timeout: 3000 });
+      assert.equal(await app.locator('.list').isVisible(), false, 'GUI 붙이기 탭은 목록 대신 보인다');
+      assert.equal(await app.locator('.paste-view [data-paste=category] option:checked').innerText(), '홈', '고른 카테고리의 화면만 보여 준다');
+      assert.ok(await rows.first().getAttribute('data-thumb'), '목록 보기는 마우스를 올리면 썸네일을 보여 준다');
+      const count = rows.first().locator('.paste-count');
+      assert.equal(await count.innerText(), '1', '그 화면이 든 플로우를 붙인 수에 센다');
+      await app.locator('.paste-view [data-action=paste-scale][data-scale="0.5"]').click();
+      assert.equal(await app.locator('.paste-view [data-action=paste-scale][data-scale="0.5"]').getAttribute('aria-pressed'), 'true');
+      await rows.first().click();
+      await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('GUI 붙이기: STB_HO_001 작게')));
+      await page.waitForFunction(() => document.querySelector('#app .paste-view .paste-screen .paste-count')?.textContent === '2');
+      await app.locator('.paste-view [data-action=paste-layout][data-layout=grid]').click();
+      await app.locator('.paste-view .paste-card .paste-thumb img').first().waitFor();
+      assert.equal(await app.locator('.paste-view .paste-card').first().getAttribute('data-thumb'), null, '그리드 보기는 썸네일이 보이므로 마우스를 올린 미리보기를 띄우지 않는다');
+      await shot('04e-paste-tab');
+      await app.locator('.tabs [data-action=text-close]').click();
+      await page.waitForFunction(w => document.querySelector('#app').getBoundingClientRect().width > w + 2, listWidth, { timeout: 3000 });
+    }
     assert.equal(await app.locator('.list').isVisible(), true);
   }
 

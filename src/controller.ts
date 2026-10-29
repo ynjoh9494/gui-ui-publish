@@ -21,6 +21,7 @@ import type { DataStatus, ProjectConfig, Team, UiBaseline } from './core/types.t
 import { explainMatch, matchVersion, versionCommon, versionLinkErrors, type VersionFrame } from './core/versionMatch.ts';
 import { toUiWire, type AdminOp, type NavTarget, type ScanState, type ToMain } from './core/wire.ts';
 import { FlowController } from './flowController.ts';
+import { trackCounts } from './core/tracks.ts';
 import { TrackController } from './trackController.ts';
 import type { FingerprintReader, Host } from './host.ts';
 import { PdfController } from './pdfController.ts';
@@ -48,7 +49,7 @@ const BUSY_LABEL: Partial<Record<ToMain['type'], string>> = {
   prepare: COPY.controller001, commit: COPY.controller002, resetData: COPY.controller003, retry: COPY.controller004, refreshData: COPY.controller005,
   admin: COPY.controller006, createFlipbooks: COPY.controller038, markReviewed: COPY.controller066, removeFlipbooks: COPY.controller068,
   matchVersion: COPY.controller106, switchVersion: COPY.controller107, renameFlipbook: COPY.controller118, editFlipbookScreens: COPY.controller137,
-  textApply: COPY.controller120, createFlow: COPY.flow006, exportPdf: COPY.pdf005,
+  textApply: COPY.controller120, createFlow: COPY.flow006, exportPdf: COPY.pdf005, pasteGui: COPY.track004,
 };
 
 // 텍스트 편집 적용 결과 안내.
@@ -156,13 +157,6 @@ export class Controller {
             // 템플릿 페이지와 플립북 페이지는 서로 기다리지 않고 함께 불러온다.
             const [, canvas] = await Promise.all([this.checkTemplate(), this.linkFlipbooks()]);
             await this.syncCanvasSections(canvas);
-            // 새 템플릿 플립북의 화면 목록을 캔버스의 추적 GUI로 맞추고(1.1), 바뀐 플립북의 Screen ID 칸·자동 제목을 다시 반영한다.
-            const members = await this.tracks.refresh();
-            if (members.length) {
-              const report = await this.deliverFlipbooks({}, { targets: members, canvasFollowed: true });
-              if (report.failed.length) this.host.post({ type: 'error', message: deliveryMessage(report) });
-              this.postState();
-            }
           }
           break;
         case 'scan': await this.scan(); break;
@@ -205,7 +199,7 @@ export class Controller {
         }
         case 'guiScreens':
           this.store.reload();
-          this.host.post({ type: 'guiScreens', screens: [...guiScreens(this.store.state).values()] });
+          this.postGuiScreens();
           break;
         case 'createFlipbooks': await this.createFlipbooks(msg.request); break;
         case 'renameFlipbook': await this.renameFlipbook(msg.id, msg.title); break;
@@ -243,8 +237,18 @@ export class Controller {
           {
             const [, canvas] = await Promise.all([this.checkTemplate(), this.linkFlipbooks()]);
             await this.syncCanvasSections(canvas);
+            // 새 템플릿 플립북의 화면 목록을 캔버스의 추적 GUI로 맞춘다(PRD 1.1: 플러그인을 열 때는 훑지 않는다).
+            await this.followMembers(await this.tracks.refresh());
           }
           break;
+        case 'pasteGui': {
+          const { changed, notes } = await this.tracks.paste(msg.uid, msg.scale, msg.at ?? null);
+          await this.followMembers(changed);
+          this.postState();
+          this.postGuiScreens();
+          if (notes.length) this.host.post({ type: 'notice', message: notes.join(' ') });
+          break;
+        }
         case 'textTab':
           this.textTabOpen = msg.open;
           this.textTargetSelectionIds = null;
@@ -476,6 +480,19 @@ export class Controller {
     this.uiCheckedAt = this.store.now();
     this.postUiScans();
     this.scanStatus('UI', 'done', targets.length, targets.length);
+  }
+
+  // 배포된 화면 목록과 화면별로 캔버스에 붙은 수(GUI 붙이기 탭)
+  private postGuiScreens() {
+    this.host.post({ type: 'guiScreens', screens: [...guiScreens(this.store.state).values()], counts: [...trackCounts(this.store.state)] });
+  }
+
+  // 화면 목록이 캔버스의 추적 GUI를 따라 바뀐 새 템플릿 플립북의 Screen ID 칸·자동 제목을 다시 반영한다.
+  private async followMembers(changed: string[]): Promise<void> {
+    if (!changed.length) return;
+    const report = await this.deliverFlipbooks({}, { targets: changed, canvasFollowed: true });
+    if (report.failed.length) this.host.post({ type: 'error', message: deliveryMessage(report) });
+    this.postState();
   }
 
   private postUiScans() {

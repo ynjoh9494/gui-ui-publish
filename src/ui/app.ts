@@ -5,6 +5,7 @@ import { guiStateBadge, unlinkedBadge } from './estimate.ts';
 import { startTutorial } from './tutorial.ts';
 import { textEditor } from './textEditor.ts';
 import { flowView } from './flowView.ts';
+import { pasteView } from './pasteView.ts';
 import { pdfView } from './pdfView.ts';
 import { changeReasonSection, REASON_PAGE } from './changeReason.ts';
 import { esc } from './html.ts';
@@ -21,11 +22,13 @@ import { formatFrameName, parseFrameName } from '../core/screenName.ts';
 import type { State } from '../core/store.ts';
 import type { Actor, FlipbookScale, ImportedGuiRecord, SystemTag, Team } from '../core/types.ts';
 import { SIMILAR_MIN, type VersionEvidence, type VersionLink } from '../core/versionMatch.ts';
-import { clampWindow, fromWire, PANE, type AdminOp, type NavTarget, type PageInfo, type ScanState, type ToMain, type ToUi, type VersionMatchView } from '../core/wire.ts';
+import { clampWindow, fromWire, PANE, pasteDropMetadata, type AdminOp, type NavTarget, type PageInfo, type ScanState, type ToMain, type ToUi, type VersionMatchView } from '../core/wire.ts';
 
 export interface Bridge {
   send(message: ToMain): void;
   listen(handler: (message: ToUi) => void): void;
+  // GUI 붙이기: 창 밖(캔버스)에 놓았을 때 Figma에 알린다(pluginDrop). 미리보기에는 없다.
+  drop?(clientX: number, clientY: number, metadata: unknown): void;
 }
 
 interface ScreenItem { value: string; code: string; name: string; categoryId?: string | null }
@@ -202,6 +205,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   let flowOpen = false;
   // UI Flipbook의 PDF 저장 탭(2026-10-26 사용자 요청). 다른 탭과 같이 하나만 열린다.
   let pdfOpen = false;
+  // UI Flipbook의 GUI 붙이기 탭(2026-10-29 사용자 결정). 다른 탭과 같이 하나만 열리고, 창을 목록 너비로 접어 보여 준다.
+  let pasteOpen = false;
+  const listTabOpen = () => !textOpen && !flowOpen && !pdfOpen && !pasteOpen;
   let pdfTabSent = false;
   // PDF를 합쳐 저장하는 동안의 진행 표시. 본체의 진행 표시(busyLabel)가 끝난 뒤에도 이어서 보여 준다.
   let pdfBusy: string | null = null;
@@ -258,6 +264,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     list: () => bridge.send({ type: 'flows' }),
     reveal: (flowId, uid) => bridge.send({ type: 'revealFlow', nav: ++navSeq, flowId, uid }),
     time: ms => formatTime(ms, state?.project.utcOffsetMinutes ?? 0),
+    thumb: hash => { requestThumbs([hash]); return thumbUrls.get(hash) || null; },
+  });
+  const paste = pasteView(root, {
+    paste: (uid, scale) => bridge.send({ type: 'pasteGui', uid, scale }),
+    drop: (uid, scale, x, y) => bridge.drop?.(x, y, pasteDropMetadata(uid, scale)),
     thumb: hash => { requestThumbs([hash]); return thumbUrls.get(hash) || null; },
   });
 
@@ -753,7 +764,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     // 머리에는 명령 이름(GUI Publish·UI Flipbook)을 쓰지 않고 탭만 둔다(2026-10-22 사용자 요청). 탭이 없는 관리 화면만 「관리」를 쓴다.
     $('.tabs').innerHTML = `${settings ? `<span class="app-title">${COPY.uiApp004}</span>` : ''}` +
       `${mode === 'GUI' && !settings ? `<div class="create-tabs"><button data-action="version-close" aria-selected="${!versionOpen}">${COPY.uiApp272}</button><button data-action="version-open" aria-selected="${versionOpen}">${COPY.uiApp248}</button></div>` : ''}` +
-      `${mode === 'UI' && !settings ? `<div class="create-tabs"><button data-action="text-close" title="${COPY.uiApp302}" aria-selected="${!textOpen && !flowOpen && !pdfOpen}">${COPY.uiApp302}</button><button data-action="text-open" title="${COPY.uiApp303}" aria-selected="${textOpen}">${COPY.uiApp303}</button><button data-action="flow-open" title="${COPY.flow020}" aria-selected="${flowOpen}">${COPY.flow020}</button><button data-action="pdf-open" title="${COPY.pdf001}" aria-selected="${pdfOpen}">${COPY.pdf001}</button></div>` : ''}` +
+      `${mode === 'UI' && !settings ? `<div class="create-tabs"><button data-action="text-close" title="${COPY.uiApp302}" aria-selected="${listTabOpen()}">${COPY.uiApp302}</button><button data-action="paste-open" title="${COPY.paste001}" aria-selected="${pasteOpen}">${COPY.paste001}</button><button data-action="text-open" title="${COPY.uiApp303}" aria-selected="${textOpen}">${COPY.uiApp303}</button><button data-action="flow-open" title="${COPY.flow020}" aria-selected="${flowOpen}">${COPY.flow020}</button><button data-action="pdf-open" title="${COPY.pdf001}" aria-selected="${pdfOpen}">${COPY.pdf001}</button></div>` : ''}` +
       `<span class="who" title="${COPY.uiApp005}">${esc(actor?.name ?? '')}</span>` +
       `<button class="icon-button" data-action="settings" aria-pressed="${settings}" title="${COPY.uiApp004}" aria-label="${COPY.uiApp004}">${GEAR}</button>` +
       `<button class="icon-button help-button" data-action="tutorial" title="${COPY.uiTutorial001}" aria-label="${COPY.uiTutorial001}">${HELP}</button>`;
@@ -2201,6 +2212,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     renderTabs(); renderToolbar(); renderList(); renderDetail(); renderFooter(); renderConfirm(); renderVersion(); renderToast();
     const textShown = textOpen && mode === 'UI' && tab !== 'ADMIN' && !!state;
     flows.render(flowOpen && mode === 'UI' && tab !== 'ADMIN' && !!state);
+    paste.render(pasteOpen && mode === 'UI' && tab !== 'ADMIN' && !!state);
     editor.render(textShown);
     if (textShown !== textTabSent) { textTabSent = textShown; bridge.send({ type: 'textTab', open: textShown }); }
     const pdfShown = pdfOpen && mode === 'UI' && tab !== 'ADMIN' && !!state;
@@ -2211,10 +2223,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   }
 
   // 오른쪽 영역 접기: 창 너비를 목록 너비로 줄이고, 펼치면 접기 전 너비로 되돌린다. 설정 화면과 텍스트 편집 탭에서는 펼친 너비로 보여 준다.
+  // GUI 붙이기 탭은 늘 접어 보여 주고, 다른 탭으로 가면 그 탭의 접힘·펼침으로 돌아간다(2026-10-29 사용자 결정).
   function applyCollapse() {
-    const want = detailCollapsed && tab !== 'ADMIN' && team() === 'UI' && !textOpen && !flowOpen && !pdfOpen;
+    const want = tab !== 'ADMIN' && team() === 'UI' && (pasteOpen || (detailCollapsed && listTabOpen()));
     if (want && !compactFrom) {
-      const listWidth = $('.list').getBoundingClientRect().width;
+      // 다른 탭에서는 목록이 숨어 있으므로 격자 첫 열(목록) 너비를 읽는다.
+      const listWidth = parseFloat(getComputedStyle(root).gridTemplateColumns) || $('.list').getBoundingClientRect().width;
       compactFrom = { width: root.offsetWidth };
       bridge.send({ type: 'resize', width: listWidth, height: root.offsetHeight, compact: true });
     } else if (!want && compactFrom) {
@@ -2441,6 +2455,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const action = el.dataset.action!;
     if ((busyLabel || pdfBusy) && !WHILE_BUSY.has(action)) return;
     if (action.startsWith('flow-') && flows.handle(action, el)) return;
+    if (action.startsWith('paste-') && paste.handle(action, el)) return;
     const t = team();
     if (locked(t) && !BEFORE_CHECK.has(action)) { ev.preventDefault(); return; }
     switch (action) {
@@ -2752,10 +2767,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         admin({ op: 'renumberScreenIds' });
         break;
       case 'renumber-cancel': renumberArmed = false; renderDetail(); break;
-      case 'text-open': textOpen = true; flowOpen = false; pdfOpen = false; renderAll(); root.querySelector<HTMLElement>('.text-view .rich-editor')?.focus(); break;
-      case 'text-close': textOpen = false; flowOpen = false; pdfOpen = false; renderAll(); break;
-      case 'flow-open': flowOpen = true; textOpen = false; pdfOpen = false; renderAll(); bridge.send({ type: 'guiScreens' }); break;
-      case 'pdf-open': pdfOpen = true; textOpen = false; flowOpen = false; renderAll(); break;
+      case 'text-open': textOpen = true; flowOpen = false; pdfOpen = false; pasteOpen = false; renderAll(); root.querySelector<HTMLElement>('.text-view .rich-editor')?.focus(); break;
+      case 'text-close': textOpen = false; flowOpen = false; pdfOpen = false; pasteOpen = false; renderAll(); break;
+      case 'paste-open': pasteOpen = true; textOpen = false; flowOpen = false; pdfOpen = false; renderAll(); bridge.send({ type: 'guiScreens' }); break;
+      case 'flow-open': flowOpen = true; textOpen = false; pdfOpen = false; pasteOpen = false; renderAll(); bridge.send({ type: 'guiScreens' }); break;
+      case 'pdf-open': pdfOpen = true; textOpen = false; flowOpen = false; pasteOpen = false; renderAll(); break;
       case 'pdf-export': pdf.setRunning(true); bridge.send({ type: 'exportPdf' }); break;
       case 'pdf-cancel': pdf.cancel(); bridge.send({ type: 'cancelPdf' }); break;
       case 'text-import': bridge.send({ type: 'textImport' }); break;
@@ -3528,7 +3544,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
           if (found) addMode = null;
         }
         if (tab === 'ADMIN') renderDetailKeepingFocus();
-        else if (!textOpen && !flowOpen && !pdfOpen) { renderList(); renderFooter(); renderDetailKeepingFocus(); }
+        else if (listTabOpen()) { renderList(); renderFooter(); renderDetailKeepingFocus(); }
         break;
       }
       case 'entries': {
@@ -3565,7 +3581,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
           const draft = drafts.UI[scan.flipbookId];
           if (draft?.included && !scan.nodeId && uiEstimate(state, scan.flipbookId, previousScans.get(scan.flipbookId)) !== 'missing') draft.included = false;
         }
-        if (tab === 'UI' && !textOpen && !flowOpen && !pdfOpen) {
+        if (tab === 'UI' && listTabOpen()) {
           renderList(); renderFooter();
           if (selected.UI && state && previousEstimate !== uiEstimate(state, selected.UI, uiScans.get(selected.UI))) renderDetailKeepingFocus();
           else renderValidation();
@@ -3627,7 +3643,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
           if (group.visibleRows.some(row => selection[msg.team].has(row.entry.key))) expanded[msg.team].add(group.key);
         addMode = null;
         editMode = null;
-        if (textOpen || flowOpen || pdfOpen) break;
+        if (!listTabOpen()) break;
         renderTabs(); renderToolbar(); renderList(); renderDetail(); renderFooter();
         break;
       }
@@ -3656,10 +3672,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       case 'guiScreens':
         createScreens = msg.screens;
         flows.setScreens(createScreens);
+        paste.setScreens(createScreens, new Map(msg.counts));
         // 화면 목록을 받기 전에 연 일괄 만들기는 카테고리를 모두 고른 상태로 채운다.
         if (bulk && !bulk.submitting && !bulk.categories.size) bulk.categories = new Set(bulkCandidates().map(screenCategoryKey));
         renderBulk();
-        if (tab === 'UI' && !textOpen && !flowOpen && !pdfOpen) { renderList(); if (currentNew()) renderDetail(); }
+        if (tab === 'UI' && listTabOpen()) { renderList(); if (currentNew()) renderDetail(); }
         break;
       case 'reviewed':
         // 확인 완료한 플립북은 상태를 기본 「최신」으로, 코멘트를 빈 값으로 돌린다.
@@ -3743,8 +3760,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         }
         // 플립북 만들기·화면 편집 창은 마우스를 올린 미리보기만 쓰므로 다시 그리지 않는다(열린 화면 선택이 닫히지 않게).
         if (versionOpen) renderVersionDetail();
-        else if (!textOpen && !flowOpen && !pdfOpen) updateDetailThumbs(msg.items.map(item => item.hash));
+        else if (listTabOpen()) updateDetailThumbs(msg.items.map(item => item.hash));
         flows.thumbsLoaded(msg.items.map(item => item.hash));
+        paste.thumbsLoaded(msg.items.map(item => item.hash));
         if (hoverThumb && msg.items.some(item => item.hash === hoverThumb?.hash)) showHoverThumb();
         break;
       case 'textImported': editor.setParagraphs(msg.paragraphs); break;

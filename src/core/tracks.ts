@@ -10,6 +10,9 @@ import type { Actor, Flipbook, FlipbookKind, FlipbookScreen, TrackRecord } from 
 // flipbookId는 그 복사본을 품은 새 템플릿 플립북(밖이면 null)이다.
 export interface FoundCopy { nodeId: string; pageId: string; uid: string; version: number; trackId: string; flipbookId: string | null }
 
+// GUI 붙이기에서 창 밖(캔버스)에 놓은 자리: 놓인 노드와 캔버스 절대 좌표(figma.on('drop'))
+export interface PasteSpot { nodeId: string; x: number; y: number }
+
 // 화면 ID → 지금 그 자리를 이어받은 화면 ID. 교체로 사용 안 함이 된 화면의 복사본은 이어받은 화면을 따라간다.
 export function successorOf(state: State): (uid: string) => string {
   const map = new Map<string, string>();
@@ -73,14 +76,24 @@ function kindOf(fb: Flipbook, count: number): FlipbookKind {
   return count > 1 ? 'multi' : count === 1 ? 'single' : fb.kind;
 }
 
-// 새 템플릿 플립북의 화면 목록을 그 안에서 찾은 복사본으로 맞춘다(only가 있으면 그 화면들만).
+// GUI 붙이기 탭의 화면별 개수: 추적 GUI와 그 화면 썸네일이 든 플로우를 합친다(2026-10-29 사용자 결정). 교체로 이어진 옛 화면의 것은 이어받은 화면에 센다.
+export function trackCounts(state: State): Map<string, number> {
+  const live = successorOf(state);
+  const counts = new Map<string, number>();
+  const add = (uid: string) => { const id = live(uid); counts.set(id, (counts.get(id) ?? 0) + 1); };
+  for (const track of state.tracks.values()) add(track.uid);
+  for (const flow of state.flows.values()) for (const uid of new Set(flow.uids.map(live))) add(uid);
+  return counts;
+}
+
+// 새 템플릿 플립북의 화면 목록을 그 안에서 찾은 복사본으로 맞춘다(only가 있으면 그 화면들만). 읽은 페이지(pages)의 플립북만 맞춘다.
 // 새로 들어온 화면의 버전은 들어 있는 복사본의 버전(여럿이면 가장 낮은 버전)이고, addedAt 뒤의 배포만 확인할 것으로 본다.
 // 빠진 화면은 목록에서 빼고 쌓인 이력은 남긴다. 이미 있던 화면의 반영 버전은 그대로 둔다(배포 이력은 importGuiUpdates가 쌓는다).
 // 순서는 Screen ID 이름순이고(2026-10-29 사용자 결정), 자동 제목이면 그 첫 화면 이름을 따른다. 바뀐 플립북 ID를 돌려준다.
-export function followMembers(store: Store, found: FoundCopy[], screens: Map<string, GuiScreenInfo>, addedAt: (copy: FoundCopy) => number, only: Set<string> | null): string[] {
+export function followMembers(store: Store, found: FoundCopy[], screens: Map<string, GuiScreenInfo>, addedAt: (copy: FoundCopy) => number, only: Set<string> | null, pages: Set<string>): string[] {
   const changed: string[] = [];
   for (const fb of [...store.state.flipbooks.values()]) {
-    if (fb.status !== 'active' || !fb.tracked) continue;
+    if (fb.status !== 'active' || !fb.tracked || !pages.has(fb.pageId ?? '')) continue;
     const inside = new Map<string, FoundCopy>();
     for (const copy of found) {
       if (copy.flipbookId !== fb.id || (only && !only.has(copy.uid))) continue;
