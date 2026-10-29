@@ -11,5 +11,5 @@ const paths: Record<TabIcon, string> = {
   pdf: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-6-6Z"/><path d="M14 3v6h6M8 13h8M8 17h6"/>',
 };
 export function headerTab(action: string, label: string, selected: boolean, icon: TabIcon): string {
-  return `<button role="tab" data-action="${action}" title="${esc(label)}" aria-label="${esc(label)}" aria-selected="${selected}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[icon]}</svg><span class="tab-label">${esc(label)}</span></button>`;
+  return `<button role="tab" data-action="${action}" title="${esc(label)}" aria-label="${esc(label)}" aria-selected="${selected}"><span class="tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[icon]}</svg></span><span class="tab-label">${esc(label)}</span></button>`;
 }

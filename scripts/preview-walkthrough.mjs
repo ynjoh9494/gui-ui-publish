@@ -94,11 +94,15 @@ try {
   assert.equal(await app.locator('.create-tabs button svg').count(), 2);
   const headerBefore = await app.evaluate(root => ({ width: root.style.width, height: root.style.height }));
   await app.evaluate(root => { root.style.width = '448px'; });
-  assert.equal(await app.locator('.create-tabs .tab-label').first().isVisible(), false, '좁은 창은 아이콘만 표시');
-  const nativeTab = await app.locator('.create-tabs [aria-selected=true]').evaluate(el => ({ radius: getComputedStyle(el).borderRadius, shadow: getComputedStyle(el).boxShadow, bg: getComputedStyle(el).backgroundColor }));
+  assert.equal(await app.locator('.create-tabs [aria-selected=true] .tab-label').isVisible(), true, '좁은 창에서도 선택 탭 이름은 표시');
+  assert.equal(await app.locator('.create-tabs [aria-selected=false] .tab-label').first().isVisible(), false, '선택하지 않은 탭은 아이콘만 표시');
+  const nativeTab = await app.locator('.create-tabs [aria-selected=true]').evaluate(el => ({ radius: getComputedStyle(el).borderRadius, shadow: getComputedStyle(el).boxShadow, bg: getComputedStyle(el.querySelector('.tab-icon')).backgroundColor, fullBg: getComputedStyle(el).backgroundColor, weight: getComputedStyle(el).fontWeight, iconWidth: el.querySelector('.tab-icon').getBoundingClientRect().width }));
   assert.equal(nativeTab.shadow, 'none');
   assert.equal(nativeTab.radius, '6px');
-  assert.notEqual(nativeTab.bg, 'rgba(0, 0, 0, 0)');
+  assert.equal(nativeTab.bg, 'rgba(0, 0, 0, 0)');
+  assert.notEqual(nativeTab.fullBg, 'rgba(0, 0, 0, 0)', '선택 배경은 아이콘과 텍스트를 함께 감싼다');
+  assert.equal(nativeTab.weight, '400', '선택한 탭은 볼드 없음');
+  assert.equal(nativeTab.iconWidth, 28);
   assert.equal(await app.locator('.tab-tools button').count(), 3);
   await app.evaluate((root, size) => { root.style.width = size.width; root.style.height = size.height; }, headerBefore);
 
