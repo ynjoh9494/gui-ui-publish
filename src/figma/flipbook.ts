@@ -619,6 +619,11 @@ interface Rect { x: number; y: number; width: number; height: number }
 
 // GUI 영역의 플립북 프레임 기준 위치. 회전은 고려하지 않는다.
 function offsetIn(frame: BaseNode, node: SceneNode): { x: number; y: number } {
+  const parent = frame as BaseNode & { absoluteBoundingBox?: Rect | null };
+  const child = node as SceneNode & { absoluteBoundingBox?: Rect | null };
+  const parentBox = parent.absoluteBoundingBox;
+  const childBox = child.absoluteBoundingBox;
+  if (parentBox && childBox) return { x: childBox.x - parentBox.x, y: childBox.y - parentBox.y };
   let x = 0, y = 0;
   for (let n: BaseNode | null = node; n && n.id !== frame.id; n = n.parent) if ('x' in n) { x += n.x; y += n.y; }
   return { x, y };

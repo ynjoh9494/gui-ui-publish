@@ -2850,9 +2850,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     if (!box) { box = document.createElement('div'); box.className = 'thumb-hover'; root.appendChild(box); }
     const hash = hoverThumb.hash;
     const rect = root.getBoundingClientRect();
-    box.style.width = `${Math.min(240, rect.width - 16)}px`;
+    box.style.maxWidth = `${Math.min(240, rect.width - 16)}px`;
     const img = document.createElement('img');
     img.alt = '';
+    img.style.maxWidth = '100%';
     img.style.maxHeight = `${Math.min(320, Math.max(80, rect.height - 24))}px`;
     const position = () => {
       if (!hoverThumb || hoverThumb.hash !== hash || !box?.isConnected) return;
