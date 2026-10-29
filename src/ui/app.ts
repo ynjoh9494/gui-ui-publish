@@ -2853,7 +2853,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     box.style.width = `${Math.min(240, rect.width - 16)}px`;
     const img = document.createElement('img');
     img.alt = '';
-    img.style.maxHeight = `${Math.max(80, rect.height - 24)}px`;
+    img.style.maxHeight = `${Math.min(320, Math.max(80, rect.height - 24))}px`;
     const position = () => {
       if (!hoverThumb || hoverThumb.hash !== hash || !box?.isConnected) return;
       const { width, height } = box.getBoundingClientRect();
