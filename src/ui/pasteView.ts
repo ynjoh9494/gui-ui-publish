@@ -8,7 +8,7 @@ import { esc } from './html.ts';
 // - 카테고리 하나의 화면만 보여 준다. 목록 보기는 마우스를 올리면 썸네일을 띄우고(app.ts의 data-thumb 미리보기), 그리드 보기는 썸네일을 늘어놓는다.
 // - 화면 크기 기본·작게는 새로 붙일 때만 쓴다. 붙인 뒤에는 캔버스에서 K(크기 조절)로 바꾼다.
 // - 끌어서 창 밖(캔버스)에 놓으면 놓은 자리에(pluginDrop → 본체 figma.on('drop')), 누르면 보고 있는 화면 가운데에 붙인다.
-// - 화면마다 캔버스에 붙은 수(추적 GUI와 그 화면 썸네일이 든 플로우를 합친 수)를 보여 준다.
+// - 화면마다 캔버스에 붙은 수(추적 GUI와 그 화면 썸네일이 든 플로우를 합친 수)를 보여 주고, 옆의 목록 아이콘으로 그 화면의 추적 목록 팝업을 연다.
 // 고른 카테고리·보기·크기는 탭을 오가도 남는다(플러그인을 닫으면 처음으로).
 
 export interface PasteView {
@@ -22,6 +22,8 @@ export interface PasteView {
 
 export interface PasteActions {
   paste(uid: string, scale: FlipbookScale): void;
+  // 화면 줄의 목록 아이콘: 그 화면의 추적 목록 팝업을 연다.
+  track(uid: string, name: string): void;
   // 창 밖(캔버스)에 놓았다. x·y는 창 기준 좌표
   drop(uid: string, scale: FlipbookScale, x: number, y: number): void;
   // 썸네일 이미지 주소. 아직 없으면 받아 오도록 요청하고 null(받으면 thumbsLoaded)
@@ -29,6 +31,8 @@ export interface PasteActions {
 }
 
 const LIST_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>';
+// 추적 목록(점 달린 줄) 아이콘
+const TRACK_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h12M9 12h12M9 18h12"/><circle cx="4" cy="6" r="1.2"/><circle cx="4" cy="12" r="1.2"/><circle cx="4" cy="18" r="1.2"/></svg>';
 const GRID_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>';
 
 export function pasteView(root: HTMLElement, actions: PasteActions): PasteView {
@@ -54,7 +58,7 @@ export function pasteView(root: HTMLElement, actions: PasteActions): PasteView {
 
   function countHtml(uid: string): string {
     const n = counts.get(uid) ?? 0;
-    return `<span class="paste-count${n ? '' : ' none'}" title="${esc(`${COPY.paste008} ${n}${COPY.flow053}`)}">${n}</span>`;
+    return `<span class="paste-count${n ? '' : ' none'}" title="${esc(`${COPY.paste008} ${n}${COPY.flow053}`)}">${n}</span><button class="icon-button paste-track" data-action="paste-track" data-uid="${esc(uid)}" draggable="false" title="${COPY.trackList006}" aria-label="${COPY.trackList006}">${TRACK_ICON}</button>`;
   }
 
   // 목록 보기 한 줄. data-thumb가 있으면 마우스를 올렸을 때 썸네일이 뜬다.
@@ -99,6 +103,8 @@ export function pasteView(root: HTMLElement, actions: PasteActions): PasteView {
       paint();
     });
     el.addEventListener('click', ev => {
+      // 줄 안의 버튼(추적 목록)은 붙이지 않는다(app.ts가 data-action으로 처리한다).
+      if ((ev.target as HTMLElement).closest('[data-action]')) return;
       const item = (ev.target as HTMLElement).closest<HTMLElement>('.paste-screens [data-uid]');
       if (item) actions.paste(item.dataset.uid!, scale);
     });
@@ -146,6 +152,11 @@ export function pasteView(root: HTMLElement, actions: PasteActions): PasteView {
       switch (action) {
         case 'paste-layout': layout = el.dataset.layout === 'grid' ? 'grid' : 'list'; paint(); return true;
         case 'paste-scale': scale = el.dataset.scale === '1' ? 1 : 0.5; paint(); return true;
+        case 'paste-track': {
+          const screen = screens.find(s => s.uid === el.dataset.uid);
+          if (screen) actions.track(screen.uid, screen.name);
+          return true;
+        }
       }
       return false;
     },

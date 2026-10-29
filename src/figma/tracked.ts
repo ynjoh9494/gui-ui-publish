@@ -1,6 +1,6 @@
 import { COPY } from '../core/copy.ts';
 import { displayScale, freeGuiWidth } from '../core/flipbook.ts';
-import type { FoundCopy } from '../core/tracks.ts';
+import type { FoundCopy, NodePlace } from '../core/tracks.ts';
 import type { CopyUpdate, PasteItem, PasteSpot } from '../host.ts';
 import { COPY_SCALE_KEY, FLIPBOOK_KEY, loadPages, NODE_KEY } from './flipbook.ts';
 import { COPY_KEY, copyLayers, rescaleExact, SCREEN_KEY } from './layers.ts';
@@ -94,6 +94,25 @@ export async function scanCopies(ns: string, pageIds: string[], uids?: string[])
     }
   }
   return out;
+}
+
+// 추적 목록: 노드가 놓인 자리(페이지, Section, 품은 플립북 프레임). 찾지 못했거나 copy인데 GUI 복사본 표식이 없어진 노드는 null.
+// 캔버스에서 복제한 플립북 프레임 안이면 플립북 ID 없이 프레임 이름만 둔다(원본 플립북의 제목으로 보이지 않게).
+export async function nodePlaces(ns: string, items: { nodeId: string; copy: boolean }[]): Promise<(NodePlace | null)[]> {
+  return Promise.all(items.map(async ({ nodeId, copy }) => {
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node || node.removed || node.type === 'PAGE' || node.type === 'DOCUMENT') return null;
+    if (copy && !node.getSharedPluginData(ns, COPY_KEY)) return null;
+    const sections: string[] = [];
+    let flipbook: NodePlace['flipbook'] = null;
+    for (let n = node.parent; n; n = n.parent) {
+      if (n.type === 'PAGE') return { pageId: n.id, pageName: n.name, sections, flipbook };
+      if (n.type === 'SECTION') sections.unshift(n.name);
+      else if (!flipbook && n.type === 'FRAME' && n.getSharedPluginData(ns, FLIPBOOK_KEY))
+        flipbook = { id: n.getSharedPluginData(ns, NODE_KEY) === n.id ? n.getSharedPluginData(ns, FLIPBOOK_KEY) : '', name: n.name };
+    }
+    return null;
+  }));
 }
 
 export async function markTracked(ns: string, items: { nodeId: string; trackId: string }[]): Promise<void> {

@@ -579,6 +579,14 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .paste-screen .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .paste-count { flex: none; min-width: 14px; text-align: right; font-variant-numeric: tabular-nums; }
 .paste-count.none { color: var(--muted); }
+.paste-track { flex: none; padding: 2px; color: var(--muted); }
+.paste-track:hover { color: var(--text); }
+/* 추적 목록 팝업: 화면·플로우로 나누고 자리를 한 줄 경로로 보여 준다(길면 말줄임, 전체는 title). */
+.track-list-dialog h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.track-section h3 { margin: 10px 0 4px; font-size: 11px; color: var(--muted); }
+.track-section .empty { margin: 0; padding: 4px 0; }
+.track-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.track-place { display: block; width: 100%; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .paste-screens.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; padding: 6px; align-content: start; }
 .paste-card { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 3px; border-radius: 4px; cursor: grab; user-select: none; }
 .paste-thumb { aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 3px; background: #000; outline: 1px solid var(--border); }
@@ -638,16 +646,6 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .flow-form label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; color: var(--muted); }
 .flow-actions { flex: none; display: flex; align-items: center; gap: 6px; }
 .flow-actions button { flex: none; }
-.flow-actions .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); }
-.flow-actions .icon-button:hover { color: var(--text); }
-/* 만든 플로우 목록 모달 */
-.flow-list-dialog { max-width: 560px; }
-.flow-list { list-style: none; margin: 8px 0 0; padding: 0; }
-.flow-list li { border-top: 1px solid var(--border); padding: 6px 0; }
-.flow-list-title { font-weight: 600; text-align: left; }
-.flow-list-screens { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.flow-list-screen { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 6px; font-size: 11px; }
-.flow-list-screen .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 튜토리얼: 실제 창 위에 예시 화면을 겹치고, 설명하는 영역만 밝게 남긴 어두운 막과 말풍선을 올린다. */
 .tutorial { position: fixed; z-index: 1000; overflow: hidden; }
 /* 예시 화면 안의 고정 머리·대화상자(z-index)가 어두운 막 위로 올라오지 않게 쌓임 맥락을 따로 만든다. */

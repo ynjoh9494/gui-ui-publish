@@ -125,3 +125,25 @@ test('GUI 붙이기는 추적 기록을 만들고, 새 템플릿 플립북 안�
 
   await assert.rejects(tracks.paste('s2', 1, null), { message: COPY.track003 }, 'a screen with no published GUI is not pasted');
 });
+
+test('추적 목록은 그 화면의 추적 GUI를 경로로 보여 주고, 지운 것은 묻지 않고 빼며, 다른 페이지로 옮긴 것은 기록의 페이지를 고친다', async () => {
+  const { store, host, tracks } = setup([]);
+  const live = new Map([
+    ['n1', { pageId: 'p1', pageName: 'Flipbook', sections: ['Home'], flipbook: { id: 'fb', name: '프레임 이름' } }],
+    ['n2', { pageId: 'p9', pageName: '회의', sections: [], flipbook: null }],
+  ]);
+  Object.assign(host, { nodePlaces: async (items: { nodeId: string }[]) => items.map(i => live.get(i.nodeId) ?? null) });
+  store.put(keys.screen('s1'), screenRecord('s1', 'STB_HO_001', 2));
+  store.put(keys.flipbook('fb'), { ...flipbook('fb', 'p1'), title: '홈 화면' });
+  for (const [id, nodeId, createdAt] of [['t1', 'n1', 1], ['t2', 'n2', 2], ['t3', 'gone', 3]] as const)
+    store.put(keys.track(id), { id, uid: 's1', nodeId, pageId: 'p1', createdAt, actor } satisfies TrackRecord);
+
+  const listed = await tracks.places('s1');
+  assert.deepEqual(listed, { items: [{ kind: 'screen', id: 't1', path: ['Flipbook', 'Home', '홈 화면'] }, { kind: 'screen', id: 't2', path: ['회의'] }], removed: 1 }, 'a flipbook shows its title');
+  assert.equal(store.state.tracks.has('t3'), false);
+  assert.equal(store.state.tracks.get('t2')?.pageId, 'p9', 'publishes read the page it moved to');
+  assert.equal(await tracks.find('t1'), 'n1');
+  live.delete('n1');
+  assert.equal(await tracks.find('t1'), null, 'a copy deleted after the list opened is dropped when clicked');
+  assert.equal(store.state.tracks.has('t1'), false);
+});

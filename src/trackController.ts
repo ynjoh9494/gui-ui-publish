@@ -2,7 +2,7 @@ import { COPY } from './core/copy.ts';
 import { guiKey } from './core/flipbook.ts';
 import { guiScreens } from './core/guiScreens.ts';
 import { keys, type Store } from './core/store.ts';
-import { followMembers, forgetScreens, reconcileTracks, successorOf, trackPages, type FoundCopy } from './core/tracks.ts';
+import { followMembers, forgetScreens, placePath, reconcileTracks, successorOf, trackPages, type FoundCopy, type TrackListItem } from './core/tracks.ts';
 import type { FlipbookScale, TrackRecord } from './core/types.ts';
 import type { CopyUpdate, Host, PasteSpot } from './host.ts';
 
@@ -95,6 +95,40 @@ export class TrackController {
     const into = placed.flipbookId ? s.state.flipbooks.get(placed.flipbookId) : undefined;
     const changed = into?.tracked && into.status === 'active' ? (await this.read(null, () => s.now(), [placed.pageId]))?.changed ?? [] : [];
     return { changed, notes: placed.notes };
+  }
+
+  // 추적 목록 팝업(PRD §4.5): 이 화면(교체로 이어진 옛 화면 포함)의 추적 GUI가 놓인 자리. 캔버스에서 찾지 못한 기록은 묻지 않고 빼고,
+  // 다른 페이지로 옮긴 추적 GUI는 기록의 페이지를 고친다(배포 때 그 페이지를 읽게).
+  async places(uid: string): Promise<{ items: TrackListItem[]; removed: number }> {
+    const s = this.store;
+    s.reload();
+    if (!this.host.nodePlaces) return { items: [], removed: 0 };
+    const live = successorOf(s.state);
+    const tracks = [...s.state.tracks.values()].filter(t => live(t.uid) === uid).sort((a, b) => a.createdAt - b.createdAt);
+    const places = await this.host.nodePlaces(tracks.map(t => ({ nodeId: t.nodeId, copy: true })));
+    s.reload();
+    const gone = tracks.filter((_, i) => !places[i]);
+    if (gone.length) s.remove(...gone.map(t => keys.track(t.id)));
+    const items: TrackListItem[] = [];
+    tracks.forEach((track, i) => {
+      const place = places[i];
+      if (!place) return;
+      if (place.pageId !== track.pageId) s.put(keys.track(track.id), { ...track, pageId: place.pageId });
+      items.push({ kind: 'screen', id: track.id, path: placePath(s.state, place) });
+    });
+    return { items, removed: gone.length };
+  }
+
+  // 추적 목록에서 누른 추적 GUI의 노드 ID. 캔버스에서 지웠으면 기록에서 빼고 null
+  async find(trackId: string): Promise<string | null> {
+    const s = this.store;
+    s.reload();
+    const track = s.state.tracks.get(trackId);
+    if (!track || !this.host.nodePlaces) return null;
+    const [place] = await this.host.nodePlaces([{ nodeId: track.nodeId, copy: true }]);
+    if (place) return track.nodeId;
+    s.remove(keys.track(trackId));
+    return null;
   }
 
   // 새 템플릿 플립북을 만들며 놓은 GUI 복사본을 추적 기록에 넣는다.

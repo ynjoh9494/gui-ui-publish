@@ -1,5 +1,5 @@
 import { COPY } from '../core/copy.ts';
-import { flowArrows, flowImageSize, routeLink, sidePoint, FLOW_DEFAULT_TITLE, FLOW_LAYOUT, FLOW_SNAP, type FlowBox, type FlowCard, type FlowLink, type FlowListItem, type FlowPoint, type FlowRequest, type FlowSide } from '../core/flow.ts';
+import { flowArrows, flowImageSize, routeLink, sidePoint, FLOW_DEFAULT_TITLE, FLOW_LAYOUT, FLOW_SNAP, type FlowBox, type FlowCard, type FlowLink, type FlowPoint, type FlowRequest, type FlowSide } from '../core/flow.ts';
 import type { GuiScreenInfo } from '../core/guiScreens.ts';
 import { esc } from './html.ts';
 
@@ -11,24 +11,19 @@ import { esc } from './html.ts';
 // - 고른 썸네일·화살표는 Delete(Backspace)로 지운다. 라벨은 없다(글은 캔버스의 빨간 더미 글자 칸에 쓴다).
 // - 판은 끝없는 격자이고 Figma 캔버스처럼 움직인다: 가운데 버튼·Space+끌기, 휠(Shift+휠은 가로)·트랙패드, Ctrl(⌘)+휠·핀치로 확대·축소. 스크롤 막대는 없다.
 // 화살표 경로는 캔버스와 같은 규칙(core/flow.ts routeLink)이라 창에서 본 모양 그대로 그려진다. 내용은 탭을 오가도 남는다(플러그인을 닫으면 지워짐).
-// - 머리의 이력 아이콘은 만든 플로우 목록(2026-10-23 사용자 요청: 무엇이 동기화되는지 보이게)을 모달로 연다. 플로우·화면을 누르면 캔버스의 그 자리로 간다.
+// 만든 플로우는 화면별 추적 목록 팝업에서 찾는다(2026-10-29 사용자 결정: 머리의 이력 아이콘·「만든 플로우」 목록을 없앰).
 
 export interface FlowView {
   render(open: boolean): void;
   setScreens(screens: GuiScreenInfo[]): void;
-  // 만든 플로우 목록(본체가 캔버스에서 지워진 플로우를 뺀 결과)
-  setFlows(flows: FlowListItem[]): void;
   // 판에서 쓰는 썸네일 이미지를 받았을 때만 다시 그린다.
   thumbsLoaded(hashes: string[]): void;
   // 플로우 탭의 버튼(data-action="flow-…"). 처리했으면 true
-  handle(action: string, el: HTMLElement): boolean;
+  handle(action: string): boolean;
 }
 
 export interface FlowActions {
   create(request: FlowRequest): void;
-  list(): void;
-  reveal(flowId: string, uid?: string): void;
-  time(ms: number): string;
   // 썸네일 이미지 주소. 아직 없으면 받아 오도록 요청하고 null(받으면 thumbsLoaded)
   thumb(hash: string): string | null;
 }
@@ -46,8 +41,6 @@ const DRAG_START = 4;
 const ZOOM_SPEED = 0.0025;
 
 const X_ICON = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>';
-// 이력(시계와 되감기 화살표) 아이콘: 만든 플로우 목록
-const HISTORY_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>';
 const SIDES: FlowSide[] = ['top', 'right', 'bottom', 'left'];
 
 const linkId = (l: FlowLink) => `${l.from}:${l.fromSide}>${l.to}:${l.toSide}`;
@@ -73,9 +66,6 @@ type Drag =
 
 export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
   let screens: GuiScreenInfo[] = [];
-  // 만든 플로우 목록 모달. null이면 본체 응답을 기다리는 중이다.
-  let listOpen = false;
-  let flowItems: FlowListItem[] | null = null;
   let cards: FlowCard[] = [];
   let links: FlowLink[] = [];
   let selected: { kind: 'card' | 'link'; id: string } | null = null;
@@ -273,32 +263,6 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
     el.setAttribute('style', dropStyle(dropBox));
   }
 
-  function flowItem(f: FlowListItem): string {
-    const meta = [f.pageName, actions.time(f.createdAt), f.actor.name, `${COPY.flow052} ${f.screens.length}${COPY.flow053}`].filter(Boolean).map(esc).join(' · ');
-    const chips = f.screens.map(s => `<button class="flow-list-screen" data-action="flow-reveal" data-flow="${esc(f.id)}" data-uid="${esc(s.uid)}" title="${esc(s.name)}">${s.code ? `<span class="id-tag">${esc(s.code)}</span>` : ''}<span class="label">${esc(s.name)}</span></button>`).join('');
-    return `<li><button class="link flow-list-title" data-action="flow-reveal" data-flow="${esc(f.id)}">${esc(f.title)}</button><small>${meta}</small><div class="flow-list-screens">${chips}</div></li>`;
-  }
-
-  function paintList() {
-    let overlay = root.querySelector<HTMLElement>('.flow-list-overlay');
-    if (!listOpen) { overlay?.remove(); return; }
-    if (!overlay) {
-      overlay = document.createElement('div');
-      overlay.className = 'overlay flow-list-overlay';
-      root.appendChild(overlay);
-    }
-    const body = !flowItems ? `<p class="note">${COPY.uiApp001}</p>`
-      : flowItems.length ? `<ul class="flow-list">${flowItems.map(flowItem).join('')}</ul>` : `<p class="empty">${COPY.flow049}</p>`;
-    overlay.innerHTML = `<div class="dialog flow-list-dialog" role="dialog" aria-modal="true" aria-label="${COPY.flow047}">
-      <h2>${COPY.flow047}</h2><p class="note">${COPY.flow050}</p>${body}
-      <div class="dialog-actions"><button data-action="flow-list-close">${COPY.flow051}</button></div></div>`;
-  }
-
-  function closeList() {
-    listOpen = false;
-    paintList();
-  }
-
   function paintActions() {
     const el = view();
     if (!el) return;
@@ -486,12 +450,8 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
   }
 
   document.addEventListener('keydown', ev => {
-    if (!view()) return;
-    // 목록 모달이 열려 있으면 Esc로 닫고, 판의 썸네일·화살표는 지우지 않는다.
-    if (listOpen) {
-      if (ev.key === 'Escape') { ev.preventDefault(); closeList(); }
-      return;
-    }
+    // 추적 목록 팝업이 열려 있으면 판의 썸네일·화살표를 지우지 않는다(팝업이 Esc를 받는다).
+    if (!view() || root.querySelector('.track-list-overlay')) return;
     if (typing()) return;
     // Space: 판 움직이기 준비. 누르는 동안 손 모양 커서를 보여 준다.
     if (ev.code === 'Space') {
@@ -519,7 +479,7 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
       </section>
       <section class="flow-order">
         <div class="flow-head"><div class="flow-head-title"><strong>${COPY.flow023}</strong><p class="note">${COPY.flow034}</p></div>
-          <div class="flow-actions"><button class="icon-button" data-action="flow-list" title="${COPY.flow047}" aria-label="${COPY.flow047}">${HISTORY_ICON}</button><button data-action="flow-clear">${COPY.flow033}</button><button class="primary" data-action="flow-create">${COPY.flow032}</button></div></div>
+          <div class="flow-actions"><button data-action="flow-clear">${COPY.flow033}</button><button class="primary" data-action="flow-create">${COPY.flow032}</button></div></div>
         <div class="flow-form"><label>${COPY.flow030}<input data-flow="title" value="${esc(title)}" placeholder="${esc(FLOW_DEFAULT_TITLE)}"></label></div>
         <div class="flow-board"></div>
         <p class="note flow-hint">${COPY.flow024}<br>${COPY.flow037}<br>${COPY.flow046}</p>
@@ -562,7 +522,7 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
     render(open) {
       root.classList.toggle('flowing-mode', open);
       let el = view();
-      if (!open) { el?.remove(); if (listOpen) closeList(); return; }
+      if (!open) { el?.remove(); return; }
       // 이미 열려 있으면 다시 그리지 않는다(입력 중인 커서 유지).
       if (el) return;
       el = document.createElement('div');
@@ -576,32 +536,17 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
       paintScreens();
       paintBoard();
     },
-    setFlows(next) {
-      flowItems = next;
-      paintList();
-    },
     thumbsLoaded(hashes) {
       // 끄는 중에는 다시 그리지 않는다(놓을 때 그린다). 판에 없는 화면의 이미지는 영향이 없다.
       if (!view() || drag || !cards.length) return;
       const loaded = new Set(hashes);
       if (cards.some(card => loaded.has(info().get(card.uid)?.thumb?.hash ?? ''))) paintBoard();
     },
-    handle(action, el) {
+    handle(action) {
       switch (action) {
         case 'flow-clear': cards = []; links = []; selected = null; paintBoard(); return true;
         case 'flow-create':
           if (cards.length >= 2) actions.create({ title, cards: cards.map(c => ({ ...c })), links: links.map(l => ({ ...l })) });
-          return true;
-        case 'flow-list':
-          listOpen = true;
-          flowItems = null;
-          paintList();
-          root.querySelector<HTMLElement>('.flow-list-dialog .dialog-actions button')?.focus();
-          actions.list();
-          return true;
-        case 'flow-list-close': closeList(); return true;
-        case 'flow-reveal':
-          if (el.dataset.flow) actions.reveal(el.dataset.flow, el.dataset.uid);
           return true;
       }
       return false;

@@ -13,6 +13,19 @@ export interface FoundCopy { nodeId: string; pageId: string; uid: string; versio
 // GUI 붙이기에서 창 밖(캔버스)에 놓은 자리: 놓인 노드와 캔버스 절대 좌표(figma.on('drop'))
 export interface PasteSpot { nodeId: string; x: number; y: number }
 
+// 노드가 놓인 자리: 페이지, 바깥부터 안쪽 순서의 Section 이름, 그 노드를 품은 플립북 프레임(표식의 플립북 ID와 프레임 이름)
+export interface NodePlace { pageId: string; pageName: string; sections: string[]; flipbook: { id: string; name: string } | null }
+
+// 추적 목록 팝업 한 줄(2026-10-29 사용자 결정, PRD §4.5): 화면(추적 GUI)과 플로우로 나누고 놓인 자리를 경로로 보여 준다.
+// id: 추적 기록 ID 또는 플로우 ID, path: 페이지 › Section › 플립북(화면) 또는 페이지 › Section › 플로우 제목(플로우)
+export interface TrackListItem { kind: 'screen' | 'flow'; id: string; path: string[] }
+
+// 경로: 페이지 › Section(바깥부터) › 플립북. 플립북 이름은 기록의 제목(없으면 프레임 이름)이다.
+export function placePath(state: State, place: NodePlace): string[] {
+  const flipbook = place.flipbook ? state.flipbooks.get(place.flipbook.id)?.title ?? place.flipbook.name : null;
+  return [place.pageName, ...place.sections, ...(flipbook ? [flipbook] : [])];
+}
+
 // 화면 ID → 지금 그 자리를 이어받은 화면 ID. 교체로 사용 안 함이 된 화면의 복사본은 이어받은 화면을 따라간다.
 export function successorOf(state: State): (uid: string) => string {
   const map = new Map<string, string>();

@@ -265,17 +265,34 @@ export class Controller {
         case 'exportPdf': await this.pdf.export(); break;
         case 'cancelPdf': this.pdf.cancel(); break;
         case 'createFlow': await this.flows.create(msg.request); break;
-        case 'flows': await this.flows.post(); break;
+        case 'trackList': await this.postTrackList(msg.uid); break;
+        case 'revealTrack': {
+          this.navSeq = msg.nav;
+          const latest = () => msg.nav === this.navSeq;
+          const nodeId = await this.tracks.find(msg.trackId);
+          // 캔버스에서 지운 추적 GUI는 묻지 않고 목록에서 뺀다(PRD §4.5).
+          if (!nodeId) {
+            await this.postTrackList(msg.uid);
+            if (latest()) this.host.post({ type: 'nav', nav: msg.nav, ok: false, message: COPY.track005 });
+            break;
+          }
+          await this.host.selectNodes([nodeId], nodeId, latest);
+          const ok = await this.host.reveal(nodeId, latest);
+          if (latest()) this.host.post({ type: 'nav', nav: msg.nav, ok, message: ok ? '' : COPY.controller016 });
+          break;
+        }
         case 'revealFlow': {
           this.navSeq = msg.nav;
           const latest = () => msg.nav === this.navSeq;
           const nodeId = await this.flows.find(msg.flowId, msg.uid);
           // 캔버스에서 지운 플로우는 묻지 않고 목록에서 뺀다(2026-10-23 사용자 결정).
           if (!nodeId) {
-            await this.flows.post(false);
+            if (msg.uid) await this.postTrackList(msg.uid);
             if (latest()) this.host.post({ type: 'nav', nav: msg.nav, ok: false, message: COPY.flow048 });
             break;
           }
+          // 추적 목록에서 누르면 그 화면의 썸네일 칸을 고른다(PRD §4.5).
+          if (msg.uid) await this.host.selectNodes([nodeId], nodeId, latest);
           const ok = await this.host.reveal(nodeId, latest);
           if (latest()) this.host.post({ type: 'nav', nav: msg.nav, ok, message: ok ? '' : COPY.controller016 });
           break;
@@ -480,6 +497,14 @@ export class Controller {
     this.uiCheckedAt = this.store.now();
     this.postUiScans();
     this.scanStatus('UI', 'done', targets.length, targets.length);
+  }
+
+  // 추적 목록 팝업(PRD §4.5): 화면 하나의 추적 GUI와 그 화면이 든 플로우의 자리. 찾지 못해 기록에서 뺀 것이 있으면 붙인 수도 다시 보낸다.
+  private async postTrackList(uid: string): Promise<void> {
+    const screens = await this.tracks.places(uid);
+    const flows = await this.flows.places(uid);
+    this.host.post({ type: 'trackList', uid, items: [...screens.items, ...flows.items] });
+    if (screens.removed || flows.removed) { this.postState(); this.postGuiScreens(); }
   }
 
   // 배포된 화면 목록과 화면별로 캔버스에 붙은 수(GUI 붙이기 탭)

@@ -1,6 +1,7 @@
 import { COPY } from './core/copy.ts';
-import { flowList, flowRecord, flowUpdates, planFlow, type FlowRequest } from './core/flow.ts';
+import { flowRecord, flowUpdates, planFlow, type FlowRequest } from './core/flow.ts';
 import { keys, type Store } from './core/store.ts';
+import { placePath, successorOf, type TrackListItem } from './core/tracks.ts';
 import type { FlowRecord } from './core/types.ts';
 import type { Host } from './host.ts';
 
@@ -28,18 +29,22 @@ export class FlowController {
     this.host.post({ type: 'notice', message: [`${COPY.flow007} ${plan.title}`, ...placed.notes].join(' ') });
   }
 
-  // 플로우 목록. check: 캔버스에서 그룹이 지워진 플로우를 찾아 기록에서 뺀다(그 플로우가 있는 페이지를 불러온다).
-  async post(check = true): Promise<void> {
+  // 추적 목록 팝업(PRD §4.5, 「만든 플로우」 목록을 대신한다): 이 화면(교체로 이어진 옛 화면 포함)의 썸네일이 든 플로우와 놓인 자리.
+  // 경로 끝은 플로우 제목이다. 캔버스에서 그룹을 지운 플로우는 묻지 않고 기록에서 뺀다.
+  async places(uid: string): Promise<{ items: TrackListItem[]; removed: number }> {
+    const { flowNode, nodePlaces } = this.host;
     const s = this.store;
     s.reload();
-    const { flowNode } = this.host;
-    if (check && flowNode) {
-      const flows = [...s.state.flows.values()];
-      // 그룹은 서로 기다리지 않고 함께 찾는다(플로우가 있는 페이지를 처음 불러올 때 오래 걸린다).
-      const nodes = await Promise.all(flows.map(flow => flowNode(flow)));
-      this.forget(flows.filter((_, i) => !nodes[i]));
-    }
-    this.host.post({ type: 'flows', flows: flowList(s.state, new Map(this.host.pages().map(p => [p.id, p.name]))) });
+    if (!flowNode || !nodePlaces) return { items: [], removed: 0 };
+    const live = successorOf(s.state);
+    const flows = [...s.state.flows.values()].filter(f => f.uids.some(u => live(u) === uid)).sort((a, b) => a.createdAt - b.createdAt);
+    // 그룹은 서로 기다리지 않고 함께 찾는다(플로우가 있는 페이지를 처음 불러올 때 오래 걸린다).
+    const nodes = await Promise.all(flows.map(flow => flowNode(flow)));
+    const found = flows.flatMap((flow, i) => nodes[i] ? [{ flow, nodeId: nodes[i]! }] : []);
+    const places = await nodePlaces(found.map(f => ({ nodeId: f.nodeId, copy: false })));
+    const gone = flows.filter((_, i) => !nodes[i]);
+    this.forget(gone);
+    return { items: found.flatMap(({ flow }, i) => places[i] ? [{ kind: 'flow' as const, id: flow.id, path: [...placePath(s.state, places[i]!), flow.title] }] : []), removed: gone.length };
   }
 
   // 플로우(uid가 있으면 그 화면 칸)의 노드 ID. 그룹이 지워졌으면 기록에서 빼고 null

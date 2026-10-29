@@ -11,7 +11,7 @@ import type { RichParagraph } from './core/richText.ts';
 import type { PdfPage, PdfSelection } from './core/pdf.ts';
 import type { PageInfo, ToUi } from './core/wire.ts';
 import type { TemplateInfo, TemplateItem } from './core/templateParts.ts';
-import type { FoundCopy, PasteSpot } from './core/tracks.ts';
+import type { FoundCopy, NodePlace, PasteSpot } from './core/tracks.ts';
 export type { PasteSpot } from './core/tracks.ts';
 
 // 추적 GUI를 새 버전으로 바꿀 때 화면마다 넘기는 값(figma/tracked.ts)
@@ -69,6 +69,8 @@ export interface Host extends FingerprintReader {
   markTracked?(items: { nodeId: string; trackId: string }[]): Promise<void>;
   // GUI 붙이기: at(없으면 보고 있는 화면 가운데) 아래의 노드에 붙이고 고른다. flipbookId: 붙인 자리의 새 템플릿 플립북(밖이면 null)
   pasteGui?(item: PasteItem, at: PasteSpot | null): Promise<{ nodeId: string; pageId: string; flipbookId: string | null; notes: string[] }>;
+  // 추적 목록: 노드가 놓인 자리. 찾지 못했거나 copy인데 GUI 복사본 표식이 없어진 노드는 null
+  nodePlaces?(items: { nodeId: string; copy: boolean }[]): Promise<(NodePlace | null)[]>;
   // 플립북의 Chapter만 Section 이름으로 다시 쓴다. 찾지 못한 플립북은 건너뛴다.
   syncChapters?(items: { pageId: string; flipbookId: string; name: string }[]): Promise<void>;
   // 기존 플립북 프레임을 다른 페이지·Section의 정한 자리로 옮긴다. 프레임을 찾지 못하면 false.

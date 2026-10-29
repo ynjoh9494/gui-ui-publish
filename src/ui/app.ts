@@ -6,6 +6,7 @@ import { startTutorial } from './tutorial.ts';
 import { textEditor } from './textEditor.ts';
 import { flowView } from './flowView.ts';
 import { pasteView } from './pasteView.ts';
+import { trackListView } from './trackListView.ts';
 import { pdfView } from './pdfView.ts';
 import { changeReasonSection, REASON_PAGE } from './changeReason.ts';
 import { esc } from './html.ts';
@@ -261,13 +262,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   const pdf = pdfView(root);
   const flows = flowView(root, {
     create: request => bridge.send({ type: 'createFlow', request }),
-    list: () => bridge.send({ type: 'flows' }),
-    reveal: (flowId, uid) => bridge.send({ type: 'revealFlow', nav: ++navSeq, flowId, uid }),
-    time: ms => formatTime(ms, state?.project.utcOffsetMinutes ?? 0),
     thumb: hash => { requestThumbs([hash]); return thumbUrls.get(hash) || null; },
+  });
+  // 추적 목록 팝업: GUI 붙이기 탭의 화면 줄에서 연다. 화면(추적 GUI)은 그 레이어를, 플로우는 그 화면의 썸네일 칸을 골라 간다.
+  const trackList = trackListView(root, {
+    load: uid => bridge.send({ type: 'trackList', uid }),
+    reveal: (item, uid) => bridge.send(item.kind === 'screen' ? { type: 'revealTrack', nav: ++navSeq, uid, trackId: item.id } : { type: 'revealFlow', nav: ++navSeq, flowId: item.id, uid }),
   });
   const paste = pasteView(root, {
     paste: (uid, scale) => bridge.send({ type: 'pasteGui', uid, scale }),
+    track: (uid, name) => trackList.open(uid, name),
     drop: (uid, scale, x, y) => bridge.drop?.(x, y, pasteDropMetadata(uid, scale)),
     thumb: hash => { requestThumbs([hash]); return thumbUrls.get(hash) || null; },
   });
@@ -2454,8 +2458,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     if (!el) return;
     const action = el.dataset.action!;
     if ((busyLabel || pdfBusy) && !WHILE_BUSY.has(action)) return;
-    if (action.startsWith('flow-') && flows.handle(action, el)) return;
+    if (action.startsWith('flow-') && flows.handle(action)) return;
     if (action.startsWith('paste-') && paste.handle(action, el)) return;
+    if (action.startsWith('track-') && trackList.handle(action, el)) return;
     const t = team();
     if (locked(t) && !BEFORE_CHECK.has(action)) { ev.preventDefault(); return; }
     switch (action) {
@@ -3668,7 +3673,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         }
         break;
       case 'history': history = { id: msg.id, rows: msg.rows }; renderHistory(); break;
-      case 'flows': flows.setFlows(msg.flows); break;
+      case 'trackList': trackList.set(msg.uid, msg.items); break;
       case 'guiScreens':
         createScreens = msg.screens;
         flows.setScreens(createScreens);

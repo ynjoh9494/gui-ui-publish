@@ -317,6 +317,11 @@ export function createDemo(options: DemoOptions): Demo {
       log(`${COPY.paste001}: ${item.code} ${item.scale === 1 ? COPY.uiApp403 : COPY.uiApp404}${at ? ` (${Math.round(at.x)}, ${Math.round(at.y)})` : ''}`);
       return { nodeId: `paste:${item.trackId}`, pageId: DEMO_FLIPBOOK_PAGE.id, flipbookId: null, notes: [] };
     },
+    // 추적 목록: 붙인 화면과 플로우(셀 포함)는 플립북 페이지에 있다고 본다.
+    async nodePlaces(items) {
+      return items.map(({ nodeId }) => (nodeId.startsWith('paste:') || flows.has(nodeId.split('/')[0])
+        ? { pageId: DEMO_FLIPBOOK_PAGE.id, pageName: DEMO_FLIPBOOK_PAGE.name, sections: [], flipbook: null } : null));
+    },
     // PDF 저장: 미리보기 도구로 플립북 프레임을 모두 골랐을 때만 저장할 수 있다. 프레임마다 가짜 JPG 한 장을 만든다
     // (취소를 볼 수 있게 한 장씩 조금 기다린다).
     pdfSelection: () => ({ frames: framesPicked ? flipbooks.size : 0, others: 0 }),

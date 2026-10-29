@@ -4,14 +4,14 @@ import type { Draft } from './drafts.ts';
 import { unreviewed, type FlipbookRequest, type ReviewRequest, type ScreenEditRequest } from './flipbooks.ts';
 import type { HistoryRow } from './history.ts';
 import type { SelectionTarget } from './description.ts';
-import type { FlowListItem, FlowRequest } from './flow.ts';
+import type { FlowRequest } from './flow.ts';
 import type { PdfPage, PdfSelection } from './pdf.ts';
 import type { RichParagraph } from './richText.ts';
 import type { BatchComment, Blocker, Plan } from './publish.ts';
 import type { GuiScreenInfo } from './guiScreens.ts';
 import type { State } from './store.ts';
 import type { TemplateInfo, TemplateItem } from './templateParts.ts';
-import type { PasteSpot } from './tracks.ts';
+import type { PasteSpot, TrackListItem } from './tracks.ts';
 import type { Actor, FlipbookScale, Team } from './types.ts';
 import type { VersionEvidence, VersionLink } from './versionMatch.ts';
 
@@ -182,7 +182,9 @@ export type ToMain =
   // 플로우: 고른 배포 화면으로 지금 보고 있는 페이지에 플로우 그룹을 만든다.
   | { type: 'createFlow'; request: FlowRequest }
   // 플로우 목록: 캔버스에서 지운 플로우는 기록에서 빼고 남은 목록을 보낸다.
-  | { type: 'flows' }
+  // 추적 목록 팝업: 화면 하나의 추적 GUI·플로우 자리를 받고, 누른 추적 GUI로 간다(uid: 팝업의 화면. 지워졌으면 목록을 다시 보낸다).
+  | { type: 'trackList'; uid: string }
+  | { type: 'revealTrack'; nav: number; uid: string; trackId: string }
   // 플로우(uid가 있으면 그 화면 칸)로 이동한다. 플로우가 지워졌으면 기록에서 빼고 목록을 다시 보낸다.
   | { type: 'revealFlow'; nav: number; flowId: string; uid?: string }
   // PDF 저장 탭이 보이는지. 보이는 동안만 캔버스 선택이 바뀔 때 고른 프레임 수(pdfSelection)를 보낸다.
@@ -213,7 +215,7 @@ export type ToUi =
   | { type: 'history'; id: string; rows: HistoryRow[] }
   // counts: 화면별로 캔버스에 붙은 수(추적 GUI와 그 화면 썸네일이 든 플로우)
   | { type: 'guiScreens'; screens: GuiScreenInfo[]; counts: [string, number][] }
-  | { type: 'flows'; flows: FlowListItem[] }
+  | { type: 'trackList'; uid: string; items: TrackListItem[] }
   // 플립북을 만들었다. ids: 새 플립북 ID
   | { type: 'flipbooksCreated'; ids: string[]; moved?: string[]; message: string }
   // 확인 완료를 기록했다. ids: 기록한 플립북 ID

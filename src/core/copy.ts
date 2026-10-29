@@ -837,19 +837,21 @@ export const COPY = {
   flow043: 'Action',
   flow044: 'Connector',
   flow045: 'Flow Title',
-  // 플로우 목록 — 썸네일을 맞추고 있는 플로우
-  flow047: '만든 플로우',
   flow048: '캔버스에서 삭제된 플로우입니다. 목록에서 제거했습니다.',
-  flow049: '만든 플로우가 없습니다.',
-  flow050: 'GUI 재배포 시 아래 플로우의 썸네일이 업데이트됩니다. 캔버스에서 삭제된 플로우는 목록에서 제거됩니다.',
-  flow051: '닫기',
-  flow052: '화면',
   flow053: '개',
   // 추적 GUI — src/trackController.ts
   track001: '붙인 화면',
   track002: '개를 새 버전으로 바꿨습니다.',
   track003: '배포된 GUI가 없는 화면이라 붙이지 못했습니다. GUI 붙이기 탭을 다시 열어 목록을 새로 받으세요.',
   track004: '화면 붙이는 중',
+  track005: '캔버스에서 삭제된 화면입니다. 목록에서 제거했습니다.',
+  // 추적 목록 팝업 — src/ui/trackListView.ts
+  trackList001: '화면',
+  trackList002: '플로우',
+  trackList003: '캔버스에 붙인 화면이 없습니다.',
+  trackList004: '이 화면이 든 플로우가 없습니다.',
+  trackList005: '닫기',
+  trackList006: '추적 목록',
   // GUI 붙이기 탭 — src/ui/pasteView.ts
   paste001: 'GUI 붙이기',
   paste002: '카테고리',

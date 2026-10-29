@@ -574,19 +574,8 @@ try {
     await create.click();
     await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('플로우를 만들었습니다'));
     await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('플로우: 홈 진입 플로우') && x.textContent.includes('(0,0).right→STB_HO_001(560,400).left')));
-    // 이력 아이콘: 만든 플로우 목록을 모달로 보여 주고, 플로우·화면을 누르면 캔버스의 그 자리로 간다.
-    await app.locator('.flow-view [data-action=flow-list]').click();
-    const made = app.locator('.flow-list-overlay .flow-list li');
-    await made.first().waitFor();
-    assert.equal(await made.count(), 1);
-    assert.equal(await made.first().locator('.flow-list-title').innerText(), '홈 진입 플로우');
-    assert.deepEqual(await made.first().locator('.flow-list-screen .id-tag').allInnerTexts(), ['STB_HO_001'], '같은 화면을 여러 번 놓아도 한 번만 보인다');
-    await shot('04c-flow-list');
-    await made.first().locator('.flow-list-screen').first().click();
-    await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('캔버스 이동') && x.textContent.includes('flow:')));
-    await page.keyboard.press('Escape');
-    assert.equal(await app.locator('.flow-list-overlay').count(), 0, 'Esc로 목록을 닫는다');
-    assert.equal(await cards.count(), 2, '목록을 여닫아도 판의 썸네일은 그대로다');
+    // 만든 플로우는 화면별 추적 목록 팝업에서 찾는다(머리의 이력 아이콘은 없다).
+    assert.equal(await app.locator('.flow-view [data-action=flow-list]').count(), 0, '플로우 탭에는 만든 플로우 목록 버튼이 없다');
     // PDF 저장 탭: 다른 탭처럼 목록 대신 열리고, 고른 프레임이 없으면 저장할 수 없다(미리보기 캔버스에는 프레임 선택이 없다).
     await app.locator('.tabs [data-action=pdf-open]').click();
     await app.locator('.pdf-view').waitFor();
@@ -622,8 +611,8 @@ try {
       assert.equal(await app.locator('.list').isVisible(), false, 'GUI 붙이기 탭은 목록 대신 보인다');
       assert.equal(await app.locator('.paste-view [data-paste=category] option:checked').innerText(), '홈', '고른 카테고리의 화면만 보여 준다');
       assert.ok(await rows.first().getAttribute('data-thumb'), '목록 보기는 마우스를 올리면 썸네일을 보여 준다');
-      const count = rows.first().locator('.paste-count');
-      assert.equal(await count.innerText(), '1', '그 화면이 든 플로우를 붙인 수에 센다');
+      // 탭을 열 때 받은 화면 목록의 붙인 수: 그 화면이 든 플로우를 센다.
+      await page.waitForFunction(() => document.querySelector('#app .paste-view .paste-screen .paste-count')?.textContent === '1', null, { timeout: 3000 });
       await app.locator('.paste-view [data-action=paste-scale][data-scale="0.5"]').click();
       assert.equal(await app.locator('.paste-view [data-action=paste-scale][data-scale="0.5"]').getAttribute('aria-pressed'), 'true');
       await rows.first().click();
@@ -633,6 +622,25 @@ try {
       await app.locator('.paste-view .paste-card .paste-thumb img').first().waitFor();
       assert.equal(await app.locator('.paste-view .paste-card').first().getAttribute('data-thumb'), null, '그리드 보기는 썸네일이 보이므로 마우스를 올린 미리보기를 띄우지 않는다');
       await shot('04e-paste-tab');
+      // 추적 목록 팝업: 화면 줄의 목록 아이콘으로 연다. 제목은 화면 이름이고, 붙인 화면과 그 화면이 든 플로우를 나눠 경로로 보여 준다.
+      // 목록 아이콘을 눌러도 화면을 붙이지 않는다. 항목을 누르면 그 자리로 가고, 팝업은 Esc로 닫는다.
+      const pastes = async () => (await page.locator('#log div').allTextContents()).filter(line => line.includes('GUI 붙이기:')).length;
+      const pastedBefore = await pastes();
+      await app.locator('.paste-view .paste-card [data-action=paste-track]').first().click();
+      const dialog = app.locator('.track-list-overlay .track-list-dialog');
+      await dialog.locator('.track-place').first().waitFor();
+      assert.equal(await dialog.locator('h2').innerText(), '홈 메인', '팝업 제목은 Screen ID 없이 화면 이름이다');
+      const places = dialog.locator('.track-section');
+      assert.deepEqual(await places.locator('h3').allInnerTexts(), ['화면 1', '플로우 1'], '화면과 플로우를 나눠 센다');
+      assert.match(await places.nth(1).locator('.track-place').innerText(), / › 홈 진입 플로우$/, '플로우는 경로 끝에 제목을 둔다');
+      assert.equal(await pastes(), pastedBefore, '목록 아이콘은 화면을 붙이지 않는다');
+      await shot('04f-track-list');
+      await places.nth(1).locator('.track-place').click();
+      await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('캔버스 이동') && x.textContent.includes('flow:')));
+      await places.nth(0).locator('.track-place').click();
+      await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('캔버스 이동') && x.textContent.includes('paste:')));
+      await page.keyboard.press('Escape');
+      assert.equal(await app.locator('.track-list-overlay').count(), 0, 'Esc로 팝업을 닫는다');
       await app.locator('.tabs [data-action=text-close]').click();
       await page.waitForFunction(w => document.querySelector('#app').getBoundingClientRect().width > w + 2, listWidth, { timeout: 3000 });
     }

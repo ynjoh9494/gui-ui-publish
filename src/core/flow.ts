@@ -329,20 +329,3 @@ export function followMergedFlows(store: Store, fromId: string, toId: string): s
   return out;
 }
 
-// ── 플로우 목록 ───────────────────────────────────────
-
-// 썸네일을 맞추고 있는 플로우. 최근에 만든 것부터. 화면은 플로우에 넣은 순서이고, 기록에서 사라진 화면은 고정 ID로 보인다.
-export interface FlowListItem {
-  id: string; title: string; pageName: string; createdAt: number; actor: Actor;
-  screens: { uid: string; code: string; name: string }[];
-}
-export function flowList(state: State, pageNames: Map<string, string>): FlowListItem[] {
-  return [...state.flows.values()].sort((a, b) => b.createdAt - a.createdAt).map(flow => ({
-    id: flow.id, title: flow.title, pageName: pageNames.get(flow.pageId) ?? '', createdAt: flow.createdAt, actor: flow.actor,
-    screens: flow.uids.map(uid => {
-      const screen = state.screens.get(uid);
-      const info = screen ? guiScreenInfo(state, screen) : null;
-      return { uid, code: info?.code ?? '', name: info?.name ?? uid };
-    }),
-  }));
-}
