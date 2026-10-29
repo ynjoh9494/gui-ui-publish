@@ -257,6 +257,19 @@ test('이력 목록과 이전 이력칸은 슬롯 또는 슬롯 안 프레임을
   await assert.rejects(connectTemplateItem(template.id, 'chapter'), { message: COPY.figmaTemplate016 });
 });
 
+test('기존 GUI 영역 안에서 다시 고른 프레임으로 GUI 영역 연결을 교체하고 해당 레이어를 찾는다', async () => {
+  const w = world();
+  const selected = w.make('FRAME', 'New GUI area');
+  const oldGui = w.role(w.make('FRAME', 'GUI Image Slot', [selected]), 'gui');
+  const template = w.make('FRAME', 'Mine', [oldGui]);
+  w.page.appendChild(template);
+  template.setSharedPluginData(NS, LINKS_KEY, '{"components":{}}');
+
+  w.select(selected);
+  await connectTemplateItem(template.id, 'gui');
+  assert.equal(flipbookParts(template as unknown as FrameNode).gui?.id, selected.id);
+});
+
 test('표식 템플릿의 이력은 이력 행 컴포넌트의 인스턴스만 다루고 머리 행은 두며, 둘째 기록부터 이전 이력 칸에 넣는다', async () => {
   const w = world();
   const label = text(w, 'Text', 'Tag');

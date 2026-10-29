@@ -159,6 +159,7 @@ const OPAQUE = new Set(['gui', 'description', 'ids', 'row']);
 // 역할 → 표식이 붙은 레이어(놓인 순서). 템플릿과 플립북은 레이어가 적지만 GUI 영역·Description·이력 행은 크므로 건너뛴다.
 // 새 템플릿 플립북의 GUI 복사본은 플립북 프레임 바로 아래에 있다(figma/layers.ts COPY_KEY 표식). 그 안으로는 내려가지 않는다.
 const GUI_COPY_KEY = 'guiCopy';
+const GUI_CHILD_KEY = 'guiChildPath';
 export function markedParts(root: ChildrenMixin, ns = NS): Map<string, SceneNode[]> {
   const out = new Map<string, SceneNode[]>();
   const walk = (node: ChildrenMixin, top: boolean) => {
@@ -169,7 +170,25 @@ export function markedParts(root: ChildrenMixin, ns = NS): Map<string, SceneNode
         const list = out.get(role);
         if (list) list.push(child); else out.set(role, [child]);
       }
-      if (OPAQUE.has(role) || child.name === GUI_AREA || !('children' in child)) continue;
+      if (child.name === GUI_AREA) {
+        // GUI 영역 안에서 다시 고른 자식은 부모에 기록한 경로로만 찾는다. 복사된 GUI 자식 전체를 훑지 않는다.
+        const path = child.getSharedPluginData(ns, GUI_CHILD_KEY);
+        if (path) {
+          let target: SceneNode = child;
+          for (const index of path.split('.').map(Number)) {
+            if (!('children' in target)) break;
+            const next = target.children[index];
+            if (!next) break;
+            target = next;
+          }
+          if (target !== child && roleOf(target, ns) === 'gui') {
+            const list = out.get('gui') ?? [];
+            list.push(target); out.set('gui', list);
+          }
+        }
+        continue;
+      }
+      if (OPAQUE.has(role) || !('children' in child)) continue;
       walk(child, false);
     }
   };
@@ -539,14 +558,33 @@ export async function connectTemplateItem(templateId: string, key: TemplateItem,
       if (role === 'row') throw new Error(COPY.figmaTemplate022);
       // 이력 목록·이전 이력칸만 Figma 슬롯 안의 레이어 연결을 허용한다. 그 밖의 불투명 영역은 계속 막는다.
       const slotArea = key === 'history' || key === 'previous';
-      if ((OPAQUE.has(role) || (n.type === 'SLOT' && !slotArea)) || n.name === GUI_AREA) throw new Error(COPY.figmaTemplate016);
+      const guiChild = key === 'gui' && role === 'gui';
+      if ((OPAQUE.has(role) && !guiChild || (n.type === 'SLOT' && !slotArea)) || n.name === GUI_AREA && key !== 'gui') throw new Error(COPY.figmaTemplate016);
     }
     const problem = kindProblem(def.kind, node);
     if (problem) throw new Error(problem);
   }
   const chosen = new Set(selection.map(n => n.id));
   for (const old of markedParts(template, ns).get(key) ?? []) if (!chosen.has(old.id)) old.setSharedPluginData(ns, PART_KEY, '');
-  for (const node of selection) setRole(node, key, ns);
+  for (const node of selection) {
+    setRole(node, key, ns);
+    if (key === 'gui') {
+      let child: BaseNode = node;
+      for (let parent = node.parent; parent && parent.id !== template.id; parent = parent.parent) {
+        if (parent.name !== GUI_AREA) continue;
+        const path: number[] = [];
+        for (let current: BaseNode = child; current.id !== parent.id;) {
+          const owner: BaseNode | null = current.parent;
+          if (!owner || !('children' in owner)) break;
+          path.push((owner as BaseNode & ChildrenMixin).children.indexOf(current as SceneNode));
+          current = owner;
+        }
+        parent.setSharedPluginData(ns, GUI_CHILD_KEY, path.reverse().join('.'));
+        parent.setSharedPluginData(ns, PART_KEY, '');
+        break;
+      }
+    }
+  }
 }
 
 // 항목의 연결을 푼다. GUI 영역은 필수라 풀 수 없다. 이름 규칙 템플릿이면 먼저 표식 템플릿으로 바꾼다.
