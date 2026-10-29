@@ -532,8 +532,9 @@ export async function connectTemplateItem(templateId: string, key: TemplateItem,
     for (let n = node.parent; n && n.id !== template.id; n = n.parent) {
       const role = roleOf(n, ns);
       if (role === 'row') throw new Error(COPY.figmaTemplate022);
-      // 이전 이력 항목만 Figma 슬롯 안의 레이어 연결을 허용한다. 그 밖의 불투명 영역은 계속 막는다.
-      if ((OPAQUE.has(role) || (n.type === 'SLOT' && key !== 'previous')) || n.name === GUI_AREA) throw new Error(COPY.figmaTemplate016);
+      // 이력 목록·이전 이력칸만 Figma 슬롯 안의 레이어 연결을 허용한다. 그 밖의 불투명 영역은 계속 막는다.
+      const slotArea = key === 'history' || key === 'previous';
+      if ((OPAQUE.has(role) || (n.type === 'SLOT' && !slotArea)) || n.name === GUI_AREA) throw new Error(COPY.figmaTemplate016);
     }
     const problem = kindProblem(def.kind, node);
     if (problem) throw new Error(problem);

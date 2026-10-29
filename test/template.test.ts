@@ -222,19 +222,31 @@ test('연결은 템플릿 안·찾을 수 있는 자리의 맞는 종류 레이�
   assert.equal(comment.getSharedPluginData(NS, PART_KEY), 'rowComment', 'a layer picked inside the sample row marks the component layer');
 });
 
-test('이전 이력칸은 슬롯 안 레이어를 연결할 수 있지만 다른 항목은 슬롯 안 레이어를 거부한다', async () => {
+test('이력 목록과 이전 이력칸은 슬롯 또는 슬롯 안 프레임을 연결하고 다른 항목은 슬롯 안 레이어를 거부한다', async () => {
   const w = world();
   const previousLayer = w.make('FRAME', 'Previous content');
   const previous = w.make('SLOT', 'Previous', [previousLayer]);
-  const template = w.make('FRAME', 'Mine', [previous]);
+  const historyLayer = w.make('FRAME', 'History content');
+  const history = w.make('SLOT', 'History', [historyLayer]);
+  const template = w.make('FRAME', 'Mine', [previous, history]);
   w.page.appendChild(template);
   template.setSharedPluginData(NS, LINKS_KEY, '{"components":{}}');
 
   w.select(previousLayer);
   await connectTemplateItem(template.id, 'previous');
   assert.equal(previousLayer.getSharedPluginData(NS, PART_KEY), 'previous');
+  w.select(previous);
+  await connectTemplateItem(template.id, 'previous');
+  assert.equal(previous.getSharedPluginData(NS, PART_KEY), 'previous', '슬롯 자체도 연결 가능');
+  w.select(previousLayer);
+  await connectTemplateItem(template.id, 'previous');
+
+  w.select(historyLayer);
+  await connectTemplateItem(template.id, 'history');
+  assert.equal(historyLayer.getSharedPluginData(NS, PART_KEY), 'history');
 
   previousLayer.setSharedPluginData(NS, PART_KEY, '');
+  historyLayer.setSharedPluginData(NS, PART_KEY, '');
   await assert.rejects(connectTemplateItem(template.id, 'chapter'), { message: COPY.figmaTemplate016 });
 });
 
