@@ -318,8 +318,13 @@ function insideInstance(node: BaseNode): boolean {
   return false;
 }
 
+function insideSlot(node: BaseNode): boolean {
+  for (let n = node.parent; n && n.type !== 'PAGE'; n = n.parent) if (n.type === 'SLOT') return true;
+  return false;
+}
+
 // 레이어를 넣을 수 있는 칸: 슬롯, 인스턴스 밖 프레임(인스턴스 안 프레임에는 레이어를 더할 수 없다)
-const acceptsChildren = (n: SceneNode) => n.type === 'SLOT' || (n.type === 'FRAME' && !insideInstance(n));
+const acceptsChildren = (n: SceneNode) => n.type === 'SLOT' || (n.type === 'FRAME' && (!insideInstance(n) || insideSlot(n)));
 
 function kindProblem(kind: ItemKind, node: SceneNode): string | null {
   switch (kind) {

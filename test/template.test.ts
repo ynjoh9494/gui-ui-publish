@@ -226,9 +226,12 @@ test('이력 목록과 이전 이력칸은 슬롯 또는 슬롯 안 프레임을
   const w = world();
   const previousLayer = w.make('FRAME', 'Previous content');
   const previous = w.make('SLOT', 'Previous', [previousLayer]);
+  const nestedFrame = w.make('FRAME', 'Nested content');
+  const instance = w.make('INSTANCE', 'Slot instance', [nestedFrame]);
+  const nestedSlot = w.make('SLOT', 'Previous nested', [instance]);
   const historyLayer = w.make('FRAME', 'History content');
   const history = w.make('SLOT', 'History', [historyLayer]);
-  const template = w.make('FRAME', 'Mine', [previous, history]);
+  const template = w.make('FRAME', 'Mine', [previous, nestedSlot, history]);
   w.page.appendChild(template);
   template.setSharedPluginData(NS, LINKS_KEY, '{"components":{}}');
 
@@ -240,6 +243,10 @@ test('이력 목록과 이전 이력칸은 슬롯 또는 슬롯 안 프레임을
   assert.equal(previous.getSharedPluginData(NS, PART_KEY), 'previous', '슬롯 자체도 연결 가능');
   w.select(previousLayer);
   await connectTemplateItem(template.id, 'previous');
+
+  w.select(nestedFrame);
+  await connectTemplateItem(template.id, 'previous');
+  assert.equal(nestedFrame.getSharedPluginData(NS, PART_KEY), 'previous', '슬롯 안 인스턴스의 프레임도 연결 가능');
 
   w.select(historyLayer);
   await connectTemplateItem(template.id, 'history');
