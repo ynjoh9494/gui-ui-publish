@@ -99,6 +99,7 @@ export interface GuiRecord {
   screenId: string;
   version: number;
   batchId: string;
+  quiet?: boolean;
   workType: WorkType;
   fingerprint: string | null;
   // 지문을 계산한 정규화 버전. 이 필드가 생기기 전의 기록은 1로 본다.
@@ -147,6 +148,8 @@ export interface UiBaseline { flipbookId: string; fingerprint: string; fpVersion
 export interface Batch {
   id: string; team: Team; actor: Actor; committedAt: number;
   items: { screenId: string; version: number }[];
+  // GUI 배포를 플립북 이력에 가져오지 않는다. 이전 기록은 필드가 없어 false로 읽는다.
+  quiet?: boolean;
   // 배포 취소 후 플러그인이 중단되어도 원본 프레임의 표식 제거를 재시도할 수 있게 남긴다.
   unpublished?: { screenId: string; nodeId: string }[];
 }

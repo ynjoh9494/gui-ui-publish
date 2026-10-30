@@ -18,6 +18,7 @@ export interface GuiScreenInfo {
 
 export interface GuiRecordInfo {
   batchId: string;
+  quiet?: boolean;
   uid: string;
   version: number;
   code: string;
@@ -69,7 +70,7 @@ export function guiScreens(state: State): Map<string, GuiScreenInfo> {
 export function guiRecordInfo(r: GuiRecord): GuiRecordInfo {
   const last = r.corrections[r.corrections.length - 1];
   return {
-    batchId: r.batchId, uid: r.screenId, version: r.version, code: r.code, name: r.name, workType: r.workType, tag: r.tag,
+    batchId: r.batchId, quiet: r.quiet, uid: r.screenId, version: r.version, code: r.code, name: r.name, workType: r.workType, tag: r.tag,
     description: last ? last.description : r.description, original: r.description, corrected: !!last,
     worker: r.worker.name, committedAt: r.committedAt,
   };

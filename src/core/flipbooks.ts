@@ -285,7 +285,8 @@ export function importGuiUpdates(store: Store, flipbookId: string, screens: Map<
     // 삭제로 배포한 화면은 마지막 GUI를 그대로 두고 알리지 않는다. 화면이 모두 삭제된 플립북은 retireFlipbooks가 사용 안 함으로 바꾼다.
     if (!s || s.status !== 'active') { if (s?.status !== 'deleted') result.missing.push(fs.code); return fs; }
     const mine = new Map<number, ImportedGuiRecord>(held.filter(r => r.uid === fs.uid).map(r => [r.version, r]));
-    const { add, update } = recordsToImport(mine, fs.version, records.filter(r => r.uid === fs.uid));
+    // 조용한 배포는 화면 버전과 GUI 복사본만 따라간다. 재시도·나중 동기화에서도 이력과 확인 알림을 만들지 않는다.
+    const { add, update } = recordsToImport(mine, fs.version, records.filter(r => r.uid === fs.uid && !r.quiet));
     const version = Math.max(fs.version, s.version);
     for (const r of [...add.filter(r => r.version <= version), ...update]) {
       queue();

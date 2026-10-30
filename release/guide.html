@@ -239,7 +239,7 @@ footer { color: var(--muted); font-size: 13px; text-align: center; margin-top: 2
     <li><b>배포 켜기</b>이번에 배포할 화면의 <span class="ui">배포</span>를 켜고 등록 방식을 고릅니다. 새 화면으로 등록, <span class="ui">기존 화면 교체</span>(기존 화면의 새 버전으로 기록), <span class="ui">화면이 아님</span>(배포 뒤 목록에서 제외) 중 하나입니다. 이미 배포한 화면은 <span class="ui">화면 수정</span>·<span class="ui">기존 화면 교체</span>(잘못 신규로 배포한 화면을 기존 화면의 새 버전으로 돌림. 이 화면이 든 플립북·플로우·케이스는 기존 화면으로 옮겨 갑니다)·<span class="ui">화면이 아님</span>·<span class="ui">배포 취소</span>(사용 안 함으로 바꾸고 프레임은 다시 신규로 나옴) 중에서 고릅니다.</li>
     <li><b>화면 정보 입력</b>카테고리, 화면 이름, Screen ID, <span class="ui">독립 화면</span>·<span class="ui">케이스</span> 관계를 정합니다. 카테고리를 고르면 Screen ID가 캔버스 순서대로 자동 입력되고 직접 고칠 수도 있습니다. 케이스는 기본 화면을 고르면 다음 번호가 들어갑니다. 기본 화면 목록에는 아직 배포하지 않았어도 이번에 배포를 켠 독립 화면이 함께 나옵니다. 기본 화면과 케이스를 한 번에 배포할 수 있으며, 기본 화면에 충돌이 생기면 케이스도 함께 보류됩니다. 교체할 화면이나 기본 화면을 고르는 목록은 펼치면 Screen ID나 이름으로 검색할 수 있습니다. 검색 칸에서 <kbd>Enter</kbd>는 첫 결과를 고르고, <kbd>↑</kbd><kbd>↓</kbd>로 결과 사이를 옮기며, <kbd>Esc</kbd>로 접습니다. 신규 화면은 프레임 이름의 대괄호 안에 Screen ID가 있으면(예: <code>[STB_HO_001] 홈</code>) 그 ID를 씁니다.</li>
     <li><b>태그·작업자, 추가 설명</b>배포 이력에 남을 태그와 작업자를 고릅니다. 아래쪽 <span class="ui">추가 설명</span>은 배포 한 번에 하나이며 선택 입력입니다.</li>
-    <li><b>최종 확인 → 확정</b><span class="ui">최종 확인</span>에서 포함한 화면과 필수 정보 미충족 개수를 봅니다. 빨간 테두리로 표시된 입력을 채운 뒤, 배포 확인 요약을 보고 확정합니다.</li>
+    <li><b>최종 확인 → 확정</b><span class="ui">최종 확인</span>에서 포함한 화면과 필수 정보 미충족 개수를 봅니다. 빨간 테두리로 표시된 입력을 채운 뒤, 배포 확인 요약을 봅니다. 플립북 히스토리에 이번 배포 내역을 남기지 않으려면 <span class="ui">조용히 배포하기</span>를 켜고 확정합니다.</li>
   </ol>
   <figure>
     <img src="screens/gui-form.png" alt="화면 목록에서 화면을 골라 배포를 켜고 등록 방식, 화면 이름, Screen ID, 카테고리를 입력한 모습">
@@ -247,13 +247,13 @@ footer { color: var(--muted); font-size: 13px; text-align: center; margin-top: 2
   </figure>
   <figure>
     <img src="screens/gui-confirm.png" alt="GUI 배포 최종 확인 창: 신규·변경·삭제 개수와 화면별 작업, 버전, 태그, 작업자">
-    <figcaption>최종 확인 창. 내용을 확인하고 「배포 확정」을 누릅니다.</figcaption>
+    <figcaption>최종 확인 창. 필요하면 「조용히 배포하기」를 켠 뒤 「배포 확정」을 누릅니다.</figcaption>
   </figure>
   <div class="note">
     <b>확정하면 일어나는 일</b>
     <ul>
       <li>화면마다 1/4 크기 썸네일이 <span class="ui">[자동 관리] GUI 썸네일</span> 페이지에 남습니다.</li>
-      <li>그 화면을 쓰는 플립북의 GUI 영역에 원본 복사본이 바로 들어가고, 플립북에 빨간 점이 붙습니다.</li>
+      <li>그 화면을 쓰는 플립북의 GUI 영역에 원본 복사본이 바로 들어갑니다. 일반 배포는 플립북 히스토리와 빨간 점을 남기며, <span class="ui">조용히 배포하기</span>를 켜면 둘 다 추가하지 않습니다.</li>
       <li>배포 기록이 쌓이며, 배포된 화면을 고르면 <span class="ui">배포 이력</span>과 이전 배포 썸네일을 볼 수 있습니다.</li>
     </ul>
   </div>

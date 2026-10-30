@@ -196,6 +196,14 @@ try {
   await shot('01-gui-ready');
 
   await app.locator('[data-action=prepare]').click();
+  const quietPublish = app.locator('[data-action=quiet-publish]');
+  assert.equal(await quietPublish.isChecked(), false, '조용한 배포는 기본으로 꺼진다');
+  assert.equal(await quietPublish.locator('..').getAttribute('title'), '플립북의 히스토리에 배포 내역이 남지 않습니다.');
+  await quietPublish.check();
+  assert.equal(await quietPublish.isChecked(), true);
+  await app.locator('[data-action=cancel-plan]').click();
+  await app.locator('[data-action=prepare]').click();
+  assert.equal(await quietPublish.isChecked(), false, '새 배포 확인에서는 다시 꺼진다');
   await app.locator('[data-action=commit]').click();
   await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('GUI 썸네일')));
   await shot('02-gui-published');

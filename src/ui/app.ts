@@ -196,6 +196,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   const changedOnly: Record<Team, boolean> = { GUI: true, UI: false };
   const recentWorker: Record<Team, string | undefined> = { GUI: undefined, UI: undefined };
   let plan: Plan | null = null;
+  let quietPublish = false;
   let toast: { kind: 'info' | 'error'; text: string } | null = null;
   let navSeq = 0;
   let history: { id: string; rows: HistoryRow[] } | null = null;
@@ -1529,6 +1530,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       ${plan.exclusions.map(e => `<tr><td>${esc(e.name)}</td><td>${COPY.uiApp050}</td><td>—</td><td>—</td><td>${esc(e.reason)}</td></tr>`).join('')}
       ${plan.unpublished.map(e => `<tr><td>${esc(e.name)}</td><td>${COPY.uiApp355}</td><td>—</td><td>—</td><td>—</td></tr>`).join('')}
       </tbody></table>
+      ${plan.team === 'GUI' ? `<label class="switch quiet-publish" title="${COPY.quietPublishHint}"><span>${COPY.quietPublish}</span><input type="checkbox" role="switch" data-action="quiet-publish" aria-label="${COPY.quietPublish}" aria-description="${COPY.quietPublishHint}" ${quietPublish ? 'checked' : ''}></label>` : ''}
       <p class="note">${COPY.uiApp094}</p>
       <div class="dialog-actions">
         <button data-action="cancel-plan">${COPY.uiApp095}</button>
@@ -2696,8 +2698,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         bridge.send({ type: 'prepare', team: t, drafts: sendable, ...(t === 'GUI' ? { comment } : {}) });
         break;
       }
-      case 'cancel-plan': if (plan) bridge.send({ type: 'cancelPlan', batchId: plan.batchId }); plan = null; renderConfirm(); break;
-      case 'commit': if (plan) { bridge.send({ type: 'commit', batchId: plan.batchId }); el.setAttribute('disabled', ''); } break;
+      case 'cancel-plan': if (plan) bridge.send({ type: 'cancelPlan', batchId: plan.batchId }); plan = null; quietPublish = false; renderConfirm(); break;
+      case 'quiet-publish': quietPublish = (el as HTMLInputElement).checked; break;
+      case 'commit': if (plan) { bridge.send({ type: 'commit', batchId: plan.batchId, quiet: plan.team === 'GUI' && quietPublish }); el.setAttribute('disabled', ''); } break;
       case 'goto': plan = null; renderConfirm(); if (el.dataset.key) { for (const g of listModel(t).groups) expanded[t].add(g.key); select(el.dataset.key); renderList(); } break;
       case 'retry': bridge.send({ type: 'retry' }); break;
       case 'managed-page-open': if (el.dataset.id) bridge.send({ type: 'revealNode', nav: ++navSeq, nodeId: el.dataset.id }); break;
@@ -3607,7 +3610,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         renderTabs(); renderToolbar(); renderList(); renderDetail(); renderFooter();
         break;
       }
-      case 'plan': plan = msg.plan; renderConfirm(); break;
+      case 'plan': plan = msg.plan; quietPublish = false; renderConfirm(); break;
       case 'committed':
         if (msg.ok && mode === 'GUI') { comment = emptyComment(); renderFooter(); }
         if (msg.ok) {

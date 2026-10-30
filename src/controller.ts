@@ -186,7 +186,7 @@ export class Controller {
           this.host.post({ type: 'thumbnails', items });
           break;
         }
-        case 'commit': await this.commit(msg.batchId); break;
+        case 'commit': await this.commit(msg.batchId, msg.quiet); break;
         case 'cancelPlan': this.plans.delete(msg.batchId); break;
         case 'retry': {
           const recovered = await this.recovery.run(undefined, true);
@@ -1069,9 +1069,10 @@ export class Controller {
     this.host.post({ type: 'plan', plan });
   }
 
-  private async commit(batchId: string): Promise<void> {
+  private async commit(batchId: string, quiet = false): Promise<void> {
     const plan = this.plans.get(batchId);
     if (!plan) throw new Error(COPY.controller018);
+    if (plan.team === 'GUI') plan.quiet = quiet;
     const input: CommitInput = { fingerprints: {}, thumbs: {} };
     // 신규·변경 GUI는 확정 직전 썸네일을 만든다. 썸네일을 만들지 못해도 확정하고 알린다.
     const thumbErrors: string[] = [];

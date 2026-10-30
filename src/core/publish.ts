@@ -51,6 +51,7 @@ export interface Blocker { entryKey: string; name: string; messages: string[] }
 export interface Plan {
   batchId: string;
   team: Team;
+  quiet?: boolean;
   actor: Actor;
   items: PlanItem[];
   // replacedBy: 다른 프레임으로 교체되는 이전 화면의 ID. 그 화면의 원본 프레임을 제외 목록에 넣는다.
@@ -422,6 +423,7 @@ export function commitPlan(store: Store, plan: Plan, input: CommitInput): Commit
   const batch: Batch = {
     id: plan.batchId, team: plan.team, actor: plan.actor, committedAt: now,
     items: committed.map(i => ({ screenId: i.screenId, version: i.toVersion })),
+    ...(plan.team === 'GUI' && plan.quiet ? { quiet: true } : {}),
     ...(unpublished.length ? { unpublished: unpublished.map(i => ({ screenId: i.screenId, nodeId: i.nodeId })) } : {}),
   };
   store.put(keys.batch(batch.id), batch);
@@ -449,6 +451,7 @@ function writeGui(store: Store, plan: Plan, item: PlanItem, input: CommitInput, 
 
   const record: GuiRecord = {
     screenId: item.screenId, version: item.toVersion, batchId: plan.batchId, workType: item.workType!,
+    ...(plan.quiet ? { quiet: true } : {}),
     fingerprint: captured ? item.frame!.fingerprint : previous?.fingerprint ?? null,
     fpVersion: captured ? FINGERPRINT_VERSION : previous?.fpVersion ?? 1,
     thumb,

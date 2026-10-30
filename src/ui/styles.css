@@ -191,6 +191,7 @@ summary { cursor: pointer; color: var(--muted); }
 .dialog h2 { font-size: 14px; margin: 0 0 6px; }
 .dialog .items { width: 100%; border-collapse: collapse; font-size: 11px; }
 .dialog .items th, .dialog .items td { border-top: 1px solid var(--border); padding: 4px; text-align: left; vertical-align: top; }
+.dialog .quiet-publish { justify-content: flex-start; width: fit-content; margin: 10px 0 6px; }
 .dialog small { display: block; color: var(--muted); }
 .blockers { border: 1px solid var(--danger); border-radius: 6px; padding: 6px; margin: 6px 0; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }

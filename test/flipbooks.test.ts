@@ -468,6 +468,24 @@ test('같은 GUI를 쓰는 두 플립북에 새 GUI 기록을 각각 한 번만 
   assert.deepEqual(unreviewed(store.state, first.id).map(r => r.version), [3]);
 });
 
+test('조용한 GUI 배포는 플립북 화면만 갱신하고 이력·확인 알림을 남기지 않으며 재동기화에도 유지된다', () => {
+  const store = new Store(memoryKV(), () => 100, () => 'unused');
+  const [fb] = planFlipbooks({ pageId: 'p', rows: [row(['a'])] }, new Map([['a', screen('a', 'A')]]), actor, 100, () => 'fb');
+  store.put(keys.flipbook(fb.id), fb);
+  const quiet = { ...record('a', 'A', 2), quiet: true };
+  const current = new Map([['a', screen('a', 'A', 2)]]);
+  assert.deepEqual(importGuiUpdates(store, fb.id, current, [quiet]), { changed: true, added: 0, missing: [] });
+  assert.equal(store.state.flipbooks.get(fb.id)?.screens[0].version, 2);
+  assert.deepEqual(flipbookHistoryRows(store.state, fb.id), []);
+  assert.equal(needsReview(store.state, fb.id), false);
+  store.reload();
+  assert.equal(importGuiUpdates(store, fb.id, current, [quiet]).changed, false);
+  const normal = record('a', 'A', 3);
+  assert.equal(importGuiUpdates(store, fb.id, new Map([['a', screen('a', 'A', 3)]]), [quiet, normal]).added, 1);
+  assert.deepEqual(flipbookHistoryRows(store.state, fb.id).map(r => r.version), ['A v3']);
+  assert.equal(needsReview(store.state, fb.id), true);
+});
+
 test('이전 버전의 UI 배포 기록이 있으면 그 시각까지는 확인한 것으로 본다', () => {
   const store = new Store(memoryKV(), () => 100, () => 'unused');
   const [fb] = planFlipbooks({ pageId: 'p', rows: [row(['a'])] }, new Map([['a', screen('a', 'STB_HO_001')]]), actor, 100, () => 'fb1');
@@ -532,12 +550,16 @@ test('GUI Publish는 썸네일과 배포 한 번의 추가 설명을 기록하�
   const screen = store.state.screens.get(screenId) as Screen;
   const changed = guiEntry('1:1', '[STB_HO_001] 홈', 'fp2', screenId);
   const plan2 = buildPlan('GUI', store.state, [changed], { [changed.key]: { included: true, tagId: 't', workerId: 'w' } as never }, actor, 'b2');
+  plan2.quiet = true;
   assert.deepEqual(plan2.blockers, [], 'comment is optional');
   assert.equal(plan2.items[0].toVersion, screen.guiVersion + 1);
   commitPlan(store, plan2, { fingerprints: { [changed.key]: 'fp2' }, thumbs: { [changed.key]: thumb(screenId, 2) } });
+  assert.equal(store.state.gui.get(screenId)?.slice(-1)[0]?.quiet, true);
+  assert.equal(store.state.batches.get('b2')?.quiet, true);
   assert.deepEqual(guiScreens(store.state).get(screenId)?.thumb, thumb(screenId, 2));
   const pulled = importGuiUpdates(store, fb.id, guiScreens(store.state), guiRecordInfos(store.state, new Set([screenId])));
-  assert.equal(pulled.added, 1);
+  assert.equal(pulled.added, 0);
+  assert.deepEqual(flipbookHistoryRows(store.state, fb.id), []);
   assert.deepEqual(flipbookView(store.state, fb.id).gui.map(g => g.key), [`${screenId}@2`]);
 });
 
