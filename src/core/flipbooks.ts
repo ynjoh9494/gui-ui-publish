@@ -273,10 +273,12 @@ export interface ImportResult {
 
 // GUI 배포 상태를 플립북 기록에 반영한다. 새 버전의 기록은 이 플립북에 쌓고,
 // 이미 가진 버전은 정정된 설명만 맞춘다. 화면 ID·이름이 바뀌면 함께 바꾼다.
-export function importGuiUpdates(store: Store, flipbookId: string, screens: Map<string, GuiScreenInfo>, records: GuiRecordInfo[]): ImportResult {
+export function importGuiUpdates(store: Store, flipbookId: string, screens: Map<string, GuiScreenInfo>, records: GuiRecordInfo[], beforeChange?: () => void): ImportResult {
   const before = store.state.flipbooks.get(flipbookId);
   if (!before) throw new Error(COPY.coreFlipbook002);
   const result: ImportResult = { changed: false, added: 0, missing: [] };
+  let queued = false;
+  const queue = () => { if (!queued) { beforeChange?.(); queued = true; } };
   const held = store.state.imported.get(flipbookId) ?? [];
   const next = before.screens.map(fs => {
     const s = screens.get(fs.uid);
@@ -286,6 +288,7 @@ export function importGuiUpdates(store: Store, flipbookId: string, screens: Map<
     const { add, update } = recordsToImport(mine, fs.version, records.filter(r => r.uid === fs.uid));
     const version = Math.max(fs.version, s.version);
     for (const r of [...add.filter(r => r.version <= version), ...update]) {
+      queue();
       store.put(keys.imported(flipbookId, r.uid, r.version), importedRecord(flipbookId, r));
       result.changed = true;
     }
@@ -294,6 +297,7 @@ export function importGuiUpdates(store: Store, flipbookId: string, screens: Map<
     return { ...fs, code: s.code, name: s.name, version };
   });
   if (!result.changed) return result;
+  queue();
   const autoTitle = before.autoTitle ? defaultTitle(before.kind, next) : before.title;
   const after: Flipbook = {
     ...before, rev: before.rev + 1, screens: next, title: autoTitle,

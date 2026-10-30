@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-const previewPath = process.argv[2] ?? 'dist/preview.html';
+const previewPath = process.argv[2] ?? 'tmp/build/preview.html';
 const outDir = process.argv[3] ?? 'tmp/walkthrough';
 mkdirSync(outDir, { recursive: true });
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
@@ -519,7 +519,9 @@ try {
     assert.ok(await screens.first().getAttribute('data-thumb'), '배포된 화면에 마우스를 올리면 썸네일을 보여 준다');
     await screens.first().locator('.label').hover();
     await app.locator('.thumb-hover img').waitFor();
-    assert.equal(await app.locator('.thumb-hover').evaluate(el => Math.round(el.getBoundingClientRect().width)), 240, '플로우 마우스 오버도 다른 곳과 같은 크기');
+    await page.waitForFunction(() => { const img = document.querySelector('#app .thumb-hover img'); return img?.complete && img.naturalWidth > 0; });
+    const hoverSize = await app.locator('.thumb-hover').evaluate(el => ({ width: el.getBoundingClientRect().width, height: el.querySelector('img').getBoundingClientRect().height }));
+    assert.ok(hoverSize.width > 0 && hoverSize.width <= 240 && hoverSize.height <= 320, '세로 썸네일도 최대 폭 240px·높이 320px 안에서 비율 유지');
     await screens.first().locator('.paste-track').hover();
     assert.equal(await app.locator('.thumb-hover').count(), 0, '비활성 링크 버튼 위에서는 미리보기 닫기');
 

@@ -34,7 +34,7 @@ GUI·UI Publish Figma 플러그인 레포다. 이 문서는 사람과 AI 에이�
 - UI 상호작용·튜토리얼: `npm run walkthrough`. 화면 구성을 바꾸면 튜토리얼이 설명할 영역을 찾는지도 여기서 확인된다.
 - Figma 캔버스를 바꾸는 변경: 모의 테스트에 더해 **실제 Figma 시험 파일**에서 확인한다(README 「Figma에서 개발 중인 버전 실행」). 로컬 검사만으로 Figma 동작을 검증했다고 보고하지 않는다.
   - 팀이 쓰는 실제 작업 파일 대신 별도 시험 파일을 쓴다. 시험 중인 파일 이름에 「삭제 가능」 같은 말을 붙이지 않고, 다 쓴 뒤 지워도 된다고 따로 알린다(이름을 보고 시험 도중에 지운 일이 있었다).
-- `dist/`는 생성물이라 git에 없다. 다른 브랜치·worktree에서 빌드했으면, 합친 뒤 Figma가 읽는 폴더에서 `npm run build`를 다시 실행하고 `dist/` 시각을 확인한 다음 「빌드했다」고 보고한다.
+- 검사와 실사용 반영을 분리한다. `npm run build`, `check`, `walkthrough`는 `tmp/build/`에만 생성하며 Figma가 읽는 `dist/`를 변경하지 않는다. **사용자가 실제 반영을 요청하고 플러그인을 닫았다고 확인한 경우에만** `npm run activate-build -- --plugin-closed`로 전환한다. 전환 전에 알리고, 완료 뒤 백업 위치와 적용 여부를 보고한다. 검사 빌드만 한 상태를 실사용 반영 완료라고 보고하지 않는다.
 - 화면이 바뀌면 팀원용 안내(`release/guide.html`, `npm run guide-screens`)도 맞춘다.
 
 ## Git과 배포

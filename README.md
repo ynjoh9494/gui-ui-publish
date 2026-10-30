@@ -3,7 +3,7 @@
 GUI팀과 UI팀이 한 Figma 파일에서 함께 쓰는 플러그인입니다. GUI팀이 원본 화면을 고쳐 배포하면 그 화면을 쓰는 UI팀의 플립북(화면설계서 페이지)에 최신 GUI가 바로 들어가고, 어떤 화면이 언제 바뀌었는지 기록으로 남습니다. 외부 서버 없이 모든 기록을 Figma 파일 안에 저장합니다.
 
 - **GUI Publish** (GUI 담당): 원본 화면을 지난 배포와 비교해 바뀐 화면을 찾고, 화면 이름·Screen ID·카테고리를 정해 배포합니다.
-- **UI Flipbook** (UI 담당): 화면을 골라 플립북을 만들고, GUI가 다시 배포된 플립북을 확인해 상태·코멘트를 남깁니다.
+- **UI Flipbook** (UI 담당): 화면을 골라 플립북을 만들고, GUI가 다시 배포된 플립북을 확인해 상태·코멘트를 남깁니다. 직접 만든 플립북은 관리에서 해당 페이지를 플립북 페이지로 지정한 뒤, 캔버스에서 바깥쪽 프레임을 선택하고 목록 위 **기존 플립북 등록**으로 추가합니다.
 
 ## 최신 버전 받기
 
@@ -56,7 +56,8 @@ npm run check
 | 명령 | 하는 일 |
 |---|---|
 | `npm run check` | 타입 검사, 테스트, 빌드. 커밋 전에 실행하고, GitHub에서도 main push·PR마다 실행됩니다 |
-| `npm run build` | `dist/code.js`, `dist/ui.html`(Figma용)과 `dist/preview.html`(브라우저 미리보기)을 만듭니다 |
+| `npm run build` | `tmp/build/`에 검사 빌드를 만듭니다. 실행 중인 플러그인의 `dist/`는 바꾸지 않습니다 |
+| `npm run activate-build -- --plugin-closed` | 플러그인을 닫은 뒤에만 실행합니다. 검사 빌드의 파일 해시를 검증하고 기존 `dist/`를 `tmp/dist-backup-*`에 보관한 뒤 전환합니다 |
 | `npm run walkthrough` | 미리보기에서 GUI 배포 → 플립북 만들기 → GUI 재배포 반영 흐름과 튜토리얼을 자동 조작합니다 |
 | `npm run benchmark` | Node 쪽 목록·저장소 계산 성능을 측정합니다 |
 | `npm run guide-screens` | 사용 안내 그림(`release/screens/`)을 미리보기 예시 데이터로 다시 찍습니다 |
@@ -64,7 +65,7 @@ npm run check
 
 ### Figma에서 개발 중인 버전 실행
 
-`npm run build` 후 Figma 데스크톱 앱에서 이 폴더의 `manifest.json`을 불러옵니다(Import plugin from manifest). `dist/`는 git에 올리지 않는 생성물이므로, 다른 브랜치·worktree에서 작업했다면 Figma가 읽는 폴더에서 다시 빌드해야 반영됩니다. 팀원용 zip과 플러그인 ID가 같으므로 둘 중 하나만 불러와 두는 편이 헷갈리지 않습니다.
+`npm run check`로 검사 빌드를 만든 다음 플러그인의 배포·반영이 끝났는지 확인하고 플러그인을 닫습니다. 실제 반영을 결정한 뒤 `npm run activate-build -- --plugin-closed`를 실행하고 다시 엽니다. 일반 빌드·검사·미리보기는 `tmp/build/`만 사용하므로 실사용 파일을 덮어쓰지 않습니다. Figma 데스크톱 앱에서는 이 폴더의 `manifest.json`을 불러옵니다(Import plugin from manifest). 팀원용 zip과 플러그인 ID가 같으므로 둘 중 하나만 불러옵니다.
 
 미리보기와 테스트는 Figma API를 흉내 냅니다. 플러그인 메뉴의 두 명령, 템플릿 복제와 인스턴스 교체, 슬롯(List·input-cell-id) 삽입, 썸네일 JPG 출력, GUI 복사와 1/2x·1/4x 축소, 라이브러리 변수 모드 유지, 큰 화면의 복사 시간과 메모리는 **실제 Figma 시험 파일에서 확인**해야 합니다.
 
@@ -87,7 +88,7 @@ npm run check
 ### 배포
 
 ```sh
-npm run release -- --dry-run          # 검사·빌드 후 dist/GUIUIPublish.zip만 만들어 확인
+npm run release -- --dry-run          # 검사·빌드 후 tmp/package/GUIUIPublish.zip만 만들어 확인
 npm run release                       # 다음 패치 버전(v1.0.1 …) 태그를 만들어 push
 npm run release -- 1.2.0 --notes "…"  # 버전과 한 줄 릴리스 설명 지정
 npm run release -- 1.2.0 --notes-file notes.md  # 여러 줄 설명은 파일로(Windows의 npm은 인자의 첫 줄만 넘깁니다)

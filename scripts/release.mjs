@@ -7,13 +7,13 @@
 //       npm run release -- --notes-file notes.md   여러 줄 설명은 파일로 넘긴다(Windows의 npm은 인자의 첫 줄만 넘긴다)
 //       npm run release -- --dry-run        zip만 만들고 올리지 않음(커밋 안 된 변경도 허용)
 import { execFileSync, execSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { crc32, deflateRawSync } from 'node:zlib';
 
 const REPO = process.env.GITHUB_REPOSITORY ?? 'ynjoh9494/gui-ui-publish';
 const ASSET = 'GUIUIPublish.zip';
 const GUIDE = 'GUIUIPublish-Guide.html';
-const OUT = `dist/${ASSET}`;
+const OUT = `tmp/package/${ASSET}`;
 const LATEST = `https://github.com/${REPO}/releases/latest/download/${ASSET}`;
 
 const args = process.argv.slice(2);
@@ -63,6 +63,7 @@ function pushTag() {
 
 // 사용 안내에 버전·날짜·링크를 채우고 release/screens의 그림을 HTML 안에 넣어 zip을 만든다.
 function build(tag) {
+  mkdirSync('tmp/package', { recursive: true });
   const date = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
   const guide = readFileSync('release/guide.html', 'utf8')
     .replaceAll('{{VERSION}}', tag)
@@ -73,8 +74,8 @@ function build(tag) {
   // 맨 위에 폴더를 두지 않는다. Windows·macOS 압축 풀기가 zip 이름으로 폴더를 만들어 준다.
   writeFileSync(OUT, zip([
     ['manifest.json', readFileSync('manifest.json')],
-    ['dist/code.js', readFileSync('dist/code.js')],
-    ['dist/ui.html', readFileSync('dist/ui.html')],
+    ['dist/code.js', readFileSync('tmp/build/code.js')],
+    ['dist/ui.html', readFileSync('tmp/build/ui.html')],
     [GUIDE, Buffer.from(guide, 'utf8')],
   ]));
   console.log(`\n${OUT} (${tag})`);

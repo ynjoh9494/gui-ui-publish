@@ -1,3 +1,4 @@
+import { EXISTING_KEY } from '../core/registerFlipbooks.ts';
 import { COPY } from '../core/copy.ts';
 import { displayScale, freeGuiWidth } from '../core/flipbook.ts';
 import type { FoundCopy, NodePlace } from '../core/tracks.ts';
@@ -17,7 +18,7 @@ function owner(ns: string, node: BaseNode): string | null | 'legacy' {
   for (let n = node.parent; n && n.type !== 'PAGE'; n = n.parent) {
     const id = n.getSharedPluginData(ns, FLIPBOOK_KEY);
     if (!id) continue;
-    if (!linksOf(n, ns)) return node.getSharedPluginData(ns, TRACK_KEY) ? null : 'legacy';
+    if (!linksOf(n, ns) && n.getSharedPluginData(ns, EXISTING_KEY) !== 'true') return node.getSharedPluginData(ns, TRACK_KEY) ? null : 'legacy';
     return n.getSharedPluginData(ns, NODE_KEY) === n.id ? id : null;
   }
   return null;

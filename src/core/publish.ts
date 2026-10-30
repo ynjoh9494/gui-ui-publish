@@ -5,6 +5,7 @@ import { FINGERPRINT_VERSION, LEGACY_FINGERPRINT_VERSION } from './fingerprint.t
 import { followMergedFlipbooks } from './flipbooks.ts';
 import { followMergedFlows } from './flow.ts';
 import { sha256 } from './hash.ts';
+import { queueGuiDelivery } from './guiDelivery.ts';
 import { addCategory, addExclusion, caseRelationError, findCategoryByName, workerLabel } from './registry.ts';
 import { keys, lastGui, type State, type Store } from './store.ts';
 import type {
@@ -396,9 +397,9 @@ export function commitPlan(store: Store, plan: Plan, input: CommitInput): Commit
   const now = store.now();
   for (const exclusion of exclusions) {
     addExclusion(store, exclusion.nodeId, exclusion.name, exclusion.reason, plan.actor);
-    if (exclusion.screenId) retireNotScreen(store, exclusion.screenId, exclusion.reason, plan.actor);
+    if (exclusion.screenId) retireNotScreen(store, exclusion.screenId, exclusion.reason, plan.actor, plan.batchId);
   }
-  for (const item of unpublished) unpublishScreen(store, item.screenId, plan.actor);
+  for (const item of unpublished) unpublishScreen(store, item.screenId, plan.actor, plan.batchId);
   for (const item of [...ready].sort((a, b) => Number(!!a.baseScreenId) - Number(!!b.baseScreenId))) {
     if (item.team === 'GUI') writeGui(store, plan, item, input, now);
     else writeUi(store, plan, item, input, now);
@@ -460,8 +461,6 @@ function writeGui(store: Store, plan: Plan, item: PlanItem, input: CommitInput, 
     tag: item.tag, description: item.description, worker: item.worker, actor: plan.actor, committedAt: now,
     extra: item.extra, corrections: [],
   };
-  store.put(keys.gui(item.screenId, item.toVersion), record);
-
   const screen: Screen = before
     ? {
       ...before, rev: before.rev + 1, code: item.code, name: item.name, categoryId, baseScreenId: item.baseScreenId, guiVersion: item.toVersion, guiTag: item.tag, ack: null,
@@ -473,6 +472,8 @@ function writeGui(store: Store, plan: Plan, item: PlanItem, input: CommitInput, 
       id: item.screenId, rev: 1, code: item.code, name: item.name, categoryId, baseScreenId: item.baseScreenId, status: 'active',
       source: { nodeId: item.frame!.nodeId, pageId: item.frame!.pageId }, guiVersion: 1, guiTag: item.tag, createdAt: now,
     };
+  queueGuiDelivery(store, plan.batchId, before, screen, record);
+  store.put(keys.gui(item.screenId, item.toVersion), record);
   store.put(keys.screen(screen.id), screen);
 }
 
@@ -505,17 +506,21 @@ function retireCheck(store: Store, screenId: string, expectedRev: number | undef
 
 // 이미 배포한 화면을 화면이 아님으로 확정한다. GUI 버전·이력은 만들지 않고 사용 안 함으로 바꿔 목록에서 뺀다.
 // 원본 연결을 끊어 두므로 제외를 해제하면 그 프레임은 신규 후보로 다시 나온다.
-function retireNotScreen(store: Store, screenId: string, reason: string, actor: Actor): void {
+function retireNotScreen(store: Store, screenId: string, reason: string, actor: Actor, batchId: string): void {
   const before = store.state.screens.get(screenId)!;
-  store.put(keys.screen(screenId), { ...before, rev: before.rev + 1, status: 'deleted', source: null } satisfies Screen);
+  const after: Screen = { ...before, rev: before.rev + 1, status: 'deleted', source: null };
+  queueGuiDelivery(store, batchId, before, after, null);
+  store.put(keys.screen(screenId), after);
   store.audit(actor, 'screen.notScreen', screenId, { status: before.status, source: before.source }, { status: 'deleted', source: null }, reason);
 }
 
 // 배포 취소(2026-10-27 사용자 요청): 화면이 아님처럼 GUI 버전 없이 사용 안 함으로 바꾸고 원본 연결을 끊되 프레임은 제외하지 않는다.
 // 원본 프레임의 표식은 Controller가 지우므로 그 프레임은 다음 비교부터 신규 후보로 나온다. 지난 이력은 남긴다.
-function unpublishScreen(store: Store, screenId: string, actor: Actor): void {
+function unpublishScreen(store: Store, screenId: string, actor: Actor, batchId: string): void {
   const before = store.state.screens.get(screenId)!;
-  store.put(keys.screen(screenId), { ...before, rev: before.rev + 1, status: 'deleted', source: null } satisfies Screen);
+  const after: Screen = { ...before, rev: before.rev + 1, status: 'deleted', source: null };
+  queueGuiDelivery(store, batchId, before, after, null);
+  store.put(keys.screen(screenId), after);
   store.audit(actor, 'screen.unpublish', screenId, { status: before.status, source: before.source }, { status: 'deleted', source: null });
 }
 

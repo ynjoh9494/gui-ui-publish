@@ -58,7 +58,7 @@ export class FlowController {
 
   // GUI를 다시 배포하면 그 화면이 든 플로우의 썸네일만 바꾼다(2026-10-23 사용자 결정). 그룹이 지워진 플로우는 위치 기록도 지운다.
   // 플로우 실패는 배포 결과와 따로 알린다. 캔버스를 바꾸므로 플로우마다 차례로 한다.
-  async update(uids: Set<string>): Promise<string | null> {
+  async update(uids: Set<string>, requireSuccess = false): Promise<string | null> {
     if (!this.host.updateFlow || !uids.size) return null;
     const s = this.store;
     s.reload();
@@ -76,6 +76,7 @@ export class FlowController {
       }
     }
     this.forget(gone);
+    if (requireSuccess && failed.length) throw new Error(`${COPY.flow010} ${failed.join('; ')}`);
     return [updated ? `${COPY.flow008} ${updated}${COPY.flow009}` : '', failed.length ? `${COPY.flow010} ${failed.join('; ')}` : ''].filter(Boolean).join(' ') || null;
   }
 

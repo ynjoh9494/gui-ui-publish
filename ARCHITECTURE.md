@@ -4,6 +4,8 @@
 
 ## 실행 구조
 
+- 기존 플립북 등록은 `core/registerFlipbooks.ts`가 페이지·템플릿·중복을 검증하고 기록을 계획하며, Controller가 선택 읽기 → 검증 → 표식 → 저장 → 목록 갱신을 조정한다. `figma/registerFlipbooks.ts`는 선택한 프레임에 `flipbookOf`·`flipbookNode`·`registeredFlipbook` 표식만 쓴다. 새 기록 ID는 `canvas:노드ID`로 재등록 시 중복을 막고, 실제 노드 ID와 복제된 `flipbookNode`가 다르면 별도 플립북으로 등록한다. 등록된 플립북은 추적 GUI의 소속이 될 수 있고, 이름 규칙 플립북이어도 GUI 재배치를 하지 않는다.
+
 Figma 파일 안에서 실행하는 단일 플러그인이다. `manifest.json`의 두 메뉴 명령 `gui`와 `ui`가 같은 `dist/code.js`를 실행하되, `src/main.ts`가 선택한 명령을 `GUI` 또는 `UI` 모드로 `Controller`에 전달한다. 외부 서버나 네트워크 호출은 없다.
 
 ```mermaid
@@ -17,7 +19,7 @@ flowchart LR
   H["src/ui/demo.ts<br/>가상 Host"] --> C
 ```
 
-`src/ui/index.ts`는 Figma UI iframe의 시작점이다. 메시지 형식과 `Map` 직렬화는 `src/core/wire.ts`에 둔다. 브라우저 미리보기는 같은 `Controller`와 UI를 실행하고 `Host`만 가짜 Figma 데이터(`src/ui/demo.ts`)로 교체한다. 튜토리얼(`src/ui/tutorial.ts`)도 플러그인 창 안에서 같은 가짜 환경에 두 번째 `Controller`·UI를 띄워 예시 화면을 만들고 실제 창 위에 겹친다. 예시 데이터는 본체 메시지(설정·스캔·배포·플립북 만들기)로 쌓으므로 저장 형식이 바뀌어도 따라가며, 실제 `Host`와 파일 기록에는 닿지 않는다. `build.mjs`는 Figma용 `dist/code.js`, 인라인 스크립트·스타일과 Screen ID 글꼴(`src/ui/fonts/`, data URL)을 담은 `dist/ui.html`, 브라우저용 `dist/preview.html`을 만든다. `dist/`는 생성물이다.
+`src/ui/index.ts`는 Figma UI iframe의 시작점이다. 메시지 형식과 `Map` 직렬화는 `src/core/wire.ts`에 둔다. 브라우저 미리보기는 같은 `Controller`와 UI를 실행하고 `Host`만 가짜 Figma 데이터(`src/ui/demo.ts`)로 교체한다. 튜토리얼(`src/ui/tutorial.ts`)도 플러그인 창 안에서 같은 가짜 환경에 두 번째 `Controller`·UI를 띄워 예시 화면을 만들고 실제 창 위에 겹친다. 예시 데이터는 본체 메시지(설정·스캔·배포·플립북 만들기)로 쌓으므로 저장 형식이 바뀌어도 따라가며, 실제 `Host`와 파일 기록에는 닿지 않는다. `build.mjs`는 Figma 본체·UI·브라우저 미리보기를 `tmp/build/`에 만들고 완성된 파일 해시를 `build.json`에 기록한다. 검사·walkthrough는 이 경로만 사용한다. 명시적 `activate-build --plugin-closed`만 기존 `dist/`를 백업하고 검사 빌드로 전환한다. 파일 해시가 맞지 않는 불완전한 빌드는 전환하지 않는다.
 
 ## 코드 경계
 
@@ -104,13 +106,15 @@ UI Flipbook의 현재 화면 흐름은 **플립북 만들기, GUI 갱신 알림,
 
 6. 새 템플릿 플립북(`Flipbook.tracked`)의 화면 목록은 캔버스가 원본이다. 만들 때 놓은 GUI 복사본은 추적 GUI로 기록하고(`register`), 그 뒤 `syncFlipbook()`은 GUI를 다시 놓지 않는다. `TrackController`가 페이지의 복사본 표식을 읽어(`scanCopies`) 기록과 맞추고 `followMembers()`로 `Flipbook.screens`를 소속으로 바꾸면, Controller가 바뀐 플립북을 `deliverFlipbooks()`로 다시 반영해 Screen ID 칸·자동 제목을 맞춘다. 새로 든 화면은 `addedAt`을 받아, `unreviewed()`는 지금 든 화면의 기록 중 `max(확인 기준 시각, addedAt)` 뒤의 것만 확인할 것으로 본다. 화면 편집(이전 `editFlipbookScreens`)은 없앴다.
 
-플립북 반영은 `dlv:`의 `pending → applying → done/failed` 상태로 추적한다. 한 플립북 반영이 실패해도 다른 플립북은 계속 처리하며, 재시도로 미완료 대상을 다시 맞출 수 있다. GUI 복사본의 원천은 GUI 원본 프레임이며, 별도 이미지 라이브러리나 외부 전달 서버를 거치지 않는다.
+플립북 반영은 `dlv:`의 `pending → applying → done/failed` 상태로 추적한다. GUI 배포에는 화면별 `gdl:` 작업을 GUI 이력·Screen 저장보다 먼저 기록한다. 대기 중에는 확정 전·후 Screen과 GUI 기록의 의도를 보관하고, 완료하면 작은 상태 요약만 유지한다. `GuiRecovery`가 추적 GUI·플립북·플로우·DATA를 조정하며 모든 단계가 끝나야 GUI 작업을 완료한다. 반영 대상 기록은 GUI 이력을 가져오기 전에 남기므로 가져오기 직후 중단돼도 다음 재시도 대상을 잃지 않는다. Screen 기록이 중간에 끊기면 저장한 의도로 이어 쓰되 이후 다른 사용자의 변경은 덮어쓰지 않는다. 재시도 시 실제 복사할 원본 지문을 확정 기록과 비교한다. 목록에는 `retryableDeliveries()`의 실행 가능한 작업만 보내고 의도 스냅샷은 보내지 않는다. 추적 GUI 교체 후 노드 ID 저장 전에 중단되면 전체 페이지 재조회로 기존 추적 ID·시각을 새 노드에 다시 연결한다. GUI 복사본의 원천은 GUI 원본 프레임이며 외부 서버를 거치지 않는다.
 
 ## 응답성 및 변경 시 유의점
 
 - `main.ts`는 파일을 바꾸는 메시지를 하나의 큐에서 순서대로 실행한다. 캔버스에 끌어 놓은 GUI 붙이기(`figma.on('drop')`)와 UI Flipbook이 열려 있는 동안 보고 있는 페이지에 새로 생긴 노드(`nodechange`의 CREATE, 300ms마다 모아 `trackCreated`)도 이 큐로 보낸다. 스캔·취소·탐색은 큐 밖에서 처리하며, 작업 시퀀스 번호로 오래된 결과를 버린다. 캔버스 선택 이벤트는 80ms 동안 마지막 변경만 처리하고, 선택한 노드 ID가 같으면 Controller에서 추가 처리를 멈춘다. 선택이 달라도 목록에서 가리키는 화면이 같으면 UI 목록·상세는 다시 그리지 않고, PDF 선택 개수도 값이 달라질 때만 보낸다. 실행한 명령(`Host.mode`)의 목록에서만 고른다. UI Flipbook은 캔버스 선택마다 플립북 페이지를 다시 읽지 않고(캔버스 작업이 느려져서), 목록 새로고침(`refreshList`, 쓰기 큐)과 플러그인 작업 뒤에 읽는다. 읽을 때마다 `listSynced`로 시각을 알린다. 캔버스를 읽는 `inspectFlipbooks()`는 Section 표식(키)을 붙이는 쓰기를 할 수 있다(배치는 바꾸지 않는다).
 - 긴 스캔은 일정 간격으로 이벤트 루프에 양보하고 진행률을 묶어 보낸다. 한 번의 스캔 안에서는 `Snapshotter`의 변수 조회 캐시를 공유한다. 플립북 전달 작업 안에서는 페이지·프레임·템플릿 조회 캐시를 공유하되 다음 전달에서는 다시 읽는다.
-- 썸네일 응답은 화면정보의 해당 이미지 자리만 교체하고, 플로우 판과 GUI 붙이기 그리드에서는 실제로 사용하는 썸네일이 도착했을 때만 다시 그린다. GUI 붙이기·텍스트 편집기·플로우 편집기·PDF 탭 뒤에 가려진 플립북 목록과 화면정보는 선택·상태·썸네일 응답마다 갱신하지 않고 목록 탭으로 돌아올 때 그린다.
+- 썸네일 요청은 `ui/previewCache.ts`가 한 프레임 단위로 모아 보낸다. 응답은 화면정보와 플로우 판·GUI 붙이기 그리드의 해당 이미지 자리만 교체하며 카드 DOM·선택·드래그 대상·화살표는 유지한다. 일반 이미지 캐시는 최신 GUI 썸네일을 기준으로 유지하고, 교체·기록 초기화·앱 종료 때 Blob URL을 해제한다. 버린 요청의 늦은 응답은 캐시를 다시 채우지 않는다. GUI 붙이기·텍스트 편집기·플로우 편집기·PDF 탭 뒤에 가려진 플립북 목록과 화면정보는 목록 탭으로 돌아올 때 그린다.
+- `startApp()`은 종료 함수를 반환한다. 종료 시 이벤트 리스너·ResizeObserver·예약 타이머·미리보기 URL을 정리하고 뒤늦게 온 메시지는 무시한다. 튜토리얼은 예시 앱을 닫을 때 이 함수를 호출한다. `Bridge.listen()`은 구독 해제 함수를 반환할 수 있다.
+- 진행 표시를 보내는 요청은 최상위 `Controller.handle()`에서 종료한다. 처음부터 진행 문구가 있는 요청뿐 아니라 내부 자동 반영이 가능한 `scanUi`·`refreshList`·`followFlipbook`도 성공·실패·취소 후 해제한다. 목록 새로고침에서 이미 읽은 프레임 맵은 이어지는 반영 세션에 전달하고 Host가 노드·페이지·표식을 재검사한 뒤 사용한다.
 - 화면 지문 규칙을 바꾸면 `FINGERPRINT_VERSION`과 구형 기준 비교 경로를 함께 검토한다. 템플릿의 플러그인 관리 영역을 바꾸면 `figma/template.ts`의 탐색(표식·이름 규칙 둘 다), `figma/flipbook.ts`의 동기화와 UI 작성 영역 제외 규칙을 함께 확인한다.
 - `sharedPluginData` 키나 모델을 바꿀 때 `store.ts`의 로딩·호환 경로, `wire.ts`의 UI 직렬화, DATA 모델, 미리보기 Host를 함께 확인한다. 기존 데이터는 전체 자동 마이그레이션하지 않는다.
 

@@ -53,6 +53,7 @@ export function textEditor(root: HTMLElement): TextEditor {
   let future: Snapshot[] = [];
   let lastTyping = 0;
   let composing = false;
+  let compositionBefore: Snapshot | null = null;
 
   const editorEl = () => root.querySelector<HTMLElement>('.text-view .rich-editor');
 
@@ -143,11 +144,12 @@ export function textEditor(root: HTMLElement): TextEditor {
 
   // ── 문서 바꾸기 ────────────────────────────────────────
 
-  function snapshot(sel: Selection2 | null) {
-    history.push({ doc: clone(doc), sel });
+  function remember(snap: Snapshot) {
+    history.push(snap);
     if (history.length > HISTORY_LIMIT) history.shift();
     future = [];
   }
+  function snapshot(sel: Selection2 | null) { remember({ doc: clone(doc), sel }); }
 
   // 구조를 바꾸는 동작: 되돌리기 단계를 남기고 새 문서를 그린 뒤 선택을 놓는다.
   function apply(el: HTMLElement, before: Selection2 | null, next: RichParagraph[], sel: Selection2 | null) {
@@ -340,8 +342,20 @@ export function textEditor(root: HTMLElement): TextEditor {
     }
     el.addEventListener('beforeinput', ev => onBeforeInput(el, ev as InputEvent));
     el.addEventListener('input', () => onInput(el));
-    el.addEventListener('compositionstart', () => { composing = true; });
-    el.addEventListener('compositionend', () => { composing = false; onInput(el); });
+    el.addEventListener('compositionstart', () => {
+      sync(el);
+      compositionBefore = { doc: clone(doc), sel: selection(el) };
+      lastTyping = 0;
+      composing = true;
+    });
+    el.addEventListener('compositionend', () => {
+      composing = false;
+      // A cancelled composition must preserve redo and must not add an empty
+      // undo step. Commit one snapshot only when the document actually changes.
+      if (compositionBefore && JSON.stringify(read(el).doc) !== JSON.stringify(compositionBefore.doc)) remember(compositionBefore);
+      compositionBefore = null;
+      onInput(el);
+    });
     el.addEventListener('keydown', ev => onKeyDown(el, ev));
     el.addEventListener('paste', ev => onPaste(el, ev));
     el.addEventListener('copy', ev => onCopy(el, ev, false));

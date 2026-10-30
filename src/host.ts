@@ -54,6 +54,8 @@ export interface Host extends FingerprintReader {
   tagSource(nodeId: string, screenId: string, expectedScreenId?: string): Promise<void>;
   findFlipbook(pageId: string, flipbookId: string): Promise<string | null>;
   listFlipbooks(pageIds: string[]): Promise<Map<string, string>>;
+  selectedFlipbooks?(): Promise<import('./core/registerFlipbooks.ts').ExistingFlipbook[]>;
+  markExistingFlipbooks?(items: { nodeId: string; id: string; pageId: string }[]): Promise<void>;
   inspectFlipbooks?(pageIds: string[], originalsOnly?: boolean): Promise<{ found: Map<string, string>; spots: Record<string, FlipbookSpot> }>;
   flipbookSpots?(pageIds: string[]): Promise<Record<string, FlipbookSpot>>;
   templateFromSelection(): Promise<{ id: string; name: string }>;

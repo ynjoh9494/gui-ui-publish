@@ -26,6 +26,7 @@ export const keys = {
   review: (flipbookId: string) => `rv:${flipbookId}`,
   batch: (id: string) => `bat:${id}`,
   delivery: (batchId: string, targetId: string) => `dlv:${batchId}:${targetId}`,
+  guiDelivery: (batchId: string, targetId: string) => `gdl:${batchId}:${targetId}`,
   exclusion: (id: string) => `exc:${id}`,
   flow: (id: string) => `flw:${id}`,
   track: (id: string) => `trk:${id}`,
@@ -122,7 +123,7 @@ function apply(state: State, key: string, raw: string): void {
     case 'uv': pushSorted(state.ui, value.flipbookId, value, byVersion); break;
     case 'rv': state.reviews.set(value.flipbookId, value); break;
     case 'bat': state.batches.set(value.id, value); break;
-    case 'dlv': state.deliveries.set(key, value); break;
+    case 'dlv': case 'gdl': state.deliveries.set(key, value); break;
     case 'exc': state.exclusions.set(value.id, value); break;
     case 'flw': state.flows.set(value.id, value); break;
     case 'trk': state.tracks.set(value.id, value); break;

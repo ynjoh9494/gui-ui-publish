@@ -43,6 +43,9 @@ function deliverySummary(counts = new Map<DeliveryState, number>()): string {
 export function dataModel(state: State, actor: Actor, now: number): DataModel {
   const deliveries = new Map<string, Map<DeliveryState, number>>();
   for (const d of state.deliveries.values()) {
+    // GUI outbox completion includes this DATA render itself. It is reported
+    // by the plugin's recovery status, not by the existing flipbook projection.
+    if (d.kind !== 'flipbook') continue;
     const counts = deliveries.get(d.targetId) ?? new Map<DeliveryState, number>();
     counts.set(d.state, (counts.get(d.state) ?? 0) + 1);
     deliveries.set(d.targetId, counts);

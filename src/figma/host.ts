@@ -8,6 +8,7 @@ import { COLLAPSED_WINDOW, clampWindow } from '../core/wire.ts';
 import type { Host } from '../host.ts';
 import { ensureDataPage, renderDataPage } from './data.ts';
 import { createFingerprintReader } from './fingerprints.ts';
+import { selectedFlipbooks, markExistingFlipbooks } from './registerFlipbooks.ts';
 import { NS, findFlipbook, flipbookSpots, inspectFlipbooks, listFlipbooks, loadPages, moveFlipbookFrame, syncChapters, syncFlipbook, templateFromSelection, templateIssues, flipbookSession, type FlipbookSession } from './flipbook.ts';
 import { addTextFrame, fillDescription, readDescription, selectedDescriptionRoot, selectedFrame, selectionTarget } from './description.ts';
 import { createFlow, flowNode, updateFlow } from './flow.ts';
@@ -193,6 +194,7 @@ export function figmaHost(mode: Host['mode']): Host {
     inspectFlipbooks: (pageIds, originalsOnly) => inspectFlipbooks(NS, pageIds, originalsOnly),
     flipbookSpots: pageIds => flipbookSpots(NS, pageIds),
     uiFingerprint: nodeId => createFingerprintReader(sceneNode).uiFingerprint(nodeId),
+    selectedFlipbooks, markExistingFlipbooks,
     templateFromSelection,
     templateIssues,
     describeTemplate: id => describeTemplate(id, NS),

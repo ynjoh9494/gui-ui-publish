@@ -60,6 +60,14 @@ export const INDICATOR_LABEL: Record<'new' | 'changed' | 'unchanged' | 'pending'
 // 화면·안내·오류 문구. 각 항목의 주석은 문구가 처음 표시되던 코드의 행이다.
 // 문구를 바꿀 때 HTML 태그·동적 값은 사용처에 두고 여기의 텍스트만 수정한다.
 export const COPY = {
+  registerExisting: '기존 플립북 등록',
+  registerExistingHint: '캔버스에서 선택한 프레임을 기존 모습 그대로 목록에 등록합니다.',
+  registerExistingSelect: '등록할 플립북의 바깥쪽 프레임을 캔버스에서 선택하세요. 여러 프레임을 함께 선택할 수 있습니다.',
+  registerExistingPage: '선택한 프레임의 페이지를 관리에서 플립북 페이지로 지정한 뒤 다시 등록하세요.',
+  registerExistingTemplate: '지정한 템플릿은 플립북으로 등록할 수 없습니다.',
+  registerExistingChanged: '선택한 프레임이 변경되었습니다. 다시 선택해 등록하세요.',
+  registerExistingDone: '개를 목록에 등록했습니다. 이미 등록된 프레임은 중복 추가하지 않았습니다.',
+  registerExistingUnsupported: '목록에 등록된 프레임입니다. 시스템 항목을 반영하려면 템플릿 구조에 맞는 칸이 필요합니다.',
   adminAutoPages: '자동 관리 페이지',
   adminWorkSetup: '작업 환경',
   adminCommon: '공통 관리',
@@ -1078,6 +1086,12 @@ export const COPY = {
   uiPreview058: "선택한 레이어",
   uiPreview059: "템플릿 연결:",
   uiPreview060: "기본 템플릿을 만들었습니다.",
+  recoveryConflict: '중단 후 화면 기록이 변경되어 자동으로 덮어쓰지 않았습니다. 현재 기록을 확인하세요.',
+  recoveryPending: 'GUI 배포 기록은 저장되었습니다. 화면 반영이 끝나지 않아 관리에서 미반영 재시도가 필요합니다.',
+  recoverySourceChanged: '배포 후 GUI 원본이 변경되어 이전 배포로 덮어쓰지 않았습니다. 변경사항을 확인한 뒤 다시 배포하세요.',
+  recoveryCopiesIncomplete: '일부 추적 GUI를 반영하지 못했습니다.',
+  recoveryRetryHint: '확정된 GUI 기록과 실제 반영 상태를 다시 확인합니다. 배포 버전이나 이력을 추가하지 않습니다.',
+  recoveryAvailable: '미완료 반영',
 } as const;
 
 // 화면·안내·오류 문구. 원본 파일과 행은 추출 당시 위치다.

@@ -1,6 +1,11 @@
-// dist/code.js: 플러그인 본체, dist/ui.html: 플러그인 UI(스크립트·스타일 인라인), dist/preview.html: 브라우저 미리보기
+// tmp/build/: 검사 전용 본체·UI·미리보기. 실제 dist 전환은 activate-build만 담당한다.
 import { build } from 'esbuild';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { createHash } from 'node:crypto';
+
+// Validation builds never touch the manifest's live dist directory.
+const outDir = 'tmp/build';
 
 const common = { bundle: true, write: false, target: 'es2017', charset: 'utf8', logLevel: 'warning' };
 
@@ -10,8 +15,8 @@ async function bundle(entry) {
   return result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 }
 
-await mkdir('dist', { recursive: true });
-await writeFile('dist/code.js', await bundle('src/main.ts'));
+await mkdir(outDir, { recursive: true });
+await writeFile(join(outDir, 'code.js'), await bundle('src/main.ts'));
 
 // Screen ID 글꼴(Roboto Condensed 라틴 600, SIL OFL 1.1: src/ui/fonts/OFL.txt). 외부 통신을 하지 않으므로 data URL로 넣는다.
 const idFont = (await readFile('src/ui/fonts/roboto-condensed-latin-600-normal.woff2')).toString('base64');
@@ -25,7 +30,7 @@ const page = (title, body, script, extraCss = '') => `<!doctype html>
 <body>${body}<script>${script}</script></body></html>
 `;
 
-await writeFile('dist/ui.html', page('GUI·UI Publish', '<div id="app"></div>', await bundle('src/ui/index.ts')));
+await writeFile(join(outDir, 'ui.html'), page('GUI·UI Publish', '<div id="app"></div>', await bundle('src/ui/index.ts')));
 
 const previewCss = `
 body.preview { display: flex; gap: 16px; padding: 16px; height: auto; min-height: 100%; background: #e9ecef; flex-wrap: wrap; }
@@ -38,8 +43,11 @@ body.preview { display: flex; gap: 16px; padding: 16px; height: auto; min-height
 .preview .preview-text { tab-size: 2; font: 11px/1.5 ui-monospace, monospace; background: #fff; border-radius: 6px; padding: 8px; margin: 0; white-space: pre-wrap; }
 .preview #log { font: 11px/1.5 ui-monospace, monospace; background: #fff; border-radius: 6px; padding: 8px; max-height: 260px; overflow: auto; }
 @media (max-width: 520px) { .preview #app { width: 100%; } }`;
-await writeFile('dist/preview.html', page('GUI·UI Publish 미리보기',
+await writeFile(join(outDir, 'preview.html'), page('GUI·UI Publish 미리보기',
   '<div id="app"></div><aside><div id="tools"></div><h2>캔버스 이동 기록</h2><div id="log"></div></aside>',
   await bundle('src/ui/preview.ts'), previewCss).replace('<body>', '<body class="preview">'));
 
-console.log('dist/code.js, dist/ui.html, dist/preview.html');
+const hashes = {};
+for (const file of ['code.js', 'ui.html', 'preview.html']) hashes[file] = createHash('sha256').update(await readFile(join(outDir, file))).digest('hex');
+await writeFile(join(outDir, 'build.json'), JSON.stringify({ builtAt: new Date().toISOString(), hashes }, null, 2));
+console.log('Validation build: tmp/build/code.js, ui.html, preview.html (live dist unchanged)');

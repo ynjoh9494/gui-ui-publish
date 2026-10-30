@@ -21,7 +21,7 @@ export interface TutorialOptions {
   root: HTMLElement;
   // 실제 플러그인 창 크기를 바꾼다(다음 실행 크기로 기억하지 않는다).
   resize(width: number, height: number): void;
-  startApp(bridge: Bridge, root: HTMLElement): void;
+  startApp(bridge: Bridge, root: HTMLElement): () => void;
 }
 
 // 예시 화면에 필요한 창 크기. 새 플립북·새 버전 페이지가 넓히는 크기와 같다.
@@ -459,6 +459,7 @@ export function startTutorial(options: TutorialOptions): void {
   const { root, mode } = options;
   const steps = mode === 'UI' ? UI_STEPS : GUI_STEPS;
   let closed = false;
+  let disposeApp: (() => void) | undefined;
   // shown: 보여 주는 단계. 다음 단계를 준비하는 동안에는 앞 단계 그림을 그대로 둔다.
   let shown = -1;
   let preparing = false;
@@ -617,6 +618,7 @@ export function startTutorial(options: TutorialOptions): void {
     window.removeEventListener('resize', follow);
     window.removeEventListener('scroll', follow, true);
     demo.listen(() => {});
+    disposeApp?.();
     container.remove();
     root.inert = false;
     if (widened) options.resize(before.width, before.height);
@@ -633,7 +635,7 @@ export function startTutorial(options: TutorialOptions): void {
     catch (error) { if (!closed) console.warn('tutorial seed', error); }
     if (closed) return;
     const controller = new Controller(demo.host);
-    options.startApp({
+    disposeApp = options.startApp({
       send: message => { void controller.handle(message); },
       listen: handler => demo.listen(message => setTimeout(() => { if (!closed) handler(message); }, 0)),
     }, app);

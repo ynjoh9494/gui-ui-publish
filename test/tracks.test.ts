@@ -210,6 +210,17 @@ test('플러그인이 열려 있는 동안 복제한 추적 GUI는 새 기록을
 });
 
 
+test('GUI 교체 뒤 노드 ID 저장 전에 중단되어도 전체 페이지 재조회로 기존 추적 ID와 시각을 유지한다', async () => {
+  const found: FoundCopy[] = [{ nodeId: 'new', pageId: 'p1', uid: 's1', version: 2, trackId: 't1', flipbookId: null }];
+  const { store, tracks } = setup(found);
+  store.put(keys.screen('s1'), screenRecord('s1', 'STB_HO_001', 2));
+  store.put(keys.track('t1'), { id: 't1', uid: 's1', nodeId: 'old', pageId: 'p1', createdAt: 600, actor } satisfies TrackRecord);
+  await tracks.publish(new Set(['s1']));
+  assert.equal(store.state.tracks.size, 1);
+  assert.equal(store.state.tracks.get('t1')?.nodeId, 'new');
+  assert.equal(store.state.tracks.get('t1')?.createdAt, 600);
+});
+
 test('삭제 배포는 동기화 전 옮긴 GUI의 현재 소속에만 경고하고 추적을 멈춘다', async () => {
   const found: FoundCopy[] = [{ nodeId: 'n1', pageId: 'p2', uid: 's1', version: 1, trackId: 't1', flipbookId: 'b' }];
   const { store, tracks, calls } = setup(found);

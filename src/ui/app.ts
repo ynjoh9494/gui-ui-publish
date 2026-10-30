@@ -12,6 +12,8 @@ import { trackListView } from './trackListView.ts';
 import { pdfView } from './pdfView.ts';
 import { changeReasonSection, REASON_PAGE } from './changeReason.ts';
 import { esc } from './html.ts';
+import { NODE_PREVIEW, PreviewCache } from './previewCache.ts';
+import { retryableDeliveries } from '../core/guiDelivery.ts';
 import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScreen, isDeletion, isPrevious, isUnpublish, mergesInto, needsLink, OPTIONAL_FIELDS, pendingScreens, renumberAutoCodes, STATUS_LABEL, validateDraft, type Draft, type DraftIndex, type InputStatus, type Validation } from '../core/drafts.ts';
 import { formatTime, type HistoryRow } from '../core/history.ts';
 import { arrangeFlipbooks, buildList, guiGroupKey, placeDrafts, savedGuiDisplay, savedGuiPlace, UNCATEGORIZED, type ArrangedGroup, type GuiPlace, type ListModel } from '../core/list.ts';
@@ -29,7 +31,7 @@ import { clampWindow, fromWire, PANE, pasteDropMetadata, type AdminOp, type NavT
 
 export interface Bridge {
   send(message: ToMain): void;
-  listen(handler: (message: ToUi) => void): void;
+  listen(handler: (message: ToUi) => void): void | (() => void);
   // GUI 붙이기: 창 밖(캔버스)에 놓았을 때 Figma에 알린다(pluginDrop). 미리보기에는 없다.
   drop?(clientX: number, clientY: number, metadata: unknown): void;
 }
@@ -45,8 +47,6 @@ export function sortScreenItems(items: ScreenItem[], preferredCategoryId?: strin
 }
 
 type Tab = Team | 'ADMIN';
-
-const NODE_PREVIEW = 'node:';
 
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
 const WHILE_BUSY = new Set(['tab', 'settings', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel']);
@@ -80,7 +80,26 @@ function mixedMark(mixed: boolean): string {
   return mixed ? ` <span class="mixed">${esc(COPY.uiApp175)}</span>` : '';
 }
 
-export function startApp(bridge: Bridge, root: HTMLElement): void {
+export function startApp(bridge: Bridge, root: HTMLElement): () => void {
+  let disposed = false;
+  const cleanups: (() => void)[] = [];
+  const events = new AbortController();
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+  function later(callback: () => void, delay = 0) {
+    const timer = globalThis.setTimeout(() => {
+      timers.delete(timer);
+      if (!disposed) callback();
+    }, delay);
+    timers.add(timer);
+    return timer;
+  }
+  function cancelLater(timer: ReturnType<typeof setTimeout>) {
+    globalThis.clearTimeout(timer);
+    timers.delete(timer);
+  }
+  function on<K extends keyof HTMLElementEventMap>(type: K, listener: (event: HTMLElementEventMap[K]) => void, capture = false) {
+    root.addEventListener(type, listener, { signal: events.signal, capture });
+  }
   let state: State | null = null;
   let actor: Actor | null = null;
   let pages: PageInfo[] = [];
@@ -157,9 +176,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   let listSyncedAt: number | null = null;
   let refreshingList = false;
   // 썸네일 이미지: 해시 → blob URL(불러오는 중이면 '')
-  const thumbUrls = new Map<string, string>();
+  const previewCache = new PreviewCache(message => bridge.send(message));
+  const thumbUrls = previewCache.urls;
   // 읽지 못한 썸네일(해시)과 내보내지 못한 프레임 미리보기(`node:` 키). 다시 요청하지 않고 「썸네일 없음」으로 보여 준다.
-  const failedPreviews = new Set<string>();
+  const failedPreviews = previewCache.failed;
   const drafts: Record<Team, Record<string, Draft>> = { GUI: {}, UI: {} };
   // 필수 입력 테두리는 해당 입력에서 벗어난 뒤 또는 미충족 항목으로 이동한 뒤에만 표시한다.
   const touched: Record<Team, Record<string, Set<string>>> = { GUI: {}, UI: {} };
@@ -239,6 +259,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     <div class="startup-overlay" role="status" aria-live="polite"><div class="startup-content"><div class="startup-label">${COPY.uiApp001}</div><div class="startup-progress" role="progressbar" aria-label="${COPY.uiApp001}"><span></span></div></div></div>
     <div class="busy" role="status" aria-live="polite" hidden><span class="spinner" aria-hidden="true"></span><span class="busy-label"></span></div>
     <header class="tabs" role="tablist"></header>
+    <div class="recovery-status template-warning" role="status" hidden></div>
     <div class="toolbar"></div>
     <section class="list" aria-label="${COPY.uiApp002}"></section>
     <div class="pane-divider" role="separator" aria-orientation="vertical" aria-label="목록과 화면정보 너비 조절" tabindex="0"></div>
@@ -250,7 +271,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     <div class="overlay arrange-overlay" hidden></div>
     <div class="resize-handle" title="${COPY.uiApp208}" aria-label="${COPY.uiApp208}"></div>`;
   const $ = (sel: string) => root.querySelector(sel) as HTMLElement;
-  bridge = windowCollapse(bridge, root, () => mode);
+  bridge = windowCollapse(bridge, root, () => mode, events.signal);
   const editor = textEditor(root);
   const pdf = pdfView(root);
   const flows = flowView(root, {
@@ -319,7 +340,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       ev.preventDefault();
       setWidth(next);
     });
-    new ResizeObserver(sync).observe(root);
+    const observer = new ResizeObserver(sync);
+    observer.observe(root);
+    cleanups.push(() => observer.disconnect());
   }
 
   // 창 크기 손잡이: 끄는 동안 프레임마다 크기를 보내고, 놓으면 그 크기를 기억한다.
@@ -330,6 +353,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     let start: { x: number; y: number; width: number; height: number } | null = null;
     let pending: { width: number; height: number } | null = null;
     let frame = 0;
+    cleanups.push(() => { if (frame) cancelAnimationFrame(frame); });
     const send = (save = false) => {
       frame = 0;
       if (pending) bridge.send({ type: 'resize', ...pending, save });
@@ -772,7 +796,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   }
 
   function clearScanFinishTimer(t: Team) {
-    if (scanFinishTimer[t]) clearTimeout(scanFinishTimer[t]);
+    if (scanFinishTimer[t]) cancelLater(scanFinishTimer[t]);
     scanFinishTimer[t] = null;
   }
 
@@ -814,8 +838,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   function renderFooter() { footerDirty = true; scheduleList(); }
   let listRebuildTimer: ReturnType<typeof setTimeout> | null = null;
   function deferListRebuild() {
-    if (listRebuildTimer) clearTimeout(listRebuildTimer);
-    listRebuildTimer = setTimeout(() => { listRebuildTimer = null; renderList(); }, 120);
+    if (listRebuildTimer) cancelLater(listRebuildTimer);
+    listRebuildTimer = later(() => { listRebuildTimer = null; renderList(); }, 120);
   }
   function updateVisibleGuiNames() {
     const selectedRows = selection.GUI;
@@ -923,7 +947,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const list = $('.list');
     if (list.dataset.team !== 'UI' || !list.querySelector('.list-body')) {
       list.dataset.team = 'UI';
-      list.innerHTML = `<div class="list-filters"><div class="review-line"><p class="review-count" aria-live="polite"></p></div><div class="list-actions"><button class="add-button" data-action="new-add" title="고른 플립북 다음에 새 플립북을 넣습니다. 만들기를 누르기 전에는 저장하지 않습니다.">${ADD_LABEL.replace(COPY.uiApp101, '새 플립북')}</button><button data-action="bulk-open">플립북 없는 화면 일괄 만들기</button></div><input type="search" placeholder="${COPY.uiApp020}" value="${esc(query.UI)}" data-input="query" aria-label="${COPY.uiApp021}"><div class="filter-line"><span class="sync-status"></span><label class="switch"><span>${COPY.uiApp301}</span><input type="checkbox" role="switch" data-action="changed-only" ${changedOnly.UI ? 'checked' : ''}></label></div></div><div class="list-body"><div class="list-box"></div><div class="unlinked-all"></div></div>`;
+      list.innerHTML = `<div class="list-filters"><div class="review-line"><p class="review-count" aria-live="polite"></p></div><div class="list-actions"><button class="add-button" data-action="new-add" title="고른 플립북 다음에 새 플립북을 넣습니다. 만들기를 누르기 전에는 저장하지 않습니다.">${ADD_LABEL.replace(COPY.uiApp101, '새 플립북')}</button><button data-action="register-existing" title="${COPY.registerExistingHint}">${COPY.registerExisting}</button><button data-action="bulk-open">플립북 없는 화면 일괄 만들기</button></div><input type="search" placeholder="${COPY.uiApp020}" value="${esc(query.UI)}" data-input="query" aria-label="${COPY.uiApp021}"><div class="filter-line"><span class="sync-status"></span><label class="switch"><span>${COPY.uiApp301}</span><input type="checkbox" role="switch" data-action="changed-only" ${changedOnly.UI ? 'checked' : ''}></label></div></div><div class="list-body"><div class="list-box"></div><div class="unlinked-all"></div></div>`;
     }
     const canCreate = flipbookPageOptions().length > 0;
     for (const button of list.querySelectorAll<HTMLButtonElement>('.list-actions button')) {
@@ -1283,21 +1307,18 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   }
   // `node:` 키는 썸네일이 아니라 캔버스 프레임을 바로 내보낸 미리보기다(새 버전 페이지 비교).
   function requestThumbs(hashes: (string | null)[]) {
-    const missing = [...new Set(hashes.filter((h): h is string => !!h && !thumbUrls.has(h)))];
-    if (!missing.length) return;
-    for (const h of missing) thumbUrls.set(h, '');
-    const nodeIds = missing.filter(h => h.startsWith(NODE_PREVIEW)).map(h => h.slice(NODE_PREVIEW.length));
-    const images = missing.filter(h => !h.startsWith(NODE_PREVIEW));
-    if (images.length) bridge.send({ type: 'thumbnails', hashes: images });
-    if (nodeIds.length) bridge.send({ type: 'framePreviews', nodeIds });
+    previewCache.request(hashes);
   }
   function clearNodePreviews() {
-    for (const [key, url] of [...thumbUrls]) {
-      if (!key.startsWith(NODE_PREVIEW)) continue;
-      if (url) URL.revokeObjectURL(url);
-      thumbUrls.delete(key);
-      failedPreviews.delete(key);
+    previewCache.clearNodes();
+  }
+  function retainThumbs() {
+    const hashes = new Set<string>();
+    for (const records of state?.gui.values() ?? []) {
+      const hash = records[records.length - 1]?.thumb?.hash;
+      if (hash) hashes.add(hash);
     }
+    previewCache.retain(hashes);
   }
   function thumbImg(hash: string | null, alt: string): string {
     const url = hash ? thumbUrls.get(hash) : null;
@@ -1701,7 +1722,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     const uiPageIds = s.project.flipbookPageIds;
     const availableUiPages = pages.filter(p => p.id !== s.project.dataPageId && !uiPageIds.includes(p.id));
     const workers = [...s.workers.values()].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-    const pending = [...s.deliveries.values()].filter(d => d.state !== 'done');
+    const pending = retryableDeliveries(s);
     const exclusions = [...s.exclusions.values()].filter(e => e.active);
     // GUI Publish는 원본 범위·제외, UI Flipbook은 템플릿을 설정한다. 작업자·DATA·기록·초기화는 둘 다 쓴다.
     const gui = mode === 'GUI';
@@ -1737,7 +1758,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         <div class="inline" data-form="wrk-add"><input data-f="name" placeholder="${COPY.uiApp119}"><button class="add-button" data-action="admin-wrk-add">${ADD_LABEL}</button></div></section>
       ${gui ? `<section class="admin" data-form="exclusions"><h3>${COPY.uiApp120}</h3>
         ${exclusions.length ? exclusions.map(e => `<div class="inline" data-form="exc" data-id="${e.id}"><span>${esc(e.name)}</span><small>${esc(e.reason)}</small><button data-action="admin-unexclude">${COPY.uiApp121}</button></div>`).join('') : `<p class="note">${COPY.uiApp122}</p>`}</section>` : ''}
-      <section class="admin" data-form="pending"><h3>${COPY.adminPending}</h3><p>${pending.length}${COPY.uiApp081}</p>${pending.length ? `<button data-action="retry">${COPY.uiApp124}</button>` : ''}</section>
+      <section class="admin" data-form="pending"><h3>${COPY.adminPending}</h3><p>${pending.length}${COPY.uiApp081}</p><p class="note">${COPY.recoveryRetryHint}</p><button data-action="retry">${COPY.uiApp124}</button></section>
       <section class="admin" data-form="audit"><h3>${COPY.uiApp125}</h3>
         ${s.audit.slice(-15).reverse().map(a => `<div class="audit"><small>${esc(new Date(a.at).toLocaleString('ko-KR'))}</small> ${esc(a.actor.name)} · ${esc(a.action)}${a.reason ? ` · ${esc(a.reason)}` : ''}</div>`).join('') || `<p class="note">${COPY.uiApp122}</p>`}</section>
       ${issues.length ? `<section class="admin" data-form="issues"><h3>${COPY.uiApp126}</h3>${issues.map(i => `<div class="bad">${esc(i)}</div>`).join('')}</section>` : ''}
@@ -2170,6 +2191,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   }
 
   function renderAll() {
+    renderRecovery();
     renderTabs(); renderToolbar(); renderList(); renderDetail(); renderFooter(); renderConfirm(); renderVersion(); renderToast();
     const textShown = textOpen && mode === 'UI' && tab !== 'ADMIN' && !!state;
     flows.render(flowOpen && mode === 'UI' && tab !== 'ADMIN' && !!state);
@@ -2180,6 +2202,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     pdf.render(pdfShown);
     if (pdfShown !== pdfTabSent) { pdfTabSent = pdfShown; bridge.send({ type: 'pdfTab', open: pdfShown }); }
     root.classList.toggle('admin-mode', tab === 'ADMIN');
+  }
+
+  function renderRecovery() {
+    const count = state ? retryableDeliveries(state).length : 0;
+    const warning = $('.recovery-status');
+    root.classList.toggle('has-recovery', count > 0);
+    warning.hidden = !count;
+    warning.innerHTML = count ? `<span>${COPY.recoveryAvailable} ${count}${COPY.uiApp081}</span><button data-action="retry">${COPY.uiApp124}</button>` : '';
   }
 
   // 입력 중에는 입력란을 다시 그리지 않아 포커스를 유지한다.
@@ -2193,7 +2223,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     toast = { kind, text };
     renderToast();
     const shown = toast;
-    setTimeout(() => { if (toast === shown) { toast = null; renderToast(); } }, kind === 'error' ? 6000 : 3500);
+    later(() => { if (toast === shown) { toast = null; renderToast(); } }, kind === 'error' ? 6000 : 3500);
   }
 
   // ── 조작 ─────────────────────────────────────────────
@@ -2390,7 +2420,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     return input.value;
   }
 
-  root.addEventListener('click', ev => {
+  on('click', ev => {
     const target = ev.target as HTMLElement;
     // 목록 행 안의 제목 입력을 누르면 행을 다시 고르지 않는다(다시 그리면 입력이 사라진다).
     if (target.closest('.list-box .title-input')) return;
@@ -2420,6 +2450,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         break;
       // 만들기 전 새 플립북은 설정을 다녀와도 남는다.
       case 'create-page-manage': tab = 'ADMIN'; adminOpen = COPY.uiApp107; renderAll(); bridge.send({ type: 'templateInfo' }); break;
+      case 'register-existing': bridge.send({ type: 'registerFlipbooks' }); break;
       case 'new-add': if (addNew()) { revealSelection = true; renderList(); } break;
       case 'new-select': if (target.closest('button')) break; selectNew(el.dataset.key!); break;
       case 'new-remove': ev.stopPropagation(); removeNew(el.dataset.key!); break;
@@ -2868,7 +2899,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     box.replaceChildren(img);
     position();
   }
-  root.addEventListener('pointerover', ev => {
+  on('pointerover', ev => {
     const target = ev.target as HTMLElement;
     const el = target.closest('button, [role="button"]') ? null : target.closest<HTMLElement>('[data-thumb]');
     const hash = el?.dataset.thumb;
@@ -2881,7 +2912,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
 
   // 새 플립북: 화면을 우클릭하면 그 화면 하나로 된 새 플립북을 목록(화면 카테고리 Section 맨 뒤)에 추가한다.
   // 화면·제목이 비어 있는 새 플립북이 있으면 그 항목을 채운다. 현재 고른 항목은 그대로 둔다.
-  root.addEventListener('contextmenu', ev => {
+  on('contextmenu', ev => {
     const option = (ev.target as HTMLElement).closest<HTMLElement>('.new-flipbook-detail .create-screen-option');
     const uid = option?.querySelector<HTMLInputElement>('[data-action="create-screen-toggle"]')?.value;
     if (!uid) return;
@@ -2891,13 +2922,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   });
 
   // 제목을 고치는 중에 연필을 누르면 입력에서 포커스가 빠지지 않게 한다. 확정·닫기는 연필의 클릭이 맡는다.
-  root.addEventListener('mousedown', ev => {
+  on('mousedown', ev => {
     if (editingTitle && (ev.target as HTMLElement).closest('[data-action="fb-edit-title"], [data-action="new-edit-title"]')) ev.preventDefault();
   });
 
   // 플립북 이름을 더블클릭하면 그 자리(목록 행·오른쪽 영역)에서 제목을 고친다(2026-10-22 사용자 요청).
   // 연결이 끊긴 플립북과 여러 개를 고른 상세 제목에는 data-edit-title을 붙이지 않는다.
-  root.addEventListener('dblclick', ev => {
+  on('dblclick', ev => {
     const name = (ev.target as HTMLElement).closest<HTMLElement>('[data-edit-title]');
     if (!name || busyLabel || newSubmitting) return;
     ev.preventDefault();
@@ -2956,7 +2987,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       row.uids = rest;
     });
   }
-  root.addEventListener('dragstart', ev => {
+  on('dragstart', ev => {
     const category = (ev.target as HTMLElement).closest<HTMLElement>('.list-box .group-bar[draggable="true"]')?.closest<HTMLElement>('.group[data-category]');
     if (category) {
       if (busyLabel) { ev.preventDefault(); return; }
@@ -2982,7 +3013,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
     row.classList.add('dragging');
   });
-  root.addEventListener('dragover', ev => {
+  on('dragover', ev => {
     if (draggingCategory) {
       const drop = categoryDrop(ev);
       clearDrop();
@@ -3008,7 +3039,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
     target.node.classList.add(target.to.start ? 'drop-into' : target.to.before ? 'drop-before' : 'drop-after');
   });
-  root.addEventListener('drop', ev => {
+  on('drop', ev => {
     if (draggingCategory) {
       const drop = categoryDrop(ev);
       const id = draggingCategory;
@@ -3039,7 +3070,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     if (isNewKey(key)) selectNew(key); else { revealSelection = true; renderList(); }
     renderFooter();
   });
-  root.addEventListener('dragend', () => {
+  on('dragend', () => {
     draggingNew = null;
     draggingScreen = null;
     draggingCategory = null;
@@ -3048,7 +3079,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   });
 
   // 설정 아코디언: 하나를 열면 나머지를 접는다. toggle 이벤트는 버블링되지 않아 캡처로 받는다.
-  root.addEventListener('toggle', ev => {
+  on('toggle', ev => {
     const details = ev.target as HTMLDetailsElement;
     if (details.classList?.contains('prev-thumb')) {
       if (prevThumbOpen === details.open) return;
@@ -3071,7 +3102,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     for (const other of root.querySelectorAll<HTMLDetailsElement>('details.accordion')) if (other !== details) other.open = false;
   }, true);
 
-  root.addEventListener('keydown', ev => {
+  on('keydown', ev => {
     const el = ev.target as HTMLElement;
     if (bulk && ev.key === 'Escape' && !bulk.submitting) { ev.preventDefault(); bulk = null; renderBulk(); return; }
     if (newDialog && ev.key === 'Escape') { ev.preventDefault(); newDialog = null; renderNewDialog(); return; }
@@ -3151,7 +3182,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     }
   });
 
-  root.addEventListener('input', ev => {
+  on('input', ev => {
     const el = ev.target as HTMLInputElement;
     if (el.classList.contains('picker-search')) { filterScreenPicker(el.closest('details')!, el.value); return; }
     if (bulk && el.dataset.input?.startsWith('bulk-')) {
@@ -3250,20 +3281,20 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   });
 
   // 오른쪽 새 플립북 제목: 자동 제목이 채워져 있으면 눌렀을 때 전체를 골라 바로 새로 입력하게 한다.
-  root.addEventListener('focusin', ev => {
+  on('focusin', ev => {
     const el = ev.target as HTMLInputElement;
     if (el.dataset.input !== 'new-title' || el.closest('.list-box')) return;
     const n = newFlipbooks.find(x => x.key === el.dataset.key);
-    if (n && !n.title.trim()) setTimeout(() => { if (document.activeElement === el) el.select(); }, 0);
+    if (n && !n.title.trim()) later(() => { if (document.activeElement === el) el.select(); }, 0);
   });
 
-  root.addEventListener('focusout', ev => {
+  on('focusout', ev => {
     const control = ev.target as HTMLElement;
     // 제목 입력에서 벗어나면 확정한다. 새 플립북 제목은 입력할 때마다 반영되어 있다.
     if (control.dataset.input === 'new-title' || control.dataset.input === 'fb-title') {
       const id = control.dataset.input === 'fb-title' ? control.dataset.id! : control.dataset.key!;
       const value = (control as HTMLInputElement).value;
-      setTimeout(() => {
+      later(() => {
         if (editingTitle !== id || root.querySelector(`[data-input="${control.dataset.input}"]:focus`)) return;
         if (control.dataset.input === 'fb-title') renameExisting(id, value);
         else { editingTitle = null; renderDetail(); renderList(); }
@@ -3279,7 +3310,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
     touchField(team(), field);
   });
 
-  root.addEventListener('change', ev => {
+  on('change', ev => {
     const el = ev.target as HTMLInputElement | HTMLSelectElement;
     if (el.dataset.input === 'version-page') { versionPageId = el.value; versionArmed = false; renderVersion(); return; }
     if (el.dataset.input === 'version-link' && el.dataset.screen) {
@@ -3388,10 +3419,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
 
   // ── 수신 ─────────────────────────────────────────────
 
-  bridge.listen(msg => {
+  const unlisten = bridge.listen(msg => {
+    if (disposed) return;
     if ('managedPages' in msg && msg.managedPages) managedPages = msg.managedPages;
     switch (msg.type) {
       case 'init':
+        previewCache.clear();
         state = fromWire(msg.state); actor = msg.actor; pages = msg.pages; issues = msg.issues;
         if (mode !== msg.mode || tab !== 'ADMIN') { mode = msg.mode; tab = mode; }
         // GUI Publish는 플립북 페이지를 확인하지 않으므로 초기 데이터가 오면 바로 연다.
@@ -3438,6 +3471,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         const previousActiveWorkers = state ? [...state.workers.values()].filter(worker => worker.active).length : 0;
         const previousRules = state ? codeRules(state) : '';
         state = fromWire(msg.state);
+        renderRecovery();
+        retainThumbs();
         if (previousRules && previousRules !== codeRules(state)) renumberCodes();
         pages = msg.pages;
         for (const key of selection.UI) if (state.flipbooks.get(key)?.status !== 'active') selection.UI.delete(key);
@@ -3526,7 +3561,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
           if (remaining) {
             updateScanStatus(t, { status: 'comparing', done: msg.done, total: msg.total, checkedAt: null, partialAt: null });
             clearScanFinishTimer(t);
-            scanFinishTimer[t] = setTimeout(() => {
+            scanFinishTimer[t] = later(() => {
               scanFinishTimer[t] = null;
               scanStartedAt[t] = 0;
               updateScanStatus(t, { status: 'done', done: msg.done, total: msg.total, checkedAt: msg.checkedAt, partialAt: msg.partialAt });
@@ -3649,8 +3684,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
       case 'framePreviews':
         for (const item of msg.items) {
           const key = NODE_PREVIEW + item.nodeId;
-          if (item.bytes) thumbUrls.set(key, URL.createObjectURL(new Blob([new Uint8Array(item.bytes)], { type: 'image/png' })));
-          else { thumbUrls.set(key, ''); failedPreviews.add(key); }
+          previewCache.receive(key, item.bytes, 'image/png');
         }
         if (versionOpen) renderVersionDetail();
         showHoverThumb();
@@ -3677,8 +3711,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
         break;
       case 'thumbnails':
         for (const item of msg.items) {
-          if (item.bytes) thumbUrls.set(item.hash, URL.createObjectURL(new Blob([new Uint8Array(item.bytes)], { type: 'image/jpeg' })));
-          else { thumbUrls.set(item.hash, ''); failedPreviews.add(item.hash); }
+          previewCache.receive(item.hash, item.bytes, 'image/jpeg');
         }
         // 플립북 만들기·화면 편집 창은 마우스를 올린 미리보기만 쓰므로 다시 그리지 않는다(열린 화면 선택이 닫히지 않게).
         if (versionOpen) renderVersionDetail();
@@ -3745,4 +3778,19 @@ export function startApp(bridge: Bridge, root: HTMLElement): void {
   renderBusy();
   renderStartup();
   bridge.send({ type: 'ready' });
+  return () => {
+    if (disposed) return;
+    disposed = true;
+    events.abort();
+    unlisten?.();
+    for (const cleanup of cleanups) cleanup();
+    flows.dispose();
+    trackList.dispose();
+    previewCache.clear();
+    if (renderFrame) cancelAnimationFrame(renderFrame);
+    if (listRebuildTimer) cancelLater(listRebuildTimer);
+    for (const t of ['GUI', 'UI'] as Team[]) clearScanFinishTimer(t);
+    for (const timer of timers) globalThis.clearTimeout(timer);
+    timers.clear();
+  };
 }

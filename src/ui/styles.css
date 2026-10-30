@@ -502,6 +502,15 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .unlinked, .gui-size { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
 .unlinked .note, .gui-size .note { flex: 1; margin: 0; }
 .template-warning { display: flex; flex-direction: column; gap: 2px; }
+.recovery-status { grid-column: 1 / -1; grid-row: 2; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); background: var(--bg2); }
+.recovery-status button { flex: none; }
+.recovery-status[hidden] { display: none; }
+#app.has-recovery, .tutorial-app.has-recovery { grid-template-rows: auto auto auto minmax(0, 1fr) auto; }
+.has-recovery > .tabs { grid-row: 1; }
+.has-recovery > .toolbar { grid-row: 3; }
+.has-recovery > :is(.list, .detail, .pane-divider) { grid-row: 4; }
+.has-recovery > .footer { grid-row: 5; }
+.has-recovery > :is(.paste-view, .flow-view, .text-view, .pdf-view, .version-view) { grid-row: 3 / 6; }
 .unlinked-all { display: flex; flex-direction: column; gap: 4px; margin: 0 8px 8px; }
 .unlinked-all:empty { display: none; }
 .unlinked-all .note { display: flex; align-items: center; gap: 6px; margin: 0; }

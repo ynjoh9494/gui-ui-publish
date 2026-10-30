@@ -2,6 +2,7 @@ import { COPY } from '../core/copy.ts';
 import type { GuiScreenInfo } from '../core/guiScreens.ts';
 import type { FlipbookScale } from '../core/types.ts';
 import { esc } from './html.ts';
+import { thumbnailImage, updateThumbnailImages } from './thumbnailImage.ts';
 import { ALL_CATEGORIES, filterPickerScreens, screenCategories, screenPickerControls, screenPickerEmpty, screenLinkButton } from './screenPicker.ts';
 
 // GUI 붙이기 탭(2026-10-29 사용자 결정, Altimedia PRD 「화면 추적과 GUI 붙이기」 §4.3): 배포된 화면을 캔버스에 붙인다(추적 GUI).
@@ -50,14 +51,15 @@ export function pasteView(root: HTMLElement, actions: PasteActions): PasteView {
 
   function card(s: GuiScreenInfo): string {
     const url = s.thumb ? actions.thumb(s.thumb.hash) : null;
-    const image = url ? `<img src="${url}" alt="" draggable="false">` : `<span class="paste-thumb-empty">${s.thumb ? '' : COPY.flow005}</span>`;
+    const image = thumbnailImage(s.thumb?.hash, url, s.thumb ? '' : COPY.flow005, 'paste-thumb-empty');
     return `<div class="paste-card" draggable="true" data-uid="${esc(s.uid)}" title="${esc(`${s.code} ${s.name}`.trim())}"><div class="paste-thumb">${image}<span class="id-tag picker-thumb-id">${esc(s.code)}</span></div><div class="paste-card-meta"><span class="label">${esc(s.name)}</span>${countHtml(s.uid)}</div></div>`;
   }
 
   function paint() {
     const el = view();
     if (!el) return;
-    const cats = screenCategories(published());
+    const all = published();
+    const cats = screenCategories(all);
     const chosen = category === ALL_CATEGORIES || cats.some(([key]) => key === category) ? category : ALL_CATEGORIES;
     category = chosen;
     const select = el.querySelector<HTMLSelectElement>('[data-paste="category"]')!;
@@ -66,8 +68,8 @@ export function pasteView(root: HTMLElement, actions: PasteActions): PasteView {
     for (const b of el.querySelectorAll<HTMLElement>('[data-action="paste-layout"]')) b.setAttribute('aria-pressed', String(b.dataset.layout === layout));
     const box = el.querySelector<HTMLElement>('.paste-screens')!;
     box.classList.toggle('grid', layout === 'grid');
-    if (!published().length) { box.innerHTML = `<p class="empty">${COPY.flow035}</p>`; return; }
-    const shown = filterPickerScreens(published(), chosen, query);
+    if (!all.length) { box.innerHTML = `<p class="empty">${COPY.flow035}</p>`; return; }
+    const shown = filterPickerScreens(all, chosen, query);
     box.innerHTML = shown.length ? shown.map(layout === 'grid' ? card : row).join('') : screenPickerEmpty('paste', chosen, query);
   }
 
@@ -130,9 +132,7 @@ export function pasteView(root: HTMLElement, actions: PasteActions): PasteView {
       paint();
     },
     thumbsLoaded(hashes) {
-      if (!view() || layout !== 'grid' || dragging) return;
-      const loaded = new Set(hashes);
-      if (published().some(s => s.thumb && loaded.has(s.thumb.hash))) paint();
+      updateThumbnailImages(view(), hashes, actions.thumb);
     },
     handle(action, el) {
       switch (action) {

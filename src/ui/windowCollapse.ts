@@ -3,7 +3,7 @@ import { COLLAPSED_WINDOW, type ToMain } from '../core/wire.ts';
 import type { Team } from '../core/types.ts';
 import type { Bridge } from './app.ts';
 
-export function windowCollapse(bridge: Bridge, root: HTMLElement, mode: () => Team): Bridge {
+export function windowCollapse(bridge: Bridge, root: HTMLElement, mode: () => Team, signal?: AbortSignal): Bridge {
   let restore: Extract<ToMain, { type: 'resize' }> | null = null;
   let previousFocus: HTMLElement | null = null;
   const bar = document.createElement('div');
@@ -24,7 +24,7 @@ export function windowCollapse(bridge: Bridge, root: HTMLElement, mode: () => Te
     bridge.send({ ...size, save: false });
     previousFocus?.focus({ preventScroll: true });
   };
-  expand.addEventListener('click', unfold);
+  expand.addEventListener('click', unfold, { signal });
   root.addEventListener('click', event => {
     if (!(event.target instanceof Element) || !event.target.closest('[data-action="collapse-window"]')) return;
     event.stopPropagation();
@@ -35,7 +35,7 @@ export function windowCollapse(bridge: Bridge, root: HTMLElement, mode: () => Te
     root.classList.add('window-collapsed');
     bridge.send({ type: 'resize', ...COLLAPSED_WINDOW, collapsed: true });
     expand.focus({ preventScroll: true });
-  }, true);
+  }, { capture: true, signal });
   return {
     listen: handler => bridge.listen(handler),
     ...(bridge.drop ? { drop: (x: number, y: number, metadata: unknown) => bridge.drop!(x, y, metadata) } : {}),

@@ -2,6 +2,7 @@ import { COPY } from '../core/copy.ts';
 import { flowArrows, flowImageSize, routeLink, sidePoint, FLOW_DEFAULT_TITLE, FLOW_LAYOUT, FLOW_SNAP, type FlowBox, type FlowCard, type FlowLink, type FlowPoint, type FlowRequest, type FlowSide } from '../core/flow.ts';
 import type { GuiScreenInfo } from '../core/guiScreens.ts';
 import { esc } from './html.ts';
+import { thumbnailImage, updateThumbnailImages } from './thumbnailImage.ts';
 import { ALL_CATEGORIES, filterPickerScreens, screenCategories, screenPickerControls, screenPickerEmpty, screenLinkButton } from './screenPicker.ts';
 
 // 플로우 탭(2026-10-23 사용자 결정): 배포된 화면을 판에 놓고 FigJam처럼 잇는다. 텍스트 편집처럼 부가 기능이다.
@@ -15,6 +16,7 @@ import { ALL_CATEGORIES, filterPickerScreens, screenCategories, screenPickerCont
 // 만든 플로우는 화면별 추적 목록 팝업에서 찾는다(2026-10-29 사용자 결정: 머리의 이력 아이콘·「만든 플로우」 목록을 없앰).
 
 export interface FlowView {
+  dispose(): void;
   render(open: boolean): void;
   setScreens(screens: GuiScreenInfo[], counts: Map<string, number>): void;
   // 판에서 쓰는 썸네일 이미지를 받았을 때만 다시 그린다.
@@ -67,6 +69,7 @@ type Drag =
   | { kind: 'link'; from: string; side: FlowSide; moved: boolean };
 
 export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
+  const events = new AbortController();
   let screens: GuiScreenInfo[] = [];
   let counts = new Map<string, number>();
   let cards: FlowCard[] = [];
@@ -152,7 +155,7 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
     box.innerHTML = shown.length ? shown.map(s => {
       if (layout === 'list') return `<div class="flow-screen" data-uid="${esc(s.uid)}"${s.thumb ? ` data-thumb="${esc(s.thumb.hash)}"` : ''} title="${esc(s.name)}"><span class="id-tag">${esc(s.code)}</span><span class="label">${esc(s.name)}</span>${screenLinkButton('flow', s.uid, counts.get(s.uid) ?? 0)}</div>`;
       const url = s.thumb ? actions.thumb(s.thumb.hash) : null;
-      const image = url ? `<img src="${url}" alt="" draggable="false">` : `<span class="paste-thumb-empty">${s.thumb ? '' : COPY.flow005}</span>`;
+      const image = thumbnailImage(s.thumb?.hash, url, s.thumb ? '' : COPY.flow005, 'paste-thumb-empty');
       return `<div class="flow-screen paste-card" data-uid="${esc(s.uid)}" title="${esc(s.name)}"><div class="paste-thumb">${image}<span class="id-tag picker-thumb-id">${esc(s.code)}</span></div><div class="paste-card-meta"><span class="label">${esc(s.name)}</span>${screenLinkButton('flow', s.uid, counts.get(s.uid) ?? 0)}</div></div>`;
     }).join('') : screenPickerEmpty('flow', category, query);
   }
@@ -160,7 +163,7 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
   // 썸네일 내용: 이미지(받는 중이면 회색), 왼쪽 위 Screen ID
   function thumbHtml(s: GuiScreenInfo | undefined, uid: string): string {
     const url = s?.thumb ? actions.thumb(s.thumb.hash) : null;
-    const image = url ? `<img src="${url}" alt="" draggable="false">` : `<span class="flow-card-empty">${s?.thumb ? '' : COPY.flow005}</span>`;
+    const image = thumbnailImage(s?.thumb?.hash, url, s?.thumb ? '' : COPY.flow005, 'flow-card-empty');
     return `${image}<span class="flow-card-id">${esc(s?.code || s?.name || uid)}</span>`;
   }
 
@@ -307,8 +310,8 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
   }
 
   function listen() {
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp, { once: true });
+    window.addEventListener('pointermove', onPointerMove, { signal: events.signal });
+    window.addEventListener('pointerup', onPointerUp, { once: true, signal: events.signal });
   }
 
   function onPointerDown(ev: PointerEvent) {
@@ -468,12 +471,12 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
     if (selected.kind === 'card') removeCard(selected.id);
     else { const id = selected.id; links = links.filter(l => linkId(l) !== id); selected = null; }
     paintBoard();
-  });
+  }, { signal: events.signal });
   document.addEventListener('keyup', ev => {
     if (ev.code !== 'Space') return;
     spaceDown = false;
     board()?.classList.remove('space-pan');
-  });
+  }, { signal: events.signal });
 
   function build(el: HTMLElement) {
     el.innerHTML = `<section class="flow-pick">
@@ -520,6 +523,11 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
   }
 
   return {
+    dispose() {
+      events.abort();
+      if (drag?.kind === 'screen') drag.ghost?.remove();
+      drag = null;
+    },
     render(open) {
       root.classList.toggle('flowing-mode', open);
       let el = view();
@@ -539,11 +547,7 @@ export function flowView(root: HTMLElement, actions: FlowActions): FlowView {
       paintBoard();
     },
     thumbsLoaded(hashes) {
-      // 끄는 중에는 다시 그리지 않는다. 그리드 목록과 판은 각각 필요한 이미지만 다시 그린다.
-      if (!view() || drag) return;
-      const loaded = new Set(hashes);
-      if (layout === 'grid' && published().some(s => s.thumb && loaded.has(s.thumb.hash))) paintScreens();
-      if (cards.some(card => loaded.has(info().get(card.uid)?.thumb?.hash ?? ''))) paintBoard();
+      updateThumbnailImages(view(), hashes, actions.thumb);
     },
     handle(action, el) {
       switch (action) {

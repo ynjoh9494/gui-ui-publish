@@ -205,6 +205,8 @@ export function createDemo(options: DemoOptions): Demo {
       if (f) f.tag = screenId;
     },
     async findFlipbook(_pageId, screenId) { return flipbooks.get(screenId) ?? null; },
+    async selectedFlipbooks() { return []; },
+    async markExistingFlipbooks(items) { for (const item of items) flipbooks.set(item.id, item.nodeId); },
     async listFlipbooks() { return new Map(flipbooks); },
     async flipbookSpots(pageIds) {
       const out: Record<string, FlipbookSpot> = {};

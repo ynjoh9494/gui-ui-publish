@@ -8,6 +8,7 @@ import { esc } from './html.ts';
 // 캔버스에서 찾지 못한 항목은 본체가 묻지 않고 기록에서 뺀 뒤 보낸다. 팝업은 열어 둔 채 여러 항목을 오갈 수 있고 Esc·닫기로 닫는다.
 
 export interface TrackListView {
+  dispose(): void;
   open(uid: string, name: string): void;
   // 본체가 보낸 목록. 열린 화면의 것만 받는다.
   set(uid: string, items: TrackListItem[]): void;
@@ -21,6 +22,7 @@ export interface TrackListActions {
 }
 
 export function trackListView(root: HTMLElement, actions: TrackListActions): TrackListView {
+  const events = new AbortController();
   // 열린 화면. items가 null이면 본체 응답을 기다리는 중이다.
   let open: { uid: string; name: string; items: TrackListItem[] | null } | null = null;
 
@@ -57,9 +59,10 @@ export function trackListView(root: HTMLElement, actions: TrackListActions): Tra
     if (!open || ev.key !== 'Escape') return;
     ev.preventDefault();
     close();
-  });
+  }, { signal: events.signal });
 
   return {
+    dispose() { events.abort(); close(); },
     open(uid, name) {
       open = { uid, name, items: null };
       paint();

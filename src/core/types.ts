@@ -152,11 +152,12 @@ export interface Batch {
 }
 
 // 확정 뒤에 하는 플립북 반영. GUI Publish는 그 화면을 쓰는 플립북, UI Publish는 그 플립북을 맞춘다.
-export type DeliveryKind = 'flipbook';
+export type DeliveryKind = 'flipbook' | 'gui';
 export type DeliveryState = 'pending' | 'applying' | 'done' | 'failed';
 export interface Delivery {
   batchId: string; kind: DeliveryKind; targetId: string; team: Team; version: number;
   state: DeliveryState; error: string | null; updatedAt: number;
+  intent?: { before: Screen | null; after: Screen; record: GuiRecord | null };
 }
 
 // ── 플립북 ─────────────────────────────────────────────

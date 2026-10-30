@@ -2,6 +2,7 @@
 import type { Entry, UiScan } from './compare.ts';
 import type { Draft } from './drafts.ts';
 import { unreviewed, type FlipbookRequest, type ReviewRequest } from './flipbooks.ts';
+import { retryableDeliveries } from './guiDelivery.ts';
 import type { HistoryRow } from './history.ts';
 import type { SelectionTarget } from './description.ts';
 import type { FlowRequest } from './flow.ts';
@@ -43,6 +44,7 @@ export function fromWire(w: WireState): State {
 // UI는 최신 비교 기준과 최근 감사 기록만 필요하다. 이력은 history 요청으로 별도 조회한다.
 // 저장소·확정 로직에는 전체 원기록을 유지하고 메시지 경계에서만 줄인다.
 export function toUiWire(state: State): WireState {
+  const pending = new Set(retryableDeliveries(state));
   return {
     project: state.project, categories: [...state.categories], workers: [...state.workers], tags: [...state.tags],
     screens: [...state.screens], gui: [...state.gui].map(([id, rows]) => [id, rows.slice(-1)]),
@@ -51,7 +53,10 @@ export function toUiWire(state: State): WireState {
     imported: [...state.imported].map(([id]) => [id, unreviewed(state, id)]),
     uiStates: [...state.uiStates], uiBaselines: [...state.uiBaselines],
     ui: [...state.ui].map(([id, rows]) => [id, rows.slice(-1)]), reviews: [...state.reviews],
-    batches: [], deliveries: [...state.deliveries].filter(([, d]) => d.state !== 'done'),
+    batches: [], deliveries: [...state.deliveries].filter(([, d]) => pending.has(d)).map(([key, d]) => {
+      const { intent, ...summary } = d;
+      return [key, summary];
+    }),
     // 플로우 위치는 본체만 쓴다. 추적 GUI 기록은 화면별 추적 개수를 보여 주려고 보낸다.
     exclusions: [...state.exclusions], flows: [], tracks: [...state.tracks], audit: state.audit.slice(-15), dataStatus: state.dataStatus,
   };
@@ -152,6 +157,7 @@ export type ToMain =
   // GUI 붙이기: 배포된 화면을 고른 크기로 붙인다. at: 창 밖에 놓은 자리(없으면 보고 있는 화면 가운데)
   | { type: 'pasteGui'; uid: string; scale: FlipbookScale; at?: PasteSpot }
   | { type: 'createFlipbooks'; request: FlipbookRequest }
+  | { type: 'registerFlipbooks' }
   // 플립북 제목 변경. 비우면 첫 화면 이름(자동 제목)으로 돌아간다.
   | { type: 'renameFlipbook'; id: string; title: string }
   // 플립북 확인 완료: 상태·코멘트를 남기고 「화면이 수정되었습니다」 표시를 푼다.

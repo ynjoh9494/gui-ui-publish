@@ -69,6 +69,9 @@ export class TrackController {
       const track = s.state.tracks.get(trackId);
       if (track) s.put(keys.track(trackId), { ...track, nodeId, uid: uidOf.get(trackId) ?? track.uid });
     }
+    const applied = new Set(updated.map(item => item.trackId));
+    if (items.some(item => item.copies.some(copy => !applied.has(copy.trackId))))
+      throw new Error([COPY.recoveryCopiesIncomplete, ...notes].join(' '));
     return [updated.length ? `${COPY.track001} ${updated.length}${COPY.track002}` : '', ...notes].filter(Boolean).join(' ') || null;
   }
 

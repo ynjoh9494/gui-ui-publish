@@ -1,3 +1,4 @@
+import { EXISTING_KEY } from '../core/registerFlipbooks.ts';
 import { COPY } from '../core/copy.ts';
 import type { FlipbookSpot } from '../core/compare.ts';
 import { displayScale, FREE_MARGIN, freeGuiWidth, GUI_GAP, NO_SECTION_KEY, type FlipbookGui, type FlipbookRow, type FlipbookView } from '../core/flipbook.ts';
@@ -915,6 +916,9 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
   const frame = existing ?? await createFlipbook(ns, page, kit.template, view);
   session.known.set(view.flipbookId, frame.id);
   const p = flipbookParts(frame, ns);
+  const registered = frame.getSharedPluginData(ns, EXISTING_KEY) === 'true';
+  if (registered && (!p.gui || (p.named && (!p.named.titleText || !p.status || !p.named.history))))
+    return { nodeId: frame.id, notes: [COPY.registerExistingUnsupported], tracked: true, copies: [] };
   // 이름 규칙은 제목·Status·이력 영역·GUI 영역이, 표식 템플릿은 GUI 영역이 있어야 한다.
   if (!p.gui || (p.named && (!p.named.titleText || !p.status || !p.named.history))) throw new Error(p.named ? COPY.figmaFlipbook021 : COPY.figmaFlipbook028);
   frame.locked = false;
@@ -944,7 +948,7 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
   if (p.ids && kit.idTag) await syncIds(ns, p.ids, view.gui.map(g => g.code), kit.idTag, kit);
   // 새 템플릿 플립북은 만들 때만 GUI를 놓는다. 그 뒤로는 추적 GUI라 GUI 배포가 바꾸고(figma/tracked.ts), 사용자가 캔버스에서 넣고 뺀다.
   let copies: SceneNode[] = [];
-  if (p.named || view.create) {
+  if ((!registered && p.named) || view.create) {
     const overlays = frame.children.filter(n => 'layoutPositioning' in n && n.layoutPositioning === 'ABSOLUTE');
     const placed = await syncGui(ns, p.gui, view.gui, view.scale, notes, view.guiWidth, overlays);
     if (view.create) copies = placed;
@@ -961,5 +965,5 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
     if (self && (frame.width !== before.width || frame.height !== before.height)) makeRoom(frames, self, before);
     fitSection(ns, root);
   }
-  return { nodeId: frame.id, notes: [...notes], tracked: !p.named, copies: copies.map(c => ({ nodeId: c.id, key: c.getSharedPluginData(ns, COPY_KEY) })) };
+  return { nodeId: frame.id, notes: [...notes], tracked: registered || !p.named, copies: copies.map(c => ({ nodeId: c.id, key: c.getSharedPluginData(ns, COPY_KEY) })) };
 }

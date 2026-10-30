@@ -55,10 +55,19 @@ export interface Reconciled {
 // 읽은 페이지에 있어야 할 기록(uids가 있으면 그 화면만)인데 찾지 못하면 묻지 않고 뺀다.
 export function reconcileTracks(store: Store, found: FoundCopy[], scanned: Set<string>, uids: Set<string> | null, actor: Actor, newId: () => string): Reconciled {
   const byNode = new Map([...store.state.tracks.values()].map(t => [t.nodeId, t]));
+  const foundNodes = new Set(found.map(copy => copy.nodeId));
   const out: Reconciled = { records: new Map(), retag: [], removed: [] };
   const seen = new Set<string>();
   for (const copy of found) {
     let track = byNode.get(copy.nodeId);
+    // A replacement may have removed the old node before its new node ID was
+    // saved. Reattach the original record only when that old node is absent;
+    // a user-created duplicate beside the original still gets a new ID.
+    const marked = copy.trackId ? store.state.tracks.get(copy.trackId) : undefined;
+    if (!track && marked && scanned.has(marked.pageId) && !foundNodes.has(marked.nodeId) && !seen.has(marked.id)) {
+      track = { ...marked, nodeId: copy.nodeId, uid: copy.uid, pageId: copy.pageId };
+      store.put(keys.track(track.id), track);
+    }
     if (!track) {
       track = { id: newId(), uid: copy.uid, nodeId: copy.nodeId, pageId: copy.pageId, createdAt: store.now(), actor };
       store.put(keys.track(track.id), track);
