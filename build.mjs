@@ -10,7 +10,7 @@ const outDir = 'tmp/build';
 const common = { bundle: true, write: false, target: 'es2017', charset: 'utf8', logLevel: 'warning' };
 
 async function bundle(entry) {
-  const result = await build({ ...common, entryPoints: [entry], format: 'iife' });
+  const result = await build({ ...common, entryPoints: [`./${entry}`], format: 'iife' });
   // 인라인 스크립트가 중간에 닫히지 않도록 막는다.
   return result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 }

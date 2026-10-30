@@ -5,7 +5,7 @@ import { COPY } from '../core/copy.ts';
 // 어디를 눌러도(Enter·Space도) 다음 단계로 가고, 도움말 자리의 X와 Esc는 끝낸다. 마지막 단계에서 넘기면 끝난다.
 import type { Entry } from '../core/compare.ts';
 import { defaultDraft, type Draft } from '../core/drafts.ts';
-import { paletteHex, TAG_PALETTE } from '../core/palette.ts';
+import { TAG_PALETTE } from '../core/palette.ts';
 import type { Plan } from '../core/publish.ts';
 import { Store } from '../core/store.ts';
 import type { Actor, Team } from '../core/types.ts';
@@ -17,6 +17,8 @@ import { createDemo, DEMO_FLIPBOOK_PAGE, DEMO_PAGE, DEMO_VERSION_PAGE, type Demo
 export interface TutorialOptions {
   mode: Team;
   actor: Actor;
+  variant?: 'full' | 'new';
+  onClose?: () => void;
   // 실제 플러그인 창의 루트. 예시 화면과 오버레이를 이 자리에 겹친다.
   root: HTMLElement;
   // 실제 플러그인 창 크기를 바꾼다(다음 실행 크기로 기억하지 않는다).
@@ -35,9 +37,6 @@ type Spot = Element | (Element | null | undefined)[] | null | undefined;
 interface Step {
   title: string;
   body: string;
-  // 지난 배포에 없던 기능을 설명하는 단계. 제목 오른쪽에 「새 기능」 라벨을 단다(2026-10-27 사용자 요청).
-  // 배포 직전 도움말을 갱신할 때 지난 표시를 지우고 다시 붙인다.
-  isNew?: boolean;
   // 이 단계를 보여 주기 전에 예시 화면을 조작한다.
   prepare?(d: Driver): Promise<void>;
   // 밝게 남길 영역. 배열은 한 영역으로 합치며 말풍선은 첫 영역을 가리킨다.
@@ -108,7 +107,7 @@ const GUI_STEPS: Step[] = [
     spots: d => [[d.q('.toolbar [data-action="scan"]'), d.q('.toolbar [data-action="scan-selected"]')]],
   },
   {
-    title: COPY.uiTutorial010, body: COPY.uiTutorial011, isNew: true,
+    title: COPY.uiTutorial010, body: COPY.uiTutorial011,
     async prepare(d) {
       await d.click('.toolbar [data-action="scan"]');
       await d.until(() => d.q('.toolbar .progress')?.textContent?.includes(COPY.uiApp014) && d.q('.list .group'));
@@ -168,7 +167,7 @@ const GUI_STEPS: Step[] = [
     spots: d => [d.row(COPY.uiPreview005), d.q('.detail .ignore-row')],
   },
   {
-    title: COPY.uiTutorial079, body: COPY.uiTutorial080, isNew: true,
+    title: COPY.uiTutorial079, body: COPY.uiTutorial080,
     async prepare(d) { await d.until(() => d.q('.detail .change-reason .reason-line')); },
     spots: d => [d.q('.detail .change-reason')],
   },
@@ -206,6 +205,17 @@ const UI_STEPS: Step[] = [
     title: COPY.uiTutorial034, body: COPY.uiTutorial035,
     async prepare(d) { await d.click('.tabs [data-action="settings"]'); await d.until(() => d.q('details[data-form="flipbook"][open]')); },
     spots: d => [d.q('details[data-form="flipbook"]')],
+  },
+  {
+    title: COPY.uiTutorial083, body: COPY.uiTutorial084,
+    async prepare(d) {
+      await d.until(() => {
+        const template = d.q<HTMLDetailsElement>('details[data-form="template"]');
+        if (template && !template.open) template.open = true;
+        return template?.open && !d.q('details[data-form="flipbook"][open]');
+      });
+    },
+    spots: d => [d.q('details[data-form="template"]')],
   },
   {
     title: COPY.uiTutorial036, body: COPY.uiTutorial037,
@@ -327,6 +337,86 @@ const UI_STEPS: Step[] = [
       await d.until(() => d.q('.pdf-view'));
     },
     spots: d => [d.q('.tabs .create-tabs'), d.q('.pdf-view')],
+  },
+];
+
+// 이번 버전 안내도 전체 튜토리얼과 같은 예시 화면을 사용한다. 단계마다 실제 탭과 버튼을 열어 보여 준다.
+const NEW_GUI_STEPS: Step[] = [
+  {
+    title: COPY.uiNew010, body: COPY.uiNew011,
+    async prepare(d) {
+      await d.click('.toolbar [data-action="scan"]');
+      await d.until(() => d.q('.toolbar .progress')?.textContent?.includes(COPY.uiApp014) && d.q('.list .group'));
+      await d.expandGroups();
+      await d.click(() => d.row(COPY.uiPreview009));
+      await d.click('.detail [data-action="include-selected"]');
+      const select = await d.until(() => d.q<HTMLSelectElement>('.detail [data-field="categoryId"]'));
+      const option = [...select.options].find(o => o.textContent === COPY.uiTutorial063);
+      if (option) d.set(select, option.value, 'change');
+      await d.click('.footer [data-action="prepare"]');
+      await d.until(() => d.q('.overlay:not([hidden]) [data-action="quiet-publish"]'));
+    },
+    spots: d => [d.q('.overlay .quiet-publish')],
+  },
+];
+
+const NEW_UI_STEPS: Step[] = [
+  {
+    title: COPY.uiNew013, body: COPY.uiNew014,
+    async prepare(d) {
+      await d.click('.tabs [data-action="settings"]');
+      await d.until(() => { const el = d.q<HTMLDetailsElement>('details[data-form="template"]'); if (el && !el.open) el.open = true; return el?.open; });
+    },
+    spots: d => [d.q('details[data-form="template"]')],
+  },
+  {
+    title: COPY.uiNew025, body: COPY.uiNew026,
+    async prepare(d) {
+      await d.until(() => { const el = d.q<HTMLDetailsElement>('details[data-form="gui-width"]'); if (el && !el.open) el.open = true; return el?.open; });
+    },
+    spots: d => [d.q('details[data-form="gui-width"]')],
+  },
+  {
+    title: COPY.uiNew016, body: COPY.uiNew017,
+    async prepare(d) {
+      await d.click('.tabs [data-action="settings"]');
+      await d.click('.list [data-action="new-add"]');
+      await d.until(() => d.q('.detail .create-selected-box'));
+      await d.click(() => d.all('.create-screen-list .create-screen-option').find(o => o.querySelector('.name')?.textContent === COPY.uiPreview007)?.querySelector<HTMLInputElement>('[data-action="create-screen-toggle"]'));
+      await d.until(() => d.q('.detail .create-selected-list select'));
+    },
+    spots: d => [d.q('.detail .create-selected-box')],
+  },
+  {
+    title: COPY.uiNew019, body: COPY.uiNew020,
+    async prepare(d) { await d.click('.tabs [data-action="paste-open"]'); await d.until(() => d.q('.paste-view .paste-screen')); },
+    spots: d => [d.q('.tabs [data-action="paste-open"]'), d.q('.paste-view .paste-screens')],
+  },
+  {
+    title: COPY.uiNew027, body: COPY.uiNew028,
+    async prepare(d) { await d.click('.paste-view [data-action="paste-layout"][data-layout="grid"]'); await d.until(() => d.q('.paste-view .paste-card')); },
+    spots: d => [d.q('.paste-view .paste-toggle'), d.q('.paste-view .paste-screens')],
+  },
+  {
+    title: COPY.uiNew029, body: COPY.uiNew030,
+    async prepare(d) {
+      await d.click('.paste-view .paste-card');
+      await d.until(() => d.q('.paste-view .paste-track:not(:disabled)'));
+      await d.click('.paste-view .paste-track:not(:disabled)');
+      await d.until(() => d.q('.track-list-overlay:not([hidden])'));
+    },
+    spots: d => [d.q('.track-list-overlay')],
+  },
+  {
+    title: COPY.uiNew031, body: COPY.uiNew032,
+    async prepare(d) {
+      await d.click('.track-list-overlay [data-action="track-list-close"]');
+      await d.click('.tabs [data-action="flow-open"]');
+      await d.until(() => d.q('.flow-view .flow-screen'));
+      await d.click('.flow-view [data-action="flow-layout"][data-layout="grid"]');
+      await d.until(() => d.q('.flow-view .flow-screen.paste-card'));
+    },
+    spots: d => [d.q('.flow-view .paste-toggle'), d.q('.flow-view .flow-screens')],
   },
 ];
 
@@ -457,7 +547,7 @@ function placeBubble(anchor: Rect, w: number, h: number, W: number, H: number): 
 
 export function startTutorial(options: TutorialOptions): void {
   const { root, mode } = options;
-  const steps = mode === 'UI' ? UI_STEPS : GUI_STEPS;
+  const steps = options.variant === 'new' ? mode === 'UI' ? NEW_UI_STEPS : NEW_GUI_STEPS : mode === 'UI' ? UI_STEPS : GUI_STEPS;
   let closed = false;
   let disposeApp: (() => void) | undefined;
   // shown: 보여 주는 단계. 다음 단계를 준비하는 동안에는 앞 단계 그림을 그대로 둔다.
@@ -475,7 +565,7 @@ export function startTutorial(options: TutorialOptions): void {
   layer.setAttribute('aria-modal', 'true');
   layer.setAttribute('aria-label', COPY.uiTutorial003);
   layer.innerHTML = `<svg class="tutorial-dim" aria-hidden="true"><path fill-rule="evenodd"/></svg>
-    <div class="tutorial-bubble" hidden aria-live="polite"><span class="tutorial-progress"></span><strong><span class="tutorial-title"></span><span class="chip tutorial-new" style="--c:${paletteHex('Yellow')}" hidden>${COPY.uiTutorial074}</span></strong><p></p></div>
+    <div class="tutorial-bubble" hidden aria-live="polite"><span class="tutorial-progress"></span><strong><span class="tutorial-title"></span></strong><p></p></div>
     <button class="tutorial-close" aria-label="${COPY.uiTutorial002}">${HELP_CLOSE_ICON}</button>`;
   container.append(app, layer);
   document.body.append(container);
@@ -545,7 +635,6 @@ export function startTutorial(options: TutorialOptions): void {
     bubble.hidden = false;
     bubble.querySelector('.tutorial-progress')!.textContent = `${shown + 1}/${steps.length}`;
     bubble.querySelector('.tutorial-title')!.textContent = step.title;
-    bubble.querySelector<HTMLElement>('.tutorial-new')!.hidden = !step.isNew;
     bubble.querySelector('p')!.textContent = step.body;
     const w = bubble.offsetWidth, h = bubble.offsetHeight;
     // 영역을 찾지 못하면 가운데에 꼬리 없이 둔다.
@@ -623,6 +712,7 @@ export function startTutorial(options: TutorialOptions): void {
     root.inert = false;
     if (widened) options.resize(before.width, before.height);
     root.querySelector<HTMLElement>('.tabs [data-action="tutorial"]')?.focus();
+    options.onClose?.();
   }
 
   follow();

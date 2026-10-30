@@ -82,6 +82,17 @@ function mixedMark(mixed: boolean): string {
 
 export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let disposed = false;
+  let newFeaturesOpened = false;
+  const openNewFeatures = () => {
+    if (newFeaturesOpened || !state || startupPending || root.id !== 'app' || window.parent === window) return;
+    const key = `gui-ui-publish:new-tutorial:2026-10-30-revised:${mode}`;
+    try { if (localStorage.getItem(key)) return; } catch { /* 저장소 없이도 안내를 보여 준다. */ }
+    newFeaturesOpened = true;
+    later(() => { if (!disposed) startTutorial({ mode, actor: actor ?? { id: '', name: '' }, root, startApp, variant: 'new',
+      resize: (width, height) => bridge.send({ type: 'resize', width, height }),
+      onClose: () => { try { localStorage.setItem(key, 'seen'); } catch { /* 다음 실행에 다시 보여 준다. */ } },
+    }); });
+  };
   const cleanups: (() => void)[] = [];
   const events = new AbortController();
   const timers = new Set<ReturnType<typeof setTimeout>>();
@@ -1530,9 +1541,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       ${plan.exclusions.map(e => `<tr><td>${esc(e.name)}</td><td>${COPY.uiApp050}</td><td>—</td><td>—</td><td>${esc(e.reason)}</td></tr>`).join('')}
       ${plan.unpublished.map(e => `<tr><td>${esc(e.name)}</td><td>${COPY.uiApp355}</td><td>—</td><td>—</td><td>—</td></tr>`).join('')}
       </tbody></table>
-      ${plan.team === 'GUI' ? `<label class="switch quiet-publish" title="${COPY.quietPublishHint}"><span>${COPY.quietPublish}</span><input type="checkbox" role="switch" data-action="quiet-publish" aria-label="${COPY.quietPublish}" aria-description="${COPY.quietPublishHint}" ${quietPublish ? 'checked' : ''}></label>` : ''}
-      <p class="note">${COPY.uiApp094}</p>
       <div class="dialog-actions">
+        ${plan.team === 'GUI' ? `<label class="switch quiet-publish" title="${COPY.quietPublishHint}"><span>${COPY.quietPublish}</span><input type="checkbox" role="switch" data-action="quiet-publish" aria-label="${COPY.quietPublish}" aria-description="${COPY.quietPublishHint}" ${quietPublish ? 'checked' : ''}></label>` : ''}
         <button data-action="cancel-plan">${COPY.uiApp095}</button>
         <button class="primary" data-action="commit" ${plan.blockers.length ? 'disabled' : ''}>${COPY.uiApp096}</button>
       </div></div>`;
@@ -3465,10 +3475,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         busyLabel = null;
         renderBusy();
         renderAll();
+        openNewFeatures();
         break;
       case 'startupReady':
         startupPending = false;
         renderStartup();
+        openNewFeatures();
         break;
       case 'state': {
         const previousActiveWorkers = state ? [...state.workers.values()].filter(worker => worker.active).length : 0;
