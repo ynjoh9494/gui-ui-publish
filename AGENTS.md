@@ -34,11 +34,12 @@ GUI·UI Publish Figma 플러그인 레포다. 이 문서는 사람과 AI 에이�
 - UI 상호작용·튜토리얼: `npm run walkthrough`. 화면 구성을 바꾸면 튜토리얼이 설명할 영역을 찾는지도 여기서 확인된다.
 - Figma 캔버스를 바꾸는 변경: 모의 테스트에 더해 **실제 Figma 시험 파일**에서 확인한다(README 「Figma에서 개발 중인 버전 실행」). 로컬 검사만으로 Figma 동작을 검증했다고 보고하지 않는다.
   - 팀이 쓰는 실제 작업 파일 대신 별도 시험 파일을 쓴다. 시험 중인 파일 이름에 「삭제 가능」 같은 말을 붙이지 않고, 다 쓴 뒤 지워도 된다고 따로 알린다(이름을 보고 시험 도중에 지운 일이 있었다).
-- 검사와 실사용 반영을 분리한다. `npm run build`, `check`, `walkthrough`는 `tmp/build/`에만 생성하며 Figma가 읽는 `dist/`를 변경하지 않는다. **사용자가 실제 반영을 요청하고 플러그인을 닫았다고 확인한 경우에만** `npm run activate-build -- --plugin-closed`로 전환한다. 전환 전에 알리고, 완료 뒤 백업 위치와 적용 여부를 보고한다. 검사 빌드만 한 상태를 실사용 반영 완료라고 보고하지 않는다.
+- 사용자가 **빌드하라고 하면 사용 중인 플러그인에 반영하는 것까지 실행한다.** `npm run build` 후 `npm run activate-build -- --plugin-closed`로 Figma가 읽는 `dist/`를 갱신한다. 플러그인 종료 확인이나 별도 반영 승인을 다시 묻지 않는다. 완료 뒤 적용 여부와 백업 위치를 보고한다. `check`, `walkthrough` 등 검증만 실행하는 경우에는 `tmp/build/`를 사용한다.
 - 화면이 바뀌면 팀원용 안내(`release/guide.html`, `npm run guide-screens`)도 맞춘다.
 
 ## Git과 배포
 
+- 사용자가 **워크트리 정리**를 요청하면 현재 작업 폴더의 변경사항을 모두 검토하고 목적별로 나누어 커밋해 작업 폴더를 깨끗하게 만든다. 브랜치·worktree 삭제만으로 완료했다고 하지 않는다. 이 요청은 해당 커밋을 승인한 것으로 본다.
 - 기본 브랜치는 `main`이다. 작업은 브랜치에서 하고 `git merge --ff-only`로 합친다(병합 커밋을 남기지 않는다). main이 앞서 나갔으면 rebase한 뒤 다시 fast-forward한다.
 - 합친 브랜치와 worktree는 바로 지운다. worktree에 `node_modules` 링크(junction)를 만들었으면 지우기 전에 링크만 먼저 뗀다.
 - 커밋·push·배포는 담당자가 요청할 때 한다.
