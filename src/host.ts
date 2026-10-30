@@ -17,7 +17,7 @@ export type { PasteSpot } from './core/tracks.ts';
 // 추적 GUI를 새 버전으로 바꿀 때 화면마다 넘기는 값(figma/tracked.ts)
 export interface CopyUpdate { uid: string; code: string; key: string; sourceNodeId: string | null; copies: { nodeId: string; trackId: string }[] }
 // 붙일 GUI: 복사본 표식(화면@버전), 새 추적 기록 ID, 크기(기본·작게)와 화면 최대 가로 크기(관리)
-export interface PasteItem { key: string; code: string; sourceNodeId: string; trackId: string; scale: FlipbookScale; maxWidth: number }
+export interface PasteItem { key: string; code: string; name: string; sourceNodeId: string; trackId: string; scale: FlipbookScale; maxWidth: number }
 
 // Controller가 사용하는 환경 경계. Figma 호스트와 브라우저 미리보기가 각각 구현한다.
 export interface FingerprintReader {

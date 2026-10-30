@@ -116,7 +116,7 @@ test('GUI 붙이기는 추적 기록을 만들고, 새 템플릿 플립북 안�
   tick(9000);
 
   const result = await tracks.paste('s1', 0.5, { nodeId: 'frame', x: 10, y: 20 });
-  assert.deepEqual(pasted, [[{ key: 's1@2', code: 'STB_HO_001', sourceNodeId: 'src-s1', trackId: 'id1', scale: 0.5, maxWidth: 1440 }, { nodeId: 'frame', x: 10, y: 20 }]]);
+  assert.deepEqual(pasted, [[{ key: 's1@2', code: 'STB_HO_001', name: '화면 s1', sourceNodeId: 'src-s1', trackId: 'id1', scale: 0.5, maxWidth: 1440 }, { nodeId: 'frame', x: 10, y: 20 }]]);
   assert.deepEqual(result, { changed: ['fb'], notes: [] });
   assert.deepEqual([...store.state.tracks.values()].map(t => [t.id, t.uid, t.nodeId, t.pageId, t.createdAt]), [['id1', 's1', 'np', 'p1', 9000]]);
   assert.deepEqual(calls.scans, [['p1']], 'reads only the page it pasted on');

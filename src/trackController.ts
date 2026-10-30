@@ -98,7 +98,7 @@ export class TrackController {
     const screen = s.state.screens.get(uid);
     if (!screen || screen.status !== 'active' || !screen.guiVersion || !screen.source) throw new Error(COPY.track003);
     const trackId = s.newId();
-    const placed = await this.host.pasteGui({ key: guiKey(uid, screen.guiVersion), code: screen.code, sourceNodeId: screen.source.nodeId, trackId, scale, maxWidth: s.state.project.guiWidth }, at);
+    const placed = await this.host.pasteGui({ key: guiKey(uid, screen.guiVersion), code: screen.code, name: screen.name, sourceNodeId: screen.source.nodeId, trackId, scale, maxWidth: s.state.project.guiWidth }, at);
     s.reload();
     s.put(keys.track(trackId), { id: trackId, uid, nodeId: placed.nodeId, pageId: placed.pageId, createdAt: s.now(), actor: this.host.actor } satisfies TrackRecord);
     const into = placed.flipbookId ? s.state.flipbooks.get(placed.flipbookId) : undefined;

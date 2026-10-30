@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { COPY } from '../src/core/copy.ts';
 import { originalFlipbookFrames, pickFlipbookFrames, syncFreeGui, syncGui } from '../src/figma/flipbook.ts';
-import { updateCopies } from '../src/figma/tracked.ts';
+import { pasteCopy, updateCopies } from '../src/figma/tracked.ts';
 import { COPY_KEY, copyLayers, rescaleExact } from '../src/figma/layers.ts';
 
 // 레이어 복사의 호출 순서와 노드 생명주기를 검사한다. 실제 Figma의 복제·연결 끊기 결과는 별도로 확인한다.
@@ -52,7 +52,7 @@ class Node {
   }
   clone(): Node {
     const copy = new Node(this.type, this.name);
-    Object.assign(copy, { x: this.x, y: this.y, width: this.width, height: this.height, explicitVariableModes: { ...this.explicitVariableModes } });
+    Object.assign(copy, { x: this.x, y: this.y, width: this.width, height: this.height, visible: this.visible, locked: this.locked, explicitVariableModes: { ...this.explicitVariableModes } });
     for (const key of ['layoutSizingHorizontal', 'layoutSizingVertical', 'stuck', 'characters', 'fontName']) if (key in this) copy[key] = this[key];
     this.data.forEach((v, k) => copy.data.set(k, v));
     this.children.forEach(c => copy.appendChild(c.clone()));
@@ -84,6 +84,8 @@ function setup() {
   const flipbookPage = new Node('PAGE');
   Object.assign(globalThis, { figma: {
     createFrame: () => new Node('FRAME'),
+    createRectangle: () => new Node('RECTANGLE'),
+    createText: () => new Node('TEXT'),
     loadFontAsync: async (f: FontName) => { if (f.family === 'Missing') throw new Error('font'); },
     variables: { getVariableCollectionByIdAsync: async (id: string) => (id === 'missing' ? null : { id }) },
   } });
@@ -464,6 +466,55 @@ test('추적 GUI 재배포는 K로 바꾼 폭·자리·순서·잠금과 마커�
   assert.equal(failed.updated.length, 0);
   assert.equal(copy.removed, false);
   assert.deepEqual(frame.children, [before, copy, marker]);
+});
+
+test('GUI 붙이기는 Auto Layout 구조와 숨긴 Screen ID를 만들고 재배포 때 유지한다', async () => {
+  setup();
+  const source = screen();
+  source.width = 360; source.height = 720;
+  (globalThis as any).figma.currentPage = page;
+  (globalThis as any).figma.viewport = { center: { x: 500, y: 500 } };
+  (globalThis as any).figma.getNodeByIdAsync = async (id: string) => [page, ...page.all()].find(n => n.id === id) ?? null;
+  const placed = await pasteCopy('ns', { key: 's1@1', code: 'MO_MY_002', name: 'Purchase step1 _Mobile', sourceNodeId: source.id, trackId: 't1', scale: 1, maxWidth: 1440 }, null);
+  const root = page.all().find(n => n.id === placed.nodeId)!;
+  assert.deepEqual([root.name, root.width, root.height, root.getSharedPluginData('ns', COPY_KEY), root.getSharedPluginData('ns', 'trackOf')], ['🔗 GUI · 자동 업데이트', 360, 761, 's1@1', 't1']);
+  assert.deepEqual(root.children.map(n => n.name), ['Label', 'Screen']);
+  assert.deepEqual([root.layoutMode, root.itemSpacing, root.primaryAxisSizingMode, root.counterAxisSizingMode], ['VERTICAL', 16, 'AUTO', 'AUTO']);
+  assert.equal(root.getSharedPluginData('ns', 'pasteLayout'), 'labeled-v2');
+  const [label, mobile] = root.children;
+  assert.deepEqual([label.layoutMode, label.itemSpacing, label.layoutSizingHorizontal, label.layoutSizingVertical], ['VERTICAL', 4, 'FILL', 'HUG']);
+  assert.deepEqual(label.children.map(n => n.name), ['Screen ID', 'Screen Title']);
+  assert.equal(label.children[0].visible, false);
+  assert.equal(label.children[0].layoutMode, 'HORIZONTAL');
+  assert.deepEqual(label.children[0].children.map(n => n.name), ['bg', 'text']);
+  assert.equal(label.children[0].children[0].layoutPositioning, 'ABSOLUTE');
+  assert.equal(label.children[0].children[1].characters, 'MO_MY_002');
+  assert.equal(label.children[1].characters, 'Purchase step1 _Mobile');
+  assert.equal(mobile.layoutMode, 'VERTICAL');
+  assert.equal(mobile.children[0].name, 'GUI');
+  assert.equal(mobile.children[0].getSharedPluginData('ns', COPY_KEY), '', '추적 표식은 바깥 GUI 프레임에만 둔다');
+
+  root.name = '내가 바꾼 프레임 이름';
+  root.visible = false;
+  label.visible = false;
+  label.children[1].characters = '내가 수정한 화면명';
+  label.children[1].visible = false;
+  mobile.visible = false;
+  const beforeGui = mobile.children[0];
+  beforeGui.name = '내가 바꾼 GUI 이름';
+  beforeGui.visible = false;
+  root.setSharedPluginData('ns', 'pasteLayout', 'mobile-v1'); // 이전 빌드에서 붙인 래퍼도 계속 반영한다.
+  source.appendChild(new Node('FRAME', 'Version 2'));
+  const result = await updateCopies('ns', [{ uid: 's1', code: 'MO_MY_002', key: 's1@2', sourceNodeId: source.id, copies: [{ nodeId: root.id, trackId: 't1' }] }]);
+  assert.deepEqual(result.updated, [{ trackId: 't1', nodeId: root.id }], '표식이 있는 바깥 프레임은 교체하지 않는다');
+  assert.equal(root.removed, false);
+  assert.deepEqual([root.name, root.visible, label.visible, label.children[1].characters, label.children[1].visible, mobile.visible],
+    ['내가 바꾼 프레임 이름', false, false, '내가 수정한 화면명', false, false]);
+  assert.equal(root.getSharedPluginData('ns', COPY_KEY), 's1@2');
+  assert.equal(label.children[0].visible, false);
+  assert.equal(beforeGui.removed, true);
+  assert.deepEqual([mobile.children[0].name, mobile.children[0].visible], ['내가 바꾼 GUI 이름', false]);
+  assert.ok(mobile.children[0].all().some(n => n.name === 'Version 2'), 'GUI 내부만 새 버전으로 교체한다');
 });
 
 

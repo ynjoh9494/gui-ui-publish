@@ -542,7 +542,7 @@ export const COPY = {
   uiTutorial073: "배포된 화면을 썸네일로 추가하고, 썸네일 가장자리 점을 다른 썸네일로 드래그해 연결합니다. GUI를 다시 배포하면 썸네일만 바뀝니다.",
   uiTutorial074: "새 기능",
   uiTutorial075: "소속 화면",
-  uiTutorial076: "캔버스에서 이 플립북 안에 놓은 화면입니다. 화면을 누르면 추적 목록에서 붙인 자리와 플로우를 찾습니다.",
+  uiTutorial076: "캔버스에서 이 플립북 안에 놓은 화면입니다. 화면을 누르면 이 화면의 사용처를 확인합니다.",
   uiTutorial081: "GUI 목록",
   uiTutorial082: "카테고리를 고르고 화면을 클릭하거나 캔버스로 드래그합니다. GUI 재배포를 따라가며, 목록 아이콘으로 붙인 자리와 플로우를 찾습니다.",
   uiTutorial077: "PDF 저장",
@@ -872,7 +872,7 @@ export const COPY = {
   trackList003: '캔버스에 붙인 화면이 없습니다.',
   trackList004: '이 화면이 든 플로우가 없습니다.',
   trackList005: '닫기',
-  trackList006: '추적 목록',
+  trackList006: '화면 사용처',
   // GUI 목록 탭 — src/ui/pasteView.ts
   paste001: 'GUI 목록',
   paste002: '카테고리',
@@ -1089,7 +1089,7 @@ export const COPY = {
   recoveryConflict: '중단 후 화면 기록이 변경되어 자동으로 덮어쓰지 않았습니다. 현재 기록을 확인하세요.',
   recoveryPending: 'GUI 배포 기록은 저장되었습니다. 화면 반영이 끝나지 않아 관리에서 미반영 재시도가 필요합니다.',
   recoverySourceChanged: '배포 후 GUI 원본이 변경되어 이전 배포로 덮어쓰지 않았습니다. 변경사항을 확인한 뒤 다시 배포하세요.',
-  recoveryCopiesIncomplete: '일부 추적 GUI를 반영하지 못했습니다.',
+  recoveryCopiesIncomplete: '일부 붙인 화면을 반영하지 못했습니다.',
   recoveryRetryHint: '확정된 GUI 기록과 실제 반영 상태를 다시 확인합니다. 배포 버전이나 이력을 추가하지 않습니다.',
   recoveryAvailable: '미완료 반영',
 } as const;

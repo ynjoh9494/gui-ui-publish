@@ -11,6 +11,126 @@ import { linksOf } from './template.ts';
 
 // 복사본 노드에 적는 추적 기록 ID. 캔버스에서 복제한 복사본도 같은 값을 가진다.
 export const TRACK_KEY = 'trackOf';
+const PASTE_LAYOUT_KEY = 'pasteLayout';
+const PASTE_SCREEN_KEY = 'pasteScreen';
+const PASTE_GUI_KEY = 'pasteGui';
+const LABELED_LAYOUT = 'labeled-v2';
+const PREVIOUS_LAYOUT = 'mobile-v1';
+const TRACKED_PREFIX = '🔗 ';
+
+function trackedName(name: string): string {
+  return name.startsWith(TRACKED_PREFIX) ? name : `${TRACKED_PREFIX}${name}`;
+}
+
+// GUI 자체는 다시 배포할 수 있게 두고, 붙인 화면의 제목과 숨긴 Screen ID는 별도 레이어로 둔다.
+async function labeledCopy(ns: string, gui: FrameNode, holder: FrameNode, code: string, name: string, key: string): Promise<FrameNode> {
+  await Promise.all([
+    figma.loadFontAsync({ family: 'Inter', style: 'Bold' }),
+    figma.loadFontAsync({ family: 'Inter', style: 'Medium' }),
+  ]);
+  const root = figma.createFrame();
+  holder.appendChild(root);
+  root.name = trackedName('GUI · 자동 업데이트');
+  root.fills = [];
+  root.clipsContent = false;
+  root.resize(gui.width, gui.height + 41);
+  root.layoutMode = 'VERTICAL';
+  root.itemSpacing = 16;
+  root.primaryAxisAlignItems = 'MAX';
+  root.counterAxisAlignItems = 'MIN';
+
+  const label = figma.createFrame();
+  root.appendChild(label);
+  label.name = 'Label';
+  label.fills = [];
+  label.clipsContent = false;
+  label.resize(gui.width, 25);
+  label.layoutMode = 'VERTICAL';
+  label.itemSpacing = 4;
+  label.primaryAxisAlignItems = 'CENTER';
+  label.counterAxisAlignItems = 'MIN';
+  label.primaryAxisSizingMode = 'AUTO';
+  label.counterAxisSizingMode = 'FIXED';
+  label.layoutSizingHorizontal = 'FILL';
+  label.layoutSizingVertical = 'HUG';
+
+  const id = figma.createFrame();
+  label.appendChild(id);
+  id.name = 'Screen ID';
+  id.fills = [];
+  id.clipsContent = false;
+  id.resize(Math.max(81, code.length * 8 + 10), 22);
+  id.layoutMode = 'HORIZONTAL';
+  id.paddingLeft = 5;
+  id.paddingRight = 5;
+  id.primaryAxisAlignItems = 'CENTER';
+  id.counterAxisAlignItems = 'CENTER';
+  id.primaryAxisSizingMode = 'AUTO';
+  id.counterAxisSizingMode = 'AUTO';
+  id.layoutSizingHorizontal = 'HUG';
+  id.layoutSizingVertical = 'HUG';
+  const bg = figma.createRectangle();
+  id.appendChild(bg);
+  bg.name = 'bg';
+  bg.resize(id.width, 22);
+  bg.layoutPositioning = 'ABSOLUTE';
+  bg.cornerRadius = 6;
+  bg.fills = [{ type: 'SOLID', color: { r: 242 / 255, g: 242 / 255, b: 245 / 255 } }];
+  const idText = figma.createText();
+  id.appendChild(idText);
+  idText.name = 'text';
+  idText.fontName = { family: 'Inter', style: 'Medium' };
+  idText.fontSize = 14;
+  idText.lineHeight = { unit: 'PERCENT', value: 160 };
+  idText.fills = [{ type: 'SOLID', color: { r: 115 / 255, g: 115 / 255, b: 122 / 255 } }];
+  idText.characters = code;
+  idText.textAutoResize = 'WIDTH_AND_HEIGHT';
+  idText.layoutSizingHorizontal = 'HUG';
+  idText.layoutSizingVertical = 'HUG';
+  bg.resize(id.width, id.height);
+  id.visible = false;
+
+  const title = figma.createText();
+  label.appendChild(title);
+  title.name = 'Screen Title';
+  title.fontName = { family: 'Inter', style: 'Bold' };
+  title.fontSize = 18;
+  title.lineHeight = { unit: 'PERCENT', value: 140 };
+  title.fills = [{ type: 'SOLID', color: { r: 51 / 255, g: 51 / 255, b: 51 / 255 } }];
+  title.characters = name;
+  title.resize(gui.width, 25);
+  title.textAutoResize = 'HEIGHT';
+  title.layoutSizingHorizontal = 'FILL';
+  title.layoutSizingVertical = 'HUG';
+
+  const screen = figma.createFrame();
+  root.appendChild(screen);
+  screen.name = 'Screen';
+  screen.setSharedPluginData(ns, PASTE_SCREEN_KEY, 'true');
+  screen.fills = [];
+  screen.clipsContent = true;
+  screen.resize(gui.width, gui.height);
+  screen.layoutMode = 'VERTICAL';
+  screen.primaryAxisAlignItems = 'MIN';
+  screen.counterAxisAlignItems = 'MIN';
+  screen.appendChild(gui);
+  gui.name = 'GUI';
+  gui.setSharedPluginData(ns, PASTE_GUI_KEY, 'true');
+  gui.layoutSizingHorizontal = 'FIXED';
+  gui.layoutSizingVertical = 'FIXED';
+  gui.setSharedPluginData(ns, COPY_KEY, '');
+  screen.primaryAxisSizingMode = 'AUTO';
+  screen.counterAxisSizingMode = 'AUTO';
+  screen.layoutSizingHorizontal = 'HUG';
+  screen.layoutSizingVertical = 'HUG';
+  root.primaryAxisSizingMode = 'AUTO';
+  root.counterAxisSizingMode = 'AUTO';
+  root.layoutSizingHorizontal = 'HUG';
+  root.layoutSizingVertical = 'HUG';
+  root.setSharedPluginData(ns, COPY_KEY, key);
+  root.setSharedPluginData(ns, PASTE_LAYOUT_KEY, LABELED_LAYOUT);
+  return root;
+}
 
 // 복사본을 품은 플립북: 새 템플릿 플립북(원본 프레임)이면 그 ID, 이전 템플릿 플립북이 넣은 복사본이면 'legacy'(그 플립북이 GUI를 맞춘다),
 // 밖이거나 캔버스에서 복제한 플립북 프레임 안이면 null. 이전 템플릿 플립북에 GUI 붙이기로 붙인 복사본(추적 기록 ID가 있음)은 밖으로 본다.
@@ -61,16 +181,17 @@ export async function pasteCopy(ns: string, item: PasteItem, at: PasteSpot | nul
   const notes = new Set<string>();
   const staging = figma.createFrame();
   try {
-    const copy = await copyLayers(ns, source as SceneNode, staging, item.key, `${item.code} GUI`);
-    const factor = freeGuiWidth(item.maxWidth, item.scale, copy.width) / copy.width;
-    if (Math.abs(factor - 1) > 1e-6) for (const font of await rescaleExact(copy, factor)) notes.add(`${COPY.figmaFlipbook026} ${font}`);
+    const gui = await copyLayers(ns, source as SceneNode, staging, item.key, `${item.code} GUI`);
+    const factor = freeGuiWidth(item.maxWidth, item.scale, gui.width) / gui.width;
+    if (Math.abs(factor - 1) > 1e-6) for (const font of await rescaleExact(gui, factor)) notes.add(`${COPY.figmaFlipbook026} ${font}`);
+    const copy = await labeledCopy(ns, gui, staging, item.code, item.name, item.key);
     copy.setSharedPluginData(ns, COPY_SCALE_KEY, String(displayScale(item.scale)));
     copy.setSharedPluginData(ns, TRACK_KEY, item.trackId);
     parent.appendChild(copy);
     if (parent.type === 'FRAME' && parent.layoutMode !== 'NONE') copy.layoutPositioning = 'ABSOLUTE';
     const origin = parent.type === 'PAGE' ? { x: 0, y: 0 } : { x: parent.absoluteTransform[0][2], y: parent.absoluteTransform[1][2] };
     copy.x = Math.round(point.x - origin.x - copy.width / 2);
-    copy.y = Math.round(point.y - origin.y - copy.height / 2);
+    copy.y = Math.round(point.y - origin.y - (copy.height - gui.height / 2));
     page.selection = [copy];
     const flipbook = owner(ns, copy);
     return { nodeId: copy.id, pageId: page.id, flipbookId: flipbook === 'legacy' ? null : flipbook, notes: [...notes] };
@@ -144,7 +265,11 @@ export async function createdCopies(ns: string, nodeIds: string[]): Promise<Foun
 export async function markTracked(ns: string, items: { nodeId: string; trackId: string }[]): Promise<void> {
   for (const { nodeId, trackId } of items) {
     const node = await figma.getNodeByIdAsync(nodeId);
-    if (node && !node.removed && 'setSharedPluginData' in node) node.setSharedPluginData(ns, TRACK_KEY, trackId);
+    if (node && !node.removed && 'setSharedPluginData' in node) {
+      const alreadyTracked = !!node.getSharedPluginData(ns, TRACK_KEY);
+      node.setSharedPluginData(ns, TRACK_KEY, trackId);
+      if ('name' in node && !alreadyTracked) node.name = trackedName(node.name);
+    }
   }
 }
 
@@ -160,21 +285,41 @@ export async function updateCopies(ns: string, items: CopyUpdate[]): Promise<{ u
     const staging = figma.createFrame();
     try {
       const base = await copyLayers(ns, source as SceneNode, staging, item.key, `${item.code} GUI`);
-      const byWidth = new Map<number, SceneNode>();
+      const byWidth = new Map<number, FrameNode>();
       for (const target of item.copies) {
         const old = await figma.getNodeByIdAsync(target.nodeId) as SceneNode | null;
         if (!old || old.removed || !old.parent) continue;
-        const width = Math.round(old.width * 100) / 100;
+        const layout = old.getSharedPluginData(ns, PASTE_LAYOUT_KEY);
+        const wrapped = layout === LABELED_LAYOUT || layout === PREVIOUS_LAYOUT;
+        const screen = wrapped && old.type === 'FRAME' ? old.children.find(n => n.getSharedPluginData(ns, PASTE_SCREEN_KEY) === 'true') as FrameNode | undefined : undefined;
+        const oldGui = screen?.children.find(n => n.getSharedPluginData(ns, PASTE_GUI_KEY) === 'true') as FrameNode | undefined;
+        if (wrapped && (!screen || !oldGui)) continue;
+        const width = Math.round((oldGui ?? old).width * 100) / 100;
         let prepared = byWidth.get(width);
         if (!prepared) {
           prepared = base.clone();
           // clone()은 보고 있는 페이지 바로 아래에 놓이므로 임시 프레임에 넣어 끝날 때 함께 지운다(넣지 않으면 페이지에 남아 다음 찾기에 복사본으로 잡힌다).
           staging.appendChild(prepared);
-          const factor = old.width / prepared.width;
+          const factor = (oldGui ?? old).width / prepared.width;
           if (Math.abs(factor - 1) > 1e-6) for (const font of await rescaleExact(prepared, factor)) notes.add(`${COPY.figmaFlipbook026} ${font}`);
           byWidth.set(width, prepared);
         }
         const copy = prepared.clone();
+        if (wrapped && screen && oldGui) {
+          screen.insertChild(screen.children.indexOf(oldGui), copy);
+          copy.x = oldGui.x;
+          copy.y = oldGui.y;
+          copy.name = oldGui.name;
+          copy.visible = oldGui.visible;
+          copy.locked = oldGui.locked;
+          copy.setSharedPluginData(ns, COPY_KEY, '');
+          copy.setSharedPluginData(ns, PASTE_GUI_KEY, 'true');
+          oldGui.remove();
+          old.setSharedPluginData(ns, COPY_KEY, item.key);
+          old.setSharedPluginData(ns, TRACK_KEY, target.trackId);
+          updated.push({ trackId: target.trackId, nodeId: old.id });
+          continue;
+        }
         const parent = old.parent as BaseNode & ChildrenMixin;
         parent.insertChild(parent.children.indexOf(old), copy);
         // 오토 레이아웃 부모에서 떼어 낸 복제본은 부모가 바뀌어도 ABSOLUTE로 남아 있어, 지금 부모가 오토 레이아웃일 때만 옮긴다.
@@ -182,6 +327,7 @@ export async function updateCopies(ns: string, items: CopyUpdate[]): Promise<{ u
         copy.x = old.x;
         copy.y = old.y;
         copy.name = old.name;
+        copy.visible = old.visible;
         copy.locked = old.locked;
         copy.setSharedPluginData(ns, TRACK_KEY, target.trackId);
         const scale = old.getSharedPluginData(ns, COPY_SCALE_KEY);
