@@ -82,16 +82,12 @@ function mixedMark(mixed: boolean): string {
 
 export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let disposed = false;
+  let newFeaturesRequested = false;
   let newFeaturesOpened = false;
   const openNewFeatures = () => {
-    if (newFeaturesOpened || !state || startupPending || root.id !== 'app' || window.parent === window) return;
-    const key = `gui-ui-publish:new-tutorial:2026-10-30-revised:${mode}`;
-    try { if (localStorage.getItem(key)) return; } catch { /* 저장소 없이도 안내를 보여 준다. */ }
-    newFeaturesOpened = true;
-    later(() => { if (!disposed) startTutorial({ mode, actor: actor ?? { id: '', name: '' }, root, startApp, variant: 'new',
-      resize: (width, height) => bridge.send({ type: 'resize', width, height }),
-      onClose: () => { try { localStorage.setItem(key, 'seen'); } catch { /* 다음 실행에 다시 보여 준다. */ } },
-    }); });
+    if (newFeaturesRequested || !state || startupPending || root.id !== 'app' || window.parent === window) return;
+    newFeaturesRequested = true;
+    bridge.send({ type: 'tutorialSeenGet', mode });
   };
   const cleanups: (() => void)[] = [];
   const events = new AbortController();
@@ -3476,6 +3472,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         renderBusy();
         renderAll();
         openNewFeatures();
+        break;
+      case 'tutorialSeenResult':
+        if (msg.mode !== mode || !newFeaturesRequested || newFeaturesOpened || msg.seen || disposed) break;
+        newFeaturesOpened = true;
+        later(() => { if (!disposed) startTutorial({ mode, actor: actor ?? { id: '', name: '' }, root, startApp, variant: 'new',
+          resize: (width, height) => bridge.send({ type: 'resize', width, height }),
+          onClose: () => bridge.send({ type: 'tutorialSeenSet', mode }),
+        }); });
         break;
       case 'startupReady':
         startupPending = false;
