@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { COPY } from '../src/core/copy.ts';
 import { originalFlipbookFrames, pickFlipbookFrames, syncFreeGui, syncGui } from '../src/figma/flipbook.ts';
 import { updateCopies } from '../src/figma/tracked.ts';
-import { COPY_KEY, copyLayers } from '../src/figma/layers.ts';
+import { COPY_KEY, copyLayers, rescaleExact } from '../src/figma/layers.ts';
 
 // 레이어 복사의 호출 순서와 노드 생명주기를 검사한다. 실제 Figma의 복제·연결 끊기 결과는 별도로 확인한다.
 let seq = 0;
@@ -149,7 +149,7 @@ test('GUI 영역에는 원본을 바로 복사해 넣고, 같은 표식이면 �
   const gui = [{ uid: 's1', code: 'STB_HO_001', version: 2, key: 's1@2', sourceNodeId: source.id }];
   await syncGui('ns', area as unknown as FrameNode, gui, 0.5);
   const placed = area.children.find(n => n.getSharedPluginData('ns', COPY_KEY))!;
-  assert.deepEqual([placed.getSharedPluginData('ns', COPY_KEY), placed.name, placed.locked, placed.width], ['s1@2', 'STB_HO_001 GUI', false, 954]);
+  assert.deepEqual([placed.getSharedPluginData('ns', COPY_KEY), placed.name, placed.locked, placed.width], ['s1@2', 'STB_HO_001 GUI', false, 940.8]);
   assert.ok(area.children.includes(marker), 'user marker stays');
   await syncGui('ns', area as unknown as FrameNode, gui, 0.5);
   assert.equal(area.children.find(n => n.getSharedPluginData('ns', COPY_KEY)), placed, 'same key and scale keeps the existing copy');
@@ -167,7 +167,7 @@ test('GUI 영역에는 원본을 바로 복사해 넣고, 같은 표식이면 �
     { ...gui[0], scale: 0.5 },
     { ...gui[0], uid: 's2', code: 'STB_HO_002', key: 's2@2', scale: 0.25 },
   ], 1);
-  assert.deepEqual(area.children.filter(n => n.getSharedPluginData('ns', COPY_KEY)).map(n => n.width), [954, 471]);
+  assert.deepEqual(area.children.filter(n => n.getSharedPluginData('ns', COPY_KEY)).map(n => n.width), [940.8, 940.8]);
 });
 
 test('여러 화면 중 바뀐 복사본만 교체하고 준비 중 실패하면 기존 GUI를 보존한다', async () => {
@@ -210,10 +210,10 @@ test('GUI 이미지는 1920 안에서 순서대로 줄바꿈하고 긴 행 아�
   }));
   await syncGui('ns', area as unknown as FrameNode, gui, 1);
   const placed = area.children.filter(n => n.getSharedPluginData('ns', COPY_KEY));
-  assert.deepEqual(placed.map(n => Math.round(n.x)), [0, 0, 966, 0, 483, 966, 1449]);
-  assert.deepEqual(placed.map(n => Math.round(n.y)), [0, 1092, 1092, 1641, 1641, 1641, 1641]);
+  assert.deepEqual(placed.map(n => Math.round(n.x)), [0, 0, 953, 0, 953, 0, 953]);
+  assert.deepEqual(placed.map(n => Math.round(n.y)), [0, 1092, 1092, 1633, 1633, 2174, 2174]);
   assert.ok(placed.every(n => n.x + n.width <= 1920 + 0.01));
-  assert.ok(area.height >= Math.max(...placed.map(n => n.y + n.height)));
+  assert.deepEqual([area.width, area.height], [1920, 1080], 'GUI 영역은 복사본이 넘쳐도 템플릿 크기를 유지한다');
 });
 
 test('줄인 GUI는 고정 크기 노드를 원래 크기×배율로 맞추고, 글꼴이 없으면 알리고 다음 반영 때 다시 복사한다', async () => {
@@ -230,7 +230,7 @@ test('줄인 GUI는 고정 크기 노드를 원래 크기×배율로 맞추고, 
   await syncGui('ns', area as unknown as FrameNode, gui, 0.5, notes);
   const copy = area.children[0];
   const [copyRow] = copy.children;
-  assert.deepEqual([copyRow.children[0].width, copyRow.children[0].height], [270 * 954 / 1920, 270 * 954 / 1920], 'fixed tile is corrected');
+  assert.deepEqual([copyRow.children[0].width, copyRow.children[0].height], [270 * 940.8 / 1920, 270 * 940.8 / 1920], 'fixed tile is corrected');
   assert.equal(copyRow.width, 2034, 'hug row is left to auto layout');
   assert.deepEqual([...notes], [`${COPY.figmaFlipbook026} Missing Bold`]);
   assert.equal(area.getSharedPluginData('ns', 'flipbookImage'), '', 'no signature so the next sync copies again');
@@ -238,12 +238,14 @@ test('줄인 GUI는 고정 크기 노드를 원래 크기×배율로 맞추고, 
   assert.notEqual(area.children[0], copy, 'copied again');
 });
 
-test('GUI 슬롯이 한 열 너비여도 1920으로 넓혀 1/2 화면 두 장을 같은 행에 둔다', async () => {
+test('GUI 슬롯의 폭과 sizing 설정을 유지하고 복사본만 기존 영역 폭에 맞춰 줄바꿈한다', async () => {
   setup();
   const source = screen();
   (globalThis as any).figma.getNodeByIdAsync = async () => source;
   const area = new Node('FRAME', 'GUI Image Slot');
   area.width = 950;
+  area.layoutSizingHorizontal = 'FILL';
+  area.resizeWithoutConstraints = () => { throw new Error('GUI area must not be resized'); };
   const parent = new Node('FRAME', 'Template Column');
   parent.layoutMode = 'HORIZONTAL';
   parent.appendChild(area);
@@ -253,13 +255,13 @@ test('GUI 슬롯이 한 열 너비여도 1920으로 넓혀 1/2 화면 두 장을
   }));
   await syncGui('ns', area as unknown as FrameNode, gui, 1);
   const placed = area.children.filter(n => n.getSharedPluginData('ns', COPY_KEY));
-  assert.equal(area.width, 1920);
-  assert.equal(area.layoutSizingHorizontal, 'FIXED');
-  assert.deepEqual(placed.map(n => Math.round(n.x)), [0, 966]);
-  assert.deepEqual(placed.map(n => n.y), [0, 0]);
+  assert.deepEqual([area.width, area.height], [950, 1080]);
+  assert.equal(area.layoutSizingHorizontal, 'FILL');
+  assert.deepEqual(placed.map(n => Math.round(n.x)), [0, 0]);
+  assert.deepEqual(placed.map(n => Math.round(n.y)), [0, 541]);
 });
 
-test('설정한 1x 폭(1440)으로 GUI 영역을 맞추고 1/2x 두 장·1/4x 네 장이 간격 포함 한 행에 꼭 들어간다', async () => {
+test('최대 폭은 복사본에만 적용하고 이전 1/2·1/4 선택도 기본의 0.49배로 배치한다', async () => {
   setup();
   const source = screen();
   (globalThis as any).figma.getNodeByIdAsync = async () => source;
@@ -271,10 +273,10 @@ test('설정한 1x 폭(1440)으로 GUI 영역을 맞추고 1/2x 두 장·1/4x �
   }));
   await syncGui('ns', area as unknown as FrameNode, gui, 1, new Set(), 1440);
   const placed = area.children.filter(n => n.getSharedPluginData('ns', COPY_KEY));
-  assert.equal(area.width, 1440);
-  assert.deepEqual(placed.map(n => Math.round(n.width)), [1440, 714, 714, 351, 351, 351, 351]);
-  assert.deepEqual(placed.map(n => Math.round(n.x)), [0, 0, 726, 0, 363, 726, 1089]);
-  assert.deepEqual(placed.map(n => Math.round(n.y)), [0, 822, 822, 1236, 1236, 1236, 1236]);
+  assert.deepEqual([area.width, area.height], [1920, 1080]);
+  assert.deepEqual(placed.map(n => Math.round(n.width)), [1440, 706, 706, 706, 706, 706, 706]);
+  assert.deepEqual(placed.map(n => Math.round(n.x)), [0, 0, 718, 0, 718, 0, 718]);
+  assert.deepEqual(placed.map(n => Math.round(n.y)), [0, 822, 822, 1231, 1231, 1640, 1640]);
   // 폭을 바꾸면 같은 화면도 다시 복사해 새 크기로 놓는다.
   const before = placed[0];
   await syncGui('ns', area as unknown as FrameNode, gui, 1, new Set(), 1920);
@@ -346,10 +348,10 @@ test('여러 화면 플립북의 마커는 자기 화면을 따라가고, 화면
   const half = (uid: string) => ({ uid, code: uid, version: 1, key: `${uid}@1`, sourceNodeId: source.id, scale: 0.5 as const });
   await syncGui('ns', area as unknown as FrameNode, [half('s0'), half('s1')], 1, new Set(), 1920);
   // 두 번째 화면(x 966, 폭 954)의 왼쪽 위에서 (100, 50) 떨어진 곳
-  const marker = Object.assign(new Node('FRAME', 'Marker'), { x: 966 + 100 - 20, y: 50 - 20, width: 40, height: 40 });
+  const marker = Object.assign(new Node('FRAME', 'Marker'), { x: 952.8 + 100 - 20, y: 50 - 20, width: 40, height: 40 });
   area.appendChild(marker);
   await syncGui('ns', area as unknown as FrameNode, [half('s1'), half('s0')], 1, new Set(), 1440);
-  const ratio = 714 / 954;
+  const ratio = 705.6 / 940.8;
   assert.ok(Math.abs(marker.x + 20 - 100 * ratio) < 0.01, 's1 is now first at x 0');
   assert.ok(Math.abs(marker.y + 20 - 50 * ratio) < 0.01);
   assert.deepEqual([marker.width, marker.height], [40, 40]);
@@ -361,9 +363,9 @@ test('교체로 바뀐 자리의 마커는 이어받은 화면을 따라가고, 
   (globalThis as any).figma.getNodeByIdAsync = async () => source;
   const half = (uid: string, extra: object = {}) => ({ uid, code: uid, version: 1, key: `${uid}@1`, sourceNodeId: source.id, scale: 0.5 as const, ...extra });
   const s1 = half('s1', { version: 2, key: 's1@2', formerUids: ['old'] });
-  // 두 번째 화면(x 966)의 왼쪽 위에서 (100, 50) 떨어진 곳의 마커
+  // 두 번째 화면(x 952.8)의 왼쪽 위에서 (100, 50) 떨어진 곳의 마커
   const markerOn = (area: Node) => {
-    const marker = Object.assign(new Node('FRAME', 'Marker'), { x: 966 + 100 - 20, y: 50 - 20, width: 40, height: 40 });
+    const marker = Object.assign(new Node('FRAME', 'Marker'), { x: 952.8 + 100 - 20, y: 50 - 20, width: 40, height: 40 });
     area.appendChild(marker);
     return marker;
   };
@@ -378,7 +380,7 @@ test('교체로 바뀐 자리의 마커는 이어받은 화면을 따라가고, 
   await syncGui('ns', both as unknown as FrameNode, [half('s1'), half('old')], 1, new Set(), 1920);
   const stays = markerOn(both);
   await syncGui('ns', both as unknown as FrameNode, [s1], 1, new Set(), 1920);
-  assert.deepEqual([stays.x, stays.y], [966 + 100 - 20, 50 - 20], 's1 keeps its own markers; the removed slot does not take them');
+  assert.deepEqual([stays.x, stays.y], [952.8 + 100 - 20, 50 - 20], 's1 keeps its own markers; the removed slot does not take them');
 });
 
 test('플립북 프레임에 절대 위치로 놓은 노드는 중심이 GUI 영역 안일 때만 화면을 따라간다', async () => {
@@ -398,7 +400,7 @@ test('플립북 프레임에 절대 위치로 놓은 노드는 중심이 GUI 영
   assert.deepEqual([beside.x, beside.y], [2500, 300], 'outside the GUI area stays');
 });
 
-test('새 템플릿은 화면을 플립북 위에 얹는다: 최대 폭으로 줄이고, 옮긴 자리는 지키며, 넘칠 때만 영역·플립북을 늘린다', async () => {
+test('화면을 플립북 위에 얹을 때도 GUI 영역 크기를 유지하고 바깥 플립북만 늘린다', async () => {
   setup();
   const wide = screen();
   const mobile = new Node('FRAME', '모바일'); mobile.width = 390; mobile.height = 844; page.appendChild(mobile);
@@ -418,7 +420,7 @@ test('새 템플릿은 화면을 플립북 위에 얹는다: 최대 폭으로 �
   assert.deepEqual([a.x, a.y, a.width, a.height], [48, 224, 1440, 810], 'wide screen is clamped to the max width at the area corner');
   assert.deepEqual([b.x, b.y, b.width, b.height], [48, 1046, 390, 844], 'narrow screen keeps its size and wraps below');
   assert.ok(area.children.includes(table), 'area content stays');
-  assert.equal(area.height, 1046 + 844 + 24 - 200, 'area grows to the copies');
+  assert.deepEqual([area.width, area.height], [1488, 858], 'GUI 영역은 템플릿 크기를 유지한다');
   assert.equal(frame.height, 1046 + 844 + 24, 'frame without auto layout grows too');
 
   // 사용자가 옮긴 화면은 새 버전에서도 그 자리를 지키고 위의 마커도 따라간다. 넘친 만큼 플립북 폭을 늘린다.
@@ -462,4 +464,41 @@ test('추적 GUI 재배포는 K로 바꾼 폭·자리·순서·잠금과 마커�
   assert.equal(failed.updated.length, 0);
   assert.equal(copy.removed, false);
   assert.deepEqual(frame.children, [before, copy, marker]);
+});
+
+
+test('이전 템플릿도 모바일 원본 크기를 유지하고 오래된 축소 복사본을 다시 만든다', async () => {
+  setup();
+  const source = Object.assign(screen(), { width: 360, height: 720 });
+  (globalThis as any).figma.getNodeByIdAsync = async () => source;
+  const area = new Node('FRAME', 'GUI Image Slot');
+  const old = Object.assign(new Node('FRAME', 'old GUI'), { width: 270, height: 540 });
+  old.setSharedPluginData('ns', COPY_KEY, 's1@1');
+  area.appendChild(old);
+  area.setSharedPluginData('ns', 'flipbookImage', JSON.stringify(['rows-v7', 1440, [['s1@1', 1]]]));
+  const gui = [{ uid: 's1', code: 'MO_MY_009', version: 1, key: 's1@1', sourceNodeId: source.id }];
+  await syncGui('ns', area as unknown as FrameNode, gui, 1, new Set(), 1440);
+  assert.equal(old.removed, true);
+  assert.deepEqual([area.children[0].width, area.children[0].height], [360, 720]);
+  await syncGui('ns', area as unknown as FrameNode, gui, 0.5, new Set(), 1440);
+  assert.deepEqual([area.children[0].width, area.children[0].height], [176.4, 352.8]);
+});
+
+test('부모 크기 보정 뒤 절대 위치 레이어의 크기와 위치를 복원한다', async () => {
+  setup();
+  const interaction = Object.assign(new Node('FRAME', 'Interaction'), {
+    width: 328, height: 42, x: 0, y: 0, layoutPositioning: 'ABSOLUTE',
+    layoutSizingHorizontal: 'FIXED', layoutSizingVertical: 'FIXED',
+  });
+  const root = Object.assign(new Node('FRAME', 'Button'), {
+    width: 328, height: 42, layoutSizingHorizontal: 'FIXED', layoutSizingVertical: 'FIXED',
+  }).add(interaction);
+  root.rescale = () => { root.width = 246; root.height = 32; interaction.width = 246; interaction.height = 32; interaction.y = -0.5; };
+  root.resizeWithoutConstraints = (w: number, h: number) => {
+    root.resize(w, h);
+    interaction.height = 32; interaction.y = -0.5;
+  };
+  await rescaleExact(root as unknown as FrameNode, 0.75);
+  assert.deepEqual([root.width, root.height], [246, 31.5]);
+  assert.deepEqual([interaction.layoutPositioning, interaction.width, interaction.height, interaction.x, interaction.y], ['ABSOLUTE', 246, 31.5, 0, 0]);
 });

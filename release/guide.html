@@ -207,7 +207,7 @@ footer { color: var(--muted); font-size: 13px; text-align: center; margin-top: 2
   <ol class="steps">
     <li><b>플립북 페이지</b>플립북을 둘 페이지를 하나 이상 추가합니다.</li>
     <li><b>템플릿</b>캔버스에서 템플릿 프레임을 선택한 뒤 템플릿으로 지정합니다. 템플릿이 아래 요건을 갖추지 않으면 지정할 때 빠진 항목을 알려 줍니다.</li>
-    <li><b>화면 크기</b>플립북에 넣는 1x 화면의 가로 크기입니다(기본 1920px). 1/2x는 두 장, 1/4x는 네 장이 1x 폭에 들어가도록 이 값으로 계산합니다. 바꾼 크기는 이후 만들거나 GUI 갱신이 반영되는 플립북부터 적용됩니다.</li>
+    <li><b>화면 크기</b>플립북에 넣는 GUI 복사본의 최대 가로 크기입니다. 기본은 원본이 이 값보다 클 때만 축소하고, 작게는 그 0.49배로 넣습니다. GUI 영역의 크기와 Fill/Hug 설정은 템플릿 그대로 유지합니다.</li>
   </ol>
   <figure class="narrow">
     <img src="screens/ui-settings.png" alt="UI Flipbook 관리 화면: 플립북 페이지, 템플릿 지정 버튼, 화면 크기">

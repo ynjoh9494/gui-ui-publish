@@ -59,15 +59,29 @@ const fixedSize = (n: SceneNode) => n.type !== 'TEXT' && n.type !== 'GROUP' && n
 // 줄이기 전 크기를 기록해 두고, 줄인 뒤 고정 크기 노드만 기록×배율로 되돌린다. 바깥이 안쪽 크기를 따라가므로 안쪽부터 맞춘다.
 export async function rescaleExact(root: FrameNode, scale: number): Promise<string[]> {
   const missing = await loadFonts(root);
-  const nodes = root.findAll(fixedSize) as (SceneNode & LayoutMixin)[];
-  const before = nodes.map(n => [n.width * scale, n.height * scale]);
+  const nodes = [root, ...root.findAll(fixedSize)] as (SceneNode & LayoutMixin)[];
+  const before = nodes.map(n => ({
+    width: n.width * scale, height: n.height * scale,
+    fixedWidth: n.layoutSizingHorizontal === 'FIXED', fixedHeight: n.layoutSizingVertical === 'FIXED',
+  }));
+  // STRETCH 제약이 있는 절대 위치 레이어는 부모 크기 보정 때 다시 늘거나 반올림될 수 있다.
+  // 부모·고정 크기 보정이 모두 끝난 뒤 원래 배율의 크기와 위치를 복원한다.
+  const absolute = root.findAll(n => 'layoutPositioning' in n && n.layoutPositioning === 'ABSOLUTE').map(n => ({
+    node: n, x: n.x * scale, y: n.y * scale, width: n.width * scale, height: n.height * scale,
+  }));
   root.rescale(scale);
   for (let i = nodes.length - 1; i >= 0; i--) {
-    const n = nodes[i];
-    const [w, h] = before[i];
-    const width = n.layoutSizingHorizontal === 'FIXED' && Math.abs(n.width - w) > 0.01 ? w : n.width;
-    const height = n.layoutSizingVertical === 'FIXED' && Math.abs(n.height - h) > 0.01 ? h : n.height;
+    const n = nodes[i], original = before[i];
+    const width = original.fixedWidth && Math.abs(n.width - original.width) > 0.01 ? original.width : n.width;
+    const height = original.fixedHeight && Math.abs(n.height - original.height) > 0.01 ? original.height : n.height;
     if ((width !== n.width || height !== n.height) && width >= 0.01 && height >= 0.01) n.resizeWithoutConstraints(width, height);
+  }
+  for (const { node, x, y, width, height } of absolute) {
+    if ('layoutPositioning' in node) node.layoutPositioning = 'ABSOLUTE';
+    if (width >= 0.01 && height >= 0.01 && 'resizeWithoutConstraints' in node &&
+        (Math.abs(node.width - width) > 0.01 || Math.abs(node.height - height) > 0.01)) node.resizeWithoutConstraints(width, height);
+    node.x = x;
+    node.y = y;
   }
   return missing;
 }

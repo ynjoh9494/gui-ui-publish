@@ -282,7 +282,9 @@ test('표식 템플릿의 이력은 이력 행 컴포넌트의 인스턴스만 �
   row.createInstance = () => { made++; return create(); };
   const head = w.make('FRAME', 'Head');
   const example = row.createInstance();
-  const previous = w.role(w.make('FRAME', 'Older'), 'previous');
+  const system = w.make('FRAME', 'System row');
+  const backdrop = w.make('RECTANGLE', 'preBG');
+  const previous = w.role(w.make('FRAME', 'Older', [system, backdrop]), 'previous');
   const list = w.role(w.make('FRAME', 'Rows', [head, example, previous]), 'history');
   list.layoutMode = 'VERTICAL';
   made = 0;
@@ -293,7 +295,8 @@ test('표식 템플릿의 이력은 이력 행 컴포넌트의 인스턴스만 �
   await syncMarkedRows(NS, list as unknown as SceneNode, previous as unknown as SceneNode, settings, [data(2, 'UI'), data(1)], kit, notes);
   assert.equal(example.removed, true);
   assert.deepEqual(list.children.map((n: Node) => n.name), ['Head', 'Row', 'Older']);
-  assert.equal(previous.children.length, 1);
+  assert.equal(previous.children.length, 3);
+  assert.deepEqual(previous.children.slice(1), [system, backdrop], '이전 이력은 시스템 행과 배경 위에 넣는다');
   const [latest] = list.children.filter((n: Node) => n.name === 'Row');
   const cell = (r: Node, name: string) => r.findOne((n: Node) => n.name === name)!.characters;
   assert.deepEqual(['Comment', 'Team', 'Who', 'When', 'Text'].map(n => cell(latest, n)), ['change 2', 'UI', 'User', '10/22 12:00', 'tag 2']);
@@ -303,7 +306,8 @@ test('표식 템플릿의 이력은 이력 행 컴포넌트의 인스턴스만 �
   assert.equal(made, 2);
   await syncMarkedRows(NS, list as unknown as SceneNode, previous as unknown as SceneNode, settings, [data(3), data(2, 'UI'), data(1)], kit, notes);
   assert.equal(made, 3, 'existing rows are reused');
-  assert.deepEqual(previous.children.map((n: Node) => cell(n, 'Comment')), ['change 2', 'change 1']);
+  assert.deepEqual(previous.children.slice(2), [system, backdrop]);
+  assert.deepEqual(previous.children.slice(0, 2).map((n: Node) => cell(n, 'Comment')), ['change 2', 'change 1']);
   assert.deepEqual([...notes], []);
 });
 

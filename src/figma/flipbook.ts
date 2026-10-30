@@ -1,6 +1,6 @@
 import { COPY } from '../core/copy.ts';
 import type { FlipbookSpot } from '../core/compare.ts';
-import { displayScale, FREE_MARGIN, freeGuiWidth, GUI_GAP, guiTargetWidth, NO_SECTION_KEY, type FlipbookGui, type FlipbookRow, type FlipbookView } from '../core/flipbook.ts';
+import { displayScale, FREE_MARGIN, freeGuiWidth, GUI_GAP, NO_SECTION_KEY, type FlipbookGui, type FlipbookRow, type FlipbookView } from '../core/flipbook.ts';
 import type { FlipbookScale } from '../core/types.ts';
 import { newSectionKey } from '../core/flipbooks.ts';
 import { TAG_PALETTE } from '../core/palette.ts';
@@ -32,9 +32,8 @@ const PAD = 300;
 const GAP = 200;
 const SECTION_GAP = 800;
 const COLUMNS = 10;
-// 배율 기준인 STB 원본 화면 폭. 1920 원본은 1x 설정 폭과 같은 너비가 되고, 다른 폭의 원본도 같은 비율로 줄인다.
+// 최대 가로 크기를 전달하지 않는 이전 호출의 기본값.
 const SOURCE_WIDTH = 1920;
-const GUI_BASE_HEIGHT_KEY = 'flipbookImageBaseHeight';
 
 export interface FlipbookSettings { pageId: string; templateId: string; force?: boolean }
 
@@ -494,7 +493,7 @@ function areaOffset(area: FrameNode, parent: BaseNode & ChildrenMixin): Point {
 // 마커는 크기를 두고 위치만 화면을 따라간다(2026-10-21 사용자 결정): 다시 복사한 같은 화면에서 같은 상대 위치에 놓는다.
 // overlays는 플립북 프레임에 절대 위치로 놓은 노드다. 중심이 GUI 영역 안에 있는 것만 같은 방식으로 옮긴다.
 export async function syncGui(ns: string, area: FrameNode, gui: FlipbookGui[], scale: FlipbookView['scale'], notes = new Set<string>(), width = SOURCE_WIDTH, overlays: SceneNode[] = []): Promise<FrameNode[]> {
-  const signature = JSON.stringify(['rows-v7', width, gui.map(g => [g.key, g.scale ?? scale])]);
+  const signature = JSON.stringify(['rows-v8', width, gui.map(g => [g.key, g.scale ?? scale]), area.width]);
   const copies = area.children.filter(n => !!n.getSharedPluginData(ns, COPY_KEY));
   if (area.getSharedPluginData(ns, IMAGE_KEY) === signature && copies.length === gui.length &&
       copies.every((copy, i) => copy.getSharedPluginData(ns, COPY_KEY) === gui[i].key)) {
@@ -502,10 +501,10 @@ export async function syncGui(ns: string, area: FrameNode, gui: FlipbookGui[], s
     return copies as FrameNode[];
   }
   // 저장한 배치 규칙과 크기가 같으면 버전이 바뀌지 않은 화면 복사본은 그대로 쓴다.
-  // 이전 버전의 서명도 읽어 기존 플립북을 한꺼번에 다시 복사하지 않는다.
+  // 이전 크기 규칙의 복사본은 다시 만들어 원본 폭과 절대 위치를 복원한다.
   let previous: unknown;
   try { previous = JSON.parse(area.getSharedPluginData(ns, IMAGE_KEY)); } catch { previous = null; }
-  const oldRows = Array.isArray(previous) && (previous[0] === 'rows-v6' || previous[0] === 'rows-v7') && previous[1] === width
+  const oldRows = Array.isArray(previous) && previous[0] === 'rows-v8' && previous[1] === width
     && Array.isArray(previous[2]) && previous[2].length === copies.length ? previous[2] as [string, number][] : [];
   const reusable = new Map<string, FrameNode[]>();
   oldRows.forEach(([key, itemScale], i) => {
@@ -529,7 +528,7 @@ export async function syncGui(ns: string, area: FrameNode, gui: FlipbookGui[], s
       if (!source || !('visible' in source)) throw new Error(`${COPY.figmaFlipbook023} ${g.code}`);
       staging ??= figma.createFrame();
       const copy = await copyLayers(ns, source as SceneNode, staging, g.key, `${g.code} GUI`);
-      const fittedScale = Math.min(guiTargetWidth(width, g.scale ?? scale) / SOURCE_WIDTH, width / copy.width);
+      const fittedScale = freeGuiWidth(width, g.scale ?? scale, source.width) / copy.width;
       if (fittedScale !== 1) for (const font of await rescaleExact(copy, fittedScale)) missingFonts.add(font);
       placed.push(copy);
     }
@@ -539,8 +538,6 @@ export async function syncGui(ns: string, area: FrameNode, gui: FlipbookGui[], s
   }
   // 마커·콜아웃 등 사용자가 넣은 노드는 두고 이전 복사본만 바꾼다.
   const first = copies.length ? area.children.indexOf(copies[0]) : 0;
-  const baseHeight = Number(area.getSharedPluginData(ns, GUI_BASE_HEIGHT_KEY)) || area.height;
-  area.setSharedPluginData(ns, GUI_BASE_HEIGHT_KEY, String(baseHeight));
   // 크기를 바꾸기 전에 마커마다 따라갈 화면과 그 화면 안의 위치를 기록한다.
   const anchors: Anchor[] = copies.map(c => ({ uid: uidOf(c.getSharedPluginData(ns, COPY_KEY)), x: c.x, y: c.y, width: c.width }));
   const anchorHeights = copies.map(c => c.height);
@@ -554,10 +551,8 @@ export async function syncGui(ns: string, area: FrameNode, gui: FlipbookGui[], s
     const cx = node.x + node.width / 2 - o.x, cy = node.y + node.height / 2 - o.y;
     if (cx >= 0 && cx <= area.width && cy >= 0 && cy <= area.height) pins.push(pinTo(node, anchors, anchorHeights, offset));
   }
-  // GUI 영역 폭은 설정한 1x 폭으로 맞춘다. 템플릿의 슬롯이 한 열 너비로 시작해도 같다.
-  if (area.parent && 'layoutMode' in area.parent && area.parent.layoutMode !== 'NONE') area.layoutSizingHorizontal = 'FIXED';
-  if (area.width !== width) area.resizeWithoutConstraints(width, area.height);
-  const rowWidth = width;
+  // GUI 영역의 크기와 sizing 설정은 템플릿 그대로 둔다. 최대 폭은 복사본 축소에만 쓴다.
+  const rowWidth = area.width;
   let x = 0;
   let y = 0;
   let height = 0;
@@ -604,9 +599,6 @@ export async function syncGui(ns: string, area: FrameNode, gui: FlipbookGui[], s
     if (Math.abs(shiftX) > 0.01) pin.node.x += shiftX;
     if (Math.abs(shiftY) > 0.01) pin.node.y += shiftY;
   }
-  const markerBottom = area.children.filter(n => !n.getSharedPluginData(ns, COPY_KEY)).reduce((bottom, n) => Math.max(bottom, n.y + n.height), 0);
-  const targetHeight = Math.max(baseHeight, markerBottom, y + height);
-  if (area.height !== targetHeight) area.resizeWithoutConstraints(area.width, targetHeight);
   if (missingFonts.size) notes.add(`${COPY.figmaFlipbook026} ${[...missingFonts].join(', ')}`);
   area.setSharedPluginData(ns, IMAGE_KEY, missingFonts.size ? '' : signature);
   return placed;
@@ -731,14 +723,10 @@ export async function syncFreeGui(ns: string, frame: FrameNode, area: FrameNode,
   }
   for (const old of olds) if (!items.some(i => i.copy === old.node) && !old.node.removed) old.node.remove();
 
-  // 넘칠 때만 늘린다. GUI 영역은 처음 높이(기록) 아래로는 줄이지 않는다.
+  // 바깥 플립북만 늘린다. GUI 영역 자체는 템플릿의 크기를 보존한다.
   if (placed.length) {
     const bottom = Math.max(...placed.map(r => r.y + r.height)) + FREE_MARGIN;
     const right = Math.max(...placed.map(r => r.x + r.width)) + FREE_MARGIN;
-    const baseHeight = Number(area.getSharedPluginData(ns, GUI_BASE_HEIGHT_KEY)) || area.height;
-    area.setSharedPluginData(ns, GUI_BASE_HEIGHT_KEY, String(baseHeight));
-    const areaHeight = Math.max(baseHeight, bottom - base.y);
-    if (area.height < areaHeight - 0.01) area.resizeWithoutConstraints(area.width, areaHeight);
     growWidth(frame, right);
     if (frame.layoutMode === 'NONE' && frame.height < bottom - 0.01) frame.resizeWithoutConstraints(frame.width, bottom);
   }
@@ -841,7 +829,7 @@ export async function syncRows(ns: string, history: ChildrenMixin, settings: Fli
 }
 
 // 표식 템플릿: 이력 행 컴포넌트의 인스턴스만 관리하고 목록의 다른 레이어(머리 행 등)는 둔다. 최신 기록은 목록에서 행이 놓인 자리
-// (템플릿의 예시 행 자리, 없으면 목록 안 이전 이력 칸 앞이나 맨 뒤)에, 둘째 기록부터는 이전 이력 칸의 행 자리(없으면 맨 뒤)에 둔다.
+// (템플릿의 예시 행 자리, 없으면 목록 안 이전 이력 칸 앞이나 맨 뒤)에, 둘째 기록부터는 이전 이력 칸 맨 위에 최신순으로 둔다.
 export async function syncMarkedRows(ns: string, list: SceneNode, previous: SceneNode | null, settings: FlipbookSettings, rows: FlipbookRow[], kit: TagKit, notes: Set<string>): Promise<void> {
   if (!('children' in list)) return;
   const box = list as Container;
@@ -854,11 +842,10 @@ export async function syncMarkedRows(ns: string, list: SceneNode, previous: Scen
   const firstIn = (parent: Container) => parent.children.findIndex(managed);
   const inList = firstIn(box);
   const base = inList >= 0 ? inList : prev && prev.parent?.id === box.id ? box.children.indexOf(prev) : box.children.length;
-  const inPrevious = prev ? firstIn(prev) : -1;
   const statusTag = kit.links ? kit.small : null;
   await placeRows(ns, {
     list: box, previous: prev, managed, component, cells: row => markedRowParts(row, ns), statusTag, linked: true,
-    base, previousBase: prev ? (inPrevious >= 0 ? inPrevious : prev.children.length) : 0,
+    base, previousBase: 0,
     kitKey: JSON.stringify([component.id, statusTag?.id ?? null, 'linked']),
   }, settings, rows, kit, notes);
 }
