@@ -195,6 +195,20 @@ test('플립북 안의 임의 레이어와 같은 플립북의 다중 선택에�
   assert.throws(selectedDescriptionRoot, { message: COPY.figmaText007 });
 });
 
+test('연결 템플릿의 Description을 찾은 뒤 다른 인스턴스 하위는 읽지 않는다', () => {
+  const area = new Node('SLOT', 'description area');
+  area.setSharedPluginData('guiuipublish', 'templatePart', 'description');
+  const selected = new Node('INSTANCE', 'Description/Head', [area]);
+  const unrelated = new Node('INSTANCE', 'Unrelated');
+  Object.defineProperty(unrelated, 'children', { get() { throw new Error('in get_children: Maximum call stack size exceeded'); } });
+  const flipbook = new Node('FRAME', 'My_Download', [new Node('FRAME', 'Flipbook', [selected, unrelated])]);
+  flipbook.setSharedPluginData('guiuipublish', 'templateLinks', '{"components":{}}');
+  flipbook.setSharedPluginData('guiuipublish', 'flipbookOf', 'f1');
+  setup([selected]);
+  assert.equal(selectedDescriptionRoot()?.id, area.id);
+  assert.deepEqual(selectionTarget(), { kind: 'description', flipbookId: 'f1', name: 'My_Download' });
+});
+
 test('굵은 제목 줄마다 제목·본문 레이어를 묶고 문구는 검사하지 않는다', async () => {
   const { root, area, header, example, custom } = fixture();
   setup([root.children[0]]);

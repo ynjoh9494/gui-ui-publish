@@ -160,6 +160,22 @@ const OPAQUE = new Set(['gui', 'description', 'ids', 'row']);
 // 새 템플릿 플립북의 GUI 복사본은 플립북 프레임 바로 아래에 있다(figma/layers.ts COPY_KEY 표식). 그 안으로는 내려가지 않는다.
 const GUI_COPY_KEY = 'guiCopy';
 const GUI_CHILD_KEY = 'guiChildPath';
+// 선택 대상 표시는 한 역할만 필요하다. 가까운 층부터 찾아 불필요한 인스턴스 하위 트리를 읽지 않는다.
+export function markedPart(root: ChildrenMixin, key: string, ns = NS): SceneNode | null {
+  const queue: ChildrenMixin[] = [root];
+  for (let index = 0; index < queue.length; index++) {
+    const parent = queue[index];
+    for (const child of parent.children) {
+      if (parent === root && child.getSharedPluginData(ns, GUI_COPY_KEY)) continue;
+      const role = child.getSharedPluginData(ns, PART_KEY);
+      if (role === key) return child;
+      if (child.name === GUI_AREA || OPAQUE.has(role) || !('children' in child)) continue;
+      queue.push(child);
+    }
+  }
+  return null;
+}
+
 export function markedParts(root: ChildrenMixin, ns = NS): Map<string, SceneNode[]> {
   const out = new Map<string, SceneNode[]>();
   const walk = (node: ChildrenMixin, top: boolean) => {

@@ -4,7 +4,7 @@ import type { RichParagraph } from '../core/richText.ts';
 import { PART_KEY } from '../core/templateParts.ts';
 import { FLIPBOOK_KEY } from './flipbook.ts';
 import { applyRichText, BOLD_STYLE, readRichText, textFonts, type TextFonts } from './richText.ts';
-import { DESCRIPTION_AREA, GUI_AREA, NS, linksOf, markedParts } from './template.ts';
+import { DESCRIPTION_AREA, GUI_AREA, NS, linksOf, markedPart } from './template.ts';
 
 // 굵은 제목 줄마다 만든 제목·본문 묶음 표식. 레이어 하나로 넣었던 본문(OLD_BODY_MARKER)도 불러오기에서 읽는다.
 const GROUP_MARKER = 'guiUiPublishDescriptionGroup';
@@ -52,7 +52,7 @@ function linkedRootOf(node: BaseNode): SceneNode | null {
 function descriptionOf(node: SceneNode): Found | null {
   const linked = linkedRootOf(node);
   if (linked && 'children' in linked) {
-    const area = markedParts(linked, NS).get('description')?.[0];
+    const area = markedPart(linked, 'description', NS);
     if (area) return { root: area, flipbook: isFlipbook(linked) ? linked : null, label: linked.name };
     if (isFlipbook(linked)) throw new Error(COPY.figmaText006);
   }
