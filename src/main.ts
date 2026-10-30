@@ -15,7 +15,18 @@ const writes = new Set<ToMain['type']>([
 // UI 쪽 스캔은 플립북 페이지를 읽으며 표식 없는(캔버스에서 만든·복제한) Section에 표식을 쓰므로 쓰기 순서에 넣는다.
 const isWrite = (msg: ToMain) => writes.has(msg.type) || msg.type === 'scanUi' || (msg.type === 'scanSelected' && msg.team === 'UI');
 let writeQueue: Promise<void> = Promise.resolve();
+const TUTORIAL_KEY = 'gui-ui-publish:new-tutorial:2026-10-30-revised';
 figma.ui.onmessage = (msg: ToMain) => {
+  if (msg.type === 'tutorialSeenGet') {
+    void figma.clientStorage.getAsync(`${TUTORIAL_KEY}:${msg.mode}`).then(seen => {
+      figma.ui.postMessage({ type: 'tutorialSeenResult', mode: msg.mode, seen: seen === true });
+    }).catch(() => figma.ui.postMessage({ type: 'tutorialSeenResult', mode: msg.mode, seen: false }));
+    return;
+  }
+  if (msg.type === 'tutorialSeenSet') {
+    void figma.clientStorage.setAsync(`${TUTORIAL_KEY}:${msg.mode}`, true).catch(() => {});
+    return;
+  }
   if (isWrite(msg)) writeQueue = writeQueue.then(() => controller.handle(msg), () => controller.handle(msg));
   else void controller.handle(msg);
 };
