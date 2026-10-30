@@ -128,6 +128,8 @@ export type ScanState = 'idle' | 'loading' | 'comparing' | 'done' | 'cancelled' 
 
 export type ToMain =
   | { type: 'ready' }
+  | { type: 'tutorialSeenGet'; mode: Team }
+  | { type: 'tutorialSeenSet'; mode: Team }
   | { type: 'scan' }
   // UI 목록: 아직 반영하지 않은 GUI 갱신을 플립북에 반영한 뒤 UI 작성 영역을 비교
   | { type: 'scanUi' }
@@ -212,6 +214,7 @@ export type ToUi =
   | { type: 'init'; mode: Team; state: WireState; actor: Actor; pages: PageInfo[]; managedPages?: ManagedPageInfo[]; issues: string[] }
   // 첫 실행 시 UI Flipbook의 템플릿·플립북 페이지 확인과 Section 맞추기가 끝났다(실패해도 보냄).
   | { type: 'startupReady' }
+  | { type: 'tutorialSeenResult'; mode: Team; seen: boolean }
   | { type: 'state'; state: WireState; pages: PageInfo[]; managedPages?: ManagedPageInfo[] }
   | { type: 'entries'; entries: Entry[] }
   | { type: 'uiScan'; scans: UiScan[] }
