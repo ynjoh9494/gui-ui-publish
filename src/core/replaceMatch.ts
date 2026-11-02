@@ -4,7 +4,8 @@
 //
 // 교체하는 쪽: 짝이 없는 신규 후보(붙여 넣은 프레임), 원본이 있는 배포 화면(잘못 신규로 배포한 화면).
 // 교체되는 쪽: 원본을 찾지 못한 화면, 원본이 남아 있는 화면(신규 후보만 교체할 수 있다).
-// 화면 표식까지 복제된 프레임(복제 의심)은 케이스·변형을 만든 경우가 많아 제안하지 않는다.
+// 화면 표식까지 복제된 프레임(복제 의심)도 다른 신규 후보와 같은 규칙으로 가장 비슷한 화면을 제안한다(2026-11-02 사용자 요청:
+// 어차피 제안이므로 복제여도 비슷한 화면을 보여 준다). 케이스·변형을 만들려고 복제했으면 사용자가 신규 등록으로 바꾼다.
 // 지운 원본의 내용은 남기지 않으므로(2026-11-02 사용자 결정), 원본을 찾지 못한 화면은 파일에 남은 옛 원본이 있을 때만 내용으로 비교하고
 // 그 밖에는 지난 배포와 같은 프레임만 찾는다.
 import { baseline, type Entry, type ScannedFrame } from './compare.ts';
@@ -88,7 +89,7 @@ export function suggestReplacements(state: State, entries: Entry[], tokens: Map<
   const side = (entry: Entry, order: number): Side => ({ entry, screen: entry.screenId ? state.screens.get(entry.screenId) ?? null : null, missing: entry.estimate === 'missing', order });
   const all = entries.map(side);
   // 이미 짝이 있는 항목(잘라내 붙인 프레임과 원래 화면)은 그대로 둔다.
-  const fresh = all.filter(s => s.entry.frame && !s.entry.screenId && !s.entry.pairKey && !s.entry.suggestedScreenId && !s.entry.frame.error);
+  const fresh = all.filter(s => s.entry.frame && !s.entry.screenId && !s.entry.pairKey && !s.entry.frame.error);
   const missing = all.filter(s => s.missing && !s.entry.pairKey && active(s.entry)).sort(byCode);
   const present = all.filter(s => s.entry.frame && !s.missing && s.entry.estimate !== 'retired' && active(s.entry) && !s.entry.frame.error).sort(byCode);
 
@@ -166,7 +167,7 @@ export function applyReplaceSuggestions(state: State, entries: Entry[], suggesti
   for (const s of suggestions) {
     const from = byKey.get(s.key), to = byScreen.get(s.screenId);
     if (!from?.frame || !to || from === to || from.pairKey || !active(to)) continue;
-    if (from.screenId ? !active(from) || from.estimate === 'missing' : from.suggestedScreenId) continue;
+    if (from.screenId && (!active(from) || from.estimate === 'missing')) continue;
     if (to.estimate === 'missing' ? to.pairKey : from.screenId) continue;
     const screen = state.screens.get(s.screenId)!;
     from.pairKey = s.screenId;

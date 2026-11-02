@@ -75,18 +75,29 @@ test('붙여 넣은 프레임이 지난 배포와 같거나 남아 있는 원본
   assert.equal(plain.link, 'new');
 });
 
-test('잘라내 붙인 짝·복제 의심 프레임은 제안하지 않고, 한 화면에는 가장 비슷한 프레임 하나만 짝짓는다', () => {
+test('잘라내 붙인 짝은 그대로 두고, 복제 의심 프레임도 제안하며, 한 화면에는 가장 비슷한 프레임 하나만 짝짓는다', () => {
   const store = seeded();
-  // 9:1: a의 표식이 있는 프레임 하나(잘라내 붙임) → 기존 짝 그대로. 9:2: b의 표식이 복제된 프레임(b 원본도 있음) → 제안 안 함.
+  // 9:1: a의 표식이 있는 프레임 하나(잘라내 붙임) → 기존 짝 그대로. 9:2: b의 표식이 복제된 프레임(b 원본도 있음) → b와 같아 b를 제안한다.
   // 9:3·9:4: 둘 다 c와 비슷하지만 9:4가 더 비슷하다(글자가 모두 같고 지문만 다르다). 캔버스 순서가 앞인 9:3이 아니라 9:4가 짝이 된다.
   const frames = [frame('1:2', 'fp-b', 'b'), frame('1:3', 'fp-c', 'c'), frame('1:4', 'fp-d', 'd'), frame('9:1', 'fp-x', 'a'), frame('9:2', 'fp-b', 'b'), frame('9:3', 'fp-c3'), frame('9:4', 'fp-c4')];
   const entries = byKey(suggest(store, frames, {
     '1:2': ['B'], '1:3': ['C'], '1:4': ['D'], '9:1': ['A'], '9:2': ['B'], '9:3': ['C', 'v3'], '9:4': ['C'],
   }));
   assert.equal(entries.get('node:9:1')!.pairKey, 'a');
-  assert.equal(entries.get('node:9:2')!.pairKey, null);
+  // 복제 의심 안내는 그대로 두고(2026-11-02 사용자 요청: 어차피 제안이므로 복제여도 비슷한 화면을 보여 준다) 교체를 제안한다.
   assert.equal(entries.get('node:9:2')!.suggestedScreenId, 'b');
+  assert.equal(entries.get('node:9:2')!.pairKey, 'b');
+  assert.equal(defaultDraft('GUI', store.state, entries.get('node:9:2')!).link, 'replace');
   assert.deepEqual([entries.get('node:9:3')!.pairKey, entries.get('node:9:4')!.pairKey], [null, 'c']);
+});
+
+test('복제 의심 프레임은 표식의 화면이 아니라 내용이 가장 비슷한 화면을 제안한다', () => {
+  const store = seeded();
+  // 9:1은 b를 복제했지만 내용을 d처럼 고쳤다. 원본 b·d는 그대로 있다.
+  const frames = [frame('1:2', 'fp-b', 'b'), frame('1:3', 'fp-c', 'c'), frame('1:4', 'fp-d', 'd'), frame('9:1', 'fp-x', 'b')];
+  const entries = byKey(suggest(store, frames, { '1:2': ['B'], '1:3': ['C'], '1:4': ['D'], '9:1': ['D', 'v2'] }));
+  assert.equal(entries.get('node:9:1')!.suggestedScreenId, 'b');
+  assert.equal(entries.get('node:9:1')!.pairKey, 'd');
 });
 
 test('잘못 신규로 배포한 화면은 원본을 찾지 못한 화면의 지난 배포와 같으면 그 화면의 교체를 기본값으로 고른다', () => {
