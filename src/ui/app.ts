@@ -1885,7 +1885,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const connected = !!item?.layers.length;
     const status = item?.problem || (def.required && !connected) ? 'need' : connected ? 'ok' : 'optional';
     const statusLabel = status === 'need' ? (item?.problem ? `${COPY.uiApp411} · ${item.problem}` : COPY.uiApp411) : status === 'ok' ? COPY.uiApp410 : COPY.uiApp412;
-    const formats = KIND_FORMATS[def.kind].map(f => `<span title="${esc(FORMAT_LABEL[f])}" role="img" aria-label="${esc(FORMAT_LABEL[f])}">${FORMAT_ICON[f]}</span>`).join('');
+    const formats = KIND_FORMATS[def.kind].map(f => `<span class="format-${f}" title="${esc(FORMAT_LABEL[f])}" role="img" aria-label="${esc(FORMAT_LABEL[f])}">${FORMAT_ICON[f]}</span>`).join('');
     return `<div class="template-item" data-key="${def.key}"${connected ? ` data-action="admin-template-show" tabindex="0" title="${COPY.uiApp400}"` : ''}>
         <span class="template-state ${status}" role="img" title="${esc(statusLabel)}" aria-label="${esc(statusLabel)}">${STATE_ICON[status]}</span>
         <span class="template-item-name">${esc(def.label)}</span>

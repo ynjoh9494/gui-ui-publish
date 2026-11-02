@@ -237,8 +237,13 @@ summary { cursor: pointer; color: var(--muted); }
 .template-state.need { color: var(--danger); }
 .template-state.optional { color: var(--muted); }
 .template-item-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-.template-formats { display: inline-flex; flex: none; gap: 2px; color: var(--muted); }
-.template-help { display: inline-flex; flex: none; color: var(--muted); cursor: help; }
+/* 형식 아이콘 색은 Figma 레이어 패널과 같게 Figma 테마 색을 그대로 쓴다(2026-11-02 사용자 요청): 인스턴스·컴포넌트는 컴포넌트 보라,
+   슬롯은 분홍(assistive), 텍스트·프레임·레이어는 보조 아이콘 회색. 괄호 안 값은 Figma 밖(미리보기)에서만 쓴다. */
+.template-formats { display: inline-flex; flex: none; gap: 2px; color: var(--figma-color-icon-secondary, var(--muted)); }
+.template-formats :is(.format-instance, .format-component) { color: var(--figma-color-icon-component, #9747ff); }
+.template-formats .format-slot { color: var(--figma-color-icon-assistive, #f849c1); }
+/* 안내 물음표는 형식 아이콘과 구분되게 한 단계 연한 Figma 3단계 아이콘 회색이다(2026-11-02 사용자 요청). */
+.template-help { display: inline-flex; flex: none; color: var(--figma-color-icon-tertiary, #b3b3b3); cursor: help; }
 .template-item-actions { display: flex; flex: none; gap: 4px; margin-left: auto; }
 .template-item-actions .connect { color: var(--brand); }
 .template-item-actions .disconnect { color: var(--danger); }
