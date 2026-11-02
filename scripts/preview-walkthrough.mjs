@@ -1072,6 +1072,40 @@ try {
   await stateIs(back, '신규');
   await shot('11e-unpublished');
 
+  // 다른 파일에서 붙여 넣은 프레임(표식 없음)이 배포 화면과 같으면 그 화면의 교체를 기본값으로 고르고,
+  // 드롭다운 맨 위에 노란 「제안」 태그를 붙인다(2026-11-02 사용자 요청).
+  await page.locator(`#tools [data-paste="${keepKey.replace(/^node:/, '')}"]`).click();
+  await scan();
+  for (const head of await app.locator('.group-head').all())
+    if (await head.getAttribute('aria-expanded') === 'false') await head.click();
+  const pastedKey = await app.locator('.row:not(:has(.id-tag))').filter({ hasText: '붙여 넣은 화면 1' }).first().getAttribute('data-key');
+  const pasted = app.locator(`.row[data-key="${pastedKey}"]`);
+  await pasted.click();
+  assert.ok((await app.locator('.detail .note').allInnerTexts()).some(text => text.includes('STB_HO_002')), 'the suggestion is explained');
+  await pasted.locator('[data-action=include]').check();
+  assert.equal(await app.locator('[data-field=disposition][value=replace]').isChecked(), true, 'a pasted copy of a published screen defaults to 기존 화면 교체');
+  assert.equal(await app.locator('[data-field=code]').inputValue(), 'STB_HO_002', 'the replaced screen ID is filled');
+  assert.equal(await app.locator('.screen-picker summary .suggest-tag').count(), 1, 'the suggested screen carries the 제안 tag');
+  await stateIs(pasted, '화면 교체됨');
+  await stateIs(keep, '이전 버전');
+  await app.locator('.screen-picker summary').click();
+  const suggestedOption = app.locator('.screen-picker [data-action=pick]').first();
+  assert.equal(await suggestedOption.locator('.suggest-tag').count(), 1, 'the suggestion is the first option');
+  assert.match(await suggestedOption.innerText(), /STB_HO_002/);
+  assert.equal(await app.locator('.screen-picker .suggest-tag').count(), 2, 'only the suggestion is tagged (head + first option)');
+  await shot('11f-replace-suggestion');
+  await app.locator('.screen-picker .picker-search').press('Escape');
+  // 여러 화면을 골라도 기존 화면 교체를 고를 수 있다. 교체할 화면이 정해지지 않은 화면은 이름을 알린다.
+  await back.click({ modifiers: ['Control'] });
+  await app.locator('.detail [data-action=include-selected]').check();
+  await app.locator('[data-field=disposition][value=replace]').check();
+  assert.equal(await app.locator('[data-field=disposition][value=replace]').isChecked(), true, 'replace can be chosen for several screens');
+  assert.equal(await app.locator('.detail .screen-picker').count(), 0, 'the picker is shown for one screen only');
+  assert.ok((await app.locator('.detail .note').allInnerTexts()).some(text => text.includes('교체할 화면이 정해지지 않은')), 'unpaired screens are named');
+  assert.equal(await app.locator('.detail [data-field=code]').getAttribute('placeholder'), '-', 'different IDs show the mixed mark');
+  await stateIs(pasted, '화면 교체됨');
+  await shot('11g-replace-multi');
+
   // 여러 후보의 화면 이름이 다르면 '-'를 보여 주고 공통 이름을 두 초안에 적용한다.
   await page.goto(pathToFileURL(previewPath).href);
   await page.waitForFunction(() => document.querySelector('#app .tabs [data-action=version-close]'));
@@ -1085,7 +1119,7 @@ try {
   const bulkName = app.locator('.detail [data-field=name]');
   assert.equal(await bulkName.getAttribute('placeholder'), '-', '서로 다른 화면 이름은 혼합값 표시');
   assert.equal(await bulkName.inputValue(), '');
-  assert.equal(await app.locator('.detail [data-field=code]').count(), 0, 'Screen ID는 일괄 입력하지 않는다');
+  assert.equal(await app.locator('.detail [data-field=code]').count(), 1, 'Screen ID도 여러 화면에 한 번에 입력한다');
   await bulkName.fill('공통 화면 이름');
   await page.waitForFunction(keys => keys.every(key => document.querySelector(`#app .row[data-key="${key}"] .name`)?.textContent === '공통 화면 이름'), [firstKey, secondKey]);
   // 창 크기 손잡이: 플러그인 창 밖에서 버튼을 놓으면 pointerup이 오지 않는다. 돌아온 첫 움직임에서 버튼이 떼어져 있으면

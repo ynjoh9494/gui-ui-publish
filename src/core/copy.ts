@@ -472,6 +472,8 @@ export const COPY = {
   uiApp416: '슬롯',
   uiApp417: '컴포넌트',
   uiApp418: '모든 레이어',
+  uiApp419: '제안',
+  uiApp420: '교체할 화면이 정해지지 않은 화면이 있습니다. 그 화면만 골라 교체할 화면을 정하세요:',
   // 튜토리얼 — src/ui/tutorial.ts. 단계마다 말풍선 제목·설명 순서다.
   uiTutorial001: '도움말',
   uiTutorial002: '튜토리얼 종료',
@@ -589,6 +591,10 @@ export const COPY = {
   coreCompare001: '(이름 없음)', // 75
   coreCompare002: '기존 화면을 잘라내 붙인 프레임으로 보입니다. 배포하면 기존 화면 교체로 연결합니다.', // 144
   coreCompare003: "복제된 프레임일 수 있습니다:", // 158
+  // 교체 제안 — src/core/replaceMatch.ts
+  coreCompare004: '지난 배포와 같은 기존 화면이 있어 기존 화면 교체로 제안합니다. 배포하면 다음 화면을 교체합니다:',
+  coreCompare005: '내용이 비슷한 기존 화면이 있어 기존 화면 교체로 제안합니다. 배포하면 다음 화면을 교체합니다:',
+  coreCompare006: '이 화면을 교체할 프레임으로 제안했습니다:',
   // 필수 입력·유효성 검사 — src/core/drafts.ts
   coreDrafts003: '작업자', // 98
   coreDrafts004: '비활성화된 작업자입니다.', // 99

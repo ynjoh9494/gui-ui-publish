@@ -130,6 +130,53 @@ test('자동 입력한 ID는 카테고리마다 배포 화면 다음 번호부�
   assert.deepEqual(codes(), ['STB_DE_001', 'STB_HO_005', 'STB_LI_001-01', 'STB_HO_009']);
 });
 
+test('배포 화면·교체도 Screen ID를 비우면 자동으로 채우고, 비우지 않은 ID는 관계를 바꿔도 그대로 둔다', () => {
+  const store = new Store(memoryKV());
+  setScreenIdPrefix(store, 'STB', actor);
+  category(store, 'home', '홈', 'HO');
+  category(store, 'live', 'LIVE', 'LI', 2);
+  screen(store, 'h1', 'STB_HO_001', 'home');
+  screen(store, 'h2', 'STB_HO_002', 'home');
+  screen(store, 'h3', 'STB_HO_003', 'home');
+  screen(store, 'h4', 'STB_HO_004', 'home');
+  screen(store, 'k1', 'STB_HO_001-01', 'home', { baseScreenId: 'h1' });
+  const frames = ['h2', 'h3', 'h4', 'k1'].map(id => ({ ...frame(`node-${id}`, id), screenTag: id }));
+  const entries = classify(store.state, [...frames, frame('n1', '새 화면')]);
+  const entryOf = (key: string) => entries.find(e => e.key === key)!;
+  const items = entries.filter(e => e.screenId !== 'h1').map(entry => ({ entry, draft: { ...defaultDraft('GUI', store.state, entry), included: true } }));
+  const draftOf = (key: string) => items.find(i => i.entry.key === key)!.draft;
+  const code = (key: string) => draftCode(store.state, entryOf(key), draftOf(key));
+
+  // 비운 채 케이스로 지정하면 기본 화면의 다음 케이스 번호를 채운다(2026-11-02 사용자 요청).
+  draftOf('h2').code = '';
+  Object.assign(draftOf('h2'), { relation: 'case', baseScreenId: 'h1' });
+  // 비우지 않은 화면은 케이스로 바꿔도 ID를 바꾸지 않는다.
+  Object.assign(draftOf('h3'), { relation: 'case', baseScreenId: 'h1' });
+  // 관계·카테고리를 그대로 두고 비우면 지금 ID로, 카테고리를 바꾸고 비우면 그 카테고리의 다음 번호로 채운다.
+  draftOf('h4').code = '';
+  renumberAutoCodes(store.state, items);
+  assert.deepEqual([code('h2'), code('h3'), code('h4')], ['STB_HO_001-02', 'STB_HO_003', 'STB_HO_004']);
+  draftOf('h4').categoryId = 'live';
+  renumberAutoCodes(store.state, items);
+  assert.equal(code('h4'), 'STB_LI_001');
+  // 기본 화면을 아직 고르지 않은 케이스는 비워 두고, 저장된 ID로 되돌아가지 않는다.
+  draftOf('k1').code = '';
+  draftOf('k1').baseScreenId = undefined;
+  renumberAutoCodes(store.state, items);
+  assert.equal(code('k1'), '');
+  draftOf('k1').baseScreenId = 'h1';
+  renumberAutoCodes(store.state, items);
+  assert.equal(code('k1'), 'STB_HO_001-01');
+  // 기존 화면 교체는 비우면 교체할 화면의 ID로 채운다.
+  Object.assign(draftOf('node:n1'), { link: 'replace', replaceScreenId: 'h1', code: '' });
+  renumberAutoCodes(store.state, items);
+  assert.equal(code('node:n1'), 'STB_HO_001');
+  // 직접 입력한 ID는 유지한다.
+  draftOf('h2').code = 'STB_HO_009';
+  renumberAutoCodes(store.state, items);
+  assert.equal(code('h2'), 'STB_HO_009');
+});
+
 test('Prefix를 저장한 적 없는 프로젝트는 실행 시 기존 화면 ID에서 Prefix·카테고리 코드를 읽는다', () => {
   const store = new Store(memoryKV({ project: JSON.stringify({ scopePageIds: ['page'] }) }));
   category(store, 'vod', 'VOD Details', undefined, 1);

@@ -5,6 +5,7 @@ import { changeDigest } from '../core/changeDigest.ts';
 import type { FlipbookSpot, ScannedFrame } from '../core/compare.ts';
 import type { NodeSnapshot } from '../core/fingerprint.ts';
 import { sha256 } from '../core/hash.ts';
+import { tokenHashes } from '../core/replaceMatch.ts';
 import { parseRichText, type RichParagraph } from '../core/richText.ts';
 import { memoryKV, type KV } from '../core/store.ts';
 import type { Actor, Team } from '../core/types.ts';
@@ -154,14 +155,14 @@ export function createDemo(options: DemoOptions): Demo {
       return listed.map((f): ScannedFrame => ({ nodeId: f.nodeId, pageId: f.pageId, name: f.name, width: 1920, height: 1080, screenTag: f.tag, fingerprint: null, error: null }));
     },
     // Figma처럼 쉬지 않고 계산한다. 이벤트 루프 양보는 본체 비교 루프가 맡는다.
-    async fingerprint(nodeId, _legacy, digest) {
+    async fingerprint(nodeId, _legacy, digest, withTokens) {
       const until = Date.now() + (options.fingerprintMs ?? 0);
       while (Date.now() < until) { /* 지문 계산 */ }
       if (options.instrument) document.body.dataset.previewFingerprints = String(Number(document.body.dataset.previewFingerprints ?? 0) + 1);
       const f = frames.find(x => x.nodeId === nodeId);
       if (!f) return { fingerprint: null, error: COPY.uiPreview015 };
       const fingerprint = fakeFingerprint(f);
-      return { fingerprint, ...changeDigest(fingerprint, digest, () => fakeSnapshot(f)), error: null };
+      return { fingerprint, ...changeDigest(fingerprint, digest, () => fakeSnapshot(f)), ...(withTokens ? { tokens: tokenHashes(fakeTokens(f)) } : {}), error: null };
     },
     async screenFeatures(nodeId) {
       const f = frames.find(x => x.nodeId === nodeId);

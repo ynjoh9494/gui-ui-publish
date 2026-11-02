@@ -190,16 +190,42 @@ export function fillCaseCode(state: State, draft: Draft, reserved: Iterable<stri
   draft.autoCode = next || undefined;
 }
 
-// 신규 등록의 자동 Screen ID. 케이스는 기본 화면의 다음 케이스 번호, 독립 화면은 카테고리의 다음 번호(`{Prefix}_{코드}_{번호}`)다.
+// 자동 Screen ID. 케이스는 기본 화면의 다음 케이스 번호, 독립 화면은 카테고리의 다음 번호(`{Prefix}_{코드}_{번호}`)다.
+// 신규 등록 말고도 비운 ID를 채운다(2026-11-02 사용자 요청: 비운 채 케이스로 지정하면 자동으로 채우기).
+// 기존 화면 교체는 교체할 화면의 ID, 배포 화면은 화면 관계·카테고리(케이스는 기본 화면)가 저장된 값과 같으면 지금 ID이고
+// 바뀌었으면 같은 규칙의 다음 번호다. 정할 수 없으면(기본 화면을 아직 고르지 않은 케이스 등) 빈 값이다.
 export function autoCode(state: State, entry: Entry, draft: Draft, reserved: Iterable<string> = []): string {
-  if (!isNewRegistration('GUI', entry, draft) || draft.notScreen) return '';
-  return draft.relation === 'case' ? suggestedCaseCode(state, draft.baseScreenId, reserved) : nextScreenCode(state, draft.categoryId, reserved);
+  if (draft.notScreen || draft.unpublish) return '';
+  if (isNewRegistration('GUI', entry, draft))
+    return draft.relation === 'case' ? suggestedCaseCode(state, draft.baseScreenId, reserved) : nextScreenCode(state, draft.categoryId, reserved);
+  const target = replaceTarget(entry, draft);
+  if (target) return state.screens.get(target)?.code ?? '';
+  const screen = entry.screenId ? state.screens.get(entry.screenId) : null;
+  if (!screen || !entry.frame || entry.estimate === 'missing' || entry.estimate === 'retired') return '';
+  if (draft.relation === 'case') {
+    if (!draft.baseScreenId) return '';
+    return draft.baseScreenId === screen.baseScreenId ? screen.code : suggestedCaseCode(state, draft.baseScreenId, reserved);
+  }
+  const categoryId = draft.categoryId ?? screen.categoryId ?? undefined;
+  return !screen.baseScreenId && categoryId === (screen.categoryId ?? undefined) ? screen.code : nextScreenCode(state, categoryId, reserved);
 }
 
-// 비어 있거나 자동 입력한 값이면 바꾸고, 직접 입력한 ID·프레임 이름의 대괄호 ID는 유지한다.
+// 자동으로 채울 ID인가: 비어 있거나 자동으로 채운 값. 신규 등록은 입력 전(undefined)도 빈 값이고, 배포 화면·교체는 입력 전이면
+// 저장된 ID·교체할 화면의 ID를 쓰므로 사용자가 비웠을 때('')부터 채운다. 직접 입력한 ID·프레임 이름의 대괄호 ID는 유지한다.
+export function codeIsAuto(entry: Entry, draft: Draft): boolean {
+  if (draft.notScreen || draft.unpublish || isDeletion(entry, draft) || isPrevious(entry, draft) || entry.estimate === 'retired') return false;
+  if (!isNewRegistration('GUI', entry, draft) && draft.code === undefined) return false;
+  return !draft.code?.trim() || draft.code === draft.autoCode;
+}
+
+// 비운 ID의 값: 신규 등록은 입력 전 상태로 돌리고, 배포 화면·교체는 저장된 ID로 돌아가지 않게 빈 값으로 둔다.
+function blankCode(entry: Entry, draft: Draft): string | undefined {
+  return isNewRegistration('GUI', entry, draft) ? undefined : '';
+}
+
 export function fillAutoCode(state: State, entry: Entry, draft: Draft, reserved: Iterable<string> = []): void {
   const next = autoCode(state, entry, draft, reserved);
-  if (!draft.code?.trim() || draft.code === draft.autoCode) draft.code = next || undefined;
+  if (!draft.code?.trim() || draft.code === draft.autoCode) draft.code = next || blankCode(entry, draft);
   draft.autoCode = next || undefined;
 }
 
@@ -207,13 +233,13 @@ export function fillAutoCode(state: State, entry: Entry, draft: Draft, reserved:
 // 배포에 포함한 화면 순서대로 이어 붙이므로, 앞 화면의 카테고리를 바꾸거나 포함을 풀어도 번호가 비지 않는다.
 // 직접 입력한 ID와 프레임 이름의 대괄호 ID는 그대로 두고 그 번호는 건너뛴다. 포함하지 않은 화면은 포함한 화면 다음 번호를 보여 준다.
 export function renumberAutoCodes(state: State, items: { entry: Entry; draft: Draft }[]): void {
-  const auto = items.filter(({ entry, draft }) => isNewRegistration('GUI', entry, draft) && !draft.notScreen && (!draft.code?.trim() || draft.code === draft.autoCode));
+  const auto = items.filter(({ entry, draft }) => codeIsAuto(entry, draft));
   const targets = new Set(auto.map(item => item.draft));
   const reserved = items.filter(({ draft }) => draft.included && !targets.has(draft) && draft.code?.trim()).map(({ draft }) => draft.code!.trim());
   const order = [...auto.filter(item => item.draft.included), ...auto.filter(item => !item.draft.included)].sort((a, b) => Number(a.draft.relation === 'case') - Number(b.draft.relation === 'case'));
   const drafts = Object.fromEntries(items.map(item => [item.entry.key, item.draft]));
   for (const { entry, draft } of order) {
-    draft.code = undefined;
+    draft.code = blankCode(entry, draft);
     fillAutoCode(draft.relation === 'case' ? pendingCaseState(state, items.map(item => item.entry), drafts, true) : state, entry, draft, reserved);
     if (draft.included && draft.code) reserved.push(draft.code);
   }
@@ -253,7 +279,7 @@ export function defaultDraft(team: Team, state: State, entry: Entry, recentWorke
   const screen = entry.screenId ? state.screens.get(entry.screenId) : null;
   if (team === 'GUI') {
     if (needsLink(entry)) {
-      // 잘라내 붙인 프레임은 원래 화면의 교체로 고른다.
+      // 잘라내 붙인 프레임과 교체 제안이 있는 프레임은 그 화면의 교체로 고른다.
       draft.link = entry.pairKey ? 'replace' : 'new';
       if (!entry.pairKey) draft.tagId = systemTagId(state, 'add') ?? undefined;
       // 프레임 이름에 대괄호 ID가 있으면 입력란에도 채운다. 없으면 카테고리·케이스 선택의 자동 입력이나 직접 입력을 기다린다.
@@ -268,6 +294,11 @@ export function defaultDraft(team: Team, state: State, entry: Entry, recentWorke
       else draft.tagId = systemTagId(state, 'delete') ?? undefined;
     } else if (screen && !entry.categoryMissing) {
       draft.categoryId = screen.categoryId ?? undefined;
+    }
+    // 교체 제안이 있는 배포 화면(잘못 신규로 배포한 화면)은 제안한 화면의 기존 화면 교체로 고른다(core/replaceMatch.ts).
+    if (screen && entry.pairKey && entry.frame && entry.estimate !== 'missing' && entry.estimate !== 'retired') {
+      draft.link = 'replace';
+      draft.replaceScreenId = entry.pairKey;
     }
     if (screen && entry.estimate !== 'missing') {
       draft.relation = screen.baseScreenId ? 'case' : 'standalone';

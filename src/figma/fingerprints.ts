@@ -1,6 +1,7 @@
 import { changeDigest } from '../core/changeDigest.ts';
 import { COPY } from '../core/copy.ts';
 import { fingerprint, legacyFingerprint } from '../core/fingerprint.ts';
+import { tokenHashes } from '../core/replaceMatch.ts';
 import { screenTokens } from '../core/versionMatch.ts';
 import type { FingerprintReader } from '../host.ts';
 import { NS, uiAreaSnapshot } from './flipbook.ts';
@@ -16,7 +17,7 @@ function pageOf(node: BaseNode): PageNode | null {
 export function createFingerprintReader(sceneNode: (nodeId: string) => Promise<SceneNode | null>): FingerprintReader {
   const snapshotter = new Snapshotter();
   return {
-    async fingerprint(nodeId, includeLegacy = true, digest) {
+    async fingerprint(nodeId, includeLegacy = true, digest, withTokens = false) {
       try {
         const node = await sceneNode(nodeId);
         if (!node) return { fingerprint: null, error: COPY.figmaHost005 };
@@ -26,6 +27,7 @@ export function createFingerprintReader(sceneNode: (nodeId: string) => Promise<S
           fingerprint: fp,
           ...(includeLegacy ? { legacyFingerprint: legacyFingerprint(snapshot) } : {}),
           ...changeDigest(fp, digest, () => attachNames(node, snapshot)),
+          ...(withTokens ? { tokens: tokenHashes(screenTokens(snapshot)) } : {}),
           error: null,
         };
       } catch (e) {

@@ -41,7 +41,7 @@ function renderTools() {
   tools.innerHTML = `<h2>${COPY.uiPreview031}</h2>` + frames.map(f => `
     <div class="frame"><span>${f.pageId === DEMO_VERSION_PAGE.id ? `${DEMO_VERSION_PAGE.name} / ` : ''}${f.name}</span><small>${f.content}${f.tag ? COPY.uiPreview032 : ''}</small>
       <button data-edit="${f.nodeId}">${COPY.uiPreview033}</button><button data-rename="${f.nodeId}">${COPY.uiPreview034}</button>
-      <button data-dup="${f.nodeId}">${COPY.uiPreview035}</button><button data-del="${f.nodeId}">${COPY.uiPreview036}</button></div>`).join('') +
+      <button data-dup="${f.nodeId}">${COPY.uiPreview035}</button><button data-paste="${f.nodeId}">붙여 넣기</button><button data-del="${f.nodeId}">${COPY.uiPreview036}</button></div>`).join('') +
     (flipbooks.size ? `<h2>${COPY.uiPreview037}</h2>` + [...flipbooks.keys()].map(screenId => `
     <div class="frame"><span>${screenName(screenId)}</span><small>${COPY.uiPreview038} ${uiEdits.get(screenId) ?? 0}${COPY.uiPreview039}</small>
       <button data-uiedit="${screenId}">${COPY.uiPreview038}</button></div>`).join('') +
@@ -53,13 +53,16 @@ function renderTools() {
   tools.querySelector('.preview-text')!.textContent = serializeRichText(demo.text.paragraphs);
 }
 
+let pasteSeq = 0;
 document.getElementById('tools')!.addEventListener('click', ev => {
   const el = ev.target as HTMLElement;
-  const id = el.dataset.edit ?? el.dataset.rename ?? el.dataset.dup ?? el.dataset.del;
+  const id = el.dataset.edit ?? el.dataset.rename ?? el.dataset.dup ?? el.dataset.paste ?? el.dataset.del;
   const f = frames.find(x => x.nodeId === id);
   if (el.dataset.edit && f) { demo.editFrame(f); write(`${f.name} ${COPY.uiPreview044}${f.content})`); }
   if (el.dataset.rename && f) { f.name += COPY.uiPreview045; write(`${f.name} ${COPY.uiPreview046}`); }
   if (el.dataset.dup && f) { const copy = { ...f, nodeId: `${f.nodeId}-c${Date.now() % 1000}`, name: `${f.name} ${COPY.uiPreview047}` }; frames.splice(frames.indexOf(f) + 1, 0, copy); write(`${f.name} ${COPY.uiPreview048}`); }
+  // 다른 파일에서 붙여 넣은 것처럼 화면 표식 없이 새 노드로 복사한다(교체 제안 확인용).
+  if (el.dataset.paste && f) { const copy = { ...f, nodeId: `${f.nodeId}-p${++pasteSeq}`, name: `붙여 넣은 화면 ${pasteSeq}`, tag: null }; frames.splice(frames.indexOf(f) + 1, 0, copy); write(`${f.name} 붙여 넣음`); }
   if (el.dataset.del && f) { frames.splice(frames.indexOf(f), 1); write(`${f.name} ${COPY.uiPreview036}`); }
   if (el.dataset.uiedit) { const n = (uiEdits.get(el.dataset.uiedit) ?? 0) + 1; uiEdits.set(el.dataset.uiedit, n); write(`${screenName(el.dataset.uiedit)} ${COPY.uiPreview049}${n}${COPY.uiPreview050}`); }
   // 캔버스에서 플립북 프레임을 고른 것처럼 바꾼다(PDF 저장 탭).

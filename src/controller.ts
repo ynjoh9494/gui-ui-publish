@@ -20,6 +20,7 @@ import { formatFrameName } from './core/screenName.ts';
 import { addTemplate, removeTemplate, setCurrentTemplate, setRepresentativeTemplate, templateEntries, templateForItem } from './core/templateList.ts';
 import { DIGEST_PREFIX, keys, lastUi, randomId, Store } from './core/store.ts';
 import type { DataStatus, ProjectConfig, Team, UiBaseline } from './core/types.ts';
+import { applyReplaceSuggestions, suggestReplacements, tokenHashes, type ReplaceSuggestion } from './core/replaceMatch.ts';
 import { explainMatch, matchVersion, versionCommon, versionLinkErrors, type VersionFrame } from './core/versionMatch.ts';
 import { toUiWire, type AdminOp, type NavTarget, type ScanState, type ToMain } from './core/wire.ts';
 import { FlowController } from './flowController.ts';
@@ -119,6 +120,12 @@ export class Controller {
   // 새 버전 페이지 비교 결과. 전환은 이 결과의 프레임만 연결하고, 계산한 지문을 그대로 원본 목록으로 쓴다.
   // sources·common: 유사도 근거를 제안 때와 같은 규칙으로 다시 계산하는 데 쓴다.
   private version: { pageId: string; frames: VersionFrame[]; scanned: ScannedFrame[]; sources: Map<string, string[]>; common: Set<string> } | null = null;
+  // 교체 제안(core/replaceMatch.ts). tokens: 범위 프레임 노드 ID → 화면 내용 토큰 해시(지문과 같은 스냅숏에서 만든다),
+  // oldTokens: 원본을 찾지 못한 화면 ID → 파일에 남은 옛 원본의 토큰 해시(찾지 못하면 null). 전체 확인을 시작할 때 비운다.
+  // suggestions는 다시 계산할 때까지 이전 결과를 둬, 확인하는 동안 목록의 기본값이 사라졌다 돌아오지 않게 한다.
+  private tokens = new Map<string, Uint32Array>();
+  private oldTokens = new Map<string, Uint32Array | null>();
+  private suggestions: ReplaceSuggestion[] = [];
 
   constructor(host: Host) {
     this.host = host;
@@ -382,8 +389,57 @@ export class Controller {
   }
 
   private postEntries() {
-    this.entries = this.framesLoaded ? classify(this.store.state, this.frames) : uncheckedEntries(this.store.state);
+    this.entries = this.framesLoaded ? this.classified() : uncheckedEntries(this.store.state);
     this.host.post({ type: 'entries', entries: this.entries });
+  }
+
+  // 읽은 원본 목록의 분류에 교체 제안을 더한다. 제안은 항목의 교체 짝(pairKey)이 되어 등록 방식의 기본값을 정한다.
+  private classified(): Entry[] {
+    const entries = classify(this.store.state, this.frames);
+    applyReplaceSuggestions(this.store.state, entries, this.suggestions);
+    return entries;
+  }
+
+  // 교체 제안에 쓸 옛 원본: 원본을 찾지 못한 사용 중 화면 중 짝이 없고 아직 읽지 않은 화면. 원본 노드가 범위 밖에 남아 있을 때만 내용을 얻는다.
+  private oldSourcesToRead(): { screenId: string; nodeId: string }[] {
+    const s = this.store.state;
+    return classify(s, this.frames).flatMap(e => {
+      const screen = e.screenId && e.estimate === 'missing' && !e.pairKey ? s.screens.get(e.screenId) : null;
+      return screen?.status === 'active' && screen.source && !this.oldTokens.has(screen.id) ? [{ screenId: screen.id, nodeId: screen.source.nodeId }] : [];
+    });
+  }
+
+  private async readOldSource(reader: FingerprintReader, item: { screenId: string; nodeId: string }): Promise<void> {
+    const { tokens } = await reader.screenFeatures(item.nodeId, false);
+    this.oldTokens.set(item.screenId, tokens?.length ? tokenHashes(tokens) : null);
+  }
+
+  private clearReplacements(): void {
+    this.tokens.clear();
+    this.oldTokens.clear();
+    this.suggestions = [];
+  }
+
+  private findReplacements(): void {
+    const old = new Map<string, Uint32Array>();
+    for (const [id, tokens] of this.oldTokens) if (tokens) old.set(id, tokens);
+    this.suggestions = suggestReplacements(this.store.state, classify(this.store.state, this.frames), this.tokens, old);
+  }
+
+  // 1 규칙 지문도 계산할 신규 프레임: 원본을 찾지 못한 화면 중 1 규칙 비교 기준만 있는 화면이 있으면, 어느 화면의 원본도 아닌 프레임.
+  // 교체 제안이 그 화면의 지난 배포와 같은 프레임을 찾는 데 쓴다(새 버전 페이지와 같다).
+  private legacyFresh(frames: ScannedFrame[]): Set<string> {
+    const listed = new Set(frames.map(f => f.nodeId));
+    const s = this.store.state;
+    const sources = new Set<string>();
+    let needed = false;
+    for (const screen of s.screens.values()) {
+      if (!screen.source) continue;
+      sources.add(screen.source.nodeId);
+      const base = screen.status === 'active' && !listed.has(screen.source.nodeId) ? baseline(s, screen) : null;
+      if (base?.fingerprint && (base.fpVersion ?? LEGACY_FINGERPRINT_VERSION) === LEGACY_FINGERPRINT_VERSION) needed = true;
+    }
+    return needed ? new Set(frames.filter(f => !sources.has(f.nodeId)).map(f => f.nodeId)) : new Set();
   }
 
   // 1 규칙 비교 기준이 있는 원본: 원본 노드 ID → 기준 지문
@@ -409,7 +465,8 @@ export class Controller {
   }
 
   // 지문과 함께 변경 근거를 읽는다. 저장된 근거는 배포 화면을 읽을 때만 꺼내고, 계산 여부는 core/changeDigest.ts의 changeDigest()가 정한다.
-  private async readFrame(reader: FingerprintReader, frame: ScannedFrame, legacy: Map<string, string>, targets: Map<string, { screenId: string; baseline: string }>): Promise<ScannedFrame> {
+  // fresh: 1 규칙 지문도 계산할 신규 프레임(legacyFresh)
+  private async readFrame(reader: FingerprintReader, frame: ScannedFrame, legacy: Map<string, string>, targets: Map<string, { screenId: string; baseline: string }>, fresh = new Set<string>()): Promise<ScannedFrame> {
     const nodeId = frame.nodeId;
     const target = targets.get(nodeId);
     const stored = target ? this.store.kv.get(keys.digest(target.screenId)) : '';
@@ -417,7 +474,9 @@ export class Controller {
     const request: DigestRequest | undefined = target
       ? { baseline: target.baseline, stored, previous: last && last.baseline === target.baseline && last.stored === stored ? last.previous : undefined }
       : undefined;
-    const { digest, names, ...result } = await reader.fingerprint(nodeId, legacy.has(nodeId), request);
+    const { digest, names, tokens, ...result } = await reader.fingerprint(nodeId, legacy.has(nodeId) || fresh.has(nodeId), request, true);
+    if (tokens) this.tokens.set(nodeId, tokens);
+    else this.tokens.delete(nodeId);
     if (digest) this.digests.set(nodeId, digest);
     else this.digests.delete(nodeId);
     if (target && result.fingerprint && result.reason && digest && names !== undefined)
@@ -475,24 +534,36 @@ export class Controller {
     if (seq !== this.scanSeq) return;
     this.frames = frames;
     this.digests.clear();
+    this.tokens.clear();
+    this.oldTokens.clear();
     this.framesLoaded = true;
     this.postEntries();
-    this.scanStatus('GUI', 'comparing', 0, frames.length);
+    const fresh = this.legacyFresh(frames);
+    const oldReads = this.oldSourcesToRead();
+    const total = frames.length + oldReads.length;
+    this.scanStatus('GUI', 'comparing', 0, total);
     let lastListPost = Date.now();
     const pause = yielder();
     for (let i = 0; i < frames.length; i++) {
-      const frame = await this.readFrame(reader, frames[i], legacy, targets);
+      const frame = await this.readFrame(reader, frames[i], legacy, targets, fresh);
       await pause();
       if (seq !== this.scanSeq) return;
       this.frames[i] = frame;
       if ((i + 1) % PROGRESS_STEP === 0 && i < frames.length - 1) {
         if (Date.now() - lastListPost >= 100) { this.postEntries(); lastListPost = Date.now(); }
-        this.scanStatus('GUI', 'comparing', i + 1, frames.length);
+        this.scanStatus('GUI', 'comparing', i + 1, total);
       }
+    }
+    for (let i = 0; i < oldReads.length; i++) {
+      await this.readOldSource(reader, oldReads[i]);
+      await pause();
+      if (seq !== this.scanSeq) return;
+      if ((frames.length + i + 1) % PROGRESS_STEP === 0) this.scanStatus('GUI', 'comparing', frames.length + i + 1, total);
     }
     this.checkedAt = this.store.now();
     this.upgradeBaselines();
     this.recordDigests();
+    this.findReplacements();
     this.postEntries();
     this.scanStatus('GUI', 'done', frames.length, frames.length);
   }
@@ -652,19 +723,26 @@ export class Controller {
     this.framesLoaded = true;
     this.postEntries();
     const indexes = this.frames.map((f, i) => (wanted.has(f.nodeId) ? i : -1)).filter(i => i >= 0);
+    const fresh = this.legacyFresh(this.frames);
     this.scanStatus('GUI', 'comparing', 0, indexes.length);
     const pause = yielder();
     for (const [n, i] of indexes.entries()) {
-      const frame = await this.readFrame(reader, this.frames[i], legacy, targets);
+      const frame = await this.readFrame(reader, this.frames[i], legacy, targets, fresh);
       await pause();
       if (seq !== this.scanSeq) return;
       this.frames[i] = frame;
       if ((n + 1) % PROGRESS_STEP === 0 && n < indexes.length - 1) this.scanStatus('GUI', 'comparing', n + 1, indexes.length);
     }
+    for (const item of this.oldSourcesToRead()) {
+      await this.readOldSource(reader, item);
+      await pause();
+      if (seq !== this.scanSeq) return;
+    }
     this.partialAt = this.store.now();
     this.selectedScan.GUI = false;
     this.upgradeBaselines();
     this.recordDigests();
+    this.findReplacements();
     this.postEntries();
     this.scanStatus('GUI', 'done', indexes.length, indexes.length);
   }
@@ -788,6 +866,8 @@ export class Controller {
     }
     const tags = new Map(links.map(link => [link.nodeId, link.screenId]));
     this.scanSeq++;
+    // 전환에서 연결하지 않은 프레임·화면은 사용자가 고른 결과이므로 교체를 다시 제안하지 않는다.
+    this.clearReplacements();
     this.frames = version.scanned.map(f => ({ ...f, screenTag: tags.get(f.nodeId) ?? f.screenTag }));
     this.framesLoaded = true;
     this.checkedAt = s.now();
@@ -1063,7 +1143,7 @@ export class Controller {
         if (f.fingerprint === null && !f.error && entry && drafts[entry.key]?.included && !drafts[entry.key]?.notScreen && !drafts[entry.key]?.unpublish)
           this.frames[i] = await this.readFrame(reader, f, legacy, targets);
       }
-      this.entries = classify(this.store.state, this.frames);
+      this.entries = this.classified();
       entries = this.entries;
     } else {
       entries = uiEntries(this.store.state, new Map(this.uiScans.map(u => [u.flipbookId, u])));
@@ -1430,6 +1510,7 @@ export class Controller {
     for (const key of keys) this.store.kv.set(key, '');
     this.frames = [];
     this.framesLoaded = false;
+    this.clearReplacements();
     this.checkedAt = null;
     this.partialAt = null;
     this.uiScans = [];
@@ -1632,6 +1713,7 @@ export class Controller {
       this.scanSeq++;
       this.frames = [];
       this.framesLoaded = false;
+      this.clearReplacements();
       this.checkedAt = null;
       this.partialAt = null;
       this.scanStatus('GUI', 'idle');
