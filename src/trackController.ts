@@ -2,7 +2,7 @@ import { COPY } from './core/copy.ts';
 import { guiKey } from './core/flipbook.ts';
 import { guiScreens } from './core/guiScreens.ts';
 import { keys, type Store } from './core/store.ts';
-import { flagRetiredScreens, followMembers, forgetScreens, placePath, reconcileTracks, successorOf, trackPages, type FoundCopy, type TrackListItem } from './core/tracks.ts';
+import { flagRetiredScreens, followMembers, forgetScreens, placePath, reconcileTracks, successorOf, trackable, trackPages, type FoundCopy, type TrackListItem } from './core/tracks.ts';
 import type { FlipbookScale, TrackRecord } from './core/types.ts';
 import type { CopyUpdate, Host, PasteSpot } from './host.ts';
 
@@ -25,9 +25,8 @@ export class TrackController {
     s.reload();
     const pages = only ?? trackPages(s.state, uids);
     if (!pages.length) return { found: [], original: new Map(), records: new Map(), changed: [] };
-    // 사용 안 함이 된 화면의 복사본은 추적하지 않는다(레이어는 캔버스에 남지만 표식만 남은 것). 교체로 이어진 화면은 이어받은 화면으로 본다.
-    const live = successorOf(s.state);
-    const scanned = (await this.host.scanCopies(pages, uids ? [...uids] : undefined)).filter(c => s.state.screens.get(live(c.uid))?.status === 'active');
+    // 사용 안 함이 된 화면의 복사본과 목록에서 삭제한 플립북 안의 복사본은 추적하지 않는다(core/tracks.ts trackable).
+    const scanned = (await this.host.scanCopies(pages, uids ? [...uids] : undefined)).filter(trackable(s.state));
     const before = new Map([...s.state.tracks.values()].map(t => [t.nodeId, t]));
     const result = reconcileTracks(s, scanned, new Set(pages), uids, this.host.actor, s.newId);
     if (result.retag.length) await this.host.markTracked?.(result.retag);
@@ -100,8 +99,10 @@ export class TrackController {
     const trackId = s.newId();
     const placed = await this.host.pasteGui({ key: guiKey(uid, screen.guiVersion), code: screen.code, name: screen.name, sourceNodeId: screen.source.nodeId, trackId, scale, maxWidth: s.state.project.guiWidth }, at);
     s.reload();
-    s.put(keys.track(trackId), { id: trackId, uid, nodeId: placed.nodeId, pageId: placed.pageId, createdAt: s.now(), actor: this.host.actor } satisfies TrackRecord);
     const into = placed.flipbookId ? s.state.flipbooks.get(placed.flipbookId) : undefined;
+    // 목록에서 삭제한 플립북(보관) 안에 붙인 화면은 그 안의 다른 화면처럼 추적하지 않는다.
+    if (into?.status === 'deleted') return { changed: [], notes: placed.notes };
+    s.put(keys.track(trackId), { id: trackId, uid, nodeId: placed.nodeId, pageId: placed.pageId, createdAt: s.now(), actor: this.host.actor } satisfies TrackRecord);
     const changed = into?.tracked && into.status === 'active' ? (await this.read(null, () => s.now(), [placed.pageId]))?.changed ?? [] : [];
     return { changed, notes: placed.notes };
   }
@@ -146,8 +147,7 @@ export class TrackController {
     if (!this.host.createdCopies || !nodeIds.length) return false;
     const s = this.store;
     s.reload();
-    const live = successorOf(s.state);
-    const found = (await this.host.createdCopies(nodeIds)).filter(c => s.state.screens.get(live(c.uid))?.status === 'active');
+    const found = (await this.host.createdCopies(nodeIds)).filter(trackable(s.state));
     s.reload();
     const known = new Set([...s.state.tracks.values()].map(t => t.nodeId));
     const fresh = found.filter(c => !known.has(c.nodeId));

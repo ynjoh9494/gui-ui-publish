@@ -1471,7 +1471,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     // 맨 위에 안내와 「새 형식으로 변환」을 둔다. 여러 개를 고르면 고른 것 중 이전 형식 플립북만 함께 바꾼다.
     const legacy = legacyChosen(chosen);
     const legacyAlert = legacy.length ? `<div class="legacy-alert" role="alert"><p>${multi ? `${COPY.legacyAlertMulti} <b>${legacy.length}</b>${COPY.uiApp015}` : COPY.legacyAlert}</p><button data-action="fb-convert-legacy" title="${esc(COPY.legacyConvertHint)}">${COPY.legacyConvert}</button></div>` : '';
-    let top = `${legacyAlert}${deletedAlert}<div class="detail-head title-head">${heading}${renamable ? `<button class="icon-button" data-action="fb-edit-title" data-id="${esc(entry.flipbookId)}" title="${COPY.uiApp335}" aria-label="${COPY.uiApp336}" aria-pressed="${editingAt(fb.id, 'detail')}">${PENCIL_ICON}</button>` : ''}</div>`;
+    // 목록에서 삭제(2026-11-02 사용자 결정): 제목 줄 오른쪽 빨간 글자, 한 번 누르면 고른 플립북을 모두 뺀다. 캔버스 프레임은 남는다.
+    // 고른 플립북이 모두 연결 끊김이면 아래 연결 끊김 안내의 「목록에서 삭제」만 둔다.
+    const removable = chosen.some(e => e.estimate !== 'missing');
+    const removeButton = removable ? `<button class="remove-text" data-action="fb-remove-list" title="${esc(COPY.flipbookRemoveHint)}">${COPY.uiApp237}</button>` : '';
+    let top = `${legacyAlert}${deletedAlert}<div class="detail-head title-head">${heading}${renamable ? `<button class="icon-button" data-action="fb-edit-title" data-id="${esc(entry.flipbookId)}" title="${COPY.uiApp335}" aria-label="${COPY.uiApp336}" aria-pressed="${editingAt(fb.id, 'detail')}">${PENCIL_ICON}</button>` : ''}${removeButton}</div>`;
     // 연결이 끊긴 플립북은 목록에서 삭제할 수 있다. 한 번 누르면 삭제한다(2026-10-20 사용자 결정).
     const unlinked = chosen.filter(e => e.estimate === 'missing');
     if (unlinked.length) {
@@ -2786,6 +2790,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
           return { flipbookId: e.flipbookId!, tagId: d.tagId ?? '', comment: d.description ?? '' };
         });
         if (requests.length && requests.every(r => r.tagId)) { bridge.send({ type: 'markReviewed', requests }); el.setAttribute('disabled', ''); }
+        break;
+      }
+      case 'fb-remove-list': {
+        const ids = selectedEntries('UI').filter(e => !!e.flipbookId).map(e => e.key);
+        if (!ids.length) break;
+        bridge.send({ type: 'removeFlipbooks', ids, withFrames: true });
+        el.setAttribute('disabled', '');
         break;
       }
       case 'remove-flipbooks': {

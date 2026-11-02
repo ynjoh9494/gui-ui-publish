@@ -232,7 +232,7 @@ export class Controller {
         case 'createFlipbooks': await this.createFlipbooks(msg.request); break;
         case 'renameFlipbook': await this.renameFlipbook(msg.id, msg.title); break;
         case 'markReviewed': await this.markReviewed(msg.requests); break;
-        case 'removeFlipbooks': await this.removeFlipbooks(msg.ids); break;
+        case 'removeFlipbooks': await this.removeFlipbooks(msg.ids, !!msg.withFrames); break;
         case 'matchVersion': await this.matchVersion(msg.pageId); break;
         case 'switchVersion': await this.switchVersion(msg.pageId, msg.links); break;
         case 'replaceReason': await this.replaceReason(msg.entryKey, msg.screenId); break;
@@ -1104,18 +1104,23 @@ export class Controller {
     this.postUiScans();
   }
 
-  // 연결이 끊긴 플립북을 목록에서 삭제한다. 삭제 직전에 플립북 페이지에서 다시 찾고, 프레임이 있으면 지우지 않는다.
+  // 플립북을 목록에서 삭제한다. 기록은 사용 안 함으로 남기고 캔버스의 프레임은 지우지 않는다.
+  // withFrames가 아니면(연결 끊긴 플립북 삭제) 삭제 직전에 플립북 페이지에서 다시 찾고, 프레임이 있으면 지우지 않는다.
   // 파일 전체 페이지를 불러오면 삭제가 너무 느려서 플립북 페이지만 찾는다(2026-10-21 사용자 결정). 플립북 페이지가 아닌 곳으로 직접 옮긴 프레임은 찾지 못한다.
-  private async removeFlipbooks(ids: string[]): Promise<void> {
+  // withFrames(2026-11-02 사용자 결정: 프레임이 남은 플립북도 목록에서 뺀다): 그 프레임 안의 GUI는 그대로 보관한다. 그 페이지를 다시 읽으면
+  // 삭제한 플립북 안의 복사본은 추적하지 않으므로(core/tracks.ts trackable) 추적 기록이 빠지고, 이후 GUI 배포가 바꾸지 않는다.
+  private async removeFlipbooks(ids: string[], withFrames = false): Promise<void> {
     const s = this.store;
     s.reload();
     const { found, spots } = await this.inspectFlipbooks();
-    const removed = removeFlipbooks(s, ids, new Set(found.keys()), this.host.actor);
-    const kept = ids.filter(id => found.has(id)).map(id => s.state.flipbooks.get(id)?.title ?? id);
+    const removed = removeFlipbooks(s, ids, withFrames ? new Set() : new Set(found.keys()), this.host.actor);
+    const kept = withFrames ? [] : ids.filter(id => found.has(id)).map(id => s.state.flipbooks.get(id)?.title ?? id);
+    const framed = removed.filter(id => found.has(id));
+    for (const pageId of new Set(framed.map(id => s.state.flipbooks.get(id)?.pageId).filter((id): id is string => !!id))) await this.tracks.refreshPage(pageId);
     if (removed.length) await this.refreshData(false, false);
     this.postState();
     this.applyLinks(found, spots);
-    const message = [`${removed.length}${COPY.controller069}`, kept.length ? `${COPY.controller070} ${kept.join(', ')}` : ''].filter(Boolean).join(' ');
+    const message = [`${removed.length}${COPY.controller069}`, kept.length ? `${COPY.controller070} ${kept.join(', ')}` : '', framed.length ? COPY.flipbookRemoveRestore : ''].filter(Boolean).join(' ');
     this.host.post({ type: 'flipbooksRemoved', ids: removed, message });
   }
 

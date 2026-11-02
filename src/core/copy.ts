@@ -1150,6 +1150,9 @@ export const COPY = {
   legacyConverted: '새 형식으로 변환한 플립북:',
   legacyConvertMissing: '플립북 프레임을 찾지 못해 변환하지 못한 플립북:',
   legacyNeedsConvert: '이전 형식 플립북이라 반영하지 않았습니다. 플립북 상세에서 「새 형식으로 변환」을 누르세요.',
+  // 플립북 상세 제목 줄의 「목록에서 삭제」(캔버스 프레임은 남김) — src/ui/app.ts, src/controller.ts
+  flipbookRemoveHint: '목록에서 뺍니다. 캔버스의 프레임은 지우지 않고 기록도 남기며, 그 안의 GUI는 더 바뀌지 않습니다. 되살리려면 그 프레임을 골라 「기존 플립북 등록」을 누르세요.',
+  flipbookRemoveRestore: '캔버스의 프레임은 그대로 두었습니다. 되살리려면 그 프레임을 골라 「기존 플립북 등록」을 누르세요.',
 } as const;
 
 // 화면·안내·오류 문구. 원본 파일과 행은 추출 당시 위치다.

@@ -236,3 +236,34 @@ test('삭제 배포는 동기화 전 옮긴 GUI의 현재 소속에만 경고하
   assert.deepEqual(calls.scans, [['p1', 'p2']]);
   assert.equal(store.state.imported.size, 0, 'no new history for a retired screen');
 });
+
+// 목록에서 삭제(2026-11-02 사용자 결정): 프레임이 남은 플립북을 목록에서 빼면 그 안의 GUI는 그대로 보관한다(배포가 바꾸지 않는다).
+test('목록에서 삭제한 플립북 안의 추적 GUI는 추적을 멈춰 배포가 바꾸지 않고, 복제·붙이기도 추적하지 않으며, 되살리면 다시 추적한다', async () => {
+  const found: FoundCopy[] = [
+    { nodeId: 'in', pageId: 'p1', uid: 's1', version: 1, trackId: 't1', flipbookId: 'fb' },
+    { nodeId: 'out', pageId: 'p1', uid: 's1', version: 1, trackId: 't2', flipbookId: null },
+  ];
+  const { store, host, calls, tracks } = setup(found);
+  store.put(keys.screen('s1'), screenRecord('s1', 'STB_HO_001', 2));
+  store.put(keys.flipbook('fb'), { ...flipbook('fb', 'p1', [{ uid: 's1', code: 'STB_HO_001', name: '화면 s1', version: 1, addedAt: 600 }]), status: 'deleted' });
+  store.put(keys.track('t1'), { id: 't1', uid: 's1', nodeId: 'in', pageId: 'p1', createdAt: 600, actor } satisfies TrackRecord);
+  store.put(keys.track('t2'), { id: 't2', uid: 's1', nodeId: 'out', pageId: 'p1', createdAt: 600, actor } satisfies TrackRecord);
+  await tracks.publish(new Set(['s1']));
+  assert.deepEqual(calls.updates.flatMap(u => u.copies.map(c => c.nodeId)), ['out'], '삭제한 플립북 안의 복사본은 바꾸지 않는다');
+  assert.equal(store.state.tracks.has('t1'), false, '그 복사본의 추적 기록은 빠진다');
+  assert.deepEqual(store.state.flipbooks.get('fb')!.screens.map(s => s.version), [1], '삭제한 플립북의 기록은 그대로 둔다');
+
+  Object.assign(host, { createdCopies: async () => [{ nodeId: 'dup', pageId: 'p1', uid: 's1', version: 1, trackId: 't1', flipbookId: 'fb' }] });
+  assert.equal(await tracks.adopt(['dup']), false, '삭제한 플립북 안에서 복제한 복사본도 추적하지 않는다');
+
+  Object.assign(host, { pasteGui: async () => ({ nodeId: 'pasted', pageId: 'p1', flipbookId: 'fb', notes: [] }) });
+  store.put(keys.screen('s1'), { ...screenRecord('s1', 'STB_HO_001', 2), source: { nodeId: 'src-s1', pageId: 'gui' } as Screen['source'] });
+  await tracks.paste('s1', 1, null);
+  assert.equal([...store.state.tracks.values()].some(t => t.nodeId === 'pasted'), false, '삭제한 플립북 안에 붙인 화면도 추적하지 않는다');
+
+  // 기존 플립북 등록으로 되살리면 그 안의 복사본을 다시 추적한다.
+  store.put(keys.flipbook('fb'), { ...store.state.flipbooks.get('fb')!, status: 'active' });
+  calls.updates.length = 0;
+  await tracks.publish(new Set(['s1']));
+  assert.ok(calls.updates.flatMap(u => u.copies.map(c => c.nodeId)).includes('in'));
+});

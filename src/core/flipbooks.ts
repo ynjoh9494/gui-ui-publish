@@ -379,8 +379,8 @@ export function retireFlipbooks(store: Store, actor: Actor): string[] {
   return out;
 }
 
-// 연결이 끊긴(캔버스에서 프레임을 찾지 못한) 플립북을 목록에서 빼고 뺀 플립북 ID를 돌려준다(2026-10-20 사용자 결정).
-// 기록은 지우지 않고 사용 안 함으로 바꾼다. linked: 지금 프레임이 있는 플립북. 프레임이 남은 플립북은 빼지 않는다.
+// 플립북을 목록에서 빼고 뺀 플립북 ID를 돌려준다(2026-10-20 사용자 결정: 연결 끊긴 플립북, 2026-11-02: 프레임이 남은 플립북도).
+// 기록은 지우지 않고 사용 안 함으로 바꾼다. linked: 빼지 않을 플립북(연결 끊긴 플립북만 뺄 때 지금 프레임이 있는 플립북).
 export function removeFlipbooks(store: Store, ids: string[], linked: Set<string>, actor: Actor): string[] {
   const out: string[] = [];
   for (const id of new Set(ids)) {

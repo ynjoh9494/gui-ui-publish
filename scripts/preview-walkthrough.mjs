@@ -926,6 +926,21 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('#app .list .row').length === 3);
   assert.equal(await app.locator('.row .review-dot').count(), 0);
   await shot('06-ui-reviewed');
+  // 목록에서 삭제(2026-11-02): 프레임이 남은 플립북도 상세 제목 줄의 빨간 「목록에서 삭제」로 바로 뺀다. 캔버스와 기록은 남고 되살리는 방법을 알린다.
+  {
+    const removing = app.locator('.list .row:not(.new-row)').last();
+    const removedName = await removing.locator('.name').innerText();
+    await removing.click();
+    const removeButton = app.locator('.title-head [data-action=fb-remove-list]');
+    await removeButton.waitFor();
+    assert.deepEqual([await removeButton.innerText(), (await removeButton.getAttribute('title')).includes('기존 플립북 등록')], ['목록에서 삭제', true]);
+    assert.equal(await removeButton.evaluate(el => getComputedStyle(el).color === getComputedStyle(document.querySelector('#app')).getPropertyValue('--danger').trim() || el.classList.contains('remove-text')), true, '빨간 글자');
+    await shot('06b-ui-remove-from-list');
+    await removeButton.click();
+    await page.waitForFunction(() => document.querySelectorAll('#app .list .row').length === 2);
+    await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('기존 플립북 등록'));
+    assert.equal(await app.locator('.list .row .name').filter({ hasText: removedName }).count(), 0, '목록에서 빠진다');
+  }
 
   // 변경 감지된 화면에 「변경 무시」를 누르면 버전을 올리지 않고 변경사항 없음으로 바뀐다.
   await mode('GUI');

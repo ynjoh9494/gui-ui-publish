@@ -426,6 +426,8 @@ button.link.danger { color: var(--danger); }
 .title-head .title-input { flex: 1; min-width: 0; font-weight: 600; }
 .title-head .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 25px; height: 25px; padding: 0; border: 0; background: transparent; color: var(--muted); flex: none; }
 .title-head .icon-button:hover, .title-head .icon-button[aria-pressed="true"] { color: var(--text); }
+/* 목록에서 삭제(2026-11-02): 빼는 동작은 빨간 글자(템플릿 목록의 해제·삭제와 같다). */
+.title-head .remove-text { flex: none; color: var(--danger); }
 /* 새 플립북 상세: 머리 「플립북 편집」, 그 아래 페이지·Section·제목을 한 줄씩, 아래 화면 선택이 남은 높이를 쓴다. */
 /* 좁으면 버튼을 제목 아래 줄로 내린다. 제목·설명이 한두 글자씩 접히지 않게 한다. */
 .edit-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }

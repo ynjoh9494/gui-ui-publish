@@ -171,7 +171,9 @@ export type ToMain =
   // 플립북 확인 완료: 상태·코멘트를 남기고 「화면이 수정되었습니다」 표시를 푼다.
   | { type: 'markReviewed'; requests: ReviewRequest[] }
   // 연결이 끊긴 플립북을 목록에서 삭제한다. 프레임이 남은 플립북은 건너뛴다.
-  | { type: 'removeFlipbooks'; ids: string[] }
+  // 목록에서 삭제(기록은 사용 안 함으로 남긴다). withFrames: 캔버스에 프레임이 남은 플립북도 뺀다(상세 제목 줄, 2026-11-02 사용자 결정).
+  // 없으면 연결이 끊긴 플립북만 뺀다(삭제 직전에 다시 찾아 프레임이 있으면 두기).
+  | { type: 'removeFlipbooks'; ids: string[]; withFrames?: boolean }
   // 새 버전 페이지: 붙여 넣은 페이지의 프레임을 등록 화면과 화면 내용으로 비교하고, 확인한 연결로 원본을 옮긴다.
   // 설정을 열 때 페이지 목록을 다시 받는다(플러그인을 연 뒤 추가한 페이지).
   | { type: 'pages' }

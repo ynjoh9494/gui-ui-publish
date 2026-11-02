@@ -33,6 +33,14 @@ export function successorOf(state: State): (uid: string) => string {
   return uid => map.get(uid) ?? uid;
 }
 
+// 추적할 복사본: 사용 중인 화면(교체로 이어진 화면 포함)의 복사본이다. 사용 안 함이 된 화면의 복사본은 표식만 남은 레이어라 추적하지 않는다.
+// 목록에서 삭제한 플립북 안의 복사본도 그대로 보관하므로 추적하지 않는다(2026-11-02 사용자 결정: 목록에서 빼면 그 안의 GUI는 더 바뀌지 않고,
+// 기존 플립북 등록으로 되살리면 다시 추적한다). 읽은 페이지에서 찾지 못한 것으로 보므로 그 기록은 빠진다(reconcileTracks).
+export function trackable(state: State): (copy: FoundCopy) => boolean {
+  const live = successorOf(state);
+  return copy => state.screens.get(live(copy.uid))?.status === 'active' && !(copy.flipbookId && state.flipbooks.get(copy.flipbookId)?.status === 'deleted');
+}
+
 // 읽을 페이지: 이 화면들(없으면 모든 화면)의 추적 기록이 있는 페이지와 새 템플릿 플립북이 있는 페이지.
 // 플립북 페이지도 읽어 플립북 안에 복제해 둔 복사본을 찾는다(PRD §7 A).
 export function trackPages(state: State, uids: Set<string> | null): string[] {

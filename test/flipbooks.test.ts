@@ -20,6 +20,7 @@ import { sortScreenItems } from '../src/ui/app.ts';
 import { guiState, uiListState } from '../src/ui/estimate.ts';
 import { fromWire, toUiWire, type ToUi } from '../src/core/wire.ts';
 import { COPY } from '../src/core/copy.ts';
+import { planExistingFlipbooks } from '../src/core/registerFlipbooks.ts';
 
 const actor = { id: 'u', name: 'Designer' };
 const tag = { id: 't', name: '변경', color: '#00ff00', colorKey: 'Green' };
@@ -981,6 +982,30 @@ test('UI Flipbook은 열 때 프레임이 없는 플립북을 연결 끊김으�
   assert.deepEqual([...controller.store.state.flipbooks.values()].map(fb => fb.status), ['active', 'deleted', 'active']);
   const after = (posted.filter(m => m.type === 'uiScan').pop() as Extract<ToUi, { type: 'uiScan' }>).scans;
   assert.deepEqual(after.map(u => [u.flipbookId, u.nodeId]), [['fb1', '1:1'], ['fb2', null], ['fb3', '9:9']], 'links come from the same search');
+});
+
+// 목록에서 삭제(2026-11-02 사용자 결정): 상세 제목 줄의 「목록에서 삭제」는 캔버스에 프레임이 남은 플립북도 뺀다.
+test('상세의 「목록에서 삭제」는 프레임이 남은 플립북도 기록을 남긴 채 목록에서 빼고, 되살리는 방법을 알리며, 기존 플립북 등록으로 같은 기록을 되살린다', async () => {
+  const posted: ToUi[] = [];
+  const store = new Store(memoryKV());
+  store.saveProject({ ...store.state.project, flipbookPageIds: ['ui'], flipbookPageId: 'ui' });
+  let n = 0;
+  for (const fb of planFlipbooks({ pageId: 'ui', rows: [row([], false, '보관'), row([], false, '끊김')] }, new Map(), actor, 1000, () => `fb${++n}`)) store.put(keys.flipbook(fb.id), fb);
+  const host = {
+    kv: store.kv, mode: 'UI', actor,
+    post: (message: ToUi) => posted.push(message),
+    pages: () => [{ id: 'ui', name: 'UI' }],
+    listFlipbooks: async () => new Map([['fb1', '1:1']]),
+  } as unknown as Host;
+  const controller = new Controller(host);
+  await controller.handle({ type: 'ready' });
+  await controller.handle({ type: 'removeFlipbooks', ids: ['fb1', 'fb2'], withFrames: true });
+  const done = posted.filter(m => m.type === 'flipbooksRemoved').pop() as Extract<ToUi, { type: 'flipbooksRemoved' }>;
+  assert.deepEqual(done.ids, ['fb1', 'fb2']);
+  assert.ok(done.message.includes(COPY.flipbookRemoveRestore), '프레임이 남은 플립북을 뺐으면 되살리는 방법을 알린다');
+  assert.deepEqual([...controller.store.state.flipbooks.values()].map(fb => fb.status), ['deleted', 'deleted']);
+  const [restored] = planExistingFlipbooks(controller.store.state, [{ nodeId: '1:1', pageId: 'ui', title: '보관', flipbookId: 'fb1' }], actor, 2000);
+  assert.deepEqual([restored.record.id, restored.record.status, restored.record.createdAt], ['fb1', 'active', 1000], '같은 기록(이력)으로 되살린다');
 });
 
 test('템플릿에 문제가 있으면 UI Flipbook을 열 때 알리고, 플립북을 만들지 않으며, 반영은 대기로 남긴다', async () => {
