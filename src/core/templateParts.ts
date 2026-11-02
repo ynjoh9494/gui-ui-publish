@@ -57,6 +57,14 @@ export const TEMPLATE_GROUPS: readonly { group: ItemGroup; label: string }[] = [
   { group: 'row', label: COPY.coreTemplate039 },
 ];
 
+// 대표가 아닌 템플릿(2026-11-02 사용자 결정)은 새 플립북을 만들지 않고 이미 있는 플립북을 반영할 때만 쓴다.
+// 그때 템플릿에서 읽는 것은 화면 이름·Chapter의 기본 글자, 컴포넌트, 이력 행 안의 칸(컴포넌트 안 표식이라 기존 이력 행이 이어받는다)이다.
+// 나머지 칸은 플립북이 만들 때 이어받은 표식을 쓰므로 대표가 아닌 템플릿에서 바꿔도 기존 플립북에 반영되지 않는다.
+const FALLBACK_ITEMS: ReadonlySet<TemplateItem> = new Set<TemplateItem>([
+  'title', 'chapter', 'idTag', 'row', 'statusTag', 'rowStatusTag', 'rowStatus', 'rowComment', 'rowWorker', 'rowDate', 'rowTeam',
+]);
+export const isFallbackItem = (key: TemplateItem) => FALLBACK_ITEMS.has(key);
+
 const DEFS = new Map(TEMPLATE_ITEMS.map(d => [d.key, d]));
 export function itemDef(key: string): TemplateItemDef | null { return DEFS.get(key as TemplateItem) ?? null; }
 export const isTemplateItem = (key: string): key is TemplateItem => DEFS.has(key as TemplateItem);

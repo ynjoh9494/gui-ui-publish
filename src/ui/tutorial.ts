@@ -447,7 +447,7 @@ async function seed(demo: Demo, mode: Team, alive: () => boolean): Promise<void>
   await call({ type: 'ready' });
   await call({ type: 'admin', action: { op: 'setScope', pageIds: [DEMO_PAGE.id] } });
   await call({ type: 'admin', action: { op: 'setFlipbookPages', pageIds: [DEMO_FLIPBOOK_PAGE.id] } });
-  await call({ type: 'admin', action: { op: 'setTemplateFromSelection' } });
+  await call({ type: 'admin', action: { op: 'addTemplate' } });
   const categories: [string, string][] = [[COPY.uiTutorial060, 'HO'], [COPY.uiTutorial061, 'DE'], [COPY.uiTutorial062, 'LI'], [COPY.uiTutorial063, 'SE']];
   for (const [name, code] of categories) {
     await call({ type: 'admin', action: { op: 'addCategory', name } });

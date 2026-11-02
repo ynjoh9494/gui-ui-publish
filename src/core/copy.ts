@@ -64,7 +64,7 @@ export const COPY = {
   registerExistingHint: '캔버스에서 선택한 프레임을 기존 모습 그대로 목록에 등록합니다.',
   registerExistingSelect: '등록할 플립북의 바깥쪽 프레임을 캔버스에서 선택하세요. 여러 프레임을 함께 선택할 수 있습니다.',
   registerExistingPage: '선택한 프레임의 페이지를 관리에서 플립북 페이지로 지정한 뒤 다시 등록하세요.',
-  registerExistingTemplate: '템플릿과 이전 템플릿은 플립북으로 등록할 수 없습니다.',
+  registerExistingTemplate: '템플릿 목록의 프레임은 플립북으로 등록할 수 없습니다.',
   registerExistingChanged: '선택한 프레임이 변경되었습니다. 다시 선택해 등록하세요.',
   registerExistingDone: '개를 목록에 등록했습니다. 이미 등록된 프레임은 중복 추가하지 않았습니다.',
   adminAutoPages: '자동 관리 페이지',
@@ -195,10 +195,7 @@ export const COPY = {
   uiApp210: '추가할 UI 페이지',
   uiApp109: '선택', // 433
   uiApp110: "저장", // 434
-  uiApp111: "템플릿:", // 435
-  uiApp112: '지정 안 됨', // 435
-  uiApp113: "선택한 프레임을 템플릿으로 지정", // 436
-  uiApp114: "템플릿 프레임을 복제해 플립북을 만듭니다. 아래 항목에 연결한 칸에만 화면 이름·Chapter·상태·Screen ID·GUI·이력을 넣고, Description 내용과 콜아웃은 건드리지 않습니다. 캔버스에서 레이어를 고른 뒤 그 항목의 「연결」이나 「재연결」을 누르세요. 연결된 항목을 누르면 그 레이어를 캔버스에서 보여 줍니다.", // 437
+  uiApp114: "대표 템플릿 프레임을 복제해 플립북을 만듭니다. 연결한 칸에만 화면 이름·Chapter·상태·Screen ID·GUI·이력을 넣고, Description 내용과 콜아웃은 건드리지 않습니다. 목록에서 템플릿을 누르면 아래에 그 템플릿의 연결 항목이 나옵니다. 캔버스에서 레이어를 고른 뒤 그 항목의 「연결」이나 「재연결」을 누르세요. 연결된 항목을 누르면 그 레이어를 캔버스에서 보여 줍니다.", // 437
   uiApp116: "변경", // 440
   uiApp117: '비활성화', // 440
   uiApp118: '활성화', // 440
@@ -1122,14 +1119,24 @@ export const COPY = {
   recoveryCopiesIncomplete: '일부 붙인 화면을 반영하지 못했습니다.',
   recoveryRetryHint: '확정된 GUI 기록과 실제 반영 상태를 다시 확인합니다. 배포 버전이나 이력을 추가하지 않습니다.',
   recoveryAvailable: '미완료 반영',
-  // 관리의 템플릿 › 이전 템플릿 — src/ui/app.ts, src/core/templateList.ts
-  templatePrevious: '이전 템플릿',
-  templatePreviousHint: '이전 버전 템플릿으로 만든 플립북은 반영할 때 그 템플릿의 태그·이력 행 컴포넌트와 기본 글자를 씁니다. 현재 템플릿을 바꾸면 바뀌기 전 템플릿이 여기에 남고, 위에 있는 템플릿부터 맞는지 확인합니다. 맞는 템플릿이 없으면 현재 템플릿으로 있는 칸만 반영합니다.',
-  templatePreviousAdd: '선택한 프레임을 이전 템플릿으로 추가',
-  templatePreviousEmpty: '등록한 이전 템플릿이 없습니다.',
-  templatePreviousRemove: '삭제',
-  templatePreviousRemoveHint: '목록에서 뺍니다. 캔버스의 템플릿 프레임은 지우지 않습니다.',
-  templatePreviousIsCurrent: '현재 템플릿은 이전 템플릿으로 추가할 수 없습니다.',
+  // 관리의 템플릿 › 템플릿 목록(대표 지정) — src/ui/app.ts, src/core/templateList.ts
+  templateList: '템플릿 목록',
+  templateListHint: '새 플립북은 대표 템플릿으로 만듭니다. 이미 있는 플립북은 반영할 때 그 플립북을 만든 템플릿의 태그·이력 행 컴포넌트와 기본 글자를 씁니다. 만든 템플릿을 모르면 위에 있는 템플릿부터 구조가 맞는지 확인하고, 맞는 템플릿이 없으면 대표 템플릿으로 있는 칸만 반영합니다. 대표를 바꿔도 이전 대표는 목록에 남습니다.',
+  templateListEmpty: '등록한 템플릿이 없습니다.',
+  templateAdd: '선택한 프레임을 템플릿으로 추가',
+  templatePickHint: '이 템플릿의 연결 항목을 아래에 보여 줍니다.',
+  templateRepresentative: '대표',
+  templateRepresentativeHint: '새 플립북은 이 템플릿으로 만듭니다.',
+  templateSetRepresentative: '대표로 지정',
+  templateSetRepresentativeHint: '새 플립북을 이 템플릿으로 만듭니다. 지금 대표인 템플릿은 목록에 남아 이미 있는 플립북을 반영할 때 씁니다.',
+  templateRemove: '삭제',
+  templateRemoveHint: '목록에서 뺍니다. 캔버스의 템플릿 프레임은 지우지 않습니다.',
+  templateItemsOf: '연결 항목:',
+  templateFallbackItems: '대표가 아닌 템플릿은 이미 있는 플립북을 반영할 때만 씁니다. 그때 쓰는 항목만 보여 줍니다.',
+  templateAddIsRepresentative: '선택한 프레임은 이미 대표 템플릿입니다.',
+  templateNotListed: '템플릿 목록에 없는 템플릿입니다. 관리의 템플릿을 다시 열어 확인하세요.',
+  templateRemoveRepresentative: '대표 템플릿은 삭제할 수 없습니다. 다른 템플릿을 대표로 지정한 뒤 삭제하세요.',
+  templateItemNotUsed: '대표가 아닌 템플릿에서는 이 항목을 쓰지 않습니다. 대표로 지정한 뒤 연결하세요.',
 } as const;
 
 // 화면·안내·오류 문구. 원본 파일과 행은 추출 당시 위치다.

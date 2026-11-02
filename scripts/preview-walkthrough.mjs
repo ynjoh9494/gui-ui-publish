@@ -221,9 +221,22 @@ try {
   await app.locator('[data-action=admin-ui-page-remove][data-id="0:2"]').click();
   await page.waitForFunction(() => document.querySelectorAll('#app [data-form=flipbook] .scope-page').length === 1);
   await shot('02-ui-page-settings');
-  // 템플릿(2026-11-02): 항목마다 한 줄(상태 아이콘·이름·형식 아이콘·안내·연결/재연결·해제). 연결된 레이어 이름은 보여 주지 않고 줄을 누르면 캔버스에서 보여 준다.
+  // 템플릿(2026-11-02): 템플릿 목록(대표가 맨 위, 대표 표시·대표로 지정·삭제) 아래에 고른 템플릿의 항목 줄
+  // (상태 아이콘·이름·형식 아이콘·안내·연결/재연결·해제). 연결된 레이어 이름은 보여 주지 않고 줄을 누르면 캔버스에서 보여 준다.
   await app.locator('[data-action=admin-nav][data-key="템플릿"]').click();
-  await app.locator('.template-item').first().waitFor();
+  await app.locator('.template-item[data-key]').first().waitFor();
+  const templateEntries = () => app.locator('.template-entry').evaluateAll(items => items.map(item => ({
+    node: item.dataset.node, name: item.querySelector('.template-item-name').textContent, picked: item.getAttribute('aria-selected') === 'true',
+    representative: !!item.querySelector('.template-representative'), setRepresentative: !!item.querySelector('[data-action=admin-template-representative]'),
+    removeRed: item.querySelector('[data-action=admin-template-remove]')?.classList.contains('disconnect') ?? null, height: item.getBoundingClientRect().height,
+  })));
+  let entries = await templateEntries();
+  assert.deepEqual(entries.map(e => [e.node, e.name, e.representative, e.setRepresentative, e.removeRed, e.picked]),
+    [['tpl', 'Flipbook-Template', true, false, null, true], ['tpl-old', 'Flipbook-Template (old)', false, true, true, false]], '대표가 맨 위이고 삭제가 없으며, 처음에는 대표의 항목을 보여 준다');
+  for (const e of entries) assert.ok(e.height <= 36, `템플릿 목록 한 줄(${e.height}px)`);
+  assert.equal(await app.locator('[data-action=admin-template-add]').count(), 1, '선택한 프레임을 템플릿으로 추가');
+  assert.equal(await app.locator('[data-action=admin-template], [data-action=admin-template-previous-add]').count(), 0, '지정·이전 템플릿 추가 버튼은 추가 하나로 합쳤다');
+  assert.ok(await app.locator('.template-group .template-help').count() >= 1, '템플릿 목록 안내 툴팁');
   const templateRows = () => app.locator('.template-item[data-key]').evaluateAll(items => items.map(item => {
     const connect = item.querySelector('[data-action=admin-template-connect]');
     return {
@@ -251,21 +264,32 @@ try {
   await shot('02-ui-template-settings');
   await app.locator(`.template-item[data-key="${optional.key}"] [data-action=admin-template-disconnect]`).click();
   await page.waitForFunction(key => document.querySelector(`#app .template-item[data-key="${key}"] .template-state.optional`), optional.key);
-  // 이전 템플릿(2026-11-02): 항목 목록 아래 한 줄에 이름과 빨간 「삭제」, 설명은 머리글 물음표 툴팁. 빼면 빈 안내가 나온다.
-  const previousRemove = app.locator('[data-action=admin-template-previous-remove]');
-  assert.equal(await previousRemove.count(), 1, '미리보기의 이전 템플릿 한 줄');
-  const previousRow = await previousRemove.evaluate(button => {
-    const row = button.closest('.template-item');
-    return { name: row.querySelector('.template-item-name').textContent, height: row.getBoundingClientRect().height, red: button.classList.contains('disconnect') };
-  });
-  assert.deepEqual([previousRow.name, previousRow.red], ['Flipbook-Template (old)', true]);
-  assert.ok(previousRow.height <= 36, `이전 템플릿 한 줄(${previousRow.height}px)`);
-  assert.ok(await app.locator('.template-group .template-help').count() >= 1, '이전 템플릿 안내 툴팁');
-  await app.locator('[data-action=admin-template-previous-add]').scrollIntoViewIfNeeded();
+  // 대표가 아닌 템플릿(2026-11-02): 줄을 누르면 이미 있는 플립북 반영에 쓰는 항목만 보여 주고, 연결은 그 템플릿에만 한다.
+  await app.locator('.template-entry[data-node="tpl-old"] .template-item-name').click();
+  await page.waitForFunction(() => document.querySelector('#app .template-entry[data-node="tpl-old"][aria-selected="true"]') && document.querySelector('#app .template-item[data-key="title"]') && !document.querySelector('#app .template-item[data-key="gui"]'));
+  rows = await templateRows();
+  assert.deepEqual(rows.map(r => r.key), ['title', 'chapter', 'idTag', 'row', 'statusTag', 'rowStatusTag', 'rowStatus', 'rowComment', 'rowWorker', 'rowDate', 'rowTeam'], '반영에 쓰는 항목만');
+  assert.ok((await app.locator('[data-form=template] .note').allTextContents()).some(t => t.includes('대표가 아닌 템플릿')), '대표가 아닌 템플릿 안내');
+  await app.locator('.template-item[data-key="rowTeam"] [data-action=admin-template-disconnect]').click();
+  await page.waitForFunction(() => document.querySelector('#app .template-item[data-key="rowTeam"] .template-state.optional'));
+  assert.equal((await templateEntries()).find(e => e.picked)?.node, 'tpl-old', '연결을 바꿔도 고른 템플릿을 유지한다');
+  await app.locator('.template-entry[data-node="tpl-old"]').scrollIntoViewIfNeeded();
   await shot('02-ui-template-previous');
-  await previousRemove.click();
-  await page.waitForFunction(() => !document.querySelector('#app [data-action=admin-template-previous-remove]'));
-  assert.equal(await app.locator('[data-action=admin-template-previous-add]').count(), 1);
+  await app.locator('.template-entry[data-node="tpl"]').focus();
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelector('#app .template-entry[data-node="tpl"][aria-selected="true"]') && document.querySelector('#app .template-item[data-key="gui"]'));
+  assert.equal((await templateRows()).find(r => r.key === 'rowTeam').state, 'ok', '다른 템플릿의 연결은 그대로다');
+  // 대표로 지정: 고른 템플릿이 맨 위 대표가 되고 이전 대표는 그 아래에 남는다. 대표를 되돌린 뒤 다른 템플릿을 빼면 대표 한 줄만 남는다.
+  await app.locator('[data-action=admin-template-representative][data-node="tpl-old"]').click();
+  await page.waitForFunction(() => document.querySelector('#app .template-entry')?.dataset.node === 'tpl-old' && document.querySelector('#app .template-entry[data-node="tpl-old"][aria-selected="true"] .template-representative') && document.querySelector('#app .template-item[data-key="gui"]'));
+  entries = await templateEntries();
+  assert.deepEqual(entries.map(e => [e.node, e.representative]), [['tpl-old', true], ['tpl', false]]);
+  await app.locator('[data-action=admin-template-representative][data-node="tpl"]').click();
+  await page.waitForFunction(() => document.querySelector('#app .template-entry')?.dataset.node === 'tpl');
+  await app.locator('[data-action=admin-template-remove][data-node="tpl-old"]').click();
+  await page.waitForFunction(() => document.querySelectorAll('#app .template-entry').length === 1);
+  entries = await templateEntries();
+  assert.deepEqual(entries.map(e => [e.node, e.representative, e.picked]), [['tpl', true, true]]);
   await app.locator('[data-action=settings]').click();
   // 플립북 만들기 탭은 플립북 목록에 합쳤다(2026-10-21). 목록 위 「새 플립북」으로 목록에 바로 넣고, 만들기 전에는 저장하지 않는다.
   assert.equal(await app.locator('.create-tabs button').filter({ hasText: '플립북 만들기' }).count(), 0, '플립북 목록과 만들기를 한 화면에서 한다');

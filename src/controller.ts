@@ -17,7 +17,7 @@ import {
 } from './core/registry.ts';
 import type { CodeRename } from './core/screenCode.ts';
 import { formatFrameName } from './core/screenName.ts';
-import { addPreviousTemplate, removePreviousTemplate, setCurrentTemplate } from './core/templateList.ts';
+import { addTemplate, removeTemplate, setCurrentTemplate, setRepresentativeTemplate, templateEntries, templateForItem } from './core/templateList.ts';
 import { DIGEST_PREFIX, keys, lastUi, randomId, Store } from './core/store.ts';
 import type { DataStatus, ProjectConfig, Team, UiBaseline } from './core/types.ts';
 import { explainMatch, matchVersion, versionCommon, versionLinkErrors, type VersionFrame } from './core/versionMatch.ts';
@@ -336,13 +336,13 @@ export class Controller {
           this.postState();
           break;
         case 'pages': this.host.post({ type: 'pages', pages: this.host.pages(), managedPages: this.host.managedPages?.() }); break;
-        case 'templateInfo': await this.postTemplateInfo(); break;
+        case 'templateInfo': await this.postTemplateInfo(msg.templateId); break;
         // 템플릿 항목에 연결된 레이어를 캔버스에서 고르고 보여 준다. 고른 선택은 플립북 목록의 선택을 바꾸지 않는다.
         case 'revealTemplateItem': {
           this.navSeq = msg.nav;
           const latest = () => msg.nav === this.navSeq;
-          const templateId = this.store.state.project.templateNodeId;
-          const nodeIds = templateId && this.host.templateItemNodes ? await this.host.templateItemNodes(templateId, msg.key) : [];
+          const templateId = templateForItem(this.store.state.project, msg.templateId, msg.key);
+          const nodeIds = this.host.templateItemNodes ? await this.host.templateItemNodes(templateId, msg.key) : [];
           let ok = false;
           if (nodeIds.length && latest()) {
             await this.host.selectNodes(nodeIds, nodeIds[nodeIds.length - 1], latest);
@@ -566,10 +566,12 @@ export class Controller {
     this.host.post({ type: 'listSynced', at: this.store.now() });
   }
 
-  // 관리의 템플릿에 항목별 연결 상태를 보낸다(UI Flipbook). 템플릿을 지정하지 않았으면 null이다.
-  private async postTemplateInfo(): Promise<void> {
+  // 관리의 템플릿에 목록에서 고른 템플릿의 항목별 연결 상태를 보낸다(UI Flipbook). 고른 템플릿이 없거나 목록에 없으면 대표,
+  // 목록이 비었으면 null이다.
+  private async postTemplateInfo(templateId?: string): Promise<void> {
     if (this.host.mode !== 'UI') return;
-    const id = this.store.state.project.templateNodeId;
+    const entries = templateEntries(this.store.state.project);
+    const id = (entries.find(t => t.nodeId === templateId) ?? entries[0])?.nodeId;
     const info = id && this.host.describeTemplate ? await this.host.describeTemplate(id) : null;
     this.host.post({ type: 'templateInfo', info });
   }
@@ -1537,16 +1539,7 @@ export class Controller {
         s.audit(a, 'project.flipbookPages', 'project', before.flipbookPageIds, pageIds);
         break;
       }
-      case 'setTemplateFromSelection': {
-        const template = await this.host.templateFromSelection();
-        const before = s.state.project;
-        s.saveProject(setCurrentTemplate(before, template));
-        s.audit(a, 'project.template', 'project', before.templateNodeId, template.id);
-        await this.checkTemplate();
-        await this.postTemplateInfo();
-        break;
-      }
-      // 새 페이지에 기본 템플릿을 만들어 바로 지정하고 캔버스에서 보여 준다(2026-10-28 사용자 결정).
+      // 새 페이지에 기본 템플릿을 만들어 바로 대표로 지정하고 캔버스에서 보여 준다(2026-10-28 사용자 결정).
       case 'createDefaultTemplate': {
         if (!this.host.createDefaultTemplate) break;
         const template = await this.host.createDefaultTemplate(s.state.project.guiWidth);
@@ -1554,37 +1547,49 @@ export class Controller {
         s.saveProject(setCurrentTemplate(before, template));
         s.audit(a, 'project.template', 'project', before.templateNodeId, template.id, COPY.controller143);
         await this.checkTemplate();
-        await this.postTemplateInfo();
+        await this.postTemplateInfo(template.id);
         await this.host.reveal(template.id, () => true);
         break;
       }
-      // 캔버스에서 고른 레이어를 템플릿 항목에 연결하거나 연결을 푼다. 이름 규칙 템플릿은 이때 표식 템플릿으로 바뀌므로
-      // 실패해도 연결 상태를 다시 보낸다.
+      // 템플릿 목록(2026-11-02 사용자 결정): 캔버스에서 고른 프레임을 더하고(목록이 비었으면 대표), 더한 템플릿의 연결 항목을 보여 준다.
+      case 'addTemplate': {
+        const template = await this.host.templateFromSelection();
+        const before = s.state.project;
+        const after = addTemplate(before, template);
+        s.saveProject(after);
+        if (after.templateNodeId !== before.templateNodeId) s.audit(a, 'project.template', 'project', before.templateNodeId, template.id);
+        else s.audit(a, 'project.previousTemplates', 'project', null, template.id);
+        await this.checkTemplate();
+        await this.postTemplateInfo(template.id);
+        break;
+      }
+      case 'setRepresentativeTemplate': {
+        const before = s.state.project;
+        s.saveProject(setRepresentativeTemplate(before, action.nodeId));
+        s.audit(a, 'project.template', 'project', before.templateNodeId, action.nodeId);
+        await this.checkTemplate();
+        await this.postTemplateInfo(action.nodeId);
+        break;
+      }
+      case 'removeTemplate': {
+        const before = s.state.project;
+        s.saveProject(removeTemplate(before, action.nodeId));
+        s.audit(a, 'project.previousTemplates', 'project', action.nodeId, null);
+        break;
+      }
+      // 캔버스에서 고른 레이어를 목록의 템플릿 항목에 연결하거나 연결을 푼다. 대표가 아닌 템플릿은 반영에 쓰는 항목만 받는다.
+      // 이름 규칙 템플릿은 이때 표식 템플릿으로 바뀌므로 실패해도 연결 상태를 다시 보낸다.
       case 'connectTemplateItem':
       case 'disconnectTemplateItem': {
-        const templateId = s.state.project.templateNodeId;
-        if (!templateId) throw new Error(COPY.controller053);
+        const templateId = templateForItem(s.state.project, action.templateId, action.key);
         try {
           if (action.op === 'connectTemplateItem') await this.host.connectTemplateItem?.(templateId, action.key);
           else await this.host.disconnectTemplateItem?.(templateId, action.key);
           s.audit(a, action.op === 'connectTemplateItem' ? 'template.connect' : 'template.disconnect', templateId, null, action.key);
         } finally {
-          await this.checkTemplate();
-          await this.postTemplateInfo();
+          if (templateId === s.state.project.templateNodeId) await this.checkTemplate();
+          await this.postTemplateInfo(templateId);
         }
-        break;
-      }
-      case 'addPreviousTemplate': {
-        const template = await this.host.templateFromSelection();
-        const before = s.state.project;
-        s.saveProject(addPreviousTemplate(before, template));
-        s.audit(a, 'project.previousTemplates', 'project', null, template.id);
-        break;
-      }
-      case 'removePreviousTemplate': {
-        const before = s.state.project;
-        s.saveProject(removePreviousTemplate(before, action.nodeId));
-        s.audit(a, 'project.previousTemplates', 'project', action.nodeId, null);
         break;
       }
       case 'setGuiWidth': {

@@ -247,6 +247,10 @@ summary { cursor: pointer; color: var(--muted); }
 .template-item-actions { display: flex; flex: none; gap: 4px; margin-left: auto; }
 .template-item-actions .connect { color: var(--brand); }
 .template-item-actions .disconnect { color: var(--danger); }
+/* 템플릿 목록(2026-11-02 사용자 결정): 고른 템플릿 줄은 목록 선택과 같은 배경, 대표는 버튼 자리에 회색 글자로 표시한다. */
+.template-entry[aria-selected="true"] { background: var(--selected); }
+.template-representative { padding: 0 6px; color: var(--muted); }
+.template-picked { margin-top: 12px; }
 
 /* 처리 중 표시. 확인 대화상자 위에도 보이도록 가장 위에 둔다. */
 .busy { position: absolute; top: 0; left: 0; right: 0; z-index: 6; display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: var(--selected); color: var(--text); border-bottom: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,.08); }

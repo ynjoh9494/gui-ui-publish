@@ -21,7 +21,8 @@ import { emptyComment, type BatchComment, type Plan } from '../core/publish.ts';
 import { customSection, defaultSection, filterScreens, needsReview, pageSections, rowKind, screenCategoryKey, uncreatedScreens, unreviewed, type FlipbookMove, type FlipbookRowRequest, type FlipbookSection, type ScreenFilter, type ScreenKind } from '../core/flipbooks.ts';
 import { defaultTitle, displayScale, GUI_WIDTH_MAX, GUI_WIDTH_MIN, NO_SECTION_KEY, screenTags, SMALL_SCALE, validGuiWidth } from '../core/flipbook.ts';
 import { TAG_PALETTE } from '../core/palette.ts';
-import { TEMPLATE_GROUPS, TEMPLATE_ITEMS, isTemplateItem, type ItemKind, type TemplateInfo, type TemplateItemDef, type TemplateItemState } from '../core/templateParts.ts';
+import { TEMPLATE_GROUPS, TEMPLATE_ITEMS, isFallbackItem, isTemplateItem, type ItemKind, type TemplateInfo, type TemplateItemDef, type TemplateItemState } from '../core/templateParts.ts';
+import { templateEntries, type TemplateEntry } from '../core/templateList.ts';
 import { findCategoryByName, systemTagId, workerLabel } from '../core/registry.ts';
 import { formatFrameName, parseFrameName } from '../core/screenName.ts';
 import type { State } from '../core/store.ts';
@@ -140,8 +141,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let issues: string[] = [];
   // 플립북 템플릿의 문제. UI Flipbook 목록 위에 경고로 보여 준다(관리 화면이 아니어도).
   let templateIssues: string[] = [];
-  // 관리의 템플릿에 보여 줄 항목별 연결 상태. 관리를 열 때와 템플릿을 바꾼 뒤 받는다.
+  // 관리의 템플릿에 보여 줄 한 템플릿의 항목별 연결 상태. 관리를 열 때, 목록에서 템플릿을 고를 때, 템플릿을 바꾼 뒤 받는다.
   let templateInfo: TemplateInfo | null = null;
+  // 관리의 템플릿 목록에서 고른 템플릿. 없거나 목록에 없으면 대표 템플릿을 보여 준다.
+  let templatePick: string | null = null;
   let entries: Entry[] = [];
   // 변경사항 확인 진행. 실행만 해서는 비교하지 않고, 탭 맨 위 버튼을 눌러야 비교한다.
   // partialAt: 선택 화면 확인을 마친 시각
@@ -1862,34 +1865,46 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     for (const item of root.querySelectorAll<HTMLElement>('.admin-nav-item')) item.setAttribute('aria-current', String(item.dataset.key === open));
   }
 
-  // 관리의 템플릿(2026-10-28 사용자 결정): 기본 템플릿 만들기, 캔버스에서 고른 프레임 지정, 항목별 연결 상태와 다시 연결
-  function renderTemplateSection(s: State): string {
-    const id = s.project.templateNodeId;
-    const info = templateInfo && templateInfo.id === id ? templateInfo : null;
-    const name = id ? esc(info?.name || s.project.templateName || id) : COPY.uiApp112;
-    const groups = info && !info.error ? TEMPLATE_GROUPS.map(g => `
-        <h4 class="template-group">${esc(g.label)}</h4>
-        <div class="template-items">${TEMPLATE_ITEMS.filter(d => d.group === g.group).map(d => templateRow(d, info.items.find(i => i.key === d.key))).join('')}</div>`).join('') : '';
-    return `<section class="admin" data-form="template"><h3>${COPY.uiApp392}</h3>
-        <p class="note">${COPY.uiApp111} ${name}${info?.pageName ? ` · ${esc(info.pageName)}` : ''}</p>
-        <div class="inline template-actions"><button data-action="admin-template-default">${COPY.uiApp393}</button><button data-action="admin-template">${COPY.uiApp113}</button></div>
-        <p class="note">${COPY.uiApp114}</p>
-        ${info?.error ? `<p class="bad">${esc(info.error)}</p>` : ''}
-        ${info && !info.error && !info.linked ? `<p class="note">${COPY.uiApp394}</p>` : ''}
-        ${groups}
-        ${renderPreviousTemplates(s)}</section>`;
+  // 목록에서 고른 템플릿. 고른 템플릿이 없거나 목록에 없으면 대표, 목록이 비었으면 null이다.
+  function pickedTemplate(s: State): string | null {
+    const entries = templateEntries(s.project);
+    return (entries.find(t => t.nodeId === templatePick) ?? entries[0])?.nodeId ?? null;
   }
 
-  // 이전 템플릿(2026-11-02 사용자 결정): 현재 템플릿을 바꾸면 바뀌기 전 템플릿이 맨 위에 남고, 캔버스에서 고른 프레임을 더하거나 뺄 수 있다.
-  function renderPreviousTemplates(s: State): string {
-    const list = s.project.previousTemplates;
-    const rows = list.length ? list.map(t => `<div class="template-item">
+  // 관리의 템플릿(2026-10-28 사용자 결정, 2026-11-02 목록·대표): 템플릿 목록(대표 지정·삭제), 기본 템플릿 만들기,
+  // 캔버스에서 고른 프레임 추가, 목록에서 고른 템플릿의 항목별 연결 상태와 다시 연결.
+  function renderTemplateSection(s: State): string {
+    const entries = templateEntries(s.project);
+    const id = pickedTemplate(s);
+    const picked = entries.find(t => t.nodeId === id);
+    const info = templateInfo && templateInfo.id === id ? templateInfo : null;
+    // 대표가 아닌 템플릿은 이미 있는 플립북을 반영할 때 쓰는 항목만 보여 준다(2026-11-02 사용자 결정).
+    const defs = TEMPLATE_ITEMS.filter(d => picked?.representative || isFallbackItem(d.key));
+    const groups = info && !info.error ? TEMPLATE_GROUPS.map(g => ({ label: g.label, items: defs.filter(d => d.group === g.group) })).filter(g => g.items.length).map(g => `
+        <h4 class="template-group">${esc(g.label)}</h4>
+        <div class="template-items">${g.items.map(d => templateRow(d, info.items.find(i => i.key === d.key))).join('')}</div>`).join('') : '';
+    const name = picked ? esc(info?.name || picked.name || picked.nodeId) : '';
+    return `<section class="admin" data-form="template"><h3>${COPY.uiApp392}</h3>
+        <p class="note">${COPY.uiApp114}</p>
+        <h4 class="template-group">${COPY.templateList} <span class="template-help" role="img" title="${esc(COPY.templateListHint)}" aria-label="${esc(COPY.templateListHint)}">${SMALL_HELP_ICON}</span></h4>
+        <div class="template-items template-list">${entries.length ? entries.map(t => templateEntry(t, t.nodeId === id)).join('') : `<p class="note">${COPY.templateListEmpty}</p>`}</div>
+        <div class="inline template-actions"><button data-action="admin-template-default">${COPY.uiApp393}</button><button data-action="admin-template-add">${COPY.templateAdd}</button></div>
+        ${picked ? `<p class="note template-picked">${COPY.templateItemsOf} ${name}${info?.pageName ? ` · ${esc(info.pageName)}` : ''}</p>` : ''}
+        ${picked && !picked.representative ? `<p class="note">${COPY.templateFallbackItems}</p>` : ''}
+        ${info?.error ? `<p class="bad">${esc(info.error)}</p>` : ''}
+        ${info && !info.error && !info.linked ? `<p class="note">${COPY.uiApp394}</p>` : ''}
+        ${groups}</section>`;
+  }
+
+  // 템플릿 목록 한 줄(2026-11-02 사용자 결정): 이름 · 대표 표시나 「대표로 지정」 · 삭제(빨간 글자, 대표는 뺄 수 없어 없음).
+  // 줄을 누르면(Enter·Space도 같다) 그 템플릿의 연결 항목을 아래에 보여 준다.
+  function templateEntry(t: TemplateEntry, picked: boolean): string {
+    const actions = t.representative
+      ? `<span class="template-representative" title="${COPY.templateRepresentativeHint}">${COPY.templateRepresentative}</span>`
+      : `<button data-action="admin-template-representative" data-node="${esc(t.nodeId)}" title="${COPY.templateSetRepresentativeHint}">${COPY.templateSetRepresentative}</button><button class="disconnect" data-action="admin-template-remove" data-node="${esc(t.nodeId)}" title="${COPY.templateRemoveHint}">${COPY.templateRemove}</button>`;
+    return `<div class="template-item template-entry" data-action="admin-template-pick" data-node="${esc(t.nodeId)}" tabindex="0" aria-selected="${picked}" title="${COPY.templatePickHint}">
           <span class="template-item-name">${esc(t.name || t.nodeId)}</span>
-          <span class="template-item-actions"><button class="disconnect" data-action="admin-template-previous-remove" data-node="${esc(t.nodeId)}" title="${COPY.templatePreviousRemoveHint}">${COPY.templatePreviousRemove}</button></span></div>`).join('')
-      : `<p class="note">${COPY.templatePreviousEmpty}</p>`;
-    return `<h4 class="template-group">${COPY.templatePrevious} <span class="template-help" role="img" title="${esc(COPY.templatePreviousHint)}" aria-label="${esc(COPY.templatePreviousHint)}">${SMALL_HELP_ICON}</span></h4>
-        <div class="template-items">${rows}</div>
-        <div class="inline template-actions"><button data-action="admin-template-previous-add">${COPY.templatePreviousAdd}</button></div>`;
+          <span class="template-item-actions">${actions}</span></div>`;
   }
 
   // 템플릿 항목 한 줄(2026-11-02 사용자 요청): 상태 아이콘 · 항목 이름 · 받는 레이어 형식 아이콘 · 안내(?) · 연결/재연결·해제.
@@ -2542,11 +2557,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         // 플러그인을 연 뒤 추가한 페이지(새 버전 페이지 등)도 고를 수 있게 페이지 목록을 다시 받는다.
         if (tab === 'ADMIN') {
           bridge.send({ type: 'pages' });
-          if (mode === 'UI') bridge.send({ type: 'templateInfo' });
+          if (mode === 'UI') bridge.send({ type: 'templateInfo', templateId: templatePick ?? undefined });
         }
         break;
       // 만들기 전 새 플립북은 설정을 다녀와도 남는다.
-      case 'create-page-manage': tab = 'ADMIN'; adminOpen = COPY.uiApp107; renderAll(); bridge.send({ type: 'templateInfo' }); break;
+      case 'create-page-manage': tab = 'ADMIN'; adminOpen = COPY.uiApp107; renderAll(); bridge.send({ type: 'templateInfo', templateId: templatePick ?? undefined }); break;
       case 'register-existing': bridge.send({ type: 'registerFlipbooks' }); break;
       case 'new-add': if (addNew()) { revealSelection = true; renderList(); } break;
       case 'new-select': if (target.closest('button')) break; selectNew(el.dataset.key!); break;
@@ -2879,23 +2894,42 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         break;
       }
       case 'admin-nav': openAdminPanel(el.dataset.key ?? ''); break;
-      case 'admin-template': admin({ op: 'setTemplateFromSelection' }); break;
       case 'admin-template-default': admin({ op: 'createDefaultTemplate' }); break;
-      case 'admin-template-previous-add': admin({ op: 'addPreviousTemplate' }); break;
-      case 'admin-template-previous-remove': {
+      case 'admin-template-add': admin({ op: 'addTemplate' }); break;
+      // 템플릿 목록: 줄을 누르면 그 템플릿의 연결 항목을 받는다. 줄 안의 버튼은 각자 처리한다.
+      case 'admin-template-pick': {
         const nodeId = el.dataset.node ?? '';
-        if (nodeId) admin({ op: 'removePreviousTemplate', nodeId });
+        if (!nodeId || target.closest('button')) break;
+        templatePick = nodeId;
+        renderDetail();
+        bridge.send({ type: 'templateInfo', templateId: nodeId });
+        break;
+      }
+      case 'admin-template-representative': {
+        const nodeId = el.dataset.node ?? '';
+        if (nodeId) admin({ op: 'setRepresentativeTemplate', nodeId });
+        break;
+      }
+      case 'admin-template-remove': {
+        const nodeId = el.dataset.node ?? '';
+        if (!nodeId) break;
+        // 보고 있던 템플릿을 빼면 대표 템플릿의 연결 항목으로 돌아간다.
+        const showing = !!state && pickedTemplate(state) === nodeId;
+        admin({ op: 'removeTemplate', nodeId });
+        if (showing) { templatePick = null; bridge.send({ type: 'templateInfo' }); }
         break;
       }
       case 'admin-template-connect':
       case 'admin-template-disconnect': {
         const key = el.dataset.key ?? '';
-        if (isTemplateItem(key)) admin({ op: action === 'admin-template-connect' ? 'connectTemplateItem' : 'disconnectTemplateItem', key });
+        const templateId = state ? pickedTemplate(state) : null;
+        if (isTemplateItem(key) && templateId) admin({ op: action === 'admin-template-connect' ? 'connectTemplateItem' : 'disconnectTemplateItem', templateId, key });
         break;
       }
       case 'admin-template-show': {
         const key = el.dataset.key ?? '';
-        if (isTemplateItem(key)) bridge.send({ type: 'revealTemplateItem', nav: ++navSeq, key });
+        const templateId = state ? pickedTemplate(state) : null;
+        if (isTemplateItem(key) && templateId) bridge.send({ type: 'revealTemplateItem', nav: ++navSeq, templateId, key });
         break;
       }
       case 'admin-gui-width': {
@@ -3774,6 +3808,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'templateIssues': templateIssues = msg.issues; renderToolbar(); break;
       case 'templateInfo':
         templateInfo = msg.info;
+        // 받은 템플릿을 목록에서 고른 것으로 둔다(고른 템플릿, 더하거나 대표로 지정하거나 연결을 바꾼 템플릿).
+        if (msg.info) templatePick = msg.info.id;
         if (tab === 'ADMIN') renderDetail();
         break;
       case 'pages':

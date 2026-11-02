@@ -106,7 +106,14 @@ export function createDemo(options: DemoOptions): Demo {
     ['idTag', 'Screen ID Tag'], ['row', 'History Row'], ['rowStatus', 'History Row › Status'], ['rowComment', 'History Row › Comment'],
     ['rowWorker', 'History Row › Worker'], ['rowDate', 'History Row › Date'], ['rowTeam', 'History Row › Team'],
   ] as [TemplateItem, string][]).map(([key, name]) => [key, [{ id: `tpl:${key}`, name }]]));
-  let templateLayers = templateDefaults();
+  // 템플릿마다 따로 연결한다(미리보기의 이전 템플릿 tpl-old 포함).
+  const templateNames = new Map([['tpl', 'Flipbook-Template'], ['tpl-old', 'Flipbook-Template (old)']]);
+  const templateLayers = new Map<string, Map<TemplateItem, TemplateLayer[]>>();
+  const layersOf = (id: string) => {
+    let layers = templateLayers.get(id);
+    if (!layers) { layers = templateDefaults(); templateLayers.set(id, layers); }
+    return layers;
+  };
 
   // 검정 배경에 화면 이름을 쓴 1/4 크기 썸네일을 흉내 낸다.
   async function fakeThumb(label: string, version: string): Promise<Uint8Array> {
@@ -225,19 +232,19 @@ export function createDemo(options: DemoOptions): Demo {
     async templateFromSelection() { return { id: 'tpl', name: 'Flipbook-Template' }; },
     async describeTemplate(id) {
       const items = TEMPLATE_ITEMS.map(d => {
-        const layers = templateLayers.get(d.key) ?? [];
+        const layers = layersOf(id).get(d.key) ?? [];
         return { key: d.key, layers, problem: d.required && !layers.length ? COPY.figmaTemplate007 : null };
       });
-      return { id, name: 'Flipbook-Template', pageName: COPY.figmaTemplate025, linked: true, items, error: null };
+      return { id, name: templateNames.get(id) ?? id, pageName: COPY.figmaTemplate025, linked: true, items, error: null };
     },
-    async connectTemplateItem(_, key) {
-      templateLayers.set(key, [{ id: `tpl:${key}`, name: COPY.uiPreview058 }]);
-      log(`${COPY.uiPreview059} ${key}`);
+    async connectTemplateItem(id, key) {
+      layersOf(id).set(key, [{ id: `${id}:${key}`, name: COPY.uiPreview058 }]);
+      log(`${COPY.uiPreview059} ${templateNames.get(id) ?? id} · ${key}`);
     },
-    async disconnectTemplateItem(_, key) { templateLayers.delete(key); },
-    async templateItemNodes(_, key) { return (templateLayers.get(key) ?? []).map(l => l.id); },
+    async disconnectTemplateItem(id, key) { layersOf(id).delete(key); },
+    async templateItemNodes(id, key) { return (layersOf(id).get(key) ?? []).map(l => l.id); },
     async createDefaultTemplate() {
-      templateLayers = templateDefaults();
+      templateLayers.set('tpl', templateDefaults());
       log(COPY.uiPreview060);
       return { id: 'tpl', name: 'Flipbook-Template', pageId: '0:9' };
     },
