@@ -1876,7 +1876,20 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         <p class="note">${COPY.uiApp114}</p>
         ${info?.error ? `<p class="bad">${esc(info.error)}</p>` : ''}
         ${info && !info.error && !info.linked ? `<p class="note">${COPY.uiApp394}</p>` : ''}
-        ${groups}</section>`;
+        ${groups}
+        ${renderPreviousTemplates(s)}</section>`;
+  }
+
+  // 이전 템플릿(2026-11-02 사용자 결정): 현재 템플릿을 바꾸면 바뀌기 전 템플릿이 맨 위에 남고, 캔버스에서 고른 프레임을 더하거나 뺄 수 있다.
+  function renderPreviousTemplates(s: State): string {
+    const list = s.project.previousTemplates;
+    const rows = list.length ? list.map(t => `<div class="template-item">
+          <span class="template-item-name">${esc(t.name || t.nodeId)}</span>
+          <span class="template-item-actions"><button class="disconnect" data-action="admin-template-previous-remove" data-node="${esc(t.nodeId)}" title="${COPY.templatePreviousRemoveHint}">${COPY.templatePreviousRemove}</button></span></div>`).join('')
+      : `<p class="note">${COPY.templatePreviousEmpty}</p>`;
+    return `<h4 class="template-group">${COPY.templatePrevious} <span class="template-help" role="img" title="${esc(COPY.templatePreviousHint)}" aria-label="${esc(COPY.templatePreviousHint)}">${SMALL_HELP_ICON}</span></h4>
+        <div class="template-items">${rows}</div>
+        <div class="inline template-actions"><button data-action="admin-template-previous-add">${COPY.templatePreviousAdd}</button></div>`;
   }
 
   // 템플릿 항목 한 줄(2026-11-02 사용자 요청): 상태 아이콘 · 항목 이름 · 받는 레이어 형식 아이콘 · 안내(?) · 연결/재연결·해제.
@@ -2868,6 +2881,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'admin-nav': openAdminPanel(el.dataset.key ?? ''); break;
       case 'admin-template': admin({ op: 'setTemplateFromSelection' }); break;
       case 'admin-template-default': admin({ op: 'createDefaultTemplate' }); break;
+      case 'admin-template-previous-add': admin({ op: 'addPreviousTemplate' }); break;
+      case 'admin-template-previous-remove': {
+        const nodeId = el.dataset.node ?? '';
+        if (nodeId) admin({ op: 'removePreviousTemplate', nodeId });
+        break;
+      }
       case 'admin-template-connect':
       case 'admin-template-disconnect': {
         const key = el.dataset.key ?? '';

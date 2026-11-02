@@ -73,7 +73,7 @@ document.getElementById('tools')!.addEventListener('click', ev => {
 
 renderTools();
 // 첫 실행 시 범위를 지정해 둔다.
-kv.set('project', JSON.stringify({ schema: 1, scopePageIds: [DEMO_PAGE.id], scopeSectionIds: [], templateNodeId: 'tpl', templateName: 'Flipbook-Template', policyTemplateNodeId: null, policyTemplateName: null, dataPageId: null, flipbookPageIds: ['0:2'], flipbookPageId: '0:2', utcOffsetMinutes: 540 }));
+kv.set('project', JSON.stringify({ schema: 1, scopePageIds: [DEMO_PAGE.id], scopeSectionIds: [], templateNodeId: 'tpl', templateName: 'Flipbook-Template', previousTemplates: [{ nodeId: 'tpl-old', name: 'Flipbook-Template (old)' }], policyTemplateNodeId: null, policyTemplateName: null, dataPageId: null, flipbookPageIds: ['0:2'], flipbookPageId: '0:2', utcOffsetMinutes: 540 }));
 
 startApp({
   send: (m: ToMain) => { void controller.handle(m); },

@@ -11,7 +11,7 @@ import { COPY_KEY, copyLayers, rescaleExact } from './layers.ts';
 import { Snapshotter } from './snapshot.ts';
 import {
   NS, cellText, findPart, flipbookParts, isMarkedRow, isNamedRow, isSystemRow, markedRowParts, namedRowComponent, namedRowParts, pageOf, tagKit,
-  type RowParts, type TagKit,
+  type Parts, type RowParts, type TagKit,
 } from './template.ts';
 import { LINKS_KEY } from '../core/templateParts.ts';
 
@@ -36,12 +36,20 @@ const COLUMNS = 10;
 // 최대 가로 크기를 전달하지 않는 이전 호출의 기본값.
 const SOURCE_WIDTH = 1920;
 
-export interface FlipbookSettings { pageId: string; templateId: string; force?: boolean }
+// fallbackTemplateIds: 이전 템플릿(위부터). 이전 버전 템플릿으로 만든 플립북은 그 템플릿으로 반영한다(deliveryKit).
+export interface FlipbookSettings { pageId: string; templateId: string; fallbackTemplateIds?: string[]; force?: boolean }
+
+// 플립북을 만든 템플릿의 노드 ID. 만들 때 적어 두고, 반영할 때 그 템플릿이 현재·이전 템플릿에 있으면 그 템플릿을 쓴다.
+export const TEMPLATE_KEY = 'flipbookTemplate';
 
 // 한 번의 전달 작업 안에서만 공유한다. 다음 작업은 파일의 최신 상태를 다시 읽는다.
 // known: 같은 작업에서 이미 찾은 플립북 프레임(플립북 ID → 노드 ID). 있으면 페이지 전체를 훑지 않는다.
+// fallbackKits·templateRows: 이전 템플릿의 키트(읽지 못하면 null)와 템플릿의 이력 행 컴포넌트. 플립북마다 다시 읽지 않는다.
 export function flipbookSession(known?: ReadonlyMap<string, string>) {
-  return { pages: new Map<string, PageNode>(), frames: new Map<string, Map<string, FrameNode>>(), kits: new Map<string, TagKit>(), known: new Map(known) };
+  return {
+    pages: new Map<string, PageNode>(), frames: new Map<string, Map<string, FrameNode>>(), kits: new Map<string, TagKit>(), known: new Map(known),
+    fallbackKits: new Map<string, Promise<TagKit | null>>(), templateRows: new Map<string, Promise<ComponentNode | null>>(),
+  };
 }
 export type FlipbookSession = ReturnType<typeof flipbookSession>;
 
@@ -886,6 +894,51 @@ export async function syncChapters(ns: string, items: { pageId: string; flipbook
 // tracked: 새 템플릿 플립북이다. copies: 이번에 만들며 플립북 위에 놓은 GUI 복사본(추적 GUI로 기록한다)
 export interface SyncResult { nodeId: string; notes: string[]; tracked: boolean; copies: { nodeId: string; key: string }[] }
 
+// 템플릿 폴백(2026-11-02 사용자 결정): 이미 있는 플립북을 반영할 때 쓸 템플릿 키트.
+// 만든 템플릿을 적어 둔 플립북은 그 템플릿이 현재·이전 템플릿에 있으면 그 템플릿을 쓴다.
+// 적어 두지 않은 플립북은 현재 템플릿, 이전 템플릿(위부터) 순서로 구조가 맞는 첫 템플릿을 쓴다(fitsTemplate).
+// 맞는 템플릿이 없으면 현재 템플릿으로 있는 칸만 반영한다. 이전 템플릿이 없으면 아무것도 더 읽지 않는다.
+export async function deliveryKit(ns: string, frame: FrameNode, p: Parts, current: TagKit, fallbacks: string[], session: FlipbookSession): Promise<TagKit> {
+  if (!fallbacks.length) return current;
+  const recorded = frame.getSharedPluginData(ns, TEMPLATE_KEY);
+  if (recorded === current.template.id) return current;
+  // 지워졌거나 문제가 있어 읽지 못한 이전 템플릿은 건너뛴다.
+  const kitOf = (id: string) => {
+    let load = session.fallbackKits.get(id);
+    if (!load) { load = tagKit(id, ns).catch(() => null); session.fallbackKits.set(id, load); }
+    return load;
+  };
+  if (recorded && fallbacks.includes(recorded)) {
+    const kit = await kitOf(recorded);
+    if (kit) return kit;
+  }
+  // 이름 규칙 플립북의 이력 행 컴포넌트. 반영은 이 컴포넌트로 행을 쌓으므로 만든 템플릿을 알려 주는 단서다.
+  const sample = p.named?.history ? findPart(p.named.history, n => isNamedRow(n) && !isSystemRow(n)) as InstanceNode | null : null;
+  const row = sample ? await sample.getMainComponentAsync() : null;
+  for (const id of [current.template.id, ...fallbacks]) {
+    const kit = id === current.template.id ? current : await kitOf(id);
+    if (kit && await fitsTemplate(p, row, kit, session)) return kit;
+  }
+  return current;
+}
+
+// 플립북 구조가 그 템플릿에서 만든 것인지 본다.
+// 표식 플립북: 만들 때 이어받은 연결 기록의 컴포넌트가 템플릿의 연결 컴포넌트와 하나라도 같다.
+// 이름 규칙 플립북: 이력 행 컴포넌트가 템플릿의 이력 행 컴포넌트와 같다(이름 규칙 템플릿을 표식으로 바꾼 템플릿도 맞는다).
+// 이력 행이 없어 알 수 없으면 이름 규칙 템플릿에 맞는 것으로 본다.
+async function fitsTemplate(p: Parts, row: ComponentNode | null, kit: TagKit, session: FlipbookSession): Promise<boolean> {
+  if (p.links) {
+    if (!kit.links) return false;
+    const mine = new Set(Object.values(p.links.components));
+    return Object.values(kit.links.components).some(id => mine.has(id));
+  }
+  if (!row) return !kit.links;
+  if (kit.links) return kit.row?.id === row.id;
+  let load = session.templateRows.get(kit.template.id);
+  if (!load) { load = namedRowComponent(null, kit.template); session.templateRows.set(kit.template.id, load); }
+  return (await load)?.id === row.id;
+}
+
 // 노드 ID로 찾은 플립북 프레임. 지워졌거나 다른 페이지로 옮겨졌거나 표식이 다르면 null이다.
 async function knownFrame(ns: string, nodeId: string | undefined, page: PageNode, flipbookId: string): Promise<FrameNode | null> {
   if (!nodeId) return null;
@@ -914,8 +967,10 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
   // 프레임은 새로 만드는 플립북에만 만든다. 지워진 프레임은 다시 만들지 않고 목록에서 삭제하게 한다(2026-10-23 사용자 결정).
   if (!existing && !view.create) throw new Error(COPY.figmaFlipbook027);
   const frame = existing ?? await createFlipbook(ns, page, kit.template, view);
+  if (!existing) frame.setSharedPluginData(ns, TEMPLATE_KEY, kit.template.id);
   session.known.set(view.flipbookId, frame.id);
   const p = flipbookParts(frame, ns);
+  if (existing) kit = await deliveryKit(ns, frame, p, kit, settings.fallbackTemplateIds ?? [], session);
   const registered = frame.getSharedPluginData(ns, EXISTING_KEY) === 'true';
   // 꼭 있어야 하는 칸은 GUI 복사본을 넣을 GUI 영역뿐이다(이전 템플릿 플립북, 새로 만드는 플립북).
   // 제목·Status·Screen ID·이력 칸은 없으면 그 칸만 건너뛰고 나머지를 반영한다(2026-11-02 사용자 결정).

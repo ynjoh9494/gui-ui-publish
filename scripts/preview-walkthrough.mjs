@@ -224,7 +224,7 @@ try {
   // 템플릿(2026-11-02): 항목마다 한 줄(상태 아이콘·이름·형식 아이콘·안내·연결/재연결·해제). 연결된 레이어 이름은 보여 주지 않고 줄을 누르면 캔버스에서 보여 준다.
   await app.locator('[data-action=admin-nav][data-key="템플릿"]').click();
   await app.locator('.template-item').first().waitFor();
-  const templateRows = () => app.locator('.template-item').evaluateAll(items => items.map(item => {
+  const templateRows = () => app.locator('.template-item[data-key]').evaluateAll(items => items.map(item => {
     const connect = item.querySelector('[data-action=admin-template-connect]');
     return {
       key: item.dataset.key, name: item.querySelector('.template-item-name').textContent, state: item.querySelector('.template-state').classList[1],
@@ -251,6 +251,21 @@ try {
   await shot('02-ui-template-settings');
   await app.locator(`.template-item[data-key="${optional.key}"] [data-action=admin-template-disconnect]`).click();
   await page.waitForFunction(key => document.querySelector(`#app .template-item[data-key="${key}"] .template-state.optional`), optional.key);
+  // 이전 템플릿(2026-11-02): 항목 목록 아래 한 줄에 이름과 빨간 「삭제」, 설명은 머리글 물음표 툴팁. 빼면 빈 안내가 나온다.
+  const previousRemove = app.locator('[data-action=admin-template-previous-remove]');
+  assert.equal(await previousRemove.count(), 1, '미리보기의 이전 템플릿 한 줄');
+  const previousRow = await previousRemove.evaluate(button => {
+    const row = button.closest('.template-item');
+    return { name: row.querySelector('.template-item-name').textContent, height: row.getBoundingClientRect().height, red: button.classList.contains('disconnect') };
+  });
+  assert.deepEqual([previousRow.name, previousRow.red], ['Flipbook-Template (old)', true]);
+  assert.ok(previousRow.height <= 36, `이전 템플릿 한 줄(${previousRow.height}px)`);
+  assert.ok(await app.locator('.template-group .template-help').count() >= 1, '이전 템플릿 안내 툴팁');
+  await app.locator('[data-action=admin-template-previous-add]').scrollIntoViewIfNeeded();
+  await shot('02-ui-template-previous');
+  await previousRemove.click();
+  await page.waitForFunction(() => !document.querySelector('#app [data-action=admin-template-previous-remove]'));
+  assert.equal(await app.locator('[data-action=admin-template-previous-add]').count(), 1);
   await app.locator('[data-action=settings]').click();
   // 플립북 만들기 탭은 플립북 목록에 합쳤다(2026-10-21). 목록 위 「새 플립북」으로 목록에 바로 넣고, 만들기 전에는 저장하지 않는다.
   assert.equal(await app.locator('.create-tabs button').filter({ hasText: '플립북 만들기' }).count(), 0, '플립북 목록과 만들기를 한 화면에서 한다');

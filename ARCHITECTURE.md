@@ -34,6 +34,7 @@ flowchart LR
 | `src/core/flow.ts` | 플로우 계획(배포된 화면만, 가장 왼쪽·위 썸네일이 (0, 0)이 되게 당김, 잘못된·중복 화살표 제외), 썸네일마다 제 크기 자리(격자는 놓는 위치 스냅)와 다른 화면 자리를 피해 화면 사이 통로를 따르는 꺾인 화살표 경로(`routeLink`, 플러그인 판과 캔버스가 함께 씀), 조건 레이어 자리, 다시 배포된 화면이 든 플로우 고르기 |
 | `src/core/pdf.ts` | PDF 저장 탭의 정책: 이름 규칙 템플릿에서 저장하는 동안 숨길 요소 이름(UI Title·Update History List), 쪽 이미지 배율(2배 JPG), 쪽 순서(캔버스 왼쪽 위 → 오른쪽 아래), 파일 이름 |
 | `src/core/templateParts.ts` | 템플릿 연결 항목 정의(플립북 칸·컴포넌트·이력 행 안의 칸, 종류·필수·여러 개), 레이어 표식 키(`templatePart`)와 템플릿 프레임의 연결 기록(`templateLinks`, 컴포넌트 노드 ID) 형식, UI에 보내는 연결 상태(`TemplateInfo`) |
+| `src/core/templateList.ts` | 현재·이전 템플릿 목록 규칙: 현재 템플릿을 바꾸면 바뀌기 전 템플릿을 이전 템플릿 맨 위에 남김(`setCurrentTemplate`), 이전 템플릿 더하기·빼기, 등록에서 뺄 템플릿 노드 |
 | `src/core/richText.ts` | 텍스트 편집 탭의 문서 모델(문단·목록 단계·굵은 범위), 편집 동작(줄 나누기·합치기·붙여 넣기·굵게·목록 단계), 붙여 넣기·복사용 텍스트 형식 |
 | `src/core/flipbooks.ts`, `flipbook.ts`, `guiScreens.ts`, `history.ts`, `data.ts` | 플립북 기록·확인 상태, 캔버스 반영용 뷰(새 템플릿 플립북은 만든 뒤 기록이 없으면 「작성 전」), 화면 목록의 상태 태그(`screenTags`: 가장 최근 GUI 배포로 바뀐 화면에만), 화면 목록·이력·DATA 모델 |
 | `src/core/tracks.ts` | 추적 GUI 규칙: 찾은 복사본과 기록(`trk:`) 맞추기(복제본은 새 기록, 못 찾은 기록은 뺌), 읽을 페이지(기록 페이지·새 템플릿 플립북 페이지), 새 템플릿 플립북의 화면 목록을 캔버스 소속으로 맞추기(`followMembers`, 읽은 페이지의 플립북만, Screen ID 이름순·자동 제목, 새로 든 화면의 `addedAt`), 사용 안 함이 된 화면의 추적 중지와 「삭제된 화면」 알림, 화면별 붙인 수(추적 GUI + 플로우), 추적 목록 경로 |
@@ -48,7 +49,7 @@ flowchart LR
 | `src/figma/richText.ts` | 고른 텍스트 레이어 하나의 본문·굵기·목록 단계 읽기와 쓰기(레이어 글꼴 유지) |
 | `src/figma/template.ts` | 템플릿 구조: 플립북·템플릿 프레임의 칸 찾기(`flipbookParts`: 연결 기록이 있으면 역할 표식, 없으면 이름 규칙. GUI 영역·Description 본문·Screen ID 칸·이력 행 안으로는 내려가지 않음), 이력 행 안의 칸, PDF에서 숨길 레이어, 태그 컴포넌트 묶음(`tagKit`), 항목별 연결 상태·검사(`describeTemplate`·`templateIssues`), 캔버스 선택을 항목에 연결·해제(이름 규칙 템플릿은 먼저 표식으로 바꿈) |
 | `src/figma/templateDefault.ts` | 새 페이지에 기본 템플릿(템플릿 프레임과 태그·Screen ID 태그·이력 행 컴포넌트, 모든 칸 연결)을 만듦 |
-| `src/figma/flipbook.ts`, `layers.ts`, `thumbs.ts`, `data.ts` | 템플릿 복제(연결 기록도 옮김)와 연결한 칸 반영(제목·Chapter·상태·Screen ID·GUI·이력 행). GUI는 이전 템플릿이면 GUI 영역 안에 행 배치(`syncGui`), 새 템플릿이면 플립북 프레임 위에 얹고 옮긴 자리를 지킴(`syncFreeGui`, 복사본의 크기는 `flipbookCopyScale` 표식), GUI 레이어 복사·배치, JPG 썸네일, DATA 페이지 렌더링 |
+| `src/figma/flipbook.ts`, `layers.ts`, `thumbs.ts`, `data.ts` | 템플릿 복제(연결 기록과 만든 템플릿 `flipbookTemplate`도 적음)와 연결한 칸 반영(제목·Chapter·상태·Screen ID·GUI·이력 행, 없는 칸은 건너뜀). 이미 있는 플립북은 만든 템플릿 기록이나 구조(연결 컴포넌트·이력 행 컴포넌트)가 맞는 현재·이전 템플릿의 키트로 반영(`deliveryKit`, 이전 템플릿 키트는 반영 한 번에 한 번 읽음). GUI는 이전 템플릿이면 GUI 영역 안에 행 배치(`syncGui`), 새 템플릿이면 플립북 프레임 위에 얹고 옮긴 자리를 지킴(`syncFreeGui`, 복사본의 크기는 `flipbookCopyScale` 표식), GUI 레이어 복사·배치, JPG 썸네일, DATA 페이지 렌더링 |
 | `src/figma/tracked.ts` | 추적 GUI의 캔버스 쪽: 페이지에서 복사본 표식(`guiCopy`) 찾기와 품은 플립북 판정(이전 템플릿 플립북이 넣은 복사본은 뺌), 새 버전으로 바꾸기(원본은 화면마다 한 번, 폭별 준비본은 임시 프레임 안에서 복제), GUI 목록에서 붙인 `🔗 GUI · 자동 업데이트` 프레임은 그대로 두고 `pasteGui` 표식의 안쪽 GUI만 교체해 화면명·표시 상태 보존, 이전 단일 GUI 복사본은 자리·순서·이름·잠금·폭 유지, 추적 기록 ID(`trackOf`)는 바깥 프레임에 적음, 노드 자리(페이지 › Section › 플립북), 새로 생긴 노드 안의 추적 GUI |
 | `src/figma/flow.ts` | 플로우 그리기(플로우·화면·Connector 모두 그룹: 화면별 Title·IMAGE·Caption, Connector 안의 Arrow·Action, 도착점에 `ARROW_EQUILATERAL`을 둔 Figma 벡터 연결선)와 다시 배포된 화면의 썸네일 채움 교체, 추적 목록에서 누른 플로우·화면 칸 찾기(`flowNode`, 기록의 노드 ID와 `flowOf` 표식이 모두 맞을 때만). 썸네일 이미지는 썸네일 페이지를 불러와 해시로 찾음 |
 | `src/ui/app.ts`, `styles.css` | UI 상태·입력 초안·목록과 상세 렌더링 |

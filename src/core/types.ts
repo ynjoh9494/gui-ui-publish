@@ -18,6 +18,8 @@ export interface Snapshot { id: string; name: string }
 // color: 표시용 hex, colorKey: 팔레트 색(플립북 태그가 연결할 색 변수 color/<colorKey>)
 export interface TagSnapshot { id: string; name: string; color: string; colorKey: string }
 
+export interface TemplateRef { nodeId: string; name: string }
+
 export interface ProjectConfig {
   schema: 1;
   // GUI 원본 페이지
@@ -31,6 +33,8 @@ export interface ProjectConfig {
   flipbookPageId: string | null;
   templateNodeId: string | null;
   templateName: string | null;
+  // 이전 템플릿: 이전 버전 템플릿으로 만든 플립북을 반영할 때 대신 쓰는 템플릿. 위에 있을수록 먼저 본다(core/templateList.ts).
+  previousTemplates: TemplateRef[];
   policyTemplateNodeId: string | null;
   policyTemplateName: string | null;
   // 모든 작업자가 기록을 열람하는 공유 DATA 페이지. 이름이 아닌 페이지 ID로 연결한다.

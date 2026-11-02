@@ -116,6 +116,9 @@ export type AdminOp =
   | { op: 'createDefaultTemplate' }
   | { op: 'connectTemplateItem'; key: TemplateItem }
   | { op: 'disconnectTemplateItem'; key: TemplateItem }
+  // 이전 템플릿: 캔버스에서 고른 프레임을 더하거나 목록에서 뺀다.
+  | { op: 'addPreviousTemplate' }
+  | { op: 'removePreviousTemplate'; nodeId: string }
   | { op: 'setGuiWidth'; width: number }
   | { op: 'setCaseRelation'; screenId: string; baseId: string | null; reason: string }
   | { op: 'setScreenCategory'; screenId: string; categoryId: string | null; reason: string }

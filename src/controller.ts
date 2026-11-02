@@ -17,6 +17,7 @@ import {
 } from './core/registry.ts';
 import type { CodeRename } from './core/screenCode.ts';
 import { formatFrameName } from './core/screenName.ts';
+import { addPreviousTemplate, removePreviousTemplate, setCurrentTemplate } from './core/templateList.ts';
 import { DIGEST_PREFIX, keys, lastUi, randomId, Store } from './core/store.ts';
 import type { DataStatus, ProjectConfig, Team, UiBaseline } from './core/types.ts';
 import { explainMatch, matchVersion, versionCommon, versionLinkErrors, type VersionFrame } from './core/versionMatch.ts';
@@ -1363,8 +1364,10 @@ export class Controller {
     const canvas = options.canvas ?? (options.canvasFollowed ? undefined : await this.deliveryCanvas(requested).catch(() => undefined));
     const followed = options.canvasFollowed || !canvas ? [] : await this.followCanvas(canvas).catch(() => []);
     const targets = [...new Set([...requested, ...followed])].filter(active);
-    const { templateNodeId } = s.state.project;
+    const { templateNodeId, previousTemplates } = s.state.project;
     if (!templateNodeId) return { ...report, skipped: `${COPY.controller027} ${targets.length}${COPY.controller028}` };
+    // 이전 버전 템플릿으로 만든 플립북은 그 템플릿으로 반영한다(figma/flipbook.ts deliveryKit). 이전 템플릿의 문제는 반영을 막지 않는다.
+    const fallbackTemplateIds = previousTemplates.map(t => t.nodeId);
     // 템플릿에 문제가 있으면 반영하지 않고 대기로 둔다. 템플릿을 고친 뒤 다시 시도하면 반영된다.
     const issues = await this.checkTemplate();
     if (issues.length) return { ...report, skipped: `${COPY.controller027} ${targets.length}${COPY.controller033} ${COPY.controller103} ${issues.join(' / ')}` };
@@ -1384,7 +1387,7 @@ export class Controller {
           if (options.after?.has(flipbookId)) view.after = options.after.get(flipbookId);
           if (options.retitle?.has(flipbookId)) view.retitle = true;
           if (options.create?.has(flipbookId)) view.create = true;
-          const result = await this.host.syncFlipbook({ pageId: view.pageId, templateId: templateNodeId, force: options.force }, view);
+          const result = await this.host.syncFlipbook({ pageId: view.pageId, templateId: templateNodeId, fallbackTemplateIds, force: options.force }, view);
           // 새 템플릿 플립북은 화면 목록을 캔버스의 추적 GUI로 읽는다. 만들며 놓은 GUI 복사본은 추적 GUI로 기록한다.
           const tracked = s.state.flipbooks.get(flipbookId);
           if (result.tracked && tracked && !tracked.tracked) s.put(keys.flipbook(flipbookId), { ...tracked, rev: tracked.rev + 1, tracked: true });
@@ -1537,7 +1540,7 @@ export class Controller {
       case 'setTemplateFromSelection': {
         const template = await this.host.templateFromSelection();
         const before = s.state.project;
-        s.saveProject({ ...before, templateNodeId: template.id, templateName: template.name });
+        s.saveProject(setCurrentTemplate(before, template));
         s.audit(a, 'project.template', 'project', before.templateNodeId, template.id);
         await this.checkTemplate();
         await this.postTemplateInfo();
@@ -1548,7 +1551,7 @@ export class Controller {
         if (!this.host.createDefaultTemplate) break;
         const template = await this.host.createDefaultTemplate(s.state.project.guiWidth);
         const before = s.state.project;
-        s.saveProject({ ...before, templateNodeId: template.id, templateName: template.name });
+        s.saveProject(setCurrentTemplate(before, template));
         s.audit(a, 'project.template', 'project', before.templateNodeId, template.id, COPY.controller143);
         await this.checkTemplate();
         await this.postTemplateInfo();
@@ -1569,6 +1572,19 @@ export class Controller {
           await this.checkTemplate();
           await this.postTemplateInfo();
         }
+        break;
+      }
+      case 'addPreviousTemplate': {
+        const template = await this.host.templateFromSelection();
+        const before = s.state.project;
+        s.saveProject(addPreviousTemplate(before, template));
+        s.audit(a, 'project.previousTemplates', 'project', null, template.id);
+        break;
+      }
+      case 'removePreviousTemplate': {
+        const before = s.state.project;
+        s.saveProject(removePreviousTemplate(before, action.nodeId));
+        s.audit(a, 'project.previousTemplates', 'project', action.nodeId, null);
         break;
       }
       case 'setGuiWidth': {

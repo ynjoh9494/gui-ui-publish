@@ -1,5 +1,6 @@
 import { COPY } from './copy.ts';
 import { noSection } from './flipbooks.ts';
+import { templateNodeIds } from './templateList.ts';
 import type { State } from './store.ts';
 import type { Actor, Flipbook } from './types.ts';
 
@@ -10,7 +11,8 @@ export interface ExistingFlipbook { nodeId: string; pageId: string; title: strin
 // Node IDs are stable within a file; two registrations of the same frame must use the same record.
 export function planExistingFlipbooks(state: State, selected: ExistingFlipbook[], actor: Actor, now: number): { nodeId: string; record: Flipbook }[] {
   if (!selected.length) throw new Error(COPY.registerExistingSelect);
-  if (selected.some(n => n.nodeId === state.project.templateNodeId)) throw new Error(COPY.registerExistingTemplate);
+  const templates = templateNodeIds(state.project);
+  if (selected.some(n => templates.has(n.nodeId))) throw new Error(COPY.registerExistingTemplate);
   if (selected.some(n => !state.project.flipbookPageIds.includes(n.pageId))) throw new Error(COPY.registerExistingPage);
   const seen = new Set<string>();
   return selected.flatMap(node => {

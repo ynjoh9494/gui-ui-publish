@@ -67,7 +67,8 @@ export interface Host extends FingerprintReader {
   templateItemNodes?(templateId: string, key: TemplateItem): Promise<string[]>;
   createDefaultTemplate?(maxWidth: number): Promise<{ id: string; name: string; pageId: string }>;
   // tracked: 새 템플릿 플립북, copies: 이번에 만들며 놓은 GUI 복사본(추적 GUI로 기록)
-  syncFlipbook(settings: { pageId: string; templateId: string; force?: boolean }, view: FlipbookView): Promise<{ nodeId: string; notes: string[]; tracked?: boolean; copies?: { nodeId: string; key: string }[] }>;
+  // fallbackTemplateIds: 이전 템플릿(위부터). 이전 버전 템플릿으로 만든 플립북은 그 템플릿으로 반영한다.
+  syncFlipbook(settings: { pageId: string; templateId: string; fallbackTemplateIds?: string[]; force?: boolean }, view: FlipbookView): Promise<{ nodeId: string; notes: string[]; tracked?: boolean; copies?: { nodeId: string; key: string }[] }>;
   // 추적 GUI(2026-10-29): 페이지들의 GUI 복사본 찾기(uids가 있으면 그 화면만), 새 버전으로 바꾸기, 추적 기록 ID 적기
   scanCopies?(pageIds: string[], uids?: string[]): Promise<FoundCopy[]>;
   updateCopies?(items: CopyUpdate[]): Promise<{ updated: { trackId: string; nodeId: string }[]; notes: string[] }>;
