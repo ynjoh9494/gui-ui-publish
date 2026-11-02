@@ -45,6 +45,8 @@ export interface ListView {
   guiPlace?: (entry: Entry, saved: GuiPlace) => GuiPlace;
   // 「변경된 화면만 보기」(UI 목록은 「업데이트된 화면만 보기」)에 남길 항목. UI 목록은 화면이 수정된(확인이 필요한) 플립북이다.
   changed?: (entry: Entry) => boolean;
+  // GUI 목록에서 뺄 항목: 교체 짝이 정해진 이전 화면. 그 자리에는 교체하는 화면이 이전 화면의 Screen ID로 보인다(2026-11-02 사용자 요청).
+  hidden?: (entry: Entry) => boolean;
 }
 
 // GUI 목록에서 화면이 놓이는 카테고리와 기본 화면(케이스일 때)
@@ -191,7 +193,7 @@ export function savedGuiDisplay(state: State, entry: Entry): { name: string; cod
 // GUI 목록은 원본 화면, UI 목록은 플립북이다.
 // 사용 안 함(삭제로 배포한 화면·플립북)은 목록에서 뺀다. 배포를 켠 항목은 「변경 추정만」에서도 보인다.
 export function buildList(team: Team, state: State, entries: Entry[], statusOf: (entry: Entry) => InputStatus, view: ListView): ListModel {
-  const visible = entries.filter(e => e.estimate !== 'retired' && (team !== 'UI' || !!e.flipbookId));
+  const visible = entries.filter(e => e.estimate !== 'retired' && (team !== 'UI' || !!e.flipbookId) && !view.hidden?.(e));
   const guiDisplayCache = new Map<string, { name: string; code: string }>();
   const guiDisplay = (entry: Entry) => {
     const cached = guiDisplayCache.get(entry.key);

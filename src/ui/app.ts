@@ -10,11 +10,12 @@ import { flowView } from './flowView.ts';
 import { pasteView } from './pasteView.ts';
 import { trackListView } from './trackListView.ts';
 import { pdfView } from './pdfView.ts';
-import { changeReasonSection, REASON_PAGE } from './changeReason.ts';
+import { changeReasonNote, changeReasonSection, REASON_PAGE } from './changeReason.ts';
+import type { ChangeReason } from '../core/changeDigest.ts';
 import { esc } from './html.ts';
 import { NODE_PREVIEW, PreviewCache } from './previewCache.ts';
 import { retryableDeliveries } from '../core/guiDelivery.ts';
-import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScreen, isDeletion, isPrevious, isUnpublish, mergesInto, needsLink, OPTIONAL_FIELDS, pendingScreens, renumberAutoCodes, STATUS_LABEL, validateDraft, type Draft, type DraftIndex, type InputStatus, type Validation } from '../core/drafts.ts';
+import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScreen, isDeletion, isPrevious, isUnpublish, mergesInto, needsLink, OPTIONAL_FIELDS, pendingScreens, renumberAutoCodes, replaceTarget, STATUS_LABEL, validateDraft, type Draft, type DraftIndex, type InputStatus, type Validation } from '../core/drafts.ts';
 import { formatTime, type HistoryRow } from '../core/history.ts';
 import { arrangeFlipbooks, buildList, guiGroupKey, placeDrafts, savedGuiDisplay, savedGuiPlace, UNCATEGORIZED, type ArrangedGroup, type GuiPlace, type ListModel } from '../core/list.ts';
 import { emptyComment, type BatchComment, type Plan } from '../core/publish.ts';
@@ -272,6 +273,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   // 「변경 사항」에서 펼쳐 보인, 보이는 값이 같은 변경의 줄 수. 지금 고른 화면에만 두고 기억하지 않는다:
   // 다른 화면을 고르거나 변경사항 확인을 다시 하면 접힌 상태로 돌아간다.
   let reasonShown: { key: string; count: number } | null = null;
+  // 기존 화면 교체의 변경 사항. 키: 항목 키|교체할 화면 ID|프레임 지문, 값: 받은 결과(요청 중이면 null). 목록을 다시 받으면 비운다.
+  const replaceReasons = new Map<string, { same: boolean; reason: ChangeReason | null } | null>();
+  const replaceReasonKey = (entry: Entry, screenId: string) => `${entry.key}|${screenId}|${entry.frame?.fingerprint ?? ''}`;
   let sizeBeforeVersion: { width: number; height: number } | null = null;
   let versionPageId = '';
   let versionMatch: VersionMatchView | null = null;
@@ -444,10 +448,17 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   }
 
   // GUI 목록에 보이는 이름·Screen ID. 배포 전이라도 배포할 값(draftName·draftCode)을 쓴다. 화면 선택 드롭다운도 같은 값을 쓴다.
+  // 미배포 신규 등록은 ID 태그를 보이지 않고, 기존 화면을 교체하는 신규 후보는 그 화면의 자리에 이어받을 Screen ID로 보인다.
   function guiDisplay(entry: Entry, saved = savedGuiDisplay(state!, entry)): { name: string; code: string } {
     const draft = shownDraft(entry);
     if (!draft) return saved;
-    return { name: draftName(state!, entry, draft) || saved.name, code: entry.screenId ? draftCode(state!, entry, draft) : '' };
+    return { name: draftName(state!, entry, draft) || saved.name, code: entry.screenId || replaceTarget(entry, draft) ? draftCode(state!, entry, draft) : '' };
+  }
+
+  // 교체 짝이 정해진 이전 화면은 목록에서 뺀다. 교체하는 화면의 배포를 끄면 다시 보인다.
+  function hiddenPrevious(entry: Entry): boolean {
+    const draft = drafts.GUI[entry.key];
+    return !!draft?.included && isPrevious(entry, draft);
   }
 
   // GUI 목록의 카테고리 그룹·케이스 위치. 배포할 값과 같은 규칙(publish.ts guiItem)으로 입력 중인 값을 쓴다(2026-10-21 사용자 요청).
@@ -489,7 +500,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       collapsed, query: query[t], changedOnly: changedOnly[t] && !locked(t), pages,
       changed: t === 'UI' ? e => !!e.flipbookId && needsReview(state!, e.flipbookId) : undefined,
       spots: t === 'UI' ? id => uiScans.get(id)?.spot : undefined,
-      guiDisplay, guiPlace,
+      guiDisplay, guiPlace, hidden: t === 'GUI' ? hiddenPrevious : undefined,
     });
   }
 
@@ -960,7 +971,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
             ${dot(r.status)}
             <input type="checkbox" data-action="include" data-key="${esc(r.entry.key)}" ${draft?.included ? 'checked' : ''} ${entryLocked(t, r.entry) ? 'disabled' : ''} aria-label="${esc(r.name)} ${COPY.uiApp034}">
             ${r.depth ? '<span class="case-indent" aria-hidden="true">└</span>' : ''}
-            ${r.entry.screenId && r.code ? `<span class="id-tag">${esc(r.code)}</span>` : ''}
+            ${r.code ? `<span class="id-tag">${esc(r.code)}</span>` : ''}
             <span class="name">${esc(r.name)}</span>
             ${guiStateBadge(state!, r.entry, draft)}
           </div>`;
@@ -1203,6 +1214,22 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     return { value: e.key, code: parsed.code ?? '', name: guiDisplay(e).name };
   });
 
+  // 처음 보이는 교체는 본체에 비교를 요청하고, 받으면 상세 패널을 다시 그린다.
+  function replaceReasonSection(entry: Entry, screenId: string): string {
+    const key = replaceReasonKey(entry, screenId);
+    if (!replaceReasons.has(key)) { replaceReasons.set(key, null); bridge.send({ type: 'replaceReason', entryKey: entry.key, screenId }); }
+    const got = replaceReasons.get(key);
+    if (!got) return changeReasonNote(COPY.uiApp422);
+    if (got.same) return changeReasonNote(COPY.uiApp421);
+    return changeReasonSection(got.reason ?? undefined, reasonShown?.count ?? 0);
+  }
+  // 상세 패널의 「변경 사항」에 쓰는 근거: 기존 화면 교체는 교체할 화면과 비교한 결과, 그 밖에는 지난 배포와 비교한 결과
+  function shownReason(entry: Entry): ChangeReason | undefined {
+    const draft = drafts.GUI[entry.key];
+    const target = draft && entry.frame ? replaceTarget(entry, draft) : null;
+    return target ? replaceReasons.get(replaceReasonKey(entry, target))?.reason ?? undefined : entry.frame?.reason;
+  }
+
   // 교체 짝 반대쪽 화면의 이름
   function partnerName(key: string | undefined): string {
     const other = key ? entries.find(e => e.key === key) : null;
@@ -1240,7 +1267,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (!multi) html += entry.notes.map(n => `<p class="note">${esc(n)}</p>`).join('');
     // 변경사항(변경 감지 이유)은 「변경 무시」를 고르기 전에 본다. 한 화면을 골랐을 때만 보여 준다.
     if (reasonShown?.key !== entry.key) reasonShown = null;
-    if (t === 'GUI' && !multi && entry.estimate === 'changed' && changeDetected(entry)) html += changeReasonSection(entry.frame?.reason, reasonShown?.count ?? 0);
+    // 기존 화면 교체(제안 포함)는 이 프레임을 교체할 화면의 지난 배포와 비교한 변경 사항을 보여 준다(2026-11-02 사용자 요청).
+    const replacing = t === 'GUI' && !multi && entry.frame ? replaceTarget(entry, draft) : null;
+    if (replacing) html += replaceReasonSection(entry, replacing);
+    else if (t === 'GUI' && !multi && entry.estimate === 'changed' && changeDetected(entry)) html += changeReasonSection(entry.frame?.reason, reasonShown?.count ?? 0);
     // 변경 감지: 배포 토글 위에 「변경 무시」. 프레임 이름·카테고리가 바뀐 화면은 무시할 수 없다.
     // 배포를 켜 수정됨·이전 버전으로 정해진 화면은 변경 상태가 해결되었으므로 누를 수 없다.
     if (t === 'GUI' && chosen.every(e => changeDetected(e))) {
@@ -1321,7 +1351,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       if (t === 'GUI' && chosen.every(e => !isDeletion(e, draftOf(t, e)))) {
         const codes = chosen.map(e => draftCode(state!, e, draftOf(t, e)));
         const codeMixed = multi && codes.some(value => value !== codes[0]);
-        html += `<label class="wide">Screen ID<input data-field="code" data-required-field="code" value="${esc(codeMixed ? '' : codes[0])}" placeholder="${codeMixed ? '-' : ''}" required></label>`;
+        html += `<label class="wide">Screen ID<input data-field="code" data-required-field="code" value="${esc(codeMixed ? '' : codes[0])}"${codeMixed ? ' placeholder="-"' : ''} required></label>`;
       }
 
       // 교체는 화면 관계를 입력받지 않는다(교체할 화면의 관계를 그대로 둔다).
@@ -2468,6 +2498,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     defaultTag(n, null);
     Object.assign(d, { included: true, notScreen: false, unpublish: false, replacedBy: newKey });
     if (isMissing(screenKey)) d.retire = 'replace';
+    if (selection.GUI.delete(screenKey)) selection.GUI.add(newKey);
+    if (selected.GUI === screenKey) selected.GUI = newKey;
+    if (anchor.GUI === screenKey) anchor.GUI = newKey;
   }
   // 포함을 켜고 끈다. 짝이 있으면 두 항목을 함께 바꾼다. 자동으로 찾은 짝(잘라내 붙인 프레임)은 꺼도 기본값으로 남긴다.
   function setIncluded(t: Team, entry: Entry, checked: boolean) {
@@ -2890,7 +2923,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         const box = el.closest('.change-reason');
         if (!entry || !box) break;
         reasonShown = { key: entry.key, count: action === 'reason-less' ? 0 : (reasonShown?.key === entry.key ? reasonShown.count : 0) + REASON_PAGE };
-        box.outerHTML = changeReasonSection(entry.frame?.reason, reasonShown.count);
+        box.outerHTML = changeReasonSection(shownReason(entry), reasonShown.count);
         break;
       }
       case 'version-reveal':
@@ -3686,6 +3719,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         const before = entries.find(e => e.key === selected.GUI)?.estimate;
         const pairsBefore = new Map(entries.map(e => [e.key, e.pairKey]));
         entries = msg.entries;
+        replaceReasons.clear();
         // 교체 제안은 변경사항 확인이 끝나야 나온다. 제안이 생기거나 바뀐 항목은 배포를 켜지 않았으면 기본값(교체 짝)을 다시 채운다.
         // 배포를 켠 항목은 사용자가 정한 값을 둔다.
         for (const e of entries) {
@@ -3859,6 +3893,15 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         clearNodePreviews();
         closeVersion();
         break;
+      case 'replaceReason': {
+        const entry = entries.find(e => e.key === msg.entryKey);
+        if (!entry) break;
+        const key = replaceReasonKey(entry, msg.screenId);
+        if (!replaceReasons.has(key)) break;
+        replaceReasons.set(key, { same: msg.same, reason: msg.reason });
+        if (tab === 'GUI' && current()?.key === msg.entryKey) renderDetailKeepingFocus();
+        break;
+      }
       case 'versionDetail':
         if (msg.pageId !== versionPageId) break;
         versionEvidence.set(`${msg.screenId}|${msg.nodeId}`, msg.evidence);

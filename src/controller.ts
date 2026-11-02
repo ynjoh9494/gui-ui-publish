@@ -1,4 +1,4 @@
-import { digestFingerprint, NO_RECORD, type DigestRequest, type PreviousReason } from './core/changeDigest.ts';
+import { digestFingerprint, NO_RECORD, type ChangeReason, type DigestRequest, type PreviousReason } from './core/changeDigest.ts';
 import { COPY } from './core/copy.ts';
 import { planExistingFlipbooks } from './core/registerFlipbooks.ts';
 import { baseline, changeDetected, classify, ignoreBlock, uiEstimate, uncheckedEntries, uiEntries, UI_FINGERPRINT_VERSION, type Entry, type FlipbookSpot, type ScannedFrame, type UiScan } from './core/compare.ts';
@@ -234,6 +234,7 @@ export class Controller {
         case 'removeFlipbooks': await this.removeFlipbooks(msg.ids); break;
         case 'matchVersion': await this.matchVersion(msg.pageId); break;
         case 'switchVersion': await this.switchVersion(msg.pageId, msg.links); break;
+        case 'replaceReason': await this.replaceReason(msg.entryKey, msg.screenId); break;
         case 'versionDetail': {
           const v = this.version;
           if (!v || v.pageId !== msg.pageId) break;
@@ -798,6 +799,24 @@ export class Controller {
       this.postUiScans();
     }
     this.scanStatus(team, 'cancelled');
+  }
+
+  // 기존 화면 교체의 변경 사항(2026-11-02 사용자 요청): 교체하는 프레임을 교체할 화면의 비교 기준(지난 배포)·변경 근거와
+  // 변경 감지와 같은 방법으로 비교한다. 레이어는 화면 프레임부터의 이름 경로로 이으므로 다른 파일에서 붙여 넣은 프레임도 잇는다.
+  // 기록은 바꾸지 않는다. 비교 기준이 지금 규칙의 지문이 아니면 바뀐 레이어를 알 수 없다(근거 기록 없음).
+  private async replaceReason(entryKey: string, screenId: string): Promise<void> {
+    const nodeId = this.entries.find(e => e.key === entryKey)?.frame?.nodeId;
+    const screen = this.store.state.screens.get(screenId);
+    const post = (same: boolean, reason: ChangeReason | null) => this.host.post({ type: 'replaceReason', entryKey, screenId, same, reason });
+    if (!nodeId || !screen) { post(false, null); return; }
+    const base = baseline(this.store.state, screen);
+    const current = !!base?.fingerprint && (base.fpVersion ?? LEGACY_FINGERPRINT_VERSION) === FINGERPRINT_VERSION;
+    const reader = this.host.createFingerprintReader?.() ?? this.host;
+    const request = current ? { baseline: base!.fingerprint, stored: this.store.kv.get(keys.digest(screenId)) } : undefined;
+    const result = await reader.fingerprint(nodeId, false, request);
+    if (!result.fingerprint) { post(false, null); return; }
+    if (!current) { post(false, NO_RECORD); return; }
+    post(result.fingerprint === base!.fingerprint, result.reason ?? null);
   }
 
   // ── 새 버전 페이지 ───────────────────────────────────────

@@ -1,4 +1,5 @@
 // 플러그인 샌드박스(main)와 UI iframe 사이의 메시지 형식
+import type { ChangeReason } from './changeDigest.ts';
 import type { Entry, UiScan } from './compare.ts';
 import type { Draft } from './drafts.ts';
 import { unreviewed, type FlipbookRequest, type ReviewRequest } from './flipbooks.ts';
@@ -176,6 +177,8 @@ export type ToMain =
   | { type: 'switchVersion'; pageId: string; links: { screenId: string; nodeId: string }[] }
   // 화면과 연결할 프레임의 유사도 근거. 사용자가 고친 연결도 같은 규칙으로 계산한다.
   | { type: 'versionDetail'; pageId: string; screenId: string; nodeId: string }
+  // 기존 화면 교체의 변경 사항: 교체하는 항목의 프레임을 교체할 화면의 지난 배포와 비교한다(읽기만 한다).
+  | { type: 'replaceReason'; entryKey: string; screenId: string }
   // 프레임 미리보기 이미지(새 버전 페이지의 기존 원본·새 프레임 비교)
   | { type: 'framePreviews'; nodeIds: string[] }
   // select: 캔버스에서 그 노드를 선택까지 한다(변경 근거의 레이어).
@@ -250,6 +253,8 @@ export type ToUi =
   | { type: 'versionSwitched' }
   // evidence: 원본이나 프레임을 읽지 못해 내용 비교를 못 하면 null
   | { type: 'versionDetail'; pageId: string; screenId: string; nodeId: string; evidence: VersionEvidence | null }
+  // same: 교체할 화면의 지난 배포와 같다. reason: 다르면 바뀐 레이어(읽지 못하면 null)
+  | { type: 'replaceReason'; entryKey: string; screenId: string; same: boolean; reason: ChangeReason | null }
   | { type: 'framePreviews'; items: { nodeId: string; bytes: Uint8Array | null }[] }
   | { type: 'pages'; pages: PageInfo[]; managedPages?: ManagedPageInfo[] }
   | { type: 'thumbnails'; items: { hash: string; bytes: Uint8Array | null }[] }

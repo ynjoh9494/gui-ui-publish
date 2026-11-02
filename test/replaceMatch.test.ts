@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { classify, type Entry, type ScannedFrame } from '../src/core/compare.ts';
 import { defaultDraft, mergesInto, validateDraft, type Draft } from '../src/core/drafts.ts';
-import { FINGERPRINT_VERSION } from '../src/core/fingerprint.ts';
+import { changeDigest, type DigestRequest } from '../src/core/changeDigest.ts';
+import { FINGERPRINT_VERSION, fingerprint, type NodeSnapshot } from '../src/core/fingerprint.ts';
 import { applyReplaceSuggestions, suggestReplacements, tokenHashes } from '../src/core/replaceMatch.ts';
 import { keys, memoryKV, Store } from '../src/core/store.ts';
 import type { GuiRecord, Screen } from '../src/core/types.ts';
@@ -176,4 +177,56 @@ test('GUI 전체 확인은 붙여 넣은 프레임의 내용과 범위 밖에 �
   // 다시 확인해도 같은 제안이 나온다.
   await controller.handle({ type: 'scan' });
   assert.equal(byKey(controller.entries).get('node:9:1')!.pairKey, 'a');
+});
+
+test('기존 화면 교체의 변경 사항은 교체하는 프레임을 교체할 화면의 지난 배포와 비교한다', async () => {
+  const store = seeded();
+  // b의 지난 배포 화면과 그 변경 근거를 남긴다. 붙여 넣은 프레임은 노드 ID·프레임 이름이 달라도 레이어 이름 경로로 잇는다.
+  const snap = (rootName: string, rootId: string, title: string, sub: string): NodeSnapshot => ({
+    type: 'FRAME', name: rootName, id: rootId, props: { width: 1920, height: 1080 },
+    children: [
+      { type: 'TEXT', name: 'Title', id: `${rootId}-t`, props: { characters: title } },
+      { type: 'TEXT', name: 'Sub', id: `${rootId}-s`, props: { characters: sub } },
+    ],
+  });
+  const published = snap('[STB_HO_002] 화면', '1:2', '홈', '배너');
+  const fpB = fingerprint(published);
+  const storedDigest = changeDigest(fpB, { always: true }, () => published).digest!;
+  store.put(keys.gui('b', 1), { ...store.state.gui.get('b')![0], fingerprint: fpB });
+  store.kv.set(keys.digest('b'), storedDigest);
+  store.reload();
+  const canvas = new Map<string, NodeSnapshot>([
+    ['1:2', published],
+    ['9:1', snap('Frame 1', '9:1', '홈', '배너')],
+    ['9:2', snap('Frame 2', '9:2', '홈', '새 배너')],
+  ]);
+  const posted: ToUi[] = [];
+  const host = {
+    kv: store.kv, mode: 'GUI', actor, post: (m: ToUi) => posted.push(m), pages: () => [{ id: PAGE, name: '원본' }],
+    listFrames: async () => [...canvas.keys()].map(nodeId => ({ nodeId, pageId: PAGE, name: canvas.get(nodeId)!.name, width: 1920, height: 1080, screenTag: nodeId === '1:2' ? 'b' : null, fingerprint: null, error: null })),
+    createFingerprintReader: () => ({
+      fingerprint: async (id: string, _legacy?: boolean, digest?: DigestRequest) => {
+        const s = canvas.get(id)!;
+        const fp = fingerprint(s);
+        return { fingerprint: fp, ...changeDigest(fp, digest, () => s), error: null };
+      },
+      screenFeatures: async () => ({ fingerprint: null, tokens: null, error: 'missing' }),
+    }),
+  } as unknown as Host;
+  const controller = new Controller(host);
+  await controller.handle({ type: 'ready' });
+  await controller.handle({ type: 'scan' });
+  const reasonOf = async (entryKey: string) => {
+    await controller.handle({ type: 'replaceReason', entryKey, screenId: 'b' });
+    return posted.filter(m => m.type === 'replaceReason').pop() as Extract<ToUi, { type: 'replaceReason' }>;
+  };
+  const same = await reasonOf('node:9:1');
+  assert.deepEqual([same.same, same.reason], [true, null]);
+  const changed = await reasonOf('node:9:2');
+  assert.equal(changed.same, false);
+  assert.equal(changed.reason!.status, 'complete');
+  const text = changed.reason!.groups.find(g => g.group === 'text')!;
+  assert.deepEqual(text.layers.map(l => [l.layer.path.join(' › '), l.layer.nodeId]), [['Sub', '9:2-s']]);
+  // 기록은 바꾸지 않는다.
+  assert.equal(store.kv.get(keys.digest('b')), storedDigest);
 });

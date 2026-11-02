@@ -32,6 +32,11 @@ function line(kind: string, layer: LayerRef | null, why = '', count = ''): strin
   return `<li><span class="reason-line"${title}>${text}</span></li>`;
 }
 
+// 「변경 사항」 상자에 안내 한 줄만 보여 준다(기존 화면 교체가 지난 배포와 같을 때, 비교 중일 때).
+export function changeReasonNote(text: string): string {
+  return `<section class="change-reason"><h3>${esc(COPY.uiApp361)}</h3><p class="note">${esc(text)}</p></section>`;
+}
+
 // GUI 상세 패널의 「변경 사항」: 비교 기준과 다른 점을 한 줄씩 보여 준다. 보이는 값이 같은 변경은 아래에 모아
 // 「전체 보기」로 열고 REASON_PAGE개씩 더 보여 주며, 다 펼치면 「숨기기」로 접는다. shown: 지금 펼쳐 보인 그런 줄 수
 // 차이가 많아 일부만 풀렸으면(status partial) 풀린 줄만 보여 주고 따로 알리지 않는다.
