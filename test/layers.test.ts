@@ -553,3 +553,37 @@ test('부모 크기 보정 뒤 절대 위치 레이어의 크기와 위치를 �
   assert.deepEqual([root.width, root.height], [246, 31.5]);
   assert.deepEqual([interaction.layoutPositioning, interaction.width, interaction.height, interaction.x, interaction.y], ['ABSOLUTE', 246, 31.5, 0, 0]);
 });
+
+// 실제 Figma처럼 부모가 오토 레이아웃이 아니면 절대 위치 설정을 거절한다. 부모의 오토 레이아웃을 끈 뒤에도 예전 값은 남아 읽힌다.
+function figmaPositioning(node: Node): Node {
+  let value = node.layoutPositioning;
+  Object.defineProperty(node, 'layoutPositioning', {
+    get: () => value,
+    set: (next: string) => {
+      if (next === 'ABSOLUTE' && !(node.parent?.layoutMode && node.parent.layoutMode !== 'NONE'))
+        throw new Error('in set_layoutPositioning: Can only set layoutPositioning = ABSOLUTE if the parent node has layoutMode !== NONE');
+      value = next;
+    },
+  });
+  return node;
+}
+
+test('오토 레이아웃을 끈 부모 아래 예전 절대 위치 값이 남은 레이어도 줄일 수 있고 크기·위치만 되돌린다', async () => {
+  setup();
+  const badge = figmaPositioning(Object.assign(new Node('FRAME', 'Badge'), { width: 40, height: 20, x: 100, y: 10, layoutPositioning: 'ABSOLUTE' }));
+  const card = Object.assign(new Node('FRAME', 'Card'), { width: 400, height: 200, layoutMode: 'NONE' }).add(badge);
+  const root = Object.assign(new Node('FRAME', 'Screen'), { width: 400, height: 200, layoutSizingHorizontal: 'FIXED', layoutSizingVertical: 'FIXED' }).add(card);
+  root.rescale = () => { root.width = 200; root.height = 100; badge.width = 21; badge.height = 10; badge.x = 49; badge.y = 5; };
+  await rescaleExact(root as unknown as FrameNode, 0.5);
+  assert.deepEqual([badge.layoutPositioning, badge.width, badge.height, badge.x, badge.y], ['ABSOLUTE', 20, 10, 50, 5]);
+});
+
+test('오토 레이아웃 부모 아래 절대 위치 레이어는 줄인 뒤에도 절대 위치로 둔다', async () => {
+  setup();
+  const badge = figmaPositioning(Object.assign(new Node('FRAME', 'Badge'), { width: 40, height: 20, x: 100, y: 10, layoutPositioning: 'ABSOLUTE' }));
+  const row = Object.assign(new Node('FRAME', 'Row'), { width: 400, height: 200, layoutMode: 'HORIZONTAL' }).add(badge);
+  const root = Object.assign(new Node('FRAME', 'Screen'), { width: 400, height: 200, layoutSizingHorizontal: 'FIXED', layoutSizingVertical: 'FIXED' }).add(row);
+  root.rescale = () => { root.width = 200; root.height = 100; badge.layoutPositioning = 'AUTO'; badge.width = 20; badge.height = 10; };
+  await rescaleExact(root as unknown as FrameNode, 0.5);
+  assert.deepEqual([badge.layoutPositioning, badge.x, badge.y], ['ABSOLUTE', 50, 5]);
+});

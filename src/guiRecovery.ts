@@ -6,6 +6,12 @@ import type { Host } from './host.ts';
 import type { TrackController } from './trackController.ts';
 import type { FlowController } from './flowController.ts';
 
+// 배포 뒤 원본이 바뀐 화면이 있어 그 묶음을 반영하지 않았다. labels: 그 화면들의 Screen ID(없으면 이름)
+class SourceChanged extends Error {
+  readonly labels: string[];
+  constructor(labels: string[]) { super(COPY.recoverySourceChanged); this.labels = labels; }
+}
+
 interface RecoveryActions {
   pull(batchId: string, targets: string[]): Promise<{ message: string; failed: boolean } | null>;
   data(): Promise<boolean>;
@@ -47,6 +53,8 @@ export class GuiRecovery {
     const notes: string[] = [];
     // 실패한 이유. 묶음이 여럿이어도 앞머리(recoveryPending)는 한 번만 쓰고 같은 이유도 한 번만 쓴다(2026-11-02 사용자 요청).
     const failures = new Set<string>();
+    // 배포 뒤 원본이 바뀌어 덮어쓰지 않은 화면(Screen ID, 없으면 이름)
+    const changed = new Set<string>();
     const reader = this.host.createFingerprintReader?.() ?? this.host;
     const verified = new Set<string>();
     let failed = false;
@@ -62,15 +70,21 @@ export class GuiRecovery {
         const ids = new Set(group.length ? group.map(j => j.targetId) : [...s.state.screens.keys()]);
         const uids = new Set([...ids].filter(uid => s.state.screens.get(uid)?.status === 'active'));
         const retired = new Set([...ids].filter(uid => s.state.screens.get(uid)?.status === 'deleted'));
-        if (discover) for (const uid of uids) {
-          const source = s.state.screens.get(uid)?.source, record = lastGui(s.state, uid);
-          if (!source || !record?.fingerprint) throw new Error(COPY.recoverySourceChanged);
-          const key = `${uid}|${source.nodeId}|${record.fingerprint}`;
-          if (verified.has(key)) continue;
-          const legacy = (record.fpVersion ?? 1) === 1;
-          const fresh = await reader.fingerprint(source.nodeId, legacy);
-          if ((legacy ? fresh.legacyFingerprint : fresh.fingerprint) !== record.fingerprint) throw new Error(COPY.recoverySourceChanged);
-          verified.add(key);
+        if (discover) {
+          // 원본이 바뀐 화면을 모두 모아 Screen ID로 알린다. 그 화면을 다시 배포하면 마지막 기록이 원본과 같아져 풀린다.
+          const changedHere: string[] = [];
+          for (const uid of uids) {
+            const screen = s.state.screens.get(uid), source = screen?.source, record = lastGui(s.state, uid);
+            const label = screen?.code || screen?.name || uid;
+            if (!source || !record?.fingerprint) { changedHere.push(label); continue; }
+            const key = `${uid}|${source.nodeId}|${record.fingerprint}`;
+            if (verified.has(key)) continue;
+            const legacy = (record.fpVersion ?? 1) === 1;
+            const fresh = await reader.fingerprint(source.nodeId, legacy);
+            if ((legacy ? fresh.legacyFingerprint : fresh.fingerprint) !== record.fingerprint) { changedHere.push(label); continue; }
+            verified.add(key);
+          }
+          if (changedHere.length) throw new SourceChanged(changedHere);
         }
         for (const uid of uids) {
           const source = s.state.screens.get(uid)?.source;
@@ -95,10 +109,13 @@ export class GuiRecovery {
         failed = true;
         const message = error instanceof Error ? error.message : String(error);
         for (const job of group) setGuiDeliveryState(s, job, 'failed', message);
-        failures.add(message);
+        if (error instanceof SourceChanged) for (const label of error.labels) changed.add(label);
+        else failures.add(message);
       }
     }
-    const pending = failures.size ? `${COPY.recoveryPending} ${[...failures].join(' ')}` : '';
+    // 원본이 바뀐 화면은 묶음이 여럿이어도 한 문장 뒤에 Screen ID를 모은다: 「…다시 배포하세요. (A, B)」
+    const reasons = [...(changed.size ? [`${COPY.recoverySourceChanged} (${[...changed].join(', ')})`] : []), ...failures];
+    const pending = reasons.length ? `${COPY.recoveryPending} ${reasons.join(' ')}` : '';
     return { message: [pending, ...notes].filter(Boolean).join(' '), failed };
   }
 }

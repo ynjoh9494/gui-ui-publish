@@ -117,6 +117,7 @@ test('미반영 재시도에서 여러 묶음이 같은 이유로 실패해도 �
   const message = (f.posted.filter(m => m.type === 'error').pop() as { message: string }).message;
   assert.equal(message.split(COPY.recoveryPending).length - 1, 1);
   assert.equal(message.split(COPY.recoverySourceChanged).length - 1, 1);
+  assert.ok(message.includes(`${COPY.recoverySourceChanged} (STB_HO_001)`), '원본이 바뀐 화면의 Screen ID를 함께 알린다');
 });
 
 test('사용 안 함·삭제된 플립북 26건은 집계와 재시도 대상 모두에서 제외하고 원기록은 보존한다', () => {

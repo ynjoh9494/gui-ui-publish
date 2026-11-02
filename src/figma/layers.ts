@@ -53,6 +53,13 @@ async function loadFonts(root: FrameNode): Promise<string[]> {
   return missing.sort();
 }
 
+// 절대 위치(Ignore auto layout)는 부모가 오토 레이아웃일 때만 바꿀 수 있다. 부모의 오토 레이아웃을 끈 뒤에도
+// 자식에는 예전 값(ABSOLUTE)이 남아 읽히므로, 그 값을 그대로 다시 쓰면 Figma가 거절한다.
+export const inAutoLayout = (node: SceneNode) => {
+  const parent = node.parent;
+  return !!parent && 'layoutMode' in parent && parent.layoutMode !== 'NONE';
+};
+
 const fixedSize = (n: SceneNode) => n.type !== 'TEXT' && n.type !== 'GROUP' && n.type !== 'BOOLEAN_OPERATION' && 'resizeWithoutConstraints' in n;
 
 // rescale은 고정 크기 오토레이아웃 프레임(안쪽 여백과 내용이 프레임보다 큰 경우 등)의 크기를 원본 비율과 다르게 다시 계산한다.
@@ -77,7 +84,8 @@ export async function rescaleExact(root: FrameNode, scale: number): Promise<stri
     if ((width !== n.width || height !== n.height) && width >= 0.01 && height >= 0.01) n.resizeWithoutConstraints(width, height);
   }
   for (const { node, x, y, width, height } of absolute) {
-    if ('layoutPositioning' in node) node.layoutPositioning = 'ABSOLUTE';
+    // 오토 레이아웃이 꺼진 부모 아래 레이어는 위치 방식을 두고 크기·위치만 되돌린다.
+    if ('layoutPositioning' in node && inAutoLayout(node)) node.layoutPositioning = 'ABSOLUTE';
     if (width >= 0.01 && height >= 0.01 && 'resizeWithoutConstraints' in node &&
         (Math.abs(node.width - width) > 0.01 || Math.abs(node.height - height) > 0.01)) node.resizeWithoutConstraints(width, height);
     node.x = x;

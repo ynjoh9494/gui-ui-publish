@@ -7,7 +7,7 @@ import { newSectionKey } from '../core/flipbooks.ts';
 import { TAG_PALETTE } from '../core/palette.ts';
 import type { NodeSnapshot } from '../core/fingerprint.ts';
 import { sha256 } from '../core/hash.ts';
-import { COPY_KEY, copyLayers, rescaleExact } from './layers.ts';
+import { COPY_KEY, copyLayers, inAutoLayout, rescaleExact } from './layers.ts';
 import { Snapshotter } from './snapshot.ts';
 import {
   NS, cellText, findPart, flipbookParts, isMarkedRow, isNamedRow, isSystemRow, markedRowParts, namedRowComponent, namedRowParts, pageOf, tagKit,
@@ -292,7 +292,7 @@ function instantiate(original: ChildrenMixin, copy: ChildrenMixin): void {
       const instance = source.createInstance();
       const parent = target.parent as BaseNode & ChildrenMixin;
       parent.insertChild(parent.children.indexOf(target), instance);
-      if ('layoutPositioning' in target && target.layoutPositioning === 'ABSOLUTE') { instance.layoutPositioning = 'ABSOLUTE'; instance.x = target.x; instance.y = target.y; }
+      if ('layoutPositioning' in target && target.layoutPositioning === 'ABSOLUTE' && inAutoLayout(target)) { instance.layoutPositioning = 'ABSOLUTE'; instance.x = target.x; instance.y = target.y; }
       else if (parent.type !== 'PAGE' && 'layoutMode' in parent && parent.layoutMode !== 'NONE') {
         const sized = target as FrameNode;
         instance.layoutSizingHorizontal = sized.layoutSizingHorizontal;
