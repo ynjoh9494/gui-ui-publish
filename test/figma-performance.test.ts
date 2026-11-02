@@ -4,7 +4,7 @@ import { figmaHost } from '../src/figma/host.ts';
 import { Snapshotter } from '../src/figma/snapshot.ts';
 import { createFingerprintReader } from '../src/figma/fingerprints.ts';
 import { renderDataPage } from '../src/figma/data.ts';
-import { fitSection, makeRoom, placeFrame, recolorTagFills, syncRows, templateProblems, type TagKit } from '../src/figma/flipbook.ts';
+import { fitSection, makeRoom, placeFrame, recolorTagFills, syncMarkedRows, templateProblems, type TagKit } from '../src/figma/flipbook.ts';
 import type { DataModel } from '../src/core/data.ts';
 import type { FlipbookRow } from '../src/core/flipbook.ts';
 import { Store, memoryKV } from '../src/core/store.ts';
@@ -177,31 +177,32 @@ test('원본 프레임이 지워진 화면은 링크 없이 그리고 나머지 
   }
 });
 
+// 이력 행(2026-11-02 이름 규칙을 없앤 뒤): 이력 행 컴포넌트의 인스턴스(컴포넌트의 'row' 표식을 이어받음)만 다루고 시스템 행은 둔다.
 test('플립북 최신 행 이동·정정·재시도에서 기존 이력과 시스템 행을 재사용한다', async () => {
   const m = mockFigma();
-  const instance = m.make('INSTANCE');
   const list = m.make('SLOT', 'List'), previous = m.make('FRAME', 'Previous');
-  instance.appendChild(list); list.appendChild(previous);
+  list.appendChild(previous);
   const component = m.make('COMPONENT');
   let instances = 0;
   component.createInstance = () => {
     instances++;
     const row = m.make('INSTANCE', 'Update History');
+    row.setSharedPluginData('test', 'templatePart', 'row');
     row.getMainComponentAsync = async () => component;
-    for (const name of ['Comment', 'Name', 'Date']) {
-      const cell = m.make('FRAME', name), text = m.make('TEXT'); cell.appendChild(text); row.appendChild(cell);
+    for (const [name, role] of [['Comment', 'rowComment'], ['Name', 'rowWorker'], ['Date', 'rowDate']]) {
+      const cell = m.make('FRAME', name), text = m.make('TEXT'); text.setSharedPluginData('test', 'templatePart', role); cell.appendChild(text); row.appendChild(cell);
     }
     return row;
   };
   const template = m.make('COMPONENT'); template.appendChild(component.createInstance());
   const system = m.make('INSTANCE', 'Update History'); system.componentProperties.isSystem = { value: 'true' }; list.appendChild(system);
   const legacy = component.createInstance(); list.appendChild(legacy);
-  const kit = { template, small: component, big: component, fonts: new Map() } as unknown as TagKit;
+  const kit = { template, links: { components: {} }, row: component, small: component, big: component, fonts: new Map() } as unknown as TagKit;
   const data = (v: number): FlipbookRow => ({ key: `GUI:batch${v}`, team: 'GUI', description: `change ${v}`, worker: 'User', at: '10/19 12:00', colorKey: 'Green', tag: { id: 't', name: 'tag', colorKey: 'Green', color: '#fff' } });
   const settings = { pageId: 'p', templateId: template.id };
-  const sync = (rows: FlipbookRow[], force = false) => syncRows('test', instance as unknown as ChildrenMixin, { ...settings, force }, rows, kit, new Set());
+  const sync = (rows: FlipbookRow[], force = false) => syncMarkedRows('test', list as unknown as SceneNode, previous as unknown as SceneNode, { ...settings, force }, rows, kit, new Set());
   await sync([data(1)]);
-  const first = list.children[0], count = instances;
+  const first = list.children.find(n => n.type === 'INSTANCE' && n !== system)!, count = instances;
   assert.equal(legacy.removed, true);
   await sync([data(1)]);
   assert.equal(instances, count);
@@ -246,26 +247,12 @@ function templateFixture(m: ReturnType<typeof mockFigma>, listType = 'SLOT', idT
   return { frame, history, list };
 }
 
-test('템플릿 구조를 찾을 때 GUI 영역 안의 레이어 복사본은 훑지 않고, List·input-cell-id는 슬롯이어야 한다', async () => {
+// 이전 형식 템플릿을 알아볼 때(템플릿 목록에 더할 때만)도 GUI 영역 안의 레이어 복사본은 훑지 않는다.
+test('이전 형식 템플릿 구조를 찾을 때 GUI 영역 안의 레이어 복사본은 훑지 않고, List·input-cell-id는 슬롯이어야 한다', () => {
   const m = mockFigma();
-  const { frame, history, list } = templateFixture(m);
+  const { frame } = templateFixture(m);
   assert.deepEqual(templateProblems(frame as unknown as FrameNode), []);
   assert.match(templateProblems(templateFixture(m, 'FRAME', 'FRAME').frame as unknown as FrameNode).join(), /input-cell-id.*슬롯.*List.*슬롯/);
-  const component = m.make('COMPONENT');
-  component.createInstance = () => {
-    const row = m.make('INSTANCE', 'Update History');
-    row.getMainComponentAsync = async () => component;
-    for (const name of ['Comment', 'Name', 'Date']) {
-      const cell = m.make('FRAME', name), text = m.make('TEXT'); cell.appendChild(text); row.appendChild(cell);
-    }
-    return row;
-  };
-  list.appendChild(component.createInstance());
-  const kit = { template: frame, small: component, big: component, fonts: new Map() } as unknown as TagKit;
-  const row: FlipbookRow = { key: 'GUI:batch1', team: 'GUI', description: 'd', worker: 'User', at: '10/19 12:00', colorKey: 'Green', tag: { id: 't', name: 'tag', colorKey: 'Green', color: '#fff' } };
-  await syncRows('test', history as unknown as ChildrenMixin, { pageId: 'p', templateId: frame.id }, [row], kit, new Set());
-  assert.equal(list.children.length, 1);
-  assert.equal(list.children[0].findOne(n => n.type === 'TEXT' && n.parent?.name === 'Comment')!.characters, 'd');
 });
 
 test('태그 색은 색 변수 없이 팔레트 hex로 칠하고, 팔레트 색이 아닌 칠은 그대로 둔다', () => {

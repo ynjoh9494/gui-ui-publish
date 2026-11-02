@@ -5,15 +5,16 @@ import {
   type ComponentPart, type ItemKind, type RowPart, type TemplateInfo, type TemplateItem, type TemplateItemState, type TemplateLinks,
 } from '../core/templateParts.ts';
 
-// 플립북 템플릿의 구조: 플러그인이 정보를 넣는 칸을 찾고, 템플릿 관리 화면의 연결 항목을 읽고 바꾼다.
-// 표식 템플릿(연결 기록이 있는 템플릿)은 역할 표식으로, 이전 템플릿은 레이어 이름으로 찾는다(core/templateParts.ts).
+// 플립북 템플릿의 구조: 플러그인이 정보를 넣는 칸을 역할 표식으로 찾고, 템플릿 관리 화면의 연결 항목을 읽고 바꾼다(core/templateParts.ts).
+// 레이어 이름으로 칸을 찾는 이전 형식(이름 규칙)은 반영에 쓰지 않는다(2026-11-02 사용자 결정). 이전 형식 템플릿은 처음 쓸 때,
+// 이전 형식 플립북은 기존 플립북 등록과 관리자의 「이전 형식 플립북 변환」에서 한 번 표식으로 바꾼다(아래 「이전 형식 가져오기」, figma/legacyConvert.ts).
 
 // 플러그인 ID가 바뀌어도 데이터가 남도록 pluginData 대신 네임스페이스가 있는 sharedPluginData를 쓴다.
 export const NS = 'guiuipublish';
 
-// ── 이름 규칙 ─────────────────────────────────────────
-// 템플릿(2026-10-20 사용자 결정)은 일반 프레임이다. 그 안의 UI Title·Flipbook-Title·Update History List는 컴포넌트이고,
-// GUI Image Slot은 컴포넌트가 아닌 프레임이다.
+// ── 이전 형식 가져오기(이름 규칙) ───────────────────────
+// 이전 템플릿(2026-10-20 사용자 결정)은 일반 프레임이다. 그 안의 UI Title·Flipbook-Title·Update History List는 컴포넌트이고,
+// GUI Image Slot은 컴포넌트가 아닌 프레임이다. 이 이름들은 표식으로 바꿀 때만 읽는다.
 
 const TITLE = 'UI Title';
 const HEADER = 'Flipbook-Title';
@@ -241,7 +242,7 @@ export const isMarkedRow = (n: SceneNode, ns = NS): n is InstanceNode => n.type 
 // ── 플립북의 칸 ───────────────────────────────────────
 
 export interface Parts {
-  // 표식 템플릿에서 만든 플립북(또는 그 템플릿)이면 연결 기록, 이름 규칙이면 null
+  // 표식 템플릿에서 만든 플립북(또는 그 템플릿)의 연결 기록. 없으면 표식으로 바꾸기 전의 이전 형식 프레임이라 칸을 찾지 않는다.
   links: TemplateLinks | null;
   titles: TextNode[];
   chapter: TextNode | null;
@@ -251,17 +252,13 @@ export interface Parts {
   description: SceneNode | null;
   list: SceneNode | null;
   previous: SceneNode | null;
-  // 이름 규칙일 때만: 템플릿 기본 글자를 찾을 컴포넌트와 이력 행 컴포넌트를 찾을 이력 영역
-  named: NamedParts | null;
 }
+
+const NO_PARTS: Parts = { links: null, titles: [], chapter: null, status: null, ids: null, gui: null, description: null, list: null, previous: null };
 
 export function flipbookParts(root: FrameNode, ns = NS): Parts {
   const links = linksOf(root, ns);
-  if (!links) {
-    const p = namedParts(root);
-    const previous = p.list && 'findChild' in p.list ? (p.list as ChildrenMixin).findChild(n => n.type === 'FRAME' && n.name === 'Previous') : null;
-    return { links, titles: [p.titleText, p.page].filter(isText), chapter: p.chapter, status: p.status, ids: p.ids, gui: p.gui, description: p.description, list: p.list, previous, named: p };
-  }
+  if (!links) return NO_PARTS;
   const marked = markedParts(root, ns);
   const first = (role: string) => marked.get(role)?.[0] ?? null;
   return {
@@ -274,7 +271,6 @@ export function flipbookParts(root: FrameNode, ns = NS): Parts {
     description: first('description'),
     list: first('history'),
     previous: first('previous'),
-    named: null,
   };
 }
 
@@ -308,15 +304,14 @@ export async function templateFromSelection(ns = NS): Promise<{ id: string; name
   return { id: outer.id, name: outer.name };
 }
 
-// 태그 표시 컴포넌트와 표식 템플릿의 이력 행·기본 글자. 반영 한 번에 한 번 읽는다.
+// 태그 표시 컴포넌트와 템플릿의 이력 행·기본 글자. 반영 한 번에 한 번 읽는다.
 export interface TagKit {
   template: FrameNode;
-  links: TemplateLinks | null;
-  // 상단 상태(big)·이력 상태(small)를 바꿀 태그 컴포넌트. 표식 템플릿은 연결했을 때만 있다.
+  links: TemplateLinks;
+  // 상단 상태(big)·이력 상태(small)를 바꿀 태그 컴포넌트. 연결했을 때만 있다.
   big: ComponentNode | null;
   small: ComponentNode | null;
   idTag: ComponentNode | null;
-  // 표식 템플릿의 이력 행 컴포넌트. 이름 규칙은 반영할 때 이력 영역의 행에서 찾는다.
   row: ComponentNode | null;
   // 표식 템플릿의 제목·Chapter 칸에 적힌 글자. 플립북 글자가 이 글자이면 플러그인이 바꾼다.
   defaults: { title: string[]; chapter: string[] };
@@ -333,13 +328,7 @@ async function linkedComponents(links: TemplateLinks): Promise<Record<ComponentP
 }
 
 export async function tagKit(templateId: string, ns = NS): Promise<TagKit> {
-  const template = await templateFrame(templateId);
-  const links = linksOf(template, ns);
-  if (!links) {
-    const { big, small, idTag, problem } = tagComponents(template);
-    if (problem) throw new Error(problem);
-    return { template, links, big: big!, small: small!, idTag: idTag!, row: null, defaults: { title: [], chapter: [] }, fonts: new Map() };
-  }
+  const { template, links } = await linkedTemplate(templateId, ns);
   const c = await linkedComponents(links);
   const marked = markedParts(template, ns);
   const texts = (role: string) => (marked.get(role) ?? []).filter(isText).map(n => n.characters);
@@ -406,51 +395,23 @@ async function linkedItems(template: FrameNode, links: TemplateLinks, ns: string
   });
 }
 
-async function namedItems(template: FrameNode): Promise<TemplateItemState[]> {
-  const p = namedParts(template);
-  const tags = tagComponents(template);
-  const row = await namedRowComponent(p.history, template);
-  const r = row ? namedRowParts(row) : null;
-  const previous = p.list && 'findChild' in p.list ? (p.list as ChildrenMixin).findChild(n => n.type === 'FRAME' && n.name === 'Previous') : null;
-  const found: Record<TemplateItem, (BaseNode | null | undefined)[]> = {
-    title: [p.titleText, p.page], chapter: [p.chapter], status: [p.status], ids: [p.ids], gui: [p.gui], description: [p.description],
-    history: [p.list], previous: [previous], pdfHidden: [p.title, p.history],
-    idTag: [tags.idTag], row: [row], statusTag: [tags.big], rowStatusTag: [tags.small],
-    rowStatus: [r?.status], rowComment: [r?.comment], rowWorker: [r?.worker], rowDate: [r?.date], rowTeam: [r?.team],
-  };
-  // 이름 규칙에서 반드시 있어야 하는 칸(templateProblems·tagComponents와 같다)
-  const required = new Set<TemplateItem>(['title', 'chapter', 'status', 'ids', 'gui', 'history', 'idTag', 'statusTag', 'rowStatusTag']);
-  return TEMPLATE_ITEMS.map(def => {
-    const nodes = found[def.key];
-    const missing = def.key === 'title' ? !p.titleText || !p.page : !nodes.some(Boolean);
-    let problem: string | null = missing && required.has(def.key) ? COPY.figmaTemplate012 : null;
-    if (!problem && (def.key === 'ids' || def.key === 'history') && nodes[0] && nodes[0].type !== 'SLOT') problem = COPY.figmaTemplate004;
-    return { key: def.key, layers: layers(nodes, def.group === 'row' ? row : def.group === 'component' ? null : template), problem };
-  });
-}
-
-// 템플릿 관리 화면에 보여 줄 연결 상태. 템플릿을 찾지 못하면 error만 채운다.
+// 템플릿 관리 화면에 보여 줄 연결 상태. 템플릿을 찾지 못하면 error만 채운다. 이전 형식 템플릿은 여기서 표식으로 바꾼다.
 export async function describeTemplate(templateId: string, ns = NS): Promise<TemplateInfo> {
-  let template: FrameNode;
-  try { template = await templateFrame(templateId); }
-  catch (e) { return { id: templateId, name: '', pageName: '', linked: false, items: [], error: e instanceof Error ? e.message : String(e) }; }
-  const links = linksOf(template, ns);
-  const items = links ? await linkedItems(template, links, ns) : await namedItems(template);
-  return { id: template.id, name: template.name, pageName: pageOf(template)?.name ?? '', linked: !!links, items, error: null };
+  let found: { template: FrameNode; links: TemplateLinks };
+  try { found = await linkedTemplate(templateId, ns); }
+  catch (e) { return { id: templateId, name: '', pageName: '', items: [], error: e instanceof Error ? e.message : String(e) }; }
+  const { template, links } = found;
+  return { id: template.id, name: template.name, pageName: pageOf(template)?.name ?? '', items: await linkedItems(template, links, ns), error: null };
 }
 
 // 지정한 템플릿으로 플립북을 만들거나 반영할 수 있는지 확인한다. 템플릿 컴포넌트를 고쳐 칸이 없어지거나 바뀌면
 // 반영이 중간에 멈추므로, 관리 화면이 아니어도 미리 알린다. 템플릿을 지정하지 않았으면 확인하지 않는다.
 export async function templateIssues(templateId: string | null, ns = NS): Promise<string[]> {
   if (!templateId) return [];
-  let template: FrameNode;
-  try { template = await templateFrame(templateId); }
+  let found: { template: FrameNode; links: TemplateLinks };
+  try { found = await linkedTemplate(templateId, ns); }
   catch (e) { return [e instanceof Error ? e.message : String(e)]; }
-  const links = linksOf(template, ns);
-  if (links) return (await linkedItems(template, links, ns)).filter(i => i.problem).map(i => `${itemDef(i.key)!.label}: ${i.problem}`);
-  const problems = templateProblems(template);
-  const tags = tagComponents(template).problem;
-  return [...(problems.length ? [`${COPY.figmaFlipbook009} ${problems.join(', ')}`] : []), ...(tags ? [tags] : [])];
+  return (await linkedItems(found.template, found.links, ns)).filter(i => i.problem).map(i => `${itemDef(i.key)!.label}: ${i.problem}`);
 }
 
 // 항목에 연결된(이름 규칙이면 이름으로 찾은) 레이어의 노드 ID. 캔버스에서 보여 줄 때 쓴다.
@@ -466,36 +427,83 @@ function setRole(node: BaseNode, role: string, ns: string): void {
   if ('setSharedPluginData' in node && node.getSharedPluginData(ns, PART_KEY) !== role) node.setSharedPluginData(ns, PART_KEY, role);
 }
 
-// 이름 규칙 템플릿을 표식 템플릿으로 바꾼다. 이름으로 찾은 칸에 같은 역할 표식을 달고, 태그·이력 행 컴포넌트를 연결 기록에 둔다.
-// 이미 만든 플립북은 연결 기록이 없으므로 계속 이름으로 찾고, 이후 만드는 플립북부터 표식으로 찾는다.
-async function convertToLinked(template: FrameNode, ns: string): Promise<TemplateLinks> {
-  const p = namedParts(template);
+// 이전 형식에서 가져온 템플릿의 GUI 영역 표시. 이전 형식처럼 플립북을 만들 때 GUI 영역의 예시 내용을 비운다(figma/flipbook.ts createFlipbook).
+export const GUI_EXAMPLE_KEY = 'guiExample';
+
+// 변환하기 전 이전 형식 플립북의 UI 작성 영역(Description 본문·GUI 영역). UI 수정 지문만 읽으며 아무것도 쓰지 않는다(figma/flipbook.ts uiAreaSnapshot).
+export function legacyUiParts(frame: FrameNode): { description: SceneNode | null; gui: FrameNode | null } {
+  const p = namedParts(frame);
+  return { description: p.description, gui: p.gui };
+}
+
+// 이름으로 찾은 칸에 같은 역할 표식을 단다(템플릿·플립북 프레임 공통).
+function markNamedParts(root: FrameNode, ns: string): NamedParts {
+  const p = namedParts(root);
   const previous = p.list && 'findChild' in p.list ? (p.list as ChildrenMixin).findChild(n => n.type === 'FRAME' && n.name === 'Previous') : null;
   const marks: [BaseNode | null, string][] = [
     [p.titleText, 'title'], [p.page, 'title'], [p.chapter, 'chapter'], [p.status, 'status'], [p.ids, 'ids'], [p.gui, 'gui'],
     [p.description, 'description'], [p.list, 'history'], [previous, 'previous'], [p.title, 'pdfHidden'], [p.history, 'pdfHidden'],
   ];
   for (const [node, role] of marks) if (node) setRole(node, role, ns);
+  return p;
+}
+
+// 이력 행 컴포넌트와 그 안의 칸에 표식을 단다. 인스턴스(이력 행)가 표식을 이어받는다. 라이브러리 컴포넌트는 바꿀 수 없어 둔다.
+function markRowComponent(row: ComponentNode, ns: string): boolean {
+  if (row.remote) return false;
+  setRole(row, 'row', ns);
+  const r = namedRowParts(row);
+  const rowMarks: [BaseNode | null, RowPart][] = [[r.status, 'rowStatus'], [r.comment, 'rowComment'], [r.worker, 'rowWorker'], [r.date, 'rowDate'], [r.team, 'rowTeam']];
+  for (const [node, role] of rowMarks) if (node) setRole(node, role, ns);
+  return true;
+}
+
+// 이전 형식 템플릿을 표식 템플릿으로 바꾼다. 이름으로 찾은 칸에 역할 표식을 달고, 태그·이력 행 컴포넌트를 연결 기록에 둔다.
+// 이미 만든 플립북은 관리자의 「이전 형식 플립북 변환」에서 따로 바꾼다(figma/legacyConvert.ts).
+export async function importNamedTemplate(template: FrameNode, ns = NS): Promise<TemplateLinks> {
+  const p = markNamedParts(template, ns);
+  if (p.gui) p.gui.setSharedPluginData(ns, GUI_EXAMPLE_KEY, 'clear');
   const tags = tagComponents(template);
   const row = await namedRowComponent(p.history, template);
   const links: TemplateLinks = { components: {} };
   if (tags.big) links.components.statusTag = tags.big.id;
   if (tags.small) links.components.rowStatusTag = tags.small.id;
   if (tags.idTag) links.components.idTag = tags.idTag.id;
-  if (row && !row.remote) {
-    links.components.row = row.id;
-    setRole(row, 'row', ns);
-    const r = namedRowParts(row);
-    const rowMarks: [BaseNode | null, RowPart][] = [[r.status, 'rowStatus'], [r.comment, 'rowComment'], [r.worker, 'rowWorker'], [r.date, 'rowDate'], [r.team, 'rowTeam']];
-    for (const [node, role] of rowMarks) if (node) setRole(node, role, ns);
-  }
+  if (row && markRowComponent(row, ns)) links.components.row = row.id;
   template.setSharedPluginData(ns, LINKS_KEY, linksValue(links));
   return links;
 }
 
+// 이전 형식 플립북 프레임(이름 규칙 템플릿에서 만든 플립북, 기존 플립북으로 등록한 프레임)을 표식 형식으로 바꾼다.
+// 이름으로 찾은 칸에 역할 표식을 달고, 그 플립북의 이력 행 컴포넌트(여러 변형이면 모두)에도 표식을 단다.
+// 연결 기록은 그 플립북을 만든 템플릿의 기록(base)을 이어받는다(새 템플릿에서 만들 때 복제로 이어받는 것과 같다). base에 이력 행이 없으면
+// 플립북의 첫 이력 행 컴포넌트를 둔다. 찾은 칸이 없어도 연결 기록을 남겨 표식 형식으로 본다(없는 칸은 반영할 때 건너뛴다).
+// base: 이어받을 연결 기록이나, 플립북의 이력 행 컴포넌트를 보고 고르는 함수(figma/legacyConvert.ts).
+export async function importNamedFrame(frame: FrameNode, base: TemplateLinks | null | ((rows: ComponentNode[]) => TemplateLinks | null), ns = NS): Promise<TemplateLinks> {
+  const p = markNamedParts(frame, ns);
+  const rows = p.history ? await namedRowComponents(p.history) : [];
+  for (const row of rows) markRowComponent(row, ns);
+  const from = typeof base === 'function' ? base(rows) : base;
+  const links: TemplateLinks = { components: { ...(from?.components ?? {}) } };
+  if (!links.components.row && rows[0] && !rows[0].remote) links.components.row = rows[0].id;
+  frame.setSharedPluginData(ns, LINKS_KEY, linksValue(links));
+  return links;
+}
+
+// 이전 형식 이력 영역의 일반 이력 행(시스템 행 빼고)이 쓰는 컴포넌트들. 놓인 순서대로, 겹치지 않게.
+export async function namedRowComponents(history: ChildrenMixin): Promise<ComponentNode[]> {
+  const out: ComponentNode[] = [];
+  for (const row of history.findAll(n => isNamedRow(n) && !isSystemRow(n)) as InstanceNode[]) {
+    const main = await row.getMainComponentAsync();
+    if (main && !out.some(c => c.id === main.id)) out.push(main);
+  }
+  return out;
+}
+
+// 템플릿과 연결 기록. 이전 형식 템플릿은 처음 쓸 때 표식 템플릿으로 바꾼다(2026-11-02 사용자 결정: 이름 규칙은 반영에 쓰지 않는다).
 async function linkedTemplate(templateId: string, ns: string): Promise<{ template: FrameNode; links: TemplateLinks }> {
   const template = await templateFrame(templateId);
-  const links = linksOf(template, ns) ?? await convertToLinked(template, ns);
+  const links = linksOf(template, ns) ?? await importNamedTemplate(template, ns);
   return { template, links };
 }
 

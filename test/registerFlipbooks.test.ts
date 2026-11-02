@@ -5,6 +5,7 @@ import { Store, memoryKV, keys } from '../src/core/store.ts';
 import { Controller, type Host } from '../src/controller.ts';
 import { selectedFlipbooks, markExistingFlipbooks } from '../src/figma/registerFlipbooks.ts';
 import { FLIPBOOK_KEY, NODE_KEY } from '../src/figma/flipbook.ts';
+import { LINKS_KEY, parseLinks } from '../src/core/templateParts.ts';
 import type { ToUi } from '../src/core/wire.ts';
 
 const actor = { id: 'u', name: 'Designer' };
@@ -54,11 +55,12 @@ test('controller adds existing frames without syncing template content or duplic
   assert.equal(reopened.store.state.flipbooks.get('canvas:1:2')?.title, 'Manual book');
 });
 
-test('host only writes registration marks, distinguishes a copied book, and validates all nodes before a batch', async () => {
+// 등록은 플러그인 표식만 쓴다. 연결 기록이 없는 프레임은 반영이 표식으로만 칸을 찾으므로(2026-11-02) 이름으로 찾은 칸 표식과 연결 기록도 함께 쓴다.
+test('host only writes registration marks and a links record, distinguishes a copied book, and validates all nodes before a batch', async () => {
   const previous = (globalThis as any).figma;
   const page = { id: 'p', type: 'PAGE', selection: [] as any[] };
   const make = (id: string, parent: any = page) => ({
-    id, type: 'FRAME', name: 'Manual book', parent, data: new Map<string, string>(),
+    id, type: 'FRAME', name: 'Manual book', parent, data: new Map<string, string>(), children: [] as any[],
     getSharedPluginData(_ns: string, key: string) { return this.data.get(key) ?? ''; },
     setSharedPluginData(_ns: string, key: string, value: string) { this.data.set(key, value); },
   });
@@ -73,6 +75,7 @@ test('host only writes registration marks, distinguishes a copied book, and vali
     assert.equal(a.data.get(EXISTING_KEY), 'true');
     assert.equal(a.data.get(FLIPBOOK_KEY), 'canvas:a');
     assert.equal(a.data.get(NODE_KEY), 'a');
+    assert.deepEqual(parseLinks(a.data.get(LINKS_KEY) ?? ''), { components: {} }, '찾은 칸이 없어도 연결 기록을 남긴다');
     assert.equal(JSON.stringify({ name: a.name, type: a.type, parent: a.parent.id }), visible);
     assert.equal((await selectedFlipbooks())[0].flipbookId, 'canvas:a');
     b.data = new Map(a.data); page.selection = [b];

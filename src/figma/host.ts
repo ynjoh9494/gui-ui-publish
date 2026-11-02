@@ -16,6 +16,7 @@ import { SCREEN_KEY } from './layers.ts';
 import { exportPdfPages, pdfSelection } from './pdf.ts';
 import { readRichText, selectedTextNode, writeRichText } from './richText.ts';
 import { connectTemplateItem, describeTemplate, disconnectTemplateItem, templateItemNodes } from './template.ts';
+import { convertLegacyFlipbooks } from './legacyConvert.ts';
 import { createDefaultTemplate } from './templateDefault.ts';
 import { createdCopies, markTracked, nodePlaces, pasteCopy, scanCopies, updateCopies } from './tracked.ts';
 import { makeThumbnail, placeThumbnails, renameThumbnails, thumbnailBytes } from './thumbs.ts';
@@ -202,6 +203,7 @@ export function figmaHost(mode: Host['mode']): Host {
     disconnectTemplateItem: (id, key) => disconnectTemplateItem(id, key, NS),
     templateItemNodes: (id, key) => templateItemNodes(id, key, NS),
     createDefaultTemplate: maxWidth => createDefaultTemplate(maxWidth, NS),
+    convertLegacyFlipbooks: input => convertLegacyFlipbooks(input, NS),
     scanCopies: (pageIds, uids) => scanCopies(NS, pageIds, uids),
     updateCopies: items => updateCopies(NS, items),
     markTracked: items => markTracked(NS, items),

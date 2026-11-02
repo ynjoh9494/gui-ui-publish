@@ -1,7 +1,7 @@
 import { COPY } from '../core/copy.ts';
 import { EXISTING_KEY, type ExistingFlipbook } from '../core/registerFlipbooks.ts';
 import { FLIPBOOK_KEY, NODE_KEY } from './flipbook.ts';
-import { NS } from './template.ts';
+import { NS, importNamedFrame, linksOf } from './template.ts';
 
 export async function selectedFlipbooks(): Promise<ExistingFlipbook[]> {
   const selected = [...figma.currentPage.selection];
@@ -26,9 +26,13 @@ export async function markExistingFlipbooks(items: { nodeId: string; id: string;
     const own = node.getSharedPluginData(NS, NODE_KEY) === node.id && node.getSharedPluginData(NS, FLIPBOOK_KEY);
     if (own && own !== items[i].id) throw new Error(COPY.registerExistingChanged);
   });
-  nodes.forEach((node, i) => {
-    node!.setSharedPluginData(NS, FLIPBOOK_KEY, items[i].id);
-    node!.setSharedPluginData(NS, NODE_KEY, node!.id);
-    node!.setSharedPluginData(NS, EXISTING_KEY, 'true');
-  });
+  for (const [i, node] of nodes.entries()) {
+    const frame = node as FrameNode;
+    frame.setSharedPluginData(NS, FLIPBOOK_KEY, items[i].id);
+    frame.setSharedPluginData(NS, NODE_KEY, frame.id);
+    frame.setSharedPluginData(NS, EXISTING_KEY, 'true');
+    // 반영은 표식으로만 칸을 찾는다(2026-11-02 사용자 결정). 연결 기록이 없는 프레임은 이전 형식 이름으로 찾은 칸에 표식을 단다.
+    // 찾은 칸이 없어도 연결 기록을 남기고, 없는 칸은 반영할 때 건너뛴다.
+    if (!linksOf(frame, NS)) await importNamedFrame(frame, null, NS);
+  }
 }

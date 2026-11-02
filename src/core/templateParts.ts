@@ -97,8 +97,6 @@ export interface TemplateLayer { id: string; name: string }
 export interface TemplateItemState { key: TemplateItem; layers: TemplateLayer[]; problem: string | null }
 export interface TemplateInfo {
   id: string; name: string; pageName: string;
-  // 표식 템플릿이면 true, 레이어 이름으로 찾는 템플릿이면 false
-  linked: boolean;
   items: TemplateItemState[];
   // 지정한 템플릿 프레임을 찾지 못했을 때의 이유
   error: string | null;

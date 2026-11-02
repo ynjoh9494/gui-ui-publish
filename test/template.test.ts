@@ -5,9 +5,14 @@ import { LINKS_KEY, PART_KEY, parseLinks } from '../src/core/templateParts.ts';
 import type { FlipbookRow } from '../src/core/flipbook.ts';
 import { syncMarkedRows, type TagKit } from '../src/figma/flipbook.ts';
 import { selectionTarget } from '../src/figma/description.ts';
-import { connectTemplateItem, describeTemplate, disconnectTemplateItem, flipbookParts, pdfHiddenParts, templateIssues } from '../src/figma/template.ts';
+import { connectTemplateItem, describeTemplate, disconnectTemplateItem, flipbookParts, GUI_EXAMPLE_KEY, pdfHiddenParts, templateIssues } from '../src/figma/template.ts';
+import { convertLegacyFlipbooks } from '../src/figma/legacyConvert.ts';
+import { FLIPBOOK_KEY, NODE_KEY, TEMPLATE_KEY } from '../src/figma/flipbook.ts';
+import { COPY_KEY } from '../src/figma/layers.ts';
+import { scanCopies } from '../src/figma/tracked.ts';
 
-// 템플릿 연결(2026-10-28): 표식 템플릿은 역할 표식으로 칸을 찾고, 이름 규칙 템플릿은 처음 연결할 때 표식으로 바뀐다.
+// 템플릿 연결(2026-10-28): 표식 템플릿은 역할 표식으로 칸을 찾는다. 이름 규칙(이전 형식)은 반영에 쓰지 않고(2026-11-02),
+// 이전 형식 템플릿은 처음 쓸 때, 이전 형식 플립북은 플립북 상세의 「새 형식으로 변환」에서 표식으로 바꾼다.
 const NS = 'guiuipublish';
 
 class Node {
@@ -103,7 +108,6 @@ test('표식 템플릿에서 만든 플립북은 칸을 표식으로 찾고 GUI 
   frame.setSharedPluginData(NS, LINKS_KEY, '{"components":{}}');
   const p = flipbookParts(frame as unknown as FrameNode);
   assert.ok(p.links);
-  assert.equal(p.named, null);
   assert.deepEqual(p.titles.map(n => n.name), ['A', 'B']);
   assert.equal(p.chapter?.name, 'C');
   assert.equal(p.status?.name, 'Tag');
@@ -139,32 +143,44 @@ function namedTemplate(w: ReturnType<typeof world>) {
   const system = w.component('Tag=System', [text(w, 'Text')]);
   const team = w.make('COMPONENT_SET', 'Team', [system]);
   for (const node of [template, big, small, team, rowComponent]) w.page.appendChild(node);
-  return { template, titleText, status, chapter, page, ids, gui, list, previous, title, history, note, big, small, system, rowComponent };
+  return { template, titleText, status, chapter, page, ids, gui, list, previous, title, header, history, note, big, small, system, rowComponent };
 }
 
-test('이름 규칙 템플릿에서 항목 하나를 연결하면 이름으로 찾은 칸을 모두 표식으로 바꾸고, 고른 레이어를 그 항목에 연결한다', async () => {
+// 이전 형식 템플릿으로 만든 플립북(변환 전): 템플릿 컴포넌트의 인스턴스와 GUI Image Slot 안의 GUI 복사본(화면 scr1 버전 3)
+function legacyFlipbook(w: ReturnType<typeof world>, t: ReturnType<typeof namedTemplate>, id: string, rows = true) {
+  const history = t.history.createInstance();
+  const row = history.findOne((n: Node) => n.name === 'Update History')!;
+  if (rows) row.getMainComponentAsync = async () => t.rowComponent; else row.remove();
+  const copy = w.make('FRAME', 'HO_001 GUI'); copy.setSharedPluginData(NS, COPY_KEY, 'scr1@3');
+  const gui = w.make('FRAME', 'GUI Image Slot', [copy]);
+  const frame = w.make('FRAME', `Flipbook ${id}`, [t.title.createInstance(), t.header.createInstance(), gui, history]);
+  frame.setSharedPluginData(NS, FLIPBOOK_KEY, id);
+  frame.setSharedPluginData(NS, NODE_KEY, frame.id);
+  w.page.appendChild(frame);
+  return { frame, gui, copy };
+}
+
+test('이전 형식 템플릿은 처음 볼 때 이름으로 찾은 칸을 모두 표식으로 바꾸고, 그 뒤 고른 레이어를 항목에 연결한다', async () => {
   const w = world();
   const t = namedTemplate(w);
+  const roleOf = (n: Node) => n.getSharedPluginData(NS, PART_KEY);
   const before = await describeTemplate(t.template.id);
-  assert.equal(before.linked, false);
+  const links = parseLinks(t.template.getSharedPluginData(NS, LINKS_KEY));
+  assert.deepEqual(links?.components, { statusTag: t.big.id, rowStatusTag: t.small.id, idTag: t.system.id, row: t.rowComponent.id });
+  assert.deepEqual([t.titleText, t.page, t.chapter, t.status, t.ids, t.gui, t.list, t.previous, t.title, t.history].map(roleOf),
+    ['title', 'title', 'chapter', 'status', 'ids', 'gui', 'history', 'previous', 'pdfHidden', 'pdfHidden']);
+  assert.equal(t.gui.getSharedPluginData(NS, GUI_EXAMPLE_KEY), 'clear', '이전처럼 플립북을 만들 때 GUI 영역 예시를 비운다');
+  assert.equal(roleOf(t.rowComponent), 'row');
+  assert.equal(roleOf(t.rowComponent.findOne((n: Node) => n.type === 'TEXT' && n.parent?.name === 'Comment')!), 'rowComment');
+  assert.equal(roleOf(t.rowComponent.findOne((n: Node) => n.name === 'Team')!), 'rowTeam');
   assert.deepEqual(before.items.find(i => i.key === 'gui')?.layers.map(l => l.name), ['GUI Image Slot']);
   assert.deepEqual(before.items.filter(i => i.problem).map(i => i.key), []);
 
   w.select(t.note);
   await connectTemplateItem(t.template.id, 'chapter');
-  const links = parseLinks(t.template.getSharedPluginData(NS, LINKS_KEY));
-  assert.deepEqual(links?.components, { statusTag: t.big.id, rowStatusTag: t.small.id, idTag: t.system.id, row: t.rowComponent.id });
-  const roleOf = (n: Node) => n.getSharedPluginData(NS, PART_KEY);
-  assert.deepEqual([t.titleText, t.page, t.status, t.ids, t.gui, t.list, t.previous, t.title, t.history].map(roleOf),
-    ['title', 'title', 'status', 'ids', 'gui', 'history', 'previous', 'pdfHidden', 'pdfHidden']);
   assert.equal(roleOf(t.chapter), '', 'the previous chapter layer is released');
   assert.equal(roleOf(t.note), 'chapter');
-  assert.equal(roleOf(t.rowComponent), 'row');
-  assert.equal(roleOf(t.rowComponent.findOne((n: Node) => n.type === 'TEXT' && n.parent?.name === 'Comment')!), 'rowComment');
-  assert.equal(roleOf(t.rowComponent.findOne((n: Node) => n.name === 'Team')!), 'rowTeam');
-
   const after = await describeTemplate(t.template.id);
-  assert.equal(after.linked, true);
   assert.deepEqual(after.items.find(i => i.key === 'chapter')?.layers.map(l => l.name), ['Note']);
   assert.deepEqual(after.items.find(i => i.key === 'rowComment')?.layers.map(l => l.name), ['Comment › Text']);
   assert.deepEqual(await templateIssues(t.template.id), []);
@@ -325,4 +341,44 @@ test('표식 템플릿에서 만든 플립북의 텍스트 편집 대상은 「D
   notes.setSharedPluginData(NS, PART_KEY, '');
   w.select(copy);
   assert.deepEqual(selectionTarget(), { kind: 'error', message: COPY.figmaText006 });
+});
+
+// 이전 형식 플립북 변환(2026-11-02 사용자 결정: 이름 규칙을 없애고, 기존 플립북은 상세에서 고른 플립북만 바꾼다).
+test('고른 이전 형식 플립북만 표식 형식으로 바꾸고, 만든 템플릿의 연결 기록을 이어받으며 GUI Image Slot의 화면은 그대로 추적 GUI가 된다', async () => {
+  const w = world();
+  const t = namedTemplate(w);
+  const a = legacyFlipbook(w, t, 'fb-a');
+  const b = legacyFlipbook(w, t, 'fb-b');
+  const result = await convertLegacyFlipbooks({ pageIds: [w.page.id], flipbookIds: ['fb-a', 'gone'], templateIds: [t.template.id] });
+  assert.deepEqual(result.flipbooks, ['fb-a'], '프레임을 찾지 못한 플립북은 돌려주지 않는다');
+  assert.deepEqual(parseLinks(a.frame.getSharedPluginData(NS, LINKS_KEY))?.components, parseLinks(t.template.getSharedPluginData(NS, LINKS_KEY))?.components);
+  assert.equal(a.frame.getSharedPluginData(NS, TEMPLATE_KEY), t.template.id, '이력 행 컴포넌트가 같은 템플릿을 만든 템플릿으로 적는다');
+  const p = flipbookParts(a.frame as unknown as FrameNode);
+  assert.deepEqual(p.titles.map(n => n.characters), ['Title', 'Page']);
+  assert.equal(p.chapter?.characters, 'Chapter');
+  assert.equal(p.status?.name, 'Status');
+  assert.equal(p.ids?.name, 'input-cell-id');
+  assert.equal(p.gui, a.gui);
+  assert.equal(p.list?.name, 'List');
+  assert.equal(p.previous?.name, 'Previous');
+  assert.equal(b.frame.getSharedPluginData(NS, LINKS_KEY), '', '고르지 않은 플립북은 그대로 둔다');
+  assert.deepEqual(a.gui.children, [a.copy], 'GUI Image Slot의 화면은 그대로 둔다');
+  const copies = await scanCopies(NS, [w.page.id]);
+  assert.deepEqual(copies.map(c => [c.uid, c.version, c.flipbookId]), [['scr1', 3, 'fb-a']], '바꾼 플립북의 화면은 추적 GUI로 찾고, 바꾸지 않은 플립북 안의 화면은 뺀다');
+  a.frame.setSharedPluginData(NS, TEMPLATE_KEY, 'kept');
+  assert.deepEqual((await convertLegacyFlipbooks({ pageIds: [w.page.id], flipbookIds: ['fb-a'], templateIds: [t.template.id] })).flipbooks, ['fb-a']);
+  assert.equal(a.frame.getSharedPluginData(NS, TEMPLATE_KEY), 'kept', '이미 바꾼 플립북은 다시 고쳐 쓰지 않는다');
+});
+
+test('이력 행이 없는 이전 형식 플립북은 첫 이전 형식 템플릿을, 맞는 템플릿이 없으면 자기 이력 행 컴포넌트만 이어받는다', async () => {
+  const w = world();
+  const t = namedTemplate(w);
+  const marked = w.make('FRAME', 'New'); marked.setSharedPluginData(NS, LINKS_KEY, '{"components":{"row":"other"}}'); w.page.appendChild(marked);
+  const bare = legacyFlipbook(w, t, 'fb-bare', false);
+  const lone = legacyFlipbook(w, t, 'fb-lone');
+  await convertLegacyFlipbooks({ pageIds: [w.page.id], flipbookIds: ['fb-bare'], templateIds: [marked.id, t.template.id] });
+  assert.equal(bare.frame.getSharedPluginData(NS, TEMPLATE_KEY), t.template.id);
+  await convertLegacyFlipbooks({ pageIds: [w.page.id], flipbookIds: ['fb-lone'], templateIds: [marked.id] });
+  assert.equal(lone.frame.getSharedPluginData(NS, TEMPLATE_KEY), '');
+  assert.deepEqual(parseLinks(lone.frame.getSharedPluginData(NS, LINKS_KEY))?.components, { row: t.rowComponent.id });
 });

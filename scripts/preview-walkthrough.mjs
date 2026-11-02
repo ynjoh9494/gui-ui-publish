@@ -718,6 +718,24 @@ try {
     assert.equal(await app.locator('.detail').isVisible(), true);
     assert.equal(await app.evaluate(root => root.classList.contains('admin-mode')), false, '관리 배치가 남지 않는다');
     await page.locator('#tools [data-pick-flipbooks]').click();
+    // 이전 형식 플립북(2026-11-02 사용자 결정: 이름 규칙을 없애고 플립북별로 변환): 상세 맨 위에 안내와 「새 형식으로 변환」이 있다.
+    // 여러 개를 고르면 그중 이전 형식 플립북 수를 보여 주고, 하나를 골라 변환하면 그 플립북만 바뀌어 안내가 사라진다.
+    {
+      const legacyTool = page.locator('#tools [data-legacy]').first();
+      const legacyId = await legacyTool.getAttribute('data-legacy');
+      await legacyTool.click();
+      await page.locator('#tools [data-pick-flipbooks]').click();
+      await app.locator('.legacy-alert').waitFor();
+      assert.match(await app.locator('.legacy-alert p').innerText(), /^고른 플립북 중 이전 형식 플립북: 1개$/);
+      await page.locator('#tools [data-pick-flipbooks]').click();
+      await app.locator(`.list .row[data-key="${legacyId}"]`).click();
+      await page.waitForFunction(() => document.querySelector('#app .legacy-alert p')?.textContent === '이전 형식 플립북입니다. 새 형식으로 변환해야 반영됩니다.');
+      assert.ok((await app.locator('.legacy-alert [data-action=fb-convert-legacy]').getAttribute('title')).includes('GUI Image Slot'), '변환이 무엇을 바꾸는지 툴팁으로 알린다');
+      await shot('04g-legacy-flipbook');
+      await app.locator('.legacy-alert [data-action=fb-convert-legacy]').click();
+      await app.locator('.legacy-alert').waitFor({ state: 'detached' });
+      await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('새 형식으로 변환한 플립북')));
+    }
     // GUI 목록 탭: 창 크기를 유지하고, 고른 카테고리의 배포된 화면을 누르면 고른 크기로 보고 있는 화면 가운데에 붙인다.
     // 화면마다 붙인 수(추적 GUI와 그 화면이 든 플로우)를 보여 준다. 다른 탭으로 가도 창 크기를 유지한다.
     {

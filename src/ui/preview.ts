@@ -44,7 +44,7 @@ function renderTools() {
       <button data-dup="${f.nodeId}">${COPY.uiPreview035}</button><button data-paste="${f.nodeId}">붙여 넣기</button><button data-del="${f.nodeId}">${COPY.uiPreview036}</button></div>`).join('') +
     (flipbooks.size ? `<h2>${COPY.uiPreview037}</h2>` + [...flipbooks.keys()].map(screenId => `
     <div class="frame"><span>${screenName(screenId)}</span><small>${COPY.uiPreview038} ${uiEdits.get(screenId) ?? 0}${COPY.uiPreview039}</small>
-      <button data-uiedit="${screenId}">${COPY.uiPreview038}</button></div>`).join('') +
+      <button data-uiedit="${screenId}">${COPY.uiPreview038}</button><button data-legacy="${screenId}">${COPY.uiPreview061}</button></div>`).join('') +
     `<button data-pick-flipbooks>${demo.flipbookFramesPicked() ? COPY.uiPreview057 : COPY.uiPreview056}</button>` : '') +
     `<p>${COPY.uiPreview040} <b>${COPY.uiPreview041}</b>${COPY.uiPreview042}</p><button data-reset>${COPY.uiPreview043}</button>` +
     `<h2>새 버전 페이지</h2><button data-version ${demo.hasVersionPage() ? 'disabled' : ''}>다른 파일에서 붙여 넣기</button><p>원본 페이지의 화면을 새 노드·제각각 이름으로 복사하고, 두 번째 화면은 내용을 고치고 새 화면 하나를 더합니다.</p>` +
@@ -65,6 +65,15 @@ document.getElementById('tools')!.addEventListener('click', ev => {
   if (el.dataset.paste && f) { const copy = { ...f, nodeId: `${f.nodeId}-p${++pasteSeq}`, name: `붙여 넣은 화면 ${pasteSeq}`, tag: null }; frames.splice(frames.indexOf(f) + 1, 0, copy); write(`${f.name} 붙여 넣음`); }
   if (el.dataset.del && f) { frames.splice(frames.indexOf(f), 1); write(`${f.name} ${COPY.uiPreview036}`); }
   if (el.dataset.uiedit) { const n = (uiEdits.get(el.dataset.uiedit) ?? 0) + 1; uiEdits.set(el.dataset.uiedit, n); write(`${screenName(el.dataset.uiedit)} ${COPY.uiPreview049}${n}${COPY.uiPreview050}`); }
+  // 플립북을 이전 형식(이름 규칙 템플릿에서 만든, 연결 기록 없는 플립북)으로 되돌린 것처럼 바꾼다(2026-11-02 「새 형식으로 변환」 확인용).
+  if (el.dataset.legacy) {
+    const id = el.dataset.legacy;
+    demo.makeLegacy(id);
+    const record = JSON.parse(kv.get(`fb:${id}`) || 'null');
+    if (record) { delete record.tracked; kv.set(`fb:${id}`, JSON.stringify(record)); }
+    write(`${COPY.uiPreview062} ${screenName(id)}`);
+    void controller.handle({ type: 'ready' });
+  }
   // 캔버스에서 플립북 프레임을 고른 것처럼 바꾼다(PDF 저장 탭).
   if (el.dataset.pickFlipbooks !== undefined) { demo.pickFlipbookFrames(!demo.flipbookFramesPicked()); void controller.canvasSelectionChanged(); }
   // 플러그인 메뉴에서 다른 명령을 실행한 것처럼 바꾼다. 파일 데이터(kv)는 그대로다.

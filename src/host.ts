@@ -67,8 +67,10 @@ export interface Host extends FingerprintReader {
   disconnectTemplateItem?(templateId: string, key: TemplateItem): Promise<void>;
   templateItemNodes?(templateId: string, key: TemplateItem): Promise<string[]>;
   createDefaultTemplate?(maxWidth: number): Promise<{ id: string; name: string; pageId: string }>;
-  // tracked: 새 템플릿 플립북, copies: 이번에 만들며 놓은 GUI 복사본(추적 GUI로 기록)
-  // fallbackTemplateIds: 이전 템플릿(위부터). 이전 버전 템플릿으로 만든 플립북은 그 템플릿으로 반영한다.
+  // 플립북 상세의 「새 형식으로 변환」: 고른 이전 형식 플립북(과 템플릿 목록의 이전 형식 템플릿)에 표식과 연결 기록을 단다(figma/legacyConvert.ts).
+  convertLegacyFlipbooks?(input: import('./figma/legacyConvert.ts').LegacyConvertInput): Promise<import('./figma/legacyConvert.ts').LegacyConvertResult>;
+  // tracked: 화면 목록을 추적 GUI로 읽는 플립북, copies: 이번에 만들며 놓은 GUI 복사본(추적 GUI로 기록)
+  // fallbackTemplateIds: 대표가 아닌 템플릿(위부터). 다른 템플릿으로 만든 플립북은 그 템플릿으로 반영한다.
   syncFlipbook(settings: { pageId: string; templateId: string; fallbackTemplateIds?: string[]; force?: boolean }, view: FlipbookView): Promise<{ nodeId: string; notes: string[]; tracked?: boolean; copies?: { nodeId: string; key: string }[] }>;
   // 추적 GUI(2026-10-29): 페이지들의 GUI 복사본 찾기(uids가 있으면 그 화면만), 새 버전으로 바꾸기, 추적 기록 ID 적기
   scanCopies?(pageIds: string[], uids?: string[]): Promise<FoundCopy[]>;

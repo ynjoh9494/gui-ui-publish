@@ -448,7 +448,6 @@ export const COPY = {
   // 관리의 템플릿 — 항목별 연결(2026-10-28)
   uiApp392: '템플릿',
   uiApp393: '기본 템플릿 만들기',
-  uiApp394: '이 템플릿은 레이어 이름으로 칸을 찾고 있습니다. 항목 하나를 연결하거나 풀면 이름으로 찾은 칸을 모두 연결로 바꿉니다. 이미 만든 플립북은 계속 이름으로 찾습니다.',
   uiApp398: '연결',
   uiApp399: '해제',
   uiApp400: '연결된 레이어를 캔버스에서 선택해 보여 줍니다.',
@@ -963,17 +962,13 @@ export const COPY = {
   figmaFlipbook006: 'Update History List 안의 List', // 61
   figmaFlipbook007: '캔버스에서 플립북 템플릿 프레임을 선택하세요.', // 68
   figmaFlipbook008: '선택한 노드가 플립북 템플릿 프레임이 아닙니다.', // 70
-  figmaFlipbook009: "템플릿에 필요한 영역이 없습니다:", // 72
   figmaFlipbook010: "태그 컴포넌트(", // 95
   figmaFlipbook011: ")를 템플릿과 같은 페이지(", // 95
   figmaFlipbook012: ")에서 찾을 수 없습니다.", // 95
   figmaFlipbook015: 'GUI Image Slot이 없습니다.', // 276
   figmaFlipbook016: '확정 이미지가 파일에 없습니다. DATA 페이지 보존 노드를 확인하세요.', // 279
-  figmaFlipbook017: '이력 행(Update History) 컴포넌트를 찾을 수 없습니다.', // 296
   figmaFlipbook018: "팀 표시 variant 「", // 309
   figmaFlipbook019: "」가 없습니다.", // 309
-  figmaFlipbook020: 'List 슬롯이 없습니다.', // 315
-  figmaFlipbook021: 'GUI Image Slot 프레임이 없어 화면을 넣지 못했습니다. 프레임을 복구한 뒤 다시 시도하세요.', // 368
   figmaFlipbook022: 'GUI 이미지 비율이 바뀌었습니다. 콜아웃·레이아웃을 확인하세요.', // 381
   figmaFlipbook023: 'GUI 원본 프레임을 찾을 수 없습니다:',
   figmaFlipbook024: 'Flipbook-Title 안의 Chapter·Page title 칸',
@@ -993,7 +988,6 @@ export const COPY = {
   figmaTemplate009: '「이력 목록」을 연결했으면 이 컴포넌트도 연결해야 합니다.',
   figmaTemplate010: '「이력 목록」도 연결해야 이 칸에 이력을 넣습니다.',
   figmaTemplate011: '컴포넌트 안에 글자를 넣을 텍스트 레이어가 없습니다.',
-  figmaTemplate012: '레이어 이름 규칙으로 찾지 못했습니다.',
   figmaTemplate013: '캔버스에서 연결할 레이어를 선택하세요.',
   figmaTemplate014: '이 항목에는 레이어를 하나만 연결합니다. 하나만 선택하세요.',
   figmaTemplate015: '템플릿 프레임 안의 레이어를 선택하세요.',
@@ -1121,6 +1115,8 @@ export const COPY = {
   uiPreview058: "선택한 레이어",
   uiPreview059: "템플릿 연결:",
   uiPreview060: "기본 템플릿을 만들었습니다.",
+  uiPreview061: '이전 형식으로',
+  uiPreview062: '이전 형식 플립북으로 바꿈:',
   recoveryConflict: '중단 후 화면 기록이 변경되어 자동으로 덮어쓰지 않았습니다. 현재 기록을 확인하세요.',
   recoveryPending: 'GUI 배포 기록은 저장되었습니다. 화면 반영이 끝나지 않아 관리에서 미반영 재시도가 필요합니다.',
   recoverySourceChanged: '배포 후 GUI 원본이 변경되어 이전 배포로 덮어쓰지 않았습니다. 변경사항을 확인한 뒤 다시 배포하세요.',
@@ -1145,6 +1141,15 @@ export const COPY = {
   templateNotListed: '템플릿 목록에 없는 템플릿입니다. 관리의 템플릿을 다시 열어 확인하세요.',
   templateRemoveRepresentative: '대표 템플릿은 삭제할 수 없습니다. 다른 템플릿을 대표로 지정한 뒤 삭제하세요.',
   templateItemNotUsed: '대표가 아닌 템플릿에서는 이 항목을 쓰지 않습니다. 대표로 지정한 뒤 연결하세요.',
+  // 이전 형식(이름 규칙) 플립북 변환 — src/ui/app.ts 플립북 상세, src/figma/legacyConvert.ts
+  legacyAlert: '이전 형식 플립북입니다. 새 형식으로 변환해야 반영됩니다.',
+  legacyAlertMulti: '고른 플립북 중 이전 형식 플립북:',
+  legacyConvert: '새 형식으로 변환',
+  legacyConvertHint: '레이어 이름(UI Title·GUI Image Slot·Update History List 등)으로 칸을 찾던 플립북에 칸 표식을 답니다. 화면에 보이는 레이어는 바꾸지 않습니다. GUI Image Slot의 화면은 그 자리에 둔 채 추적 GUI가 되어, 다음 GUI 배포부터 그 자리에서 새 버전으로 바뀝니다.',
+  legacyConverting: '새 형식으로 변환 중',
+  legacyConverted: '새 형식으로 변환한 플립북:',
+  legacyConvertMissing: '플립북 프레임을 찾지 못해 변환하지 못한 플립북:',
+  legacyNeedsConvert: '이전 형식 플립북이라 반영하지 않았습니다. 플립북 상세에서 「새 형식으로 변환」을 누르세요.',
 } as const;
 
 // 화면·안내·오류 문구. 원본 파일과 행은 추출 당시 위치다.

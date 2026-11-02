@@ -1434,6 +1434,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     }).join('')}</div>`;
   }
 
+  // 고른 플립북 중 이전 형식 플립북(목록에 있고 프레임이 연결된, 화면 목록을 추적 GUI로 읽지 않는 플립북) ID
+  function legacyChosen(chosen: Entry[]): string[] {
+    return chosen.filter(e => {
+      const fb = e.flipbookId ? state?.flipbooks.get(e.flipbookId) : undefined;
+      return e.estimate !== 'missing' && !!fb && !fb.tracked;
+    }).map(e => e.flipbookId!);
+  }
+
   // UI Flipbook 상세: 오른쪽 영역을 위아래로 나눈다(2026-10-20 사용자 결정).
   // 위: 들어 있는 화면의 GUI 썸네일과 플립북 이력. 아래(항상 표시): 수정된 화면, 상태(필수, 기본 「현행」)·코멘트(선택), 확인 완료.
   function renderFlipbookDetail() {
@@ -1459,7 +1467,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     // 새 템플릿 플립북을 고르면 캔버스에서 화면 목록을 읽는다(PRD 1.1). 같은 플립북을 다시 그릴 때는 다시 읽지 않는다.
     if (!multi && fb?.tracked && followed !== fb.id) { followed = fb.id; bridge.send({ type: 'followFlipbook', id: fb.id }); }
     const deletedAlert = !multi && fb?.deletedAlert ? `<div class="deleted-alert" role="alert"><p>${COPY.uiApp405}</p><button data-action="fb-dismiss-deleted" data-id="${esc(fb.id)}">${COPY.uiApp406}</button></div>` : '';
-    let top = `${deletedAlert}<div class="detail-head title-head">${heading}${renamable ? `<button class="icon-button" data-action="fb-edit-title" data-id="${esc(entry.flipbookId)}" title="${COPY.uiApp335}" aria-label="${COPY.uiApp336}" aria-pressed="${editingAt(fb.id, 'detail')}">${PENCIL_ICON}</button>` : ''}</div>`;
+    // 이전 형식 플립북(2026-11-02 사용자 결정: 플립북별로 변환): 화면 목록을 추적 GUI로 읽지 않는(tracked가 아닌) 플립북은 반영되지 않으므로
+    // 맨 위에 안내와 「새 형식으로 변환」을 둔다. 여러 개를 고르면 고른 것 중 이전 형식 플립북만 함께 바꾼다.
+    const legacy = legacyChosen(chosen);
+    const legacyAlert = legacy.length ? `<div class="legacy-alert" role="alert"><p>${multi ? `${COPY.legacyAlertMulti} <b>${legacy.length}</b>${COPY.uiApp015}` : COPY.legacyAlert}</p><button data-action="fb-convert-legacy" title="${esc(COPY.legacyConvertHint)}">${COPY.legacyConvert}</button></div>` : '';
+    let top = `${legacyAlert}${deletedAlert}<div class="detail-head title-head">${heading}${renamable ? `<button class="icon-button" data-action="fb-edit-title" data-id="${esc(entry.flipbookId)}" title="${COPY.uiApp335}" aria-label="${COPY.uiApp336}" aria-pressed="${editingAt(fb.id, 'detail')}">${PENCIL_ICON}</button>` : ''}</div>`;
     // 연결이 끊긴 플립북은 목록에서 삭제할 수 있다. 한 번 누르면 삭제한다(2026-10-20 사용자 결정).
     const unlinked = chosen.filter(e => e.estimate === 'missing');
     if (unlinked.length) {
@@ -1935,7 +1947,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         ${picked ? `<p class="note template-picked">${COPY.templateItemsOf} ${name}${info?.pageName ? ` · ${esc(info.pageName)}` : ''}</p>` : ''}
         ${picked && !picked.representative ? `<p class="note">${COPY.templateFallbackItems}</p>` : ''}
         ${info?.error ? `<p class="bad">${esc(info.error)}</p>` : ''}
-        ${info && !info.error && !info.linked ? `<p class="note">${COPY.uiApp394}</p>` : ''}
         ${groups}</section>`;
   }
 
@@ -2887,6 +2898,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         break;
       }
       case 'fb-dismiss-deleted': if (el.dataset.id) bridge.send({ type: 'dismissDeletedAlert', id: el.dataset.id }); break;
+      case 'fb-convert-legacy': {
+        const ids = legacyChosen(selectedEntries('UI'));
+        if (ids.length) bridge.send({ type: 'convertLegacyFlipbooks', ids });
+        break;
+      }
       case 'paste-open': pasteOpen = true; textOpen = false; flowOpen = false; pdfOpen = false; renderAll(); bridge.send({ type: 'guiScreens' }); break;
       case 'flow-open': flowOpen = true; textOpen = false; pdfOpen = false; pasteOpen = false; renderAll(); bridge.send({ type: 'guiScreens' }); break;
       case 'pdf-open': pdfOpen = true; textOpen = false; flowOpen = false; pasteOpen = false; renderAll(); break;

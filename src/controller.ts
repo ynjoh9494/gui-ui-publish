@@ -19,7 +19,7 @@ import type { CodeRename } from './core/screenCode.ts';
 import { formatFrameName } from './core/screenName.ts';
 import { addTemplate, removeTemplate, setCurrentTemplate, setRepresentativeTemplate, templateEntries, templateForItem } from './core/templateList.ts';
 import { DIGEST_PREFIX, keys, lastUi, randomId, Store } from './core/store.ts';
-import type { DataStatus, ProjectConfig, Team, UiBaseline } from './core/types.ts';
+import type { DataStatus, Flipbook, ProjectConfig, Team, UiBaseline } from './core/types.ts';
 import { applyReplaceSuggestions, suggestReplacements, tokenHashes, type ReplaceSuggestion } from './core/replaceMatch.ts';
 import { explainMatch, matchVersion, versionCommon, versionLinkErrors, type VersionFrame } from './core/versionMatch.ts';
 import { toUiWire, type AdminOp, type NavTarget, type ScanState, type ToMain } from './core/wire.ts';
@@ -52,7 +52,7 @@ const DATA_OPS = new Set<AdminOp['op']>(['renameCategory', 'setCategoryActive', 
 // 오래 걸리는 요청. 처리하는 동안 UI에 진행 표시를 띄우고 중복 조작을 막는다.
 const BUSY_LABEL: Partial<Record<ToMain['type'], string>> = {
   prepare: COPY.controller001, commit: COPY.controller002, resetData: COPY.controller003, retry: COPY.controller004, refreshData: COPY.controller005,
-  registerFlipbooks: COPY.registerExisting, admin: COPY.controller006, createFlipbooks: COPY.controller038, markReviewed: COPY.controller066, removeFlipbooks: COPY.controller068,
+  registerFlipbooks: COPY.registerExisting, convertLegacyFlipbooks: COPY.legacyConverting, admin: COPY.controller006, createFlipbooks: COPY.controller038, markReviewed: COPY.controller066, removeFlipbooks: COPY.controller068,
   matchVersion: COPY.controller106, switchVersion: COPY.controller107, renameFlipbook: COPY.controller118,
   textApply: COPY.controller120, createFlow: COPY.flow006, exportPdf: COPY.pdf005, pasteGui: COPY.track004, createThumbnailPage: COPY.adminThumbCreate,
 };
@@ -228,6 +228,7 @@ export class Controller {
           this.postGuiScreens();
           break;
         case 'registerFlipbooks': await this.registerFlipbooks(); break;
+        case 'convertLegacyFlipbooks': await this.convertLegacyFlipbooks(msg.ids); break;
         case 'createFlipbooks': await this.createFlipbooks(msg.request); break;
         case 'renameFlipbook': await this.renameFlipbook(msg.id, msg.title); break;
         case 'markReviewed': await this.markReviewed(msg.requests); break;
@@ -1334,6 +1335,45 @@ export class Controller {
     this.host.post({ type: 'notice', message: `${planned.length}${COPY.registerExistingDone}` });
   }
 
+  // 이전 형식 플립북 변환(2026-11-02 사용자 결정: 이름 규칙을 없애고, 기존 플립북은 상세에서 고른 플립북만 바꾼다).
+  // 프레임에 표식을 단 뒤 GUI Image Slot에 있던 GUI 복사본을 추적 GUI로 기록하고(그 페이지를 다시 읽는다), 바꾼 플립북을 바로 반영해
+  // 결과를 확인하게 한다. 프레임을 찾지 못한 플립북은 알린다.
+  private async convertLegacyFlipbooks(ids: string[]): Promise<void> {
+    if (!this.host.convertLegacyFlipbooks) return;
+    const s = this.store;
+    s.reload();
+    const targets = [...new Set(ids)].map(id => s.state.flipbooks.get(id)).filter((fb): fb is Flipbook => fb?.status === 'active');
+    if (!targets.length) return;
+    const { project } = s.state;
+    const pageIds = [...new Set(targets.map(fb => fb.pageId).filter((id): id is string => !!id))];
+    const result = await this.host.convertLegacyFlipbooks({
+      pageIds: pageIds.length ? pageIds : project.flipbookPageIds, flipbookIds: targets.map(fb => fb.id), templateIds: templateEntries(project).map(t => t.nodeId),
+    });
+    s.reload();
+    const converted = new Set(result.flipbooks);
+    const pages = new Set<string>();
+    for (const id of converted) {
+      const fb = s.state.flipbooks.get(id);
+      if (!fb) continue;
+      if (!fb.tracked) s.put(keys.flipbook(id), { ...fb, rev: fb.rev + 1, tracked: true } satisfies Flipbook);
+      if (fb.pageId) pages.add(fb.pageId);
+    }
+    if (converted.size) s.audit(this.host.actor, 'flipbook.convertLegacy', 'project', null, [...converted]);
+    const changed: string[] = [];
+    for (const pageId of pages) changed.push(...await this.tracks.refreshPage(pageId));
+    // 이전 형식 템플릿도 이때 표식으로 바뀌었을 수 있다.
+    await this.checkTemplate();
+    // 다른 플립북의 미반영 기록(변환 전 이전 형식 플립북 등)까지 이어서 반영하지 않는다. 한 개를 바꿔도 오래 멈추지 않게 한다.
+    const report = await this.deliverFlipbooks({}, { targets: [...new Set([...converted, ...changed])], onlyTargets: true });
+    this.postState();
+    const names = (list: Flipbook[]) => list.map(fb => fb.title).join(', ');
+    const missing = targets.filter(fb => !converted.has(fb.id));
+    if (missing.length) this.host.post({ type: 'error', message: `${COPY.legacyConvertMissing} ${names(missing)}` });
+    if (report.failed.length) this.host.post({ type: 'error', message: deliveryMessage(report) });
+    const done = targets.filter(fb => converted.has(fb.id));
+    if (done.length) this.host.post({ type: 'notice', message: `${COPY.legacyConverted} ${names(done)}` });
+  }
+
   private async createFlipbooks(request: FlipbookRequest): Promise<void> {
     const s = this.store;
     s.reload();
@@ -1451,11 +1491,13 @@ export class Controller {
   // 반영이 끝나지 않은 플립북을 현재 기록으로 맞춘다. 플립북 단위로 실패를 기록하고 나머지는 계속한다.
   // baseline: 새로 만든 플립북. 만든 직후의 UI 작성 영역을 첫 UI Publish 전 비교 기준으로 저장한다.
   // after: 새로 만들 플립북을 Section 안에 놓을 자리. retitle: 플러그인에서 제목을 바꾼 플립북.
-  async deliverFlipbooks(filter: { batchId?: string } = {}, options: { force?: boolean; targets?: string[]; baseline?: Set<string>; create?: Set<string>; after?: Map<string, string | null>; retitle?: Set<string>; canvasFollowed?: boolean; canvas?: CanvasRead } = {}): Promise<DeliveryReport> {
+  // onlyTargets: targets만 반영한다(그 플립북의 미반영 기록은 함께 반영). 없으면 다른 플립북의 미반영 기록도 이어서 반영한다.
+  async deliverFlipbooks(filter: { batchId?: string } = {}, options: { force?: boolean; targets?: string[]; onlyTargets?: boolean; baseline?: Set<string>; create?: Set<string>; after?: Map<string, string | null>; retitle?: Set<string>; canvasFollowed?: boolean; canvas?: CanvasRead } = {}): Promise<DeliveryReport> {
     const s = this.store;
     s.reload();
     const active = (id: string) => s.state.flipbooks.get(id)?.status === 'active';
-    const requested = [...(options.targets ?? []), ...unfinishedDeliveries(s.state, { ...filter, kind: 'flipbook' }).map(d => d.targetId)].filter(active);
+    const unfinished = options.onlyTargets ? [] : unfinishedDeliveries(s.state, { ...filter, kind: 'flipbook' }).map(d => d.targetId);
+    const requested = [...(options.targets ?? []), ...unfinished].filter(active);
     const report = emptyReport();
     if (!requested.length) return report;
     // 플립북을 기록의 페이지에서 찾으므로 캔버스에서 옮긴 플립북의 기록부터 맞춘다. 맞춘 플립북은 Chapter도 다시 반영한다.

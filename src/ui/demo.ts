@@ -62,6 +62,8 @@ export interface Demo {
   // 플립북 프레임을 모두 고르거나 선택을 푼다(PDF 저장 탭). 바꾼 뒤 Controller에 캔버스 선택이 바뀌었다고 알린다.
   pickFlipbookFrames(on: boolean): void;
   flipbookFramesPicked(): boolean;
+  // 미리보기 도구: 플립북 프레임을 이전 형식(연결 기록 없음)으로 되돌린 것처럼 한다. 변환하기 전에는 반영하지 않는다.
+  makeLegacy(flipbookId: string): void;
 }
 
 // 지문은 화면마다 다르고(body), 이름·노드와 관계없이 내용이 같으면 같다.
@@ -98,6 +100,7 @@ export function createDemo(options: DemoOptions): Demo {
   const flows = new Map<string, Map<string, number>>();
   // 가짜 캔버스에서 플립북 프레임을 모두 골랐다(PDF 저장 탭).
   let framesPicked = false;
+  const legacyFlipbooks = new Set<string>();
   let deliver: (message: ToUi) => void = () => {};
   const text = { name: 'Description', paragraphs: parseRichText(COPY.uiPreview051) };
   // 관리의 템플릿: 예시 템플릿(기본 템플릿과 같은 구성)의 항목별 연결. 연결하면 「선택한 레이어」로, 풀면 비운다.
@@ -237,7 +240,7 @@ export function createDemo(options: DemoOptions): Demo {
         const layers = layersOf(id).get(d.key) ?? [];
         return { key: d.key, layers, problem: d.required && !layers.length ? COPY.figmaTemplate007 : null };
       });
-      return { id, name: templateNames.get(id) ?? id, pageName: COPY.figmaTemplate025, linked: true, items, error: null };
+      return { id, name: templateNames.get(id) ?? id, pageName: COPY.figmaTemplate025, items, error: null };
     },
     async connectTemplateItem(id, key) {
       layersOf(id).set(key, [{ id: `${id}:${key}`, name: COPY.uiPreview058 }]);
@@ -274,7 +277,16 @@ export function createDemo(options: DemoOptions): Demo {
       if (shownGui.has(view.flipbookId) && shownGui.get(view.flipbookId) !== gui) log(`${COPY.uiPreview055} ${gui || '-'}`);
       shownGui.set(view.flipbookId, gui);
       log(`${COPY.uiPreview025} ${view.category.name} / ${view.name} ${COPY.uiPreview026} ${view.status ? `${view.status.tag.name}(${view.status.colorKey})` : '-'} ${COPY.uiPreview027} ${view.rows[0]?.at ?? '-'} ${COPY.uiPreview028} ${Math.max(0, view.rows.length - 1)}${COPY.uiPreview029}`);
-      return { nodeId: flipbooks.get(view.flipbookId)!, notes: [] };
+      // 반영하는 플립북은 모두 표식 형식이다(2026-11-02 이름 규칙을 없앰). 이전 형식 예시 플립북은 반영하기 전에 변환해야 한다.
+      if (legacyFlipbooks.has(view.flipbookId)) throw new Error(COPY.legacyNeedsConvert);
+      return { nodeId: flipbooks.get(view.flipbookId)!, notes: [], tracked: true };
+    },
+    // 플립북 상세의 「새 형식으로 변환」: 캔버스에 프레임이 있는 플립북만 바꾼다.
+    async convertLegacyFlipbooks(input) {
+      const found = input.flipbookIds.filter(id => flipbooks.has(id));
+      for (const id of found) legacyFlipbooks.delete(id);
+      log(`${COPY.legacyConverted} ${found.join(', ') || '-'}`);
+      return { flipbooks: found };
     },
     async syncChapters(items) {
       for (const item of items) log(`${COPY.uiPreview025} ${item.name} / ${item.flipbookId}`);
@@ -372,5 +384,6 @@ export function createDemo(options: DemoOptions): Demo {
     editFrame(frame) { frame.content = `v${Number(frame.content.slice(1)) + 1}`; },
     pickFlipbookFrames(on) { framesPicked = on; },
     flipbookFramesPicked: () => framesPicked,
+    makeLegacy(flipbookId) { legacyFlipbooks.add(flipbookId); },
   };
 }

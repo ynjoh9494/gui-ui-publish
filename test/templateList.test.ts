@@ -69,7 +69,7 @@ test('관리에서 템플릿을 더하고 대표를 바꾸고 빼면 저장하�
   let picked = { id: 'v1', name: 'V1' };
   const settings: { templateId: string; fallbackTemplateIds?: string[] }[] = [];
   const posted: ToUi[] = [];
-  const info = (id: string): TemplateInfo => ({ id, name: id, pageName: 'P', linked: true, items: [], error: null });
+  const info = (id: string): TemplateInfo => ({ id, name: id, pageName: 'P', items: [], error: null });
   const host = {
     kv: store.kv, mode: 'UI', actor, post: (m: ToUi) => posted.push(m), pages: () => [{ id: 'ui', name: 'UI' }], selectionNodeIds: () => [],
     templateFromSelection: async () => picked,
@@ -116,7 +116,7 @@ test('대표가 아닌 템플릿의 항목도 연결·해제·보기를 그 템�
   const host = {
     kv: store.kv, mode: 'UI', actor, post: (m: ToUi) => posted.push(m), pages: () => [], selectionNodeIds: () => [],
     templateIssues: async (id: string | null) => { issuesFor.push(id); return []; },
-    describeTemplate: async (id: string): Promise<TemplateInfo> => ({ id, name: id, pageName: '', linked: true, items: [], error: null }),
+    describeTemplate: async (id: string): Promise<TemplateInfo> => ({ id, name: id, pageName: '', items: [], error: null }),
     connectTemplateItem: async (id: string, key: string) => { calls.push(`connect ${id} ${key}`); },
     disconnectTemplateItem: async (id: string, key: string) => { calls.push(`disconnect ${id} ${key}`); },
     templateItemNodes: async (id: string, key: string) => { calls.push(`nodes ${id} ${key}`); return [`${id}:${key}`]; },
