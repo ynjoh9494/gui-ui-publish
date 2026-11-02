@@ -203,11 +203,19 @@ summary { cursor: pointer; color: var(--muted); }
 .scope-page span { min-width: 0; overflow-wrap: anywhere; }
 .scope-page button { flex: none; }.admin .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; background: none; color: var(--muted); }
 .admin .icon-button:hover { color: var(--danger); }
-/* 관리 항목은 읽기 편한 최대 폭을 두고 작은 창에서는 줄바꿈한다. */
-.admin-mode .detail > * { max-width: 760px; }
-.admin-mode .detail { padding: 12px 16px; }
-.admin-group-label { margin: 18px 0 6px; color: var(--muted); font-size: 11px; font-weight: 500; }
-.admin-group-label:first-child { margin-top: 0; }
+/* 관리(2026-11-02 사용자 요청): 왼쪽 메뉴를 누르면 그 항목만 오른쪽에 보여 준다. 메뉴와 내용은 따로 스크롤한다. */
+.admin-mode .detail { display: grid; grid-template-columns: max-content minmax(0, 1fr); padding: 0; overflow: hidden; }
+.admin-nav { display: flex; flex-direction: column; gap: 1px; min-height: 0; overflow: auto; padding: 12px 8px; border-right: 1px solid var(--border); }
+.admin-nav-item { border: 0; background: none; text-align: left; padding: 5px 8px; border-radius: 5px; white-space: nowrap; }
+.admin-nav-item[aria-current="true"] { background: var(--bg2); font-weight: 600; }
+.admin-nav-separator { height: 1px; margin: 8px 0; background: var(--border); }
+.admin-nav .admin-group-label { margin: 12px 8px 2px; color: var(--muted); font-size: 11px; font-weight: 500; }
+.admin-nav .admin-group-label:first-child { margin-top: 0; }
+/* 관리 항목은 읽기 편한 최대 폭을 두고 작은 창에서는 줄바꿈한다. 칸 머리(details.accordion > summary)는 클릭하지 않는 제목이다. */
+.admin-panels { min-height: 0; overflow: auto; padding: 12px 16px; }
+.admin-panels > * { max-width: 760px; }
+.admin-panels > details.accordion { margin: 0; border-bottom: 0; }
+.admin-panels > details.accordion:not([open]) { display: none; }
 .managed-page-card { border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin: 8px 0; }
 .managed-page-card h4 { margin: 0 0 6px; font-size: 12px; }
 .managed-page-name { overflow-wrap: anywhere; }
@@ -215,15 +223,25 @@ summary { cursor: pointer; color: var(--muted); }
 .admin .inline > input, .admin .inline > select { flex-basis: 160px; }
 .admin input[type="color"] { width: 32px; padding: 0 2px; flex: none; }
 .audit { font-size: 11px; }
-/* 관리의 템플릿: 항목 이름·조건과 오른쪽 버튼, 그 아래 연결된 레이어 */
+/* 관리의 템플릿(2026-11-02 사용자 요청): 항목마다 한 줄. 상태 아이콘 · 이름 · 형식 아이콘 · 안내(?) · 연결/재연결·해제.
+   연결된 항목 줄은 누르면 그 레이어를 캔버스에서 고른다. */
 .template-actions { flex-wrap: wrap; }
 .template-group { margin: 10px 0 2px; font-size: 11px; color: var(--muted); }
-.template-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "label actions" "value actions"; gap: 2px 8px; padding: 6px 0; border-top: 1px solid var(--border); }
-.template-item-label { grid-area: label; display: flex; flex-direction: column; min-width: 0; }
-.template-item-label small { color: var(--muted); }
-.template-item-value { grid-area: value; display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
-.template-item-value .muted { color: var(--muted); }
-.template-item-actions { grid-area: actions; display: flex; gap: 4px; align-items: flex-start; }
+.template-item { display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 3px 4px; margin: 0 -4px; border-top: 1px solid var(--border); }
+.template-item[data-action] { cursor: pointer; }
+.template-item[data-action]:hover { background: var(--bg2); }
+.template-item:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.template-item svg { display: block; }
+.template-state { display: inline-flex; flex: none; }
+.template-state.ok { color: var(--brand); }
+.template-state.need { color: var(--danger); }
+.template-state.optional { color: var(--muted); }
+.template-item-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.template-formats { display: inline-flex; flex: none; gap: 2px; color: var(--muted); }
+.template-help { display: inline-flex; flex: none; color: var(--muted); cursor: help; }
+.template-item-actions { display: flex; flex: none; gap: 4px; margin-left: auto; }
+.template-item-actions .connect { color: var(--brand); }
+.template-item-actions .disconnect { color: var(--danger); }
 
 /* 처리 중 표시. 확인 대화상자 위에도 보이도록 가장 위에 둔다. */
 .busy { position: absolute; top: 0; left: 0; right: 0; z-index: 6; display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: var(--selected); color: var(--text); border-bottom: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
@@ -488,14 +506,9 @@ details.prev-thumb[open] > summary .dropdown-caret { transform: rotate(180deg); 
 details.prev-thumb .thumbs { margin-top: 6px; }
 details.prev-thumb .thumbs :is(img, .thumb-empty) { width: 100%; max-width: 720px; height: auto; aspect-ratio: 16 / 9; }
 details.accordion { padding: 0; }
-details.accordion > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 0; font-size: 12px; font-weight: 600; color: var(--text); list-style: none; cursor: pointer; }
+details.accordion > summary { display: flex; align-items: center; gap: 8px; padding: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--text); list-style: none; cursor: default; pointer-events: none; }
 details.accordion > summary::-webkit-details-marker { display: none; }
-details.accordion > summary .dropdown-caret { transition: transform .15s; }
-details.accordion[open] > summary .dropdown-caret { transform: rotate(180deg); }
 details.accordion[open] { padding-bottom: 10px; }
-details.accordion.danger-zone { padding: 0 8px; }
-details.accordion.danger-zone > summary { color: var(--danger); }
-details.accordion.danger-zone[open] { padding-bottom: 8px; }
 button.danger { color: var(--danger); border-color: var(--danger); }
 button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onbrand); }
 

@@ -71,7 +71,7 @@ export const COPY = {
   adminAutoPages: '자동 관리 페이지',
   adminWorkSetup: '작업 환경',
   adminCommon: '공통 관리',
-  adminMaintenance: '유지보수',
+  adminMaintenance: '관리자',
   adminDataTitle: 'DATA',
   adminThumbTitle: 'GUI 썸네일',
   adminAutoHint: '플러그인이 생성하고 관리하는 페이지입니다.',
@@ -198,8 +198,8 @@ export const COPY = {
   uiApp110: "저장", // 434
   uiApp111: "템플릿:", // 435
   uiApp112: '지정 안 됨', // 435
-  uiApp113: "캔버스에서 선택한 템플릿 프레임을 템플릿으로 지정", // 436
-  uiApp114: "템플릿 프레임을 복제해 플립북을 만듭니다. 아래 항목에 연결한 칸에만 제목·Chapter·상태·Screen ID·GUI·이력을 넣고, Description 내용과 콜아웃은 건드리지 않습니다. 다시 연결하려면 캔버스에서 레이어를 고른 뒤 그 항목의 「연결」을 누르세요.", // 437
+  uiApp113: "선택한 프레임을 템플릿으로 지정", // 436
+  uiApp114: "템플릿 프레임을 복제해 플립북을 만듭니다. 아래 항목에 연결한 칸에만 화면 이름·Chapter·상태·Screen ID·GUI·이력을 넣고, Description 내용과 콜아웃은 건드리지 않습니다. 캔버스에서 레이어를 고른 뒤 그 항목의 「연결」이나 「재연결」을 누르세요. 연결된 항목을 누르면 그 레이어를 캔버스에서 보여 줍니다.", // 437
   uiApp116: "변경", // 440
   uiApp117: '비활성화', // 440
   uiApp118: '활성화', // 440
@@ -453,9 +453,6 @@ export const COPY = {
   uiApp392: '템플릿',
   uiApp393: '기본 템플릿 만들기',
   uiApp394: '이 템플릿은 레이어 이름으로 칸을 찾고 있습니다. 항목 하나를 연결하거나 풀면 이름으로 찾은 칸을 모두 연결로 바꿉니다. 이미 만든 플립북은 계속 이름으로 찾습니다.',
-  uiApp395: '연결 안 됨',
-  uiApp396: '이름으로 찾지 못함',
-  uiApp397: '보기',
   uiApp398: '연결',
   uiApp399: '해제',
   uiApp400: '연결된 레이어를 캔버스에서 선택해 보여 줍니다.',
@@ -467,6 +464,18 @@ export const COPY = {
   uiApp405: '이 플립북에는 삭제된 화면이 포함되어 있습니다.',
   uiApp406: '확인',
   uiApp407: '삭제된 화면이 포함되어 있습니다',
+  // 관리의 템플릿 — 한 줄 목록(2026-11-02): 재연결 버튼, 상태 아이콘, 형식 아이콘
+  uiApp408: '재연결',
+  uiApp409: '지금 연결을 풀고 캔버스에서 선택한 레이어를 이 항목에 연결합니다.',
+  uiApp410: '연결됨',
+  uiApp411: '연결 필요',
+  uiApp412: '필수 아님 · 연결하지 않으면 이 칸에는 정보를 넣지 않습니다.',
+  uiApp413: '텍스트',
+  uiApp414: '인스턴스',
+  uiApp415: '프레임',
+  uiApp416: '슬롯',
+  uiApp417: '컴포넌트',
+  uiApp418: '모든 레이어',
   // 튜토리얼 — src/ui/tutorial.ts. 단계마다 말풍선 제목·설명 순서다.
   uiTutorial001: '도움말',
   uiTutorial002: '튜토리얼 종료',
@@ -698,7 +707,7 @@ export const COPY = {
   coreFlipbook003: '미분류', // 72
   coreFlipbook004: '새 플립북',
   // 템플릿 연결 항목 — src/core/templateParts.ts
-  coreTemplate001: '제목',
+  coreTemplate001: '화면 이름',
   coreTemplate002: '텍스트 · 여러 개 가능. 플립북 제목을 넣습니다.',
   coreTemplate003: 'Chapter',
   coreTemplate004: '텍스트. 플립북이 놓인 Section 이름을 넣습니다.',

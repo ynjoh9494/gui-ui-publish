@@ -221,6 +221,36 @@ try {
   await app.locator('[data-action=admin-ui-page-remove][data-id="0:2"]').click();
   await page.waitForFunction(() => document.querySelectorAll('#app [data-form=flipbook] .scope-page').length === 1);
   await shot('02-ui-page-settings');
+  // 템플릿(2026-11-02): 항목마다 한 줄(상태 아이콘·이름·형식 아이콘·안내·연결/재연결·해제). 연결된 레이어 이름은 보여 주지 않고 줄을 누르면 캔버스에서 보여 준다.
+  await app.locator('[data-action=admin-nav][data-key="템플릿"]').click();
+  await app.locator('.template-item').first().waitFor();
+  const templateRows = () => app.locator('.template-item').evaluateAll(items => items.map(item => {
+    const connect = item.querySelector('[data-action=admin-template-connect]');
+    return {
+      key: item.dataset.key, name: item.querySelector('.template-item-name').textContent, state: item.querySelector('.template-state').classList[1],
+      connect: connect.textContent, blue: connect.classList.contains('connect'), clickable: item.dataset.action === 'admin-template-show',
+      disconnect: !!item.querySelector('.disconnect'), formats: item.querySelectorAll('.template-formats > span[title]').length,
+      help: !!item.querySelector('.template-help[title]'), height: item.getBoundingClientRect().height,
+    };
+  }));
+  let rows = await templateRows();
+  assert.equal(rows.find(r => r.key === 'title').name, '화면 이름');
+  assert.equal(rows.find(r => r.key === 'gui').disconnect, false, 'GUI 영역은 해제할 수 없다');
+  for (const r of rows) {
+    assert.ok(['ok', 'need', 'optional'].includes(r.state), `${r.key} 상태 ${r.state}`);
+    assert.ok(r.formats >= 1 && r.help, `${r.key} 형식 아이콘·안내`);
+    assert.ok(r.height <= 36, `${r.key} 한 줄(${r.height}px)`);
+    assert.deepEqual([r.connect, r.blue, r.clickable], r.state === 'ok' ? ['재연결', false, true] : ['연결', true, false], `${r.key} 버튼`);
+  }
+  assert.equal(await app.locator('.template-item-value, button[data-action=admin-template-show]').count(), 0, '연결된 레이어 이름과 보기 버튼이 없다');
+  const optional = rows.find(r => r.state === 'optional');
+  await app.locator(`.template-item[data-key="${optional.key}"] [data-action=admin-template-connect]`).click();
+  await page.waitForFunction(key => document.querySelector(`#app .template-item[data-key="${key}"] .template-state.ok`), optional.key);
+  rows = await templateRows();
+  assert.deepEqual(rows.find(r => r.key === optional.key).connect, '재연결');
+  await shot('02-ui-template-settings');
+  await app.locator(`.template-item[data-key="${optional.key}"] [data-action=admin-template-disconnect]`).click();
+  await page.waitForFunction(key => document.querySelector(`#app .template-item[data-key="${key}"] .template-state.optional`), optional.key);
   await app.locator('[data-action=settings]').click();
   // 플립북 만들기 탭은 플립북 목록에 합쳤다(2026-10-21). 목록 위 「새 플립북」으로 목록에 바로 넣고, 만들기 전에는 저장하지 않는다.
   assert.equal(await app.locator('.create-tabs button').filter({ hasText: '플립북 만들기' }).count(), 0, '플립북 목록과 만들기를 한 화면에서 한다');
@@ -1087,7 +1117,7 @@ try {
     assert.deepEqual((await app.locator('[data-field=categoryId] option').allInnerTexts()).slice(-3), ['VOD', '검색', '홈'], '카테고리 선택도 바뀐 순서');
     await app.locator('[data-action=settings]').click();
     assert.equal(await app.locator('details[data-form=category-order]').count(), 0, '관리에는 카테고리 순서가 없다');
-    await app.locator('details[data-form=screen-id-prefix] > summary').click();
+    await app.locator('[data-action=admin-nav][data-key="Screen ID"]').click();
     assert.deepEqual(await app.locator('details[data-form=screen-id-prefix] .category-code > span').allInnerTexts(), ['VOD', '검색', '홈'], '관리의 카테고리 코드 목록도 같은 순서');
     await app.locator('[data-action=settings]').click();
   }
@@ -1095,8 +1125,14 @@ try {
   await page.goto(pathToFileURL(previewPath).href);
   await page.waitForFunction(() => document.querySelector('#app .tabs [data-action=version-close]'));
   await app.locator('[data-action=settings]').click();
-  assert.deepEqual(await app.locator('.admin-group-label').allTextContents(), ['작업 환경', '공통 관리', '유지보수']);
-  await app.locator('details[data-form=automatic-pages] > summary').click();
+  // 관리는 왼쪽 메뉴에서 고른 항목만 오른쪽에 보여 주고, 관리자 메뉴 한 곳에 반영 상태·감사 기록·데이터 초기화를 모은다.
+  assert.deepEqual(await app.locator('.admin-group-label').allTextContents(), ['작업 환경', '공통 관리']);
+  assert.equal(await app.locator('.admin-nav-item').last().textContent(), '관리자');
+  assert.equal(await app.locator('.admin-panels > details[open]').count(), 1, '한 번에 한 항목만 보인다');
+  await app.locator('[data-action=admin-nav][data-key="관리자"]').click();
+  assert.equal(await app.locator('details[data-form=maintenance][open] :is([data-form=pending], [data-form=audit], [data-form=reset])').count(), 3);
+  assert.equal(await app.locator('[data-action=admin-nav][aria-current=true]').textContent(), '관리자');
+  await app.locator('[data-action=admin-nav][data-key="자동 관리 페이지"]').click();
   assert.deepEqual(await app.locator('.managed-page-card > h4').allTextContents(), ['DATA', 'GUI 썸네일']);
   await app.locator('[data-action=thumb-page-create]').click();
   await app.locator('.managed-page-name').waitFor();

@@ -68,14 +68,14 @@ try {
   await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('GUI 썸네일')));
 
   await app.locator('[data-action=settings]').click();
-  await app.locator('details[data-form=automatic-pages] > summary').click();
+  await app.locator('[data-action=admin-nav][data-key="자동 관리 페이지"]').click();
   await shot('settings-auto-pages');
   await app.locator('[data-action=settings]').click();
 
   // UI Flipbook: 관리 → 새 플립북
   await mode('UI');
   await app.locator('[data-action=settings]').click();
-  if (!await app.locator('details[data-form=flipbook]').evaluate(node => node.open)) await app.locator('details[data-form=flipbook] > summary').click();
+  await app.locator('[data-action=admin-nav][data-key="플립북"]').click();
   await app.locator('[data-form=flipbook] [data-f=page]').selectOption('0:3');
   await page.waitForFunction(() => document.querySelectorAll('#app [data-form=flipbook] .scope-page').length === 2);
   await app.locator('[data-action=admin-ui-page-remove][data-id="0:2"]').click();

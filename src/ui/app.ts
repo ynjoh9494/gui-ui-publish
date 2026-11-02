@@ -21,7 +21,7 @@ import { emptyComment, type BatchComment, type Plan } from '../core/publish.ts';
 import { customSection, defaultSection, filterScreens, needsReview, pageSections, rowKind, screenCategoryKey, uncreatedScreens, unreviewed, type FlipbookMove, type FlipbookRowRequest, type FlipbookSection, type ScreenFilter, type ScreenKind } from '../core/flipbooks.ts';
 import { defaultTitle, displayScale, GUI_WIDTH_MAX, GUI_WIDTH_MIN, NO_SECTION_KEY, screenTags, SMALL_SCALE, validGuiWidth } from '../core/flipbook.ts';
 import { TAG_PALETTE } from '../core/palette.ts';
-import { TEMPLATE_GROUPS, TEMPLATE_ITEMS, isTemplateItem, type TemplateInfo, type TemplateItemDef, type TemplateItemState } from '../core/templateParts.ts';
+import { TEMPLATE_GROUPS, TEMPLATE_ITEMS, isTemplateItem, type ItemKind, type TemplateInfo, type TemplateItemDef, type TemplateItemState } from '../core/templateParts.ts';
 import { findCategoryByName, systemTagId, workerLabel } from '../core/registry.ts';
 import { formatFrameName, parseFrameName } from '../core/screenName.ts';
 import type { State } from '../core/store.ts';
@@ -49,7 +49,7 @@ export function sortScreenItems(items: ScreenItem[], preferredCategoryId?: strin
 type Tab = Team | 'ADMIN';
 
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
-const WHILE_BUSY = new Set(['tab', 'settings', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel']);
+const WHILE_BUSY = new Set(['tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
 const BEFORE_CHECK = new Set([...WHILE_BUSY, 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'text-import', 'text-apply',
@@ -66,6 +66,32 @@ const PENCIL_ICON ='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" 
 
 // 「+ 추가」 버튼 내용. 더하기 아이콘을 글자 앞에 붙인다.
 const ADD_LABEL = `<svg class="add-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>${COPY.uiApp101}`;
+
+// 관리의 템플릿 항목 아이콘(2026-11-02 사용자 요청). 상태: 연결됨(파란 원 체크)·연결 필요(빨간 원 느낌표)·필수 아님(회색 점선 원).
+const STATE_ICON: Record<'ok' | 'need' | 'optional', string> = {
+  ok: '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="m7.5 12.5 3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  need: '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M12 7v6.5M12 17h.01" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg>',
+  optional: '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3.5 3"/></svg>',
+};
+// 항목이 받는 레이어 형식. 아이콘은 Figma 레이어 패널 모양을 따른다(텍스트 T, 프레임 #, 인스턴스 ◇, 컴포넌트 ❖).
+type LayerFormat = 'text' | 'instance' | 'frame' | 'slot' | 'component' | 'layer';
+const KIND_FORMATS: Record<ItemKind, LayerFormat[]> = {
+  text: ['text'], tag: ['instance', 'text'], team: ['text', 'instance'], area: ['slot', 'frame'], frame: ['frame'], layers: ['layer'], component: ['component'],
+};
+const FORMAT_LABEL: Record<LayerFormat, string> = {
+  text: COPY.uiApp413, instance: COPY.uiApp414, frame: COPY.uiApp415, slot: COPY.uiApp416, component: COPY.uiApp417, layer: COPY.uiApp418,
+};
+const formatIcon = (body: string) => `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+const FORMAT_ICON: Record<LayerFormat, string> = {
+  text: formatIcon('<path d="M5 7V4h14v3M12 4v16M9 20h6"/>'),
+  instance: formatIcon('<path d="M12 3 21 12 12 21 3 12Z"/>'),
+  frame: formatIcon('<path d="M8 3v18M16 3v18M3 8h18M3 16h18"/>'),
+  slot: formatIcon('<rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 2.6"/>'),
+  component: formatIcon('<path d="m12 2.5 3 3-3 3-3-3ZM18.5 9l3 3-3 3-3-3ZM12 15.5l3 3-3 3-3-3ZM5.5 9l3 3-3 3-3-3Z"/>'),
+  layer: formatIcon('<path d="m12 3 9 5-9 5-9-5Z"/><path d="m3 13 9 5 9-5"/>'),
+};
+// 항목 안내를 툴팁으로 보여 주는 작은 회색 물음표(머리 줄 도움말 아이콘과 같은 모양)
+const SMALL_HELP_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>';
 
 function option(value: string, label: string, selected: boolean): string {
   return `<option value="${esc(value)}"${selected ? ' selected' : ''}>${esc(label)}</option>`;
@@ -1734,6 +1760,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const exclusions = [...s.exclusions.values()].filter(e => e.active);
     // GUI Publish는 원본 범위·제외, UI Flipbook은 템플릿을 설정한다. 작업자·DATA·기록·초기화는 둘 다 쓴다.
     const gui = mode === 'GUI';
+    // 다시 그려도(템플릿 연결 뒤 등) 보던 자리를 지킨다. 메뉴와 내용은 따로 스크롤한다.
+    const scrolled = { nav: root.querySelector('.admin-nav')?.scrollTop ?? 0, panels: root.querySelector('.admin-panels')?.scrollTop ?? 0 };
     $('.detail').innerHTML = `
       ${gui ? `<section class="admin" data-form="scope"><h3>${COPY.uiApp097}</h3>
         <div class="inline"><select data-f="page" aria-label="${COPY.uiApp098}" ${availableScopePages.length ? '' : 'disabled'}>
@@ -1775,20 +1803,63 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
           ${COPY.uiApp129}</p>
         <button class="danger" data-action="reset-data">${resetArmed ? COPY.uiApp130 : COPY.uiApp131}</button>
         ${resetArmed ? `<button data-action="reset-cancel">${COPY.uiApp132}</button>` : ''}</section>`;
-    const sections = [...$('.detail').querySelectorAll<HTMLElement>(':scope > section.admin')];
-    const group = (label: string, forms: string[]) => {
-      const items = sections.filter(section => forms.includes(section.dataset.form ?? ''));
-      if (!items.length) return;
-      const heading = document.createElement('h2');
-      heading.className = 'admin-group-label'; heading.textContent = label;
-      $('.detail').append(heading, ...items);
-    };
-    group(COPY.adminWorkSetup, ['scope', 'flipbook', 'template', 'gui-width', 'screen-id-prefix', 'exclusions']);
-    const auto = sections.find(section => section.dataset.form === 'automatic-pages');
-    if (auto) $('.detail').append(auto);
-    group(COPY.adminCommon, ['workers']);
-    group(COPY.adminMaintenance, ['pending', 'audit', 'issues', 'reset']);
-    accordion();
+    // 메뉴를 왼쪽에 모으고 고른 항목만 오른쪽에 보여 준다(2026-11-02 사용자 요청). 관리자 메뉴는 반영 상태·감사 기록·진단·
+    // 데이터 초기화를 한 화면에 함께 보여 준다.
+    const detail = $('.detail');
+    const sections = [...detail.querySelectorAll<HTMLElement>(':scope > section.admin')];
+    const pick = (forms: string[]) => sections.filter(section => forms.includes(section.dataset.form ?? ''));
+    const maintenance = document.createElement('section');
+    maintenance.className = 'admin'; maintenance.dataset.form = 'maintenance';
+    const maintenanceHeading = document.createElement('h3');
+    maintenanceHeading.textContent = COPY.adminMaintenance;
+    maintenance.append(maintenanceHeading, ...pick(['pending', 'audit', 'issues', 'reset']));
+    // 묶음 이름이 null이면 이름 없이 구분선으로 나눈다.
+    const groups: [string | null, HTMLElement[]][] = [
+      [COPY.adminWorkSetup, [...pick(['scope', 'flipbook', 'template', 'gui-width', 'screen-id-prefix', 'exclusions']), ...pick(['automatic-pages'])]],
+      [COPY.adminCommon, pick(['workers'])],
+      [null, [maintenance]],
+    ];
+    const nav = document.createElement('nav');
+    nav.className = 'admin-nav'; nav.setAttribute('aria-label', COPY.uiApp004);
+    const panels = document.createElement('div');
+    panels.className = 'admin-panels';
+    panels.append(...groups.flatMap(([, items]) => items));
+    detail.replaceChildren(nav, panels);
+    accordion(panels);
+    for (const [label, items] of groups) {
+      if (!items.length) continue;
+      const head = document.createElement(label ? 'h2' : 'div');
+      head.className = label ? 'admin-group-label' : 'admin-nav-separator';
+      if (label) head.textContent = label;
+      nav.append(head);
+      for (const item of items) {
+        const form = item.dataset.form;
+        const panel = panels.querySelector<HTMLDetailsElement>(`:scope > details[data-form="${form}"]`);
+        if (!panel) continue;
+        const button = document.createElement('button');
+        button.className = 'admin-nav-item'; button.dataset.action = 'admin-nav'; button.dataset.key = panel.dataset.key ?? '';
+        button.textContent = panel.querySelector(':scope > summary')?.textContent?.trim() ?? '';
+        nav.append(button);
+      }
+    }
+    syncAdminNav();
+    nav.scrollTop = scrolled.nav;
+    panels.scrollTop = scrolled.panels;
+  }
+
+  // 관리 메뉴: 고른 항목만 오른쪽에 펼치고 다른 항목은 접는다. 내용은 맨 위부터 보여 준다.
+  function openAdminPanel(key: string) {
+    const panels = root.querySelector<HTMLElement>('.admin-panels');
+    if (!panels) return;
+    adminOpen = key;
+    for (const panel of panels.querySelectorAll<HTMLDetailsElement>(':scope > details.accordion')) panel.open = panel.dataset.key === key;
+    panels.scrollTop = 0;
+    syncAdminNav();
+  }
+
+  function syncAdminNav() {
+    const open = root.querySelector<HTMLElement>('.admin-panels > details.accordion[open]')?.dataset.key;
+    for (const item of root.querySelectorAll<HTMLElement>('.admin-nav-item')) item.setAttribute('aria-current', String(item.dataset.key === open));
   }
 
   // 관리의 템플릿(2026-10-28 사용자 결정): 기본 템플릿 만들기, 캔버스에서 고른 프레임 지정, 항목별 연결 상태와 다시 연결
@@ -1798,7 +1869,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const name = id ? esc(info?.name || s.project.templateName || id) : COPY.uiApp112;
     const groups = info && !info.error ? TEMPLATE_GROUPS.map(g => `
         <h4 class="template-group">${esc(g.label)}</h4>
-        <div class="template-items">${TEMPLATE_ITEMS.filter(d => d.group === g.group).map(d => templateRow(d, info.items.find(i => i.key === d.key), info.linked)).join('')}</div>`).join('') : '';
+        <div class="template-items">${TEMPLATE_ITEMS.filter(d => d.group === g.group).map(d => templateRow(d, info.items.find(i => i.key === d.key))).join('')}</div>`).join('') : '';
     return `<section class="admin" data-form="template"><h3>${COPY.uiApp392}</h3>
         <p class="note">${COPY.uiApp111} ${name}${info?.pageName ? ` · ${esc(info.pageName)}` : ''}</p>
         <div class="inline template-actions"><button data-action="admin-template-default">${COPY.uiApp393}</button><button data-action="admin-template">${COPY.uiApp113}</button></div>
@@ -1808,18 +1879,22 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         ${groups}</section>`;
   }
 
-  // 템플릿 항목 한 줄: 항목 이름·조건, 연결된 레이어(이름 규칙이면 이름으로 찾은 레이어)와 문제, 보기·연결·해제
-  function templateRow(def: TemplateItemDef, item: TemplateItemState | undefined, linked: boolean): string {
-    const layers = item?.layers ?? [];
-    const value = layers.length ? layers.map(l => esc(l.name)).join(', ') : `<span class="muted">${linked ? COPY.uiApp395 : COPY.uiApp396}</span>`;
-    return `<div class="template-item" data-key="${def.key}">
-        <div class="template-item-label"><b>${esc(def.label)}</b><small>${esc(def.hint)}</small></div>
-        <div class="template-item-value">${value}${item?.problem ? `<span class="bad">${esc(item.problem)}</span>` : ''}</div>
-        <div class="template-item-actions">
-          <button data-action="admin-template-show" data-key="${def.key}" title="${COPY.uiApp400}" ${layers.length ? '' : 'disabled'}>${COPY.uiApp397}</button>
-          <button data-action="admin-template-connect" data-key="${def.key}" title="${COPY.uiApp401}">${COPY.uiApp398}</button>
-          ${def.required ? '' : `<button data-action="admin-template-disconnect" data-key="${def.key}" title="${COPY.uiApp402}" ${layers.length ? '' : 'disabled'}>${COPY.uiApp399}</button>`}
-        </div></div>`;
+  // 템플릿 항목 한 줄(2026-11-02 사용자 요청): 상태 아이콘 · 항목 이름 · 받는 레이어 형식 아이콘 · 안내(?) · 연결/재연결·해제.
+  // 연결된 레이어 이름은 보여 주지 않고, 연결된 항목을 누르면 그 레이어를 캔버스에서 고른다. 문제는 상태 아이콘 툴팁에 둔다.
+  function templateRow(def: TemplateItemDef, item: TemplateItemState | undefined): string {
+    const connected = !!item?.layers.length;
+    const status = item?.problem || (def.required && !connected) ? 'need' : connected ? 'ok' : 'optional';
+    const statusLabel = status === 'need' ? (item?.problem ? `${COPY.uiApp411} · ${item.problem}` : COPY.uiApp411) : status === 'ok' ? COPY.uiApp410 : COPY.uiApp412;
+    const formats = KIND_FORMATS[def.kind].map(f => `<span title="${esc(FORMAT_LABEL[f])}" role="img" aria-label="${esc(FORMAT_LABEL[f])}">${FORMAT_ICON[f]}</span>`).join('');
+    return `<div class="template-item" data-key="${def.key}"${connected ? ` data-action="admin-template-show" tabindex="0" title="${COPY.uiApp400}"` : ''}>
+        <span class="template-state ${status}" role="img" title="${esc(statusLabel)}" aria-label="${esc(statusLabel)}">${STATE_ICON[status]}</span>
+        <span class="template-item-name">${esc(def.label)}</span>
+        <span class="template-formats">${formats}</span>
+        <span class="template-help" role="img" title="${esc(def.hint)}" aria-label="${esc(def.hint)}">${SMALL_HELP_ICON}</span>
+        <span class="template-item-actions">
+          <button ${connected ? '' : 'class="connect" '}data-action="admin-template-connect" data-key="${def.key}" title="${connected ? COPY.uiApp409 : COPY.uiApp401}">${connected ? COPY.uiApp408 : COPY.uiApp398}</button>
+          ${def.required ? '' : `<button class="disconnect" data-action="admin-template-disconnect" data-key="${def.key}" title="${COPY.uiApp402}" ${connected ? '' : 'disabled'}>${COPY.uiApp399}</button>`}
+        </span></div>`;
   }
 
   // 설정한 최대 폭에서 계산한 기본·작게의 최대 폭. 입력 중에도 바로 보여 준다.
@@ -1828,10 +1903,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     return `${COPY.uiApp403} ${width}px · ${COPY.uiApp404} ${Number((width * SMALL_SCALE).toFixed(1))}px`;
   }
 
-  // 설정의 각 항목을 아코디언으로 바꾼다. 하나를 열면 다른 항목은 접힌다(2026-10-20 사용자 결정).
-  // 다시 그려도 열어 둔 항목을 유지하고, 처음에는 첫 항목을 연다.
-  function accordion() {
-    const sections = [...$('.detail').querySelectorAll<HTMLElement>(':scope > section.admin')];
+  // 설정의 각 항목을 펼침 칸으로 바꾼다. 하나만 열리고, 왼쪽 메뉴가 어느 칸을 열지 고른다(2026-11-02 사용자 요청).
+  // 칸 머리는 오른쪽 내용의 제목으로만 쓴다. 다시 그려도 열어 둔 항목을 유지하고, 처음에는 첫 항목을 연다.
+  function accordion(container: HTMLElement) {
+    const sections = [...container.querySelectorAll<HTMLElement>(':scope > section.admin')];
     const keys = sections.map((section, i) => section.querySelector(':scope > h3')?.textContent?.trim() || String(i));
     const open = adminOpen && keys.includes(adminOpen) ? adminOpen : keys[0];
     sections.forEach((section, i) => {
@@ -1841,7 +1916,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       if (section.dataset.form) details.dataset.form = section.dataset.form;
       details.dataset.key = keys[i];
       const summary = document.createElement('summary');
-      summary.innerHTML = `<span>${heading?.innerHTML ?? esc(keys[i])}</span><span class="dropdown-caret" aria-hidden="true"></span>`;
+      summary.tabIndex = -1;
+      summary.innerHTML = `<span>${heading?.innerHTML ?? esc(keys[i])}</span>`;
       heading?.remove();
       details.append(summary, ...section.childNodes);
       details.open = keys[i] === open;
@@ -2789,6 +2865,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         if (pageId && pageId !== state?.project.flipbookPageId) admin({ op: 'setFlipbookPage', pageId });
         break;
       }
+      case 'admin-nav': openAdminPanel(el.dataset.key ?? ''); break;
       case 'admin-template': admin({ op: 'setTemplateFromSelection' }); break;
       case 'admin-template-default': admin({ op: 'createDefaultTemplate' }); break;
       case 'admin-template-connect':
@@ -3109,12 +3186,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (!details.classList?.contains('accordion') || !details.open) return;
     adminOpen = details.dataset.key ?? null;
     for (const other of root.querySelectorAll<HTMLDetailsElement>('details.accordion')) if (other !== details) other.open = false;
+    // 튜토리얼처럼 칸을 직접 열어도 왼쪽 메뉴의 선택을 맞춘다.
+    syncAdminNav();
   }, true);
 
   on('keydown', ev => {
     const el = ev.target as HTMLElement;
     if (bulk && ev.key === 'Escape' && !bulk.submitting) { ev.preventDefault(); bulk = null; renderBulk(); return; }
     if (newDialog && ev.key === 'Escape') { ev.preventDefault(); newDialog = null; renderNewDialog(); return; }
+    // 관리의 템플릿: 연결된 항목 줄은 Enter·Space로도 연결된 레이어를 보여 준다.
+    if (el.classList.contains('template-item') && el.dataset.action && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); el.click(); return; }
     // 새 플립북 행: Enter·Space로 고르고, Alt+↑↓로 자리를 옮기며, Delete로 지운다.
     if (el.classList.contains('new-row')) {
       const key = el.dataset.key!;
