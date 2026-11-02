@@ -706,6 +706,18 @@ try {
     const [download] = await Promise.all([page.waitForEvent('download'), exportButton.click()]);
     assert.match(download.suggestedFilename(), /\.pdf$/, '고른 프레임을 한 PDF로 내려받는다');
     await page.locator('#tools [data-pick-flipbooks]').click();
+    // 관리에 있다가 캔버스에서 플립북을 고르면 관리를 닫고 목록과 상세를 함께 보여 준다(관리 배치가 남아 상세만 보이던 문제, 2026-11-02).
+    await app.locator('.tabs [data-action=text-close]').click();
+    await app.locator('.list').waitFor();
+    await app.locator('[data-action=settings]').click();
+    await app.locator('.admin-panels').waitFor();
+    assert.equal(await app.locator('.list').isVisible(), false, '관리에서는 목록 칸이 숨는다');
+    await page.locator('#tools [data-pick-flipbooks]').click();
+    await page.waitForFunction(() => !document.querySelector('#app .admin-panels') && document.querySelector('#app .list .row.selected'));
+    assert.equal(await app.locator('.list').isVisible(), true, '캔버스에서 고르면 목록 칸이 다시 보인다');
+    assert.equal(await app.locator('.detail').isVisible(), true);
+    assert.equal(await app.evaluate(root => root.classList.contains('admin-mode')), false, '관리 배치가 남지 않는다');
+    await page.locator('#tools [data-pick-flipbooks]').click();
     // GUI 목록 탭: 창 크기를 유지하고, 고른 카테고리의 배포된 화면을 누르면 고른 크기로 보고 있는 화면 가운데에 붙인다.
     // 화면마다 붙인 수(추적 GUI와 그 화면이 든 플로우)를 보여 준다. 다른 탭으로 가도 창 크기를 유지한다.
     {

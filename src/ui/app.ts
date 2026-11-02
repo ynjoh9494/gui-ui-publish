@@ -3802,6 +3802,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
             !query[msg.team] && !changedOnly[msg.team] &&
             selected[msg.team] === msg.lastKey && selection[msg.team].size === msg.entryKeys.length &&
             msg.entryKeys.every(key => selection[msg.team].has(key))) break;
+        const fromAdmin = tab === 'ADMIN';
         tab = msg.team;
         if (msg.team === 'UI') { selectedNew = null; editingTitle = null; addingSection = false; }
         selection[msg.team] = new Set(msg.entryKeys);
@@ -3818,6 +3819,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
           if (group.visibleRows.some(row => selection[msg.team].has(row.entry.key))) expanded[msg.team].add(group.key);
         addMode = null;
         editMode = null;
+        // 관리에서 나오면 화면 틀(관리 전용 배치, 텍스트·플로우·PDF·붙이기 탭)까지 다시 그린다. 일부만 그리면 관리 배치가 남아
+        // 목록 칸이 숨은 채 상세만 보인다.
+        if (fromAdmin) { renderAll(); break; }
         if (!listTabOpen()) break;
         renderTabs(); renderToolbar(); renderList(); renderDetail(); renderFooter();
         break;

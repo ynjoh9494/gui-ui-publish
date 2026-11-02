@@ -140,7 +140,8 @@ export function createDemo(options: DemoOptions): Demo {
     async ensureThumbnailPage() { thumbPageMade = true; return '0:thumbs'; },
     async placeThumbnails() { thumbPageMade = true; },
     async selectNodes(nodeIds) { log(`프레임 선택: ${nodeIds.join(', ')}`); },
-    selectionNodeIds: () => [],
+    // 미리보기 도구로 플립북 프레임을 고르면 캔버스에서 그 프레임들을 고른 것으로 본다.
+    selectionNodeIds: () => framesPicked ? [...flipbooks].map(([flipbookId, nodeId]) => ({ nodeId, flipbookId })) : [],
     async listFrames(pageIds) {
       if (options.slowLoad) {
         document.body.dataset.previewLoading = 'true';
