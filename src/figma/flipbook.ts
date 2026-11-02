@@ -917,12 +917,12 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
   session.known.set(view.flipbookId, frame.id);
   const p = flipbookParts(frame, ns);
   const registered = frame.getSharedPluginData(ns, EXISTING_KEY) === 'true';
-  if (registered && (!p.gui || (p.named && (!p.named.titleText || !p.status || !p.named.history))))
-    return { nodeId: frame.id, notes: [COPY.registerExistingUnsupported], tracked: true, copies: [] };
-  // 이름 규칙은 제목·Status·이력 영역·GUI 영역이, 표식 템플릿은 GUI 영역이 있어야 한다.
-  if (!p.gui || (p.named && (!p.named.titleText || !p.status || !p.named.history))) throw new Error(p.named ? COPY.figmaFlipbook021 : COPY.figmaFlipbook028);
+  // 꼭 있어야 하는 칸은 GUI 복사본을 넣을 GUI 영역뿐이다(이전 템플릿 플립북, 새로 만드는 플립북).
+  // 제목·Status·Screen ID·이력 칸은 없으면 그 칸만 건너뛰고 나머지를 반영한다(2026-11-02 사용자 결정).
+  const placeGui = (!registered && !!p.named) || !!view.create;
+  if (placeGui && !p.gui) throw new Error(p.named ? COPY.figmaFlipbook021 : COPY.figmaFlipbook028);
   frame.locked = false;
-  p.gui.locked = false;
+  if (p.gui) p.gui.locked = false;
   const notes = new Set<string>();
   const before = { width: frame.width, height: frame.height };
 
@@ -948,12 +948,12 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
   if (p.ids && kit.idTag) await syncIds(ns, p.ids, view.gui.map(g => g.code), kit.idTag, kit);
   // 새 템플릿 플립북은 만들 때만 GUI를 놓는다. 그 뒤로는 추적 GUI라 GUI 배포가 바꾸고(figma/tracked.ts), 사용자가 캔버스에서 넣고 뺀다.
   let copies: SceneNode[] = [];
-  if ((!registered && p.named) || view.create) {
+  if (placeGui && p.gui) {
     const overlays = frame.children.filter(n => 'layoutPositioning' in n && n.layoutPositioning === 'ABSOLUTE');
     const placed = await syncGui(ns, p.gui, view.gui, view.scale, notes, view.guiWidth, overlays);
     if (view.create) copies = placed;
   }
-  if (p.named) await syncRows(ns, p.named.history!, settings, view.rows, kit, notes);
+  if (p.named) { if (p.named.history) await syncRows(ns, p.named.history, settings, view.rows, kit, notes); }
   else if (p.list) await syncMarkedRows(ns, p.list, p.previous, settings, view.rows, kit, notes);
 
   // 이미지·이력 길이에 따라 크기가 바뀐다. 크기가 바뀌면 이웃 화면과 겹치지 않게 필요한 만큼만 민다.

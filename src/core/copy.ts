@@ -67,7 +67,6 @@ export const COPY = {
   registerExistingTemplate: '지정한 템플릿은 플립북으로 등록할 수 없습니다.',
   registerExistingChanged: '선택한 프레임이 변경되었습니다. 다시 선택해 등록하세요.',
   registerExistingDone: '개를 목록에 등록했습니다. 이미 등록된 프레임은 중복 추가하지 않았습니다.',
-  registerExistingUnsupported: '목록에 등록된 프레임입니다. 시스템 항목을 반영하려면 템플릿 구조에 맞는 칸이 필요합니다.',
   adminAutoPages: '자동 관리 페이지',
   adminWorkSetup: '작업 환경',
   adminCommon: '공통 관리',
@@ -794,6 +793,8 @@ export const COPY = {
   controller032: "실패", // 513
   controller033: "건:", // 513
   controller034: "확인 필요:", // 514
+  // 같은 이유로 실패한 플립북은 앞의 몇 개 이름만 쓰고 나머지는 개수로 줄인다: 「(A, B, C 외 14개)」
+  deliveryMore: "외",
   controller035: "확정하지 못한 화면",
   controller036: "개:",
   controller037: '「비교 전」 화면이 포함되어 있습니다. 선택 화면 변경사항 확인이나 변경사항 확인을 먼저 하세요.',
@@ -967,7 +968,7 @@ export const COPY = {
   figmaFlipbook018: "팀 표시 variant 「", // 309
   figmaFlipbook019: "」가 없습니다.", // 309
   figmaFlipbook020: 'List 슬롯이 없습니다.', // 315
-  figmaFlipbook021: '플립북의 시스템 영역(UI Title·Update History List·GUI Image Slot)이 지워졌거나 바뀌었습니다. 복구한 뒤 다시 시도하세요.', // 368
+  figmaFlipbook021: 'GUI Image Slot 프레임이 없어 화면을 넣지 못했습니다. 프레임을 복구한 뒤 다시 시도하세요.', // 368
   figmaFlipbook022: 'GUI 이미지 비율이 바뀌었습니다. 콜아웃·레이아웃을 확인하세요.', // 381
   figmaFlipbook023: 'GUI 원본 프레임을 찾을 수 없습니다:',
   figmaFlipbook024: 'Flipbook-Title 안의 Chapter·Page title 칸',

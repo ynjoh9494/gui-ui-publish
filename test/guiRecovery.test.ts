@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Controller } from '../src/controller.ts';
 import { classify } from '../src/core/compare.ts';
+import { COPY } from '../src/core/copy.ts';
 import { defaultDraft } from '../src/core/drafts.ts';
 import { queueGuiDelivery, restoreGuiWrite, retryableDeliveries } from '../src/core/guiDelivery.ts';
 import { buildPlan, commitPlan } from '../src/core/publish.ts';
@@ -104,6 +105,18 @@ test('재시도 전 원본이 바뀌면 과거 버전 이름으로 미배포 내
   assert.equal(f.counts().syncs, 0, 'force delivery cannot bypass the failed GUI safety check');
   assert.equal(f.store.state.deliveries.get(keys.guiDelivery('b2', 's1'))?.state, 'failed');
   assert.match(f.store.state.deliveries.get(keys.guiDelivery('b2', 's1'))?.error ?? '', /원본이 변경/);
+});
+
+test('미반영 재시도에서 여러 묶음이 같은 이유로 실패해도 안내 앞머리와 이유는 한 번만 쓴다', async () => {
+  const f = fixture(); f.changeSource();
+  queueGuiDelivery(f.store, 'b3', f.before, f.after, f.record);
+  await new Controller(f.host).handle({ type: 'retry' });
+  f.store.reload();
+  assert.equal(f.store.state.deliveries.get(keys.guiDelivery('b2', 's1'))?.state, 'failed');
+  assert.equal(f.store.state.deliveries.get(keys.guiDelivery('b3', 's1'))?.state, 'failed');
+  const message = (f.posted.filter(m => m.type === 'error').pop() as { message: string }).message;
+  assert.equal(message.split(COPY.recoveryPending).length - 1, 1);
+  assert.equal(message.split(COPY.recoverySourceChanged).length - 1, 1);
 });
 
 test('사용 안 함·삭제된 플립북 26건은 집계와 재시도 대상 모두에서 제외하고 원기록은 보존한다', () => {

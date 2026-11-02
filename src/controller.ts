@@ -71,7 +71,9 @@ const spotOf = (spots: Record<string, FlipbookSpot>, nodeId: string | null): Fli
 const sameSpot = (a: FlipbookSpot | null | undefined, b: FlipbookSpot | null | undefined) =>
   (a ?? null) === (b ?? null) || (!!a && !!b && a.pageId === b.pageId && a.section === b.section && a.sectionName === b.sectionName && a.sectionIndex === b.sectionIndex && a.index === b.index);
 
-export interface DeliveryReport { screens: number; done: number; failed: string[]; notes: string[]; skipped: string | null }
+// name: 플립북 제목, text: 실패 이유나 확인할 내용. 알릴 때 같은 text끼리 묶는다(deliveryMessage).
+export interface DeliveryIssue { name: string; text: string }
+export interface DeliveryReport { screens: number; done: number; failed: DeliveryIssue[]; notes: DeliveryIssue[]; skipped: string | null }
 const emptyReport = (): DeliveryReport => ({ screens: 0, done: 0, failed: [], notes: [], skipped: null });
 
 export class Controller {
@@ -1400,11 +1402,11 @@ export class Controller {
           }
           for (const d of pending) setDeliveryState(s, d.batchId, d.targetId, 'done');
           report.done++;
-          report.notes.push(...result.notes.map(n => `${fb.title}: ${n}`));
+          report.notes.push(...result.notes.map(text => ({ name: fb.title, text })));
         } catch (e) {
           const message = e instanceof Error ? e.message : String(e);
           for (const d of pending) setDeliveryState(s, d.batchId, d.targetId, 'failed', message);
-          report.failed.push(`${fb.title}: ${message}`);
+          report.failed.push({ name: fb.title, text: message });
         }
       }
     } finally { this.host.endDelivery?.(); }
@@ -1635,11 +1637,25 @@ function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
   return out;
 }
 
+// 같은 이유는 한 번만 쓰고, 그 이유의 플립북은 앞의 SHOWN_NAMES개 이름 뒤에 「외 N개」로 줄인다(2026-11-02 사용자 요청: 오류 메시지가 너무 길다).
+const SHOWN_NAMES = 3;
+export function groupIssues(items: DeliveryIssue[]): string {
+  const byText = new Map<string, string[]>();
+  for (const { name, text } of items) {
+    const names = byText.get(text);
+    if (names) names.push(name); else byText.set(text, [name]);
+  }
+  return [...byText].map(([text, names]) => {
+    const more = names.length > SHOWN_NAMES ? ` ${COPY.deliveryMore} ${names.length - SHOWN_NAMES}${COPY.uiApp015}` : '';
+    return `${text} (${names.slice(0, SHOWN_NAMES).join(', ')}${more})`;
+  }).join(' / ');
+}
+
 export function deliveryMessage(r: DeliveryReport): string {
   if (r.skipped) return r.skipped;
   if (!r.screens) return '';
   const parts = [`${COPY.controller030} ${r.done}${COPY.controller031}`];
-  if (r.failed.length) parts.push(`${COPY.controller032} ${r.failed.length}${COPY.controller033} ${r.failed.join('; ')}`);
-  if (r.notes.length) parts.push(`${COPY.controller034} ${r.notes.join('; ')}`);
+  if (r.failed.length) parts.push(`${COPY.controller032} ${r.failed.length}${COPY.controller033} ${groupIssues(r.failed)}`);
+  if (r.notes.length) parts.push(`${COPY.controller034} ${groupIssues(r.notes)}`);
   return parts.join(' ');
 }

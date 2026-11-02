@@ -45,6 +45,8 @@ export class GuiRecovery {
     // Older files may have GUI history without an outbox. An explicit retry
     // also reconciles those files; it never creates another GUI version.
     const notes: string[] = [];
+    // 실패한 이유. 묶음이 여럿이어도 앞머리(recoveryPending)는 한 번만 쓰고 같은 이유도 한 번만 쓴다(2026-11-02 사용자 요청).
+    const failures = new Set<string>();
     const reader = this.host.createFingerprintReader?.() ?? this.host;
     const verified = new Set<string>();
     let failed = false;
@@ -93,9 +95,10 @@ export class GuiRecovery {
         failed = true;
         const message = error instanceof Error ? error.message : String(error);
         for (const job of group) setGuiDeliveryState(s, job, 'failed', message);
-        notes.push(`${COPY.recoveryPending} ${message}`);
+        failures.add(message);
       }
     }
-    return { message: notes.join(' '), failed };
+    const pending = failures.size ? `${COPY.recoveryPending} ${[...failures].join(' ')}` : '';
+    return { message: [pending, ...notes].filter(Boolean).join(' '), failed };
   }
 }
