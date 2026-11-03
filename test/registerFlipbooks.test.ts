@@ -66,7 +66,7 @@ test('host only writes registration marks and a links record, distinguishes a co
   });
   const a = make('a'), b = make('b', a);
   const nodes = new Map([['a', a], ['b', b]]);
-  (globalThis as any).figma = { currentPage: page, getNodeByIdAsync: async (id: string) => nodes.get(id) ?? null };
+  (globalThis as any).figma = { root: { getSharedPluginData: () => '' }, currentPage: page, getNodeByIdAsync: async (id: string) => nodes.get(id) ?? null };
   try {
     page.selection = [a, b];
     assert.deepEqual((await selectedFlipbooks()).map(n => n.nodeId), ['a']);
@@ -85,5 +85,40 @@ test('host only writes registration marks and a links record, distinguishes a co
     assert.equal(b.data.size, 0);
     page.selection = [{ ...b, type: 'GROUP' }];
     await assert.rejects(selectedFlipbooks());
+  } finally { (globalThis as any).figma = previous; }
+});
+
+test('같은 ID와 자기 노드 표식이 남은 다른 페이지의 복사본은 새 기록으로 등록하고 원본은 보존한다', async () => {
+  const previous = (globalThis as any).figma;
+  const data = (id: string) => new Map([[FLIPBOOK_KEY, 'shared'], [NODE_KEY, id]]);
+  const originalPage: any = { id: 'original-page', type: 'PAGE', loadAsync: async () => {}, findAllWithCriteria: () => [original] };
+  const page: any = { id: 'p', type: 'PAGE', selection: [] };
+  const make = (id: string, parent: any) => ({ id, parent, type: 'FRAME', name: id, children: [], data: data(id),
+    getSharedPluginData(_ns: string, key: string) { return this.data.get(key) ?? ''; },
+    setSharedPluginData(_ns: string, key: string, value: string) { this.data.set(key, value); },
+  });
+  const original = make('original', originalPage), copy = make('copy', page);
+  const nodes = new Map<string, any>([['original-page', originalPage], ['original', original], ['copy', copy]]);
+  const s = store();
+  const [before] = planExistingFlipbooks(s.state, [{ nodeId: 'original', pageId: 'p', title: 'Original', flipbookId: null }], actor, 1);
+  s.put(keys.flipbook('shared'), { ...before.record, id: 'shared', pageId: 'original-page' });
+  (globalThis as any).figma = { currentPage: page, root: { getSharedPluginData: (_ns: string, key: string) => s.kv.get(key) }, getNodeByIdAsync: async (id: string) => nodes.get(id) ?? null };
+  try {
+    page.selection = [copy];
+    const selected = await selectedFlipbooks();
+    assert.equal(selected[0].flipbookId, null);
+    const [planned] = planExistingFlipbooks(s.state, selected, actor, 2);
+    assert.equal(planned.record.id, 'canvas:copy');
+    await markExistingFlipbooks([{ nodeId: 'copy', id: planned.record.id, pageId: 'p' }]);
+    s.put(keys.flipbook(planned.record.id), planned.record);
+    assert.equal(copy.data.get(FLIPBOOK_KEY), 'canvas:copy');
+    assert.equal(original.data.get(FLIPBOOK_KEY), 'shared');
+    assert.equal(s.state.flipbooks.get('shared')?.title, 'Original');
+    assert.equal(planExistingFlipbooks(s.state, await selectedFlipbooks(), actor, 3).length, 0);
+    // 원본 소유권이 등록 직전에 달라지면 표식을 덮어쓰지 않는다.
+    copy.data.set(FLIPBOOK_KEY, 'shared');
+    originalPage.findAllWithCriteria = () => [copy, original];
+    await assert.rejects(markExistingFlipbooks([{ nodeId: 'copy', id: 'canvas:copy', pageId: 'p' }]));
+    assert.equal(copy.data.get(FLIPBOOK_KEY), 'shared');
   } finally { (globalThis as any).figma = previous; }
 });
