@@ -50,6 +50,11 @@ export function sortScreenItems(items: ScreenItem[], preferredCategoryId?: strin
 }
 
 type Tab = Team | 'ADMIN';
+// 관리에서 한쪽 모드만 쓰는 항목(메뉴 순서)과 그 제목. 톱니바퀴로 열면 다른 모드의 항목을 보던 중이었을 때 지금 모드의 첫 항목을 연다.
+const ADMIN_MODE_PANELS: Record<Team, [form: string, title: string][]> = {
+  GUI: [['scope', COPY.uiApp097], ['screen-id-prefix', COPY.uiApp162], ['exclusions', COPY.uiApp120]],
+  UI: [['flipbook', COPY.uiApp107], ['template', COPY.uiApp392], ['gui-width', COPY.uiApp225]],
+};
 
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
 const WHILE_BUSY = new Set(['recovery-toggle', 'tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel']);
@@ -1946,12 +1951,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const workers = [...s.workers.values()].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
     const pending = retryableDeliveries(s);
     const exclusions = [...s.exclusions.values()].filter(e => e.active);
-    // GUI Publish는 원본 범위·제외, UI Flipbook은 템플릿을 설정한다. 작업자·DATA·기록·초기화는 둘 다 쓴다.
-    const gui = mode === 'GUI';
+    // GUI Publish와 UI Flipbook의 관리는 한 화면이다(2026-11-03 사용자 요청). 어느 쪽에서 열어도 모든 항목을 보여 준다.
     // 다시 그려도(템플릿 연결 뒤 등) 보던 자리를 지킨다. 메뉴와 내용은 따로 스크롤한다.
     const scrolled = { nav: root.querySelector('.admin-nav')?.scrollTop ?? 0, panels: root.querySelector('.admin-panels')?.scrollTop ?? 0 };
     $('.detail').innerHTML = `
-      ${gui ? `<section class="admin" data-form="scope"><h3>${COPY.uiApp097}</h3>
+      <section class="admin" data-form="scope"><h3>${COPY.uiApp097}</h3>
         <div class="inline"><select data-f="page" aria-label="${COPY.uiApp098}" ${availableScopePages.length ? '' : 'disabled'}>
           ${option('', availableScopePages.length ? COPY.uiApp099 : COPY.uiApp100, true)}
           ${availableScopePages.map(p => option(p.id, p.name, false)).join('')}
@@ -1959,7 +1963,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         <div class="scope-pages" aria-label="${COPY.uiApp102}">
           ${scopeIds.length ? scopeIds.map(id => `<div class="scope-page"><span>${esc(pages.find(p => p.id === id)?.name ?? `${COPY.uiApp103}${id})`)}</span><button class="icon-button" data-action="admin-scope-remove" data-id="${esc(id)}" title="${COPY.uiApp105}" aria-label="${esc(pages.find(p => p.id === id)?.name ?? id)} ${COPY.uiApp104}">${X_ICON}</button></div>`).join('') : `<p class="note">${COPY.uiApp106}</p>`}
         </div>
-        </section>` : `<section class="admin" data-form="flipbook"><h3>${COPY.uiApp107}</h3>
+        </section>
+      ${renderScreenIdSection(s)}
+      <section class="admin" data-form="flipbook"><h3>${COPY.uiApp107}</h3>
         <label>${COPY.uiApp108}</label>
         <div class="inline"><select data-f="page" aria-label="${COPY.uiApp210}" ${availableUiPages.length ? '' : 'disabled'}>
           ${option('', availableUiPages.length ? COPY.uiApp099 : COPY.uiApp100, true)}
@@ -1974,14 +1980,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         <label>${COPY.uiApp226}</label>
         <div class="inline"><input type="number" data-f="width" data-input="admin-gui-width" min="${GUI_WIDTH_MIN}" max="${GUI_WIDTH_MAX}" step="1" value="${s.project.guiWidth}" aria-label="${COPY.uiApp226}"><button data-action="admin-gui-width">${COPY.uiApp110}</button></div>
         <p class="note gui-width-sizes">${guiWidthSizes(s.project.guiWidth)}</p>
-        <p class="note">${COPY.uiApp227} ${COPY.uiApp228}</p></section>`}
-      ${gui ? renderScreenIdSection(s) : ''}
+        <p class="note">${COPY.uiApp227} ${COPY.uiApp228}</p></section>
       ${renderDataSection(s)}
       <section class="admin" data-form="workers"><h3>${COPY.uiApp089}</h3>
         ${workers.map(w => `<div class="inline" data-form="wrk" data-id="${w.id}"><input data-f="name" value="${esc(w.name)}"><button data-action="admin-wrk-rename">${COPY.uiApp116}</button><button data-action="admin-wrk-active" data-active="${!w.active}">${w.active ? COPY.uiApp117 : COPY.uiApp118}</button></div>`).join('')}
         <div class="inline" data-form="wrk-add"><input data-f="name" placeholder="${COPY.uiApp119}"><button class="add-button" data-action="admin-wrk-add">${ADD_LABEL}</button></div></section>
-      ${gui ? `<section class="admin" data-form="exclusions"><h3>${COPY.uiApp120}</h3>
-        ${exclusions.length ? exclusions.map(e => `<div class="inline" data-form="exc" data-id="${e.id}"><span>${esc(e.name)}</span><small>${esc(e.reason)}</small><button data-action="admin-unexclude">${COPY.uiApp121}</button></div>`).join('') : `<p class="note">${COPY.uiApp122}</p>`}</section>` : ''}
+      <section class="admin" data-form="exclusions"><h3>${COPY.uiApp120}</h3>
+        ${exclusions.length ? exclusions.map(e => `<div class="inline" data-form="exc" data-id="${e.id}"><span>${esc(e.name)}</span><small>${esc(e.reason)}</small><button data-action="admin-unexclude">${COPY.uiApp121}</button></div>`).join('') : `<p class="note">${COPY.uiApp122}</p>`}</section>
       <section class="admin" data-form="pending"><h3>${COPY.adminPending}</h3><p>${pending.length}${COPY.uiApp081}</p>${pending.length ? recoveryList(s) : ''}<p class="note">${COPY.recoveryRetryHint}</p><button data-action="retry" data-reconcile="1">${COPY.uiApp124}</button></section>
       <section class="admin" data-form="audit"><h3>${COPY.uiApp125}</h3>
         ${s.audit.slice(-15).reverse().map(a => `<div class="audit"><small>${esc(new Date(a.at).toLocaleString('ko-KR'))}</small> ${esc(a.actor.name)} · ${esc(a.action)}${a.reason ? ` · ${esc(a.reason)}` : ''}</div>`).join('') || `<p class="note">${COPY.uiApp122}</p>`}</section>
@@ -1995,7 +2000,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     // 데이터 초기화를 한 화면에 함께 보여 준다.
     const detail = $('.detail');
     const sections = [...detail.querySelectorAll<HTMLElement>(':scope > section.admin')];
-    const pick = (forms: string[]) => sections.filter(section => forms.includes(section.dataset.form ?? ''));
+    // 메뉴는 넘긴 순서대로 놓는다.
+    const pick = (forms: string[]) => forms.flatMap(form => sections.filter(section => section.dataset.form === form));
     const maintenance = document.createElement('section');
     maintenance.className = 'admin'; maintenance.dataset.form = 'maintenance';
     const maintenanceHeading = document.createElement('h3');
@@ -2003,7 +2009,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     maintenance.append(maintenanceHeading, ...pick(['pending', 'audit', 'issues', 'reset']));
     // 묶음 이름이 null이면 이름 없이 구분선으로 나눈다.
     const groups: [string | null, HTMLElement[]][] = [
-      [COPY.adminWorkSetup, [...pick(['scope', 'flipbook', 'template', 'gui-width', 'screen-id-prefix', 'exclusions']), ...pick(['automatic-pages'])]],
+      [COPY.adminWorkSetup, [...pick([...ADMIN_MODE_PANELS.GUI, ...ADMIN_MODE_PANELS.UI].map(([form]) => form)), ...pick(['automatic-pages'])]],
       [COPY.adminCommon, pick(['workers'])],
       [null, [maintenance]],
     ];
@@ -2033,6 +2039,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     syncAdminNav();
     nav.scrollTop = scrolled.nav;
     panels.scrollTop = scrolled.panels;
+  }
+
+  // 톱니바퀴로 관리를 열 때 펼칠 항목: 공통 항목이나 지금 모드의 항목을 보던 중이면 그대로, 아니면 지금 모드의 첫 항목.
+  function adminPanelFor(m: Team, current: string | null): string {
+    const other = ADMIN_MODE_PANELS[m === 'GUI' ? 'UI' : 'GUI'].map(([, title]) => title);
+    return current && !other.includes(current) ? current : ADMIN_MODE_PANELS[m][0][1];
   }
 
   // 관리 메뉴: 고른 항목만 오른쪽에 펼치고 다른 항목은 접는다. 내용은 맨 위부터 보여 준다.
@@ -2813,11 +2825,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         closeVersion(false);
         tab = tab === 'ADMIN' ? mode : 'ADMIN';
         addMode = null; editMode = null;
+        if (tab === 'ADMIN') adminOpen = adminPanelFor(mode, adminOpen);
         renderAll();
         // 플러그인을 연 뒤 추가한 페이지(새 버전 페이지 등)도 고를 수 있게 페이지 목록을 다시 받는다.
         if (tab === 'ADMIN') {
           bridge.send({ type: 'pages' });
-          if (mode === 'UI') bridge.send({ type: 'templateInfo', templateId: templatePick ?? undefined });
+          bridge.send({ type: 'templateInfo', templateId: templatePick ?? undefined });
         }
         break;
       // 만들기 전 새 플립북은 설정을 다녀와도 남는다.
