@@ -71,15 +71,15 @@ try {
 
   await page.keyboard.press('Control+a');
   await page.locator('[data-rt=red]').click();
-  assert.equal(await editor.locator('span').first().evaluate(el => getComputedStyle(el).color), 'rgb(255, 0, 0)');
+  assert.equal(await editor.locator('span').first().evaluate(el => getComputedStyle(el).color), 'rgb(214, 52, 52)');
   await page.locator('[data-rt=bold]').click();
   assert.ok(await editor.locator('b').count(), 'bold and red overlap');
   await page.keyboard.press('Control+z');
-  assert.equal(await editor.locator('span').first().evaluate(el => getComputedStyle(el).color), 'rgb(255, 0, 0)', 'undo bold preserves red');
+  assert.equal(await editor.locator('span').first().evaluate(el => getComputedStyle(el).color), 'rgb(214, 52, 52)', 'undo bold preserves red');
   await page.locator('[data-rt=red]').click();
   assert.equal(await editor.locator('span').count(), 0, 'red can be removed');
   await page.keyboard.press('Control+z');
-  assert.equal(await editor.locator('span').first().evaluate(el => getComputedStyle(el).color), 'rgb(255, 0, 0)', 'undo restores red');
+  assert.equal(await editor.locator('span').first().evaluate(el => getComputedStyle(el).color), 'rgb(214, 52, 52)', 'undo restores red');
 
   await page.keyboard.press('Control+a');
   await editor.evaluate(el => {

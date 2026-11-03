@@ -1,4 +1,5 @@
 import { digestFingerprint, NO_RECORD, type ChangeReason, type DigestRequest, type PreviousReason } from './core/changeDigest.ts';
+import { flipbookIdentity, withFlipbookId } from './core/flipbookIdentity.ts';
 import { COPY } from './core/copy.ts';
 import { planExistingFlipbooks } from './core/registerFlipbooks.ts';
 import { baseline, changeDetected, classify, ignoreBlock, uiEstimate, uncheckedEntries, uiEntries, UI_FINGERPRINT_VERSION, type Entry, type FlipbookSpot, type ScannedFrame, type UiScan } from './core/compare.ts';
@@ -235,6 +236,7 @@ export class Controller {
         case 'registerFlipbooks': await this.registerFlipbooks(); break;
         case 'convertLegacyFlipbooks': await this.convertLegacyFlipbooks(msg.ids); break;
         case 'createFlipbooks': await this.createFlipbooks(msg.request); break;
+        case 'updateFlipbookIdentity': await this.renameFlipbook(msg.id, msg.title, msg.screenId, msg.rev); break;
         case 'renameFlipbook': await this.renameFlipbook(msg.id, msg.title); break;
         case 'markReviewed': await this.markReviewed(msg.requests); break;
         case 'removeFlipbooks': await this.removeFlipbooks(msg.ids, !!msg.withFrames); break;
@@ -1044,7 +1046,7 @@ export class Controller {
     await this.host.syncChapters(ids.flatMap(id => {
       const fb = s.flipbooks.get(id);
       const pageId = fb?.pageId ?? s.project.flipbookPageId;
-      return fb && pageId ? [{ pageId, flipbookId: id, name: chapterName(fb) }] : [];
+      return fb && pageId ? [{ pageId, flipbookId: id, name: chapterName(fb, s) }] : [];
     }));
   }
 
@@ -1393,8 +1395,14 @@ export class Controller {
     const usable = (pageId: string) => !!pageId && pageId !== s.state.project.dataPageId && s.state.project.flipbookPageIds.includes(pageId) && this.host.pages().some(p => p.id === pageId);
     if (!pageIds.length || pageIds.some(pageId => !usable(pageId))) throw new Error(COPY.controller063);
     // 새 행은 기록만 읽어 검사하므로 옮기기 전에 확인한다. 잘못된 행이 있으면 기존 플립북도 옮기지 않는다.
-    const made = request.rows.length ? planFlipbooks(request, guiScreens(s.state), this.host.actor, s.now(), s.newId, pageId => pageSections(s.state, pageId)) : [];
+    let made = request.rows.length ? planFlipbooks(request, guiScreens(s.state), this.host.actor, s.now(), s.newId, pageId => pageSections(s.state, pageId)) : [];
     // 기존 플립북 옮기기(2026-10-22 사용자 요청)를 먼저 반영한다. 새 플립북의 자리(앞 항목)가 옮긴 플립북일 수 있다.
+    const identityState = { ...s.state, flipbooks: new Map(s.state.flipbooks) };
+    made = made.map((fb, i) => {
+      const next = withFlipbookId(identityState, fb, request.rows[i].screenId);
+      identityState.flipbooks.set(next.id, next);
+      return next;
+    });
     const moved = moves.length ? await this.moveFlipbooks(moves) : [];
     if (!request.rows.length) {
       this.host.post({ type: 'flipbooksCreated', ids: [], moved, message: `${COPY.controller133} ${moved.length}${COPY.controller134}` });
@@ -1469,20 +1477,30 @@ export class Controller {
   }
 
   // 플립북 제목 변경(2026-10-21 사용자 요청): 기록을 바꾸고 큰 제목·Page title·프레임 이름을 새 제목으로 맞춘다.
-  private async renameFlipbook(id: string, title: string): Promise<void> {
+  private async renameFlipbook(id: string, title: string, screenId?: string, rev?: number): Promise<void> {
     const s = this.store;
     s.reload();
     const before = s.state.flipbooks.get(id);
-    const fb = plannedFlipbookTitle(s.state, id, title);
+    if (rev !== undefined && before?.rev !== rev) throw new Error(COPY.flipbookTitleConflict);
+    const planned = plannedFlipbookTitle(s.state, id, title);
+    const fb = screenId === undefined ? planned : withFlipbookId(s.state, planned, screenId);
+    const identity = flipbookIdentity(s.state, fb);
+    const previousId = before ? flipbookIdentity(s.state, before).screenId : undefined;
     try {
       if (!fb.pageId) throw new Error(COPY.controller063);
-      const prepared = await this.host.prepareFlipbookTitle({ flipbookId: id, pageId: fb.pageId, nodeId: this.uiScans.find(u => u.flipbookId === id)?.nodeId ?? undefined, title: fb.title });
+      const prepared = await this.host.prepareFlipbookTitle({ flipbookId: id, pageId: fb.pageId, nodeId: this.uiScans.find(u => u.flipbookId === id)?.nodeId ?? undefined, title: fb.title, frameName: identity.frameName, ...(screenId !== undefined ? { chapter: identity.chapter, screenId: identity.screenId } : {}) });
       // Preparation may yield to another user's edits. Do not commit a stale proposal.
       const fresh = s.readFresh<Flipbook>(keys.flipbook(id));
       if (!fresh || fresh.rev !== before?.rev) throw new Error(COPY.flipbookTitleConflict);
       s.reload();
       prepared.apply();
-      try { renameFlipbook(s, id, title, this.host.actor); }
+      try {
+        if (screenId === undefined) renameFlipbook(s, id, title, this.host.actor);
+        else {
+          s.put(keys.flipbook(id), fb);
+          s.audit(this.host.actor, 'flipbook.identity', id, { title: before!.title, screenId: previousId }, { title: fb.title, screenId: identity.screenId });
+        }
+      }
       catch (error) { prepared.rollback(); throw error; }
     } finally { s.reload(); this.postState(); }
     this.host.post({ type: 'notice', message: `${COPY.controller119} ${fb.title}` });

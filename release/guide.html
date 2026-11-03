@@ -312,11 +312,15 @@ footer { color: var(--muted); font-size: 13px; text-align: center; margin-top: 2
     <li><span class="ui">플립북 없는 화면 일괄 만들기</span>는 페이지(기본은 지금 보고 있는 플립북 페이지)와 범위(카테고리·화면 유형·검색)를 정해, 플립북이 없는 화면마다 플립북을 하나씩 만듭니다.</li>
   </ul>
 
+  <h3>플립북 관리 형식</h3>
+  <p>목록에서 플립북 하나를 고르면 우측에 <b>Chapter · Page title · Screen ID</b>가 표시됩니다. Chapter는 ID의 두 번째 코드에 대응하는 GUI 카테고리 이름으로 자동 결정됩니다. Page title과 Screen ID를 입력한 뒤 <span class="ui">적용</span>을 누르면 프레임 이름을 <code>ID · Page title</code>로 맞추고 헤더에도 반영합니다. 제목의 <code>기능 - 상태</code> 형식은 검사하지 않습니다.</p>
+  <p>화면이 있으면 첫 화면 ID 하나가 기본값입니다. 화면이 없으면 해당 기기·Chapter의 <code>_POLICY</code>, <code>_POLICY_02</code> 순서로 ID를 제안합니다. 카테고리를 알 수 없는 Section에서는 ID를 직접 입력합니다. 목록 이름을 더블클릭하면 Page title만 수정합니다.</p>
+  <figure><img src="screens/ui-identity.png" alt="플립북 목록 우측의 Chapter, Page title, Screen ID와 프레임 이름 미리보기"><figcaption>Chapter는 GUI에서 자동 결정하고, Page title·Screen ID는 우측에서 입력합니다.</figcaption></figure>
   <h3>플립북 목록</h3>
   <p>직접 만든 플립북도 목록에 넣을 수 있습니다. 관리에서 그 페이지를 플립북 페이지로 지정하고, 캔버스에서 플립북의 바깥쪽 프레임을 선택한 뒤 <span class="ui">기존 플립북 등록</span>을 누르세요. 여러 프레임을 함께 등록할 수 있고, 다시 눌러도 중복 추가하지 않습니다. 이름·내용·위치·크기를 유지하며, 일반 화면 레이어를 GUI 원본에 자동 연결하지는 않습니다.</p>
   <ul>
     <li><b>페이지·Section</b>: 목록은 플립북 페이지별로 접고 펼치며, 페이지 안에서는 Section 이름 줄로 나뉩니다. 순서는 캔버스에 놓인 순서입니다.</li>
-    <li><b>캔버스가 기준</b>: 플립북이 놓인 페이지·Section과 Section 이름은 캔버스를 따릅니다. 캔버스에서 플립북을 다른 Section으로 옮기거나 Section 이름을 바꾸면 플러그인을 열 때나 목록을 새로고침할 때 목록과 Chapter가 따라 바뀝니다. 어느 Section에도 들지 않은 플립북은 페이지 맨 위 <span class="ui">(섹션 없음)</span>에 모입니다.</li>
+    <li><b>캔버스가 기준</b>: 플립북이 놓인 페이지·Section과 Section 이름은 캔버스를 따릅니다. 캔버스에서 플립북을 다른 Section으로 옮기거나 Section 이름을 바꾸면 플러그인을 열 때나 목록을 새로고침할 때 목록의 위치와 Section 이름이 따라 바뀝니다. Chapter는 Screen ID에서 결정합니다. 어느 Section에도 들지 않은 플립북은 페이지 맨 위 <span class="ui">(섹션 없음)</span>에 모입니다.</li>
     <li><b>새로고침</b>: 캔버스에서 고른 것만으로는 목록이 바뀌지 않습니다. 캔버스에서 플립북을 옮기거나 지웠다면 <span class="ui">업데이트된 화면만 보기</span> 줄 왼쪽의 새로고침 아이콘을 누르세요. 옆에 마지막 동기화 시각(<span class="ui">동기화 시:분</span>)이 나옵니다.</li>
     <li><b>처음 열 때</b>: Figma를 켠 뒤 UI Flipbook을 처음 열면 동기화가 끝날 때까지 흰 화면 가운데 안내 문구와 로딩 바가 보입니다. 화면이 열릴 때까지 기다려 주세요.</li>
   </ul>

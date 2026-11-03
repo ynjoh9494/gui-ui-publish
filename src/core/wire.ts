@@ -172,6 +172,7 @@ export type ToMain =
   | { type: 'convertLegacyFlipbooks'; ids: string[] }
   // 플립북 제목 변경. 비우면 첫 화면 이름(자동 제목)으로 돌아간다.
   | { type: 'renameFlipbook'; id: string; title: string }
+  | { type: 'updateFlipbookIdentity'; id: string; title: string; screenId: string; rev: number }
   // 플립북 확인 완료: 상태·코멘트를 남기고 「화면이 수정되었습니다」 표시를 푼다.
   | { type: 'markReviewed'; requests: ReviewRequest[] }
   // 연결이 끊긴 플립북을 목록에서 삭제한다. 프레임이 남은 플립북은 건너뛴다.

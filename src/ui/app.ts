@@ -1,3 +1,4 @@
+import { flipbookIdentity, withFlipbookId } from '../core/flipbookIdentity.ts';
 import { windowCollapse } from './windowCollapse.ts';
 import { headerTab } from './headerTab.ts';
 import { COPY } from '../core/copy.ts';
@@ -27,7 +28,7 @@ import { templateEntries, type TemplateEntry } from '../core/templateList.ts';
 import { findCategoryByName, systemTagId, workerLabel } from '../core/registry.ts';
 import { formatFrameName, parseFrameName } from '../core/screenName.ts';
 import type { State } from '../core/store.ts';
-import type { Actor, FlipbookScale, ImportedGuiRecord, SystemTag, Team } from '../core/types.ts';
+import type { Actor, Flipbook, FlipbookScale, ImportedGuiRecord, SystemTag, Team } from '../core/types.ts';
 import { SIMILAR_MIN, type VersionEvidence, type VersionLink } from '../core/versionMatch.ts';
 import { clampWindow, fromWire, PANE, pasteDropMetadata, type AdminOp, type NavTarget, type PageInfo, type ManagedPageInfo, type ScanState, type ToMain, type ToUi, type VersionMatchView } from '../core/wire.ts';
 
@@ -53,7 +54,7 @@ type Tab = Team | 'ADMIN';
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
 const WHILE_BUSY = new Set(['tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
-const BEFORE_CHECK = new Set([...WHILE_BUSY, 'switch-mode', 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
+const BEFORE_CHECK = new Set([...WHILE_BUSY, 'switch-mode', 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'fb-identity-save', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'text-import', 'text-apply',
   'version-open', 'version-close', 'version-match', 'version-select', 'version-review-only', 'version-reveal', 'version-switch', 'version-cancel']);
 
@@ -179,10 +180,31 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   // section: null이면 첫 화면의 카테고리 Section(화면이 없으면 그 페이지 맨 아래 Section). after: Section 안에서 바로 앞 항목(기존 플립북 ID 또는 새 플립북 키, null이면 맨 앞, 없으면 맨 뒤).
   // 배열 순서는 목록 순서와 같게 유지한다(normalizeNew).
   // seq: 목록에 끼워 넣는 순서(앞 항목이 먼저 놓이게 목록 순서대로 매긴다). 옮긴 기존 플립북과 함께 센다.
-  type NewFlipbook = { key: string; uids: string[]; scale: FlipbookScale; scales: Record<string, FlipbookScale>; title: string; pageId: string; section: FlipbookSection | null; after?: string | null; seq: number };
+  type NewFlipbook = { key: string; uids: string[]; scale: FlipbookScale; scales: Record<string, FlipbookScale>; title: string; screenId?: string; pageId: string; section: FlipbookSection | null; after?: string | null; seq: number };
   // 목록에서 옮긴 기존 플립북(2026-10-22 사용자 요청). 키는 플립북 ID다. 만들기(새 플립북이 없으면 배치 반영)를 누르면 캔버스에 반영할지 묻는다.
   type MovedFlipbook = { key: string; pageId: string; section: FlipbookSection; after?: string | null; seq: number };
   let movedFlipbooks: MovedFlipbook[] = [];
+  function updateNewIdentity(n: NewFlipbook) {
+    const info = newIdentity(n);
+    const chapter = root.querySelector<HTMLInputElement>('.new-place [data-identity-chapter]');
+    const frame = root.querySelector('.new-place [data-identity-frame]');
+    if (chapter) chapter.value = info.chapter;
+    if (frame) frame.textContent = info.frameName;
+  }
+
+  function newIdentity(n: NewFlipbook) {
+    const preview = { ...state!, flipbooks: new Map(state!.flipbooks) };
+    for (const row of newFlipbooks) {
+      const screens = newScreens(row);
+      const fb: Flipbook = { id: row.key, rev: 1, kind: newKind(row), title: newTitle(row), autoTitle: !row.title.trim(), titleNames: [], scale: row.scale,
+        category: newSection(row), screens, pageId: row.pageId, status: 'active', createdAt: 0, actor: { id: '', name: '' } };
+      const next = withFlipbookId(preview, fb, row.screenId);
+      preview.flipbooks.set(next.id, next);
+      if (row === n) return flipbookIdentity(preview, next);
+    }
+    return { screenId: '', chapter: '-', frameName: newTitle(n) };
+  }
+
   // 「선택된 화면」에서 드래그 중인 화면
   let draggingScreen: string | null = null;
   let floatSeq = 0;
@@ -191,6 +213,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   const NEW_PREFIX = 'new:';
   const isNewKey = (key: string) => key.startsWith(NEW_PREFIX);
   let newFlipbooks: NewFlipbook[] = [];
+  const identityDrafts = new Map<string, { rev: number; title: string; screenId: string }>();
   let newSeq = 0;
   // 목록에서 고른 새 플립북. 기존 플립북 선택(selection.UI)과 함께 쓰지 않는다.
   let selectedNew: string | null = null;
@@ -750,7 +773,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const moves = plannedMoves();
     const index = new Map(newFlipbooks.map((n, i) => [n.key, i]));
     const rows: FlipbookRowRequest[] = newFlipbooks.map(n => ({
-      uids: n.uids, multi: n.uids.length > 1, scale: n.scale, scales: n.scales, title: n.title.trim(), pageId: n.pageId, section: newSection(n),
+      uids: n.uids, multi: n.uids.length > 1, scale: n.scale, scales: n.scales, title: n.title.trim(), screenId: n.screenId, pageId: n.pageId, section: newSection(n),
       after: n.after === undefined || n.after === null ? n.after : isNewKey(n.after) ? `row:${index.get(n.after)}` : n.after,
     }));
     newSubmitting = true;
@@ -1520,9 +1543,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     // 연결이 끊긴 플립북은 프레임이 없어 반영할 수 없으므로 바꾸지 않는다.
     const fb = state.flipbooks.get(entry.flipbookId);
     const renamable = !multi && !!fb && entry.estimate !== 'missing';
-    const heading = renamable && editingAt(fb.id, 'detail')
-      ? `<input class="title-input" data-input="fb-title" data-id="${esc(fb.id)}" value="${esc(fb.title)}" placeholder="${esc(defaultTitle(fb.kind, fb.screens))}" aria-label="${COPY.uiApp203}">`
-      : `<h2${renamable ? ` data-edit-title="${esc(fb.id)}" title="${COPY.uiApp314}"` : ''}>${esc(entryName(state, entry))}${multi ? ` ${COPY.uiApp046} ${chosen.length - 1}${COPY.uiApp015}` : ''}</h2>`;
+    const heading = `<h2>${esc(entryName(state, entry))}${multi ? ` ${COPY.uiApp046} ${chosen.length - 1}${COPY.uiApp015}` : ''}</h2>`;
     // 새 템플릿 플립북을 고르면 캔버스에서 화면 목록을 읽는다(PRD 1.1). 같은 플립북을 다시 그릴 때는 다시 읽지 않는다.
     if (!multi && fb?.tracked && followed !== fb.id) { followed = fb.id; bridge.send({ type: 'followFlipbook', id: fb.id }); }
     const deletedAlert = !multi && fb?.deletedAlert ? `<div class="deleted-alert" role="alert"><p>${COPY.uiApp405}</p><button data-action="fb-dismiss-deleted" data-id="${esc(fb.id)}">${COPY.uiApp406}</button></div>` : '';
@@ -1534,7 +1555,22 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     // 고른 플립북이 모두 연결 끊김이면 아래 연결 끊김 안내의 「목록에서 삭제」만 둔다.
     const removable = chosen.some(e => e.estimate !== 'missing');
     const removeButton = removable ? `<button class="remove-text" data-action="fb-remove-list" title="${esc(COPY.flipbookRemoveHint)}">${COPY.uiApp237}</button>` : '';
-    let top = `${legacyAlert}${deletedAlert}<div class="detail-head title-head">${heading}${renamable ? `<button class="icon-button" data-action="fb-edit-title" data-id="${esc(entry.flipbookId)}" title="${COPY.uiApp335}" aria-label="${COPY.uiApp336}" aria-pressed="${editingAt(fb.id, 'detail')}">${PENCIL_ICON}</button>` : ''}${removeButton}</div>`;
+    let top = `${legacyAlert}${deletedAlert}<div class="detail-head title-head">${heading}${removeButton}</div>`;
+    if (renamable) {
+      let draft = identityDrafts.get(fb.id);
+      if (!draft || draft.rev !== fb.rev) {
+        draft = { rev: fb.rev, title: fb.title, screenId: flipbookIdentity(state, fb).screenId };
+        identityDrafts.set(fb.id, draft);
+      }
+      const info = flipbookIdentity(state, { ...fb, title: draft.title, screenId: draft.screenId });
+      top += `<div class="fb-identity new-place" data-id="${esc(fb.id)}">
+        <label>${COPY.fbChapter}<input data-identity-chapter value="${esc(info.chapter)}" readonly title="${esc(COPY.fbChapterAuto)}"></label>
+        <label>${COPY.fbPageTitle}<input data-input="fb-page-title" value="${esc(draft.title)}" aria-label="${COPY.fbPageTitle}"></label>
+        <label>${COPY.fbScreenId}<input data-input="fb-screen-id" value="${esc(draft.screenId)}" placeholder="${esc(COPY.fbIdPlaceholder)}" aria-label="${COPY.fbScreenId}"></label>
+        <p class="note">${COPY.fbFrameName}: <span data-identity-frame>${esc(info.frameName)}</span></p>
+        <div class="review-actions"><button data-action="fb-identity-save" data-id="${esc(fb.id)}">${COPY.fbIdentitySave}</button></div>
+      </div>`;
+    }
     // 연결이 끊긴 플립북은 목록에서 삭제할 수 있다. 한 번 누르면 삭제한다(2026-10-20 사용자 결정).
     const unlinked = chosen.filter(e => e.estimate === 'missing');
     if (unlinked.length) {
@@ -1764,6 +1800,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const pageOptions = flipbookPageOptions();
     const chosen = newScreens(n);
     const title = newTitle(n);
+    const identity = newIdentity(n);
     const auto = defaultTitle(newKind(n), chosen);
     const automatic = autoSection(n);
     const choices = sectionChoices(n.pageId).filter(s => s.key !== automatic.key);
@@ -1784,7 +1821,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       <div class="new-place">
         <div class="field"><div class="field-head"><span>${COPY.uiApp204}</span><button class="link" data-action="create-page-manage" aria-label="페이지 관리">관리${CHEVRON_RIGHT_ICON}</button></div><select data-input="new-page" aria-label="페이지 선택" ${pageOptions.length ? '' : 'disabled'}>${pageOptions.length ? pageOptions.map(pg => option(pg.id, pg.name, pg.id === n.pageId)).join('') : option('', COPY.uiApp106, true)}</select></div>
         <label>${COPY.uiApp338}${sectionField}</label>
-        <label>${COPY.uiApp312}<input class="title-input" data-input="new-title" data-key="${esc(n.key)}" value="${esc(title)}" placeholder="${esc(auto)}" aria-label="${COPY.uiApp203}"></label>
+        <label>${COPY.fbChapter}<input data-identity-chapter value="${esc(identity.chapter)}" readonly title="${esc(COPY.fbChapterAuto)}"></label>
+        <label>${COPY.fbPageTitle}<input class="title-input" data-input="new-title" data-key="${esc(n.key)}" value="${esc(title)}" placeholder="${esc(auto)}" aria-label="${COPY.fbPageTitle}"></label>
+        <label>${COPY.fbScreenId}<input data-input="new-screen-id" data-key="${esc(n.key)}" value="${esc(identity.screenId)}" placeholder="${esc(COPY.fbIdPlaceholder)}" aria-label="${COPY.fbScreenId}"></label>
+        <p class="note">${COPY.fbFrameName}: <span data-identity-frame>${esc(identity.frameName)}</span></p>
       </div>
       ${screenBrowser(n)}`;
     renderCreateScreenList();
@@ -2725,6 +2765,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       // 만들기 전 새 플립북은 설정을 다녀와도 남는다.
       case 'create-page-manage': tab = 'ADMIN'; adminOpen = COPY.uiApp107; renderAll(); bridge.send({ type: 'templateInfo', templateId: templatePick ?? undefined }); break;
       case 'register-existing': bridge.send({ type: 'registerFlipbooks' }); break;
+      case 'fb-identity-save': {
+        const fb = state?.flipbooks.get(el.dataset.id!);
+        const draft = fb && identityDrafts.get(fb.id);
+        if (fb && draft) bridge.send({ type: 'updateFlipbookIdentity', id: fb.id, rev: draft.rev, title: draft.title, screenId: draft.screenId });
+        break;
+      }
       case 'new-add': if (addNew()) { revealSelection = true; renderList(); } break;
       case 'new-select': if (target.closest('button')) break; selectNew(el.dataset.key!); break;
       case 'new-remove': ev.stopPropagation(); removeNew(el.dataset.key!); break;
@@ -3535,10 +3581,31 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       renderBulkList();
       return;
     }
+    if (el.dataset.input === 'fb-page-title' || el.dataset.input === 'fb-screen-id') {
+      const id = el.closest<HTMLElement>('.fb-identity')?.dataset.id;
+      const fb = id && state?.flipbooks.get(id);
+      const draft = id && identityDrafts.get(id);
+      if (fb && draft) {
+        if (el.dataset.input === 'fb-page-title') draft.title = el.value;
+        else draft.screenId = el.value;
+        const info = flipbookIdentity(state!, { ...fb, title: draft.title, screenId: draft.screenId.trim().toUpperCase() });
+        const chapter = root.querySelector<HTMLInputElement>('[data-identity-chapter]');
+        const name = root.querySelector('[data-identity-frame]');
+        if (chapter) chapter.value = info.chapter;
+        if (name) name.textContent = info.frameName;
+      }
+      return;
+    }
+    if (el.dataset.input === 'new-screen-id') {
+      const n = currentNew();
+      if (n) { n.screenId = el.value; updateNewIdentity(n); }
+      return;
+    }
     if (el.dataset.input === 'new-title') {
       const n = newFlipbooks.find(x => x.key === el.dataset.key);
       if (n) {
         n.title = el.value;
+        updateNewIdentity(n);
         // 목록에서 고치면 오른쪽 제목 입력을, 오른쪽에서 고치면 목록 행 이름을 맞춘다.
         if (el.closest('.list-box')) {
           const field = root.querySelector<HTMLInputElement>(`.detail [data-input="new-title"][data-key="${CSS.escape(n.key)}"]`);
@@ -3758,6 +3825,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if ('managedPages' in msg && msg.managedPages) managedPages = msg.managedPages;
     switch (msg.type) {
       case 'init':
+        identityDrafts.clear();
         previewCache.clear();
         state = fromWire(msg.state); actor = msg.actor; pages = msg.pages; issues = msg.issues;
         // 작업자 이름: 처음에는 계정 이름을 넣고, 마지막으로 배포한 이름이 저장돼 있으면 그 이름으로 바꾼다.

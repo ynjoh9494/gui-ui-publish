@@ -309,7 +309,7 @@ function instantiate(original: ChildrenMixin, copy: ChildrenMixin): void {
 async function createFlipbook(ns: string, page: PageNode, template: FrameNode, view: FlipbookView): Promise<FrameNode> {
   const frame = template.clone();
   instantiate(template, frame);
-  frame.name = view.name;
+  frame.name = view.frameName ?? view.name;
   frame.setSharedPluginData(ns, FLIPBOOK_KEY, view.flipbookId);
   frame.setSharedPluginData(ns, NODE_KEY, frame.id);
   // 템플릿의 연결 기록을 플립북에도 둬서 표식으로 찾게 한다(복제가 옮기지만 분명히 적는다).
@@ -450,8 +450,7 @@ export async function flipbookSpots(ns: string, pageIds: string[]): Promise<Reco
   return spots;
 }
 
-export async function prepareFlipbookTitle(ns: string, item: { flipbookId: string; pageId: string; nodeId?: string; title: string }): Promise<{ apply(): void; rollback(): void }> {
-  // Known IDs survive moves between pages; only fall back to a page scan when the node is missing.
+export async function prepareFlipbookTitle(ns: string, item: { flipbookId: string; pageId: string; nodeId?: string; title: string; frameName?: string; chapter?: string; screenId?: string }): Promise<{ apply(): void; rollback(): void }> {
   const known = item.nodeId ? await figma.getNodeByIdAsync(item.nodeId) : null;
   const frame = known?.type === 'FRAME' && known.getSharedPluginData(ns, FLIPBOOK_KEY) === item.flipbookId
     ? known : await findFlipbook(ns, item.pageId, item.flipbookId);
@@ -459,33 +458,65 @@ export async function prepareFlipbookTitle(ns: string, item: { flipbookId: strin
   const parts = flipbookParts(frame, ns);
   if (!parts.links) throw new Error(COPY.legacyNeedsConvert);
   const beforeName = frame.name;
-  const before = parts.titles.map(node => ({ node, text: node.characters, written: node.getSharedPluginData(ns, 'flipbookTitle') }));
-  // Load every required font before changing any title, so preparation failures leave all fields intact.
+  const fields = parts.titles.map(node => ({ node, value: item.title, key: 'flipbookTitle' }));
+  if (item.chapter !== undefined && parts.chapter) fields.push({ node: parts.chapter, value: item.chapter, key: CHAPTER_KEY });
+  const ids = item.screenId !== undefined ? parts.ids : null;
+  const idChildren = ids && 'children' in ids ? [...ids.children] : [];
+  const texts = (node: SceneNode): TextNode[] => node.type === 'TEXT' ? [node] : 'children' in node ? node.children.flatMap(texts) : [];
+  const idText = ids ? texts(ids)[0] : undefined;
+  if (idText) fields.push({ node: idText, value: item.screenId!, key: 'flipbookIdText' });
+  const before = fields.map(f => ({ ...f, text: f.node.characters, written: f.node.getSharedPluginData(ns, f.key) }));
+  const visibility = idChildren.map(node => ({ node, visible: node.visible }));
+  const signature = ids?.getSharedPluginData(ns, IDS_KEY) ?? '';
   const fonts = new Map<string, FontName>();
-  for (const { node, text } of before) {
-    if (text === item.title) continue;
+  for (const { node, text, value } of before) {
+    if (text === value) continue;
     for (const font of text.length ? node.getRangeAllFontNames(0, text.length) : [node.fontName as FontName]) fonts.set(JSON.stringify(font), font);
   }
+  const emptyIds = ids && !idText && 'appendChild' in ids;
+  if (emptyIds) fonts.set('id', { family: 'Inter', style: 'Regular' });
   await Promise.all([...fonts.values()].map(font => figma.loadFontAsync(font)));
   const touched: typeof before = [];
+  let added: TextNode | null = null;
+  let changedIds = false;
   const rollback = () => {
-    for (const { node, text, written } of [...touched].reverse()) {
+    added?.remove(); added = null;
+    for (const { node, text, written, key } of [...touched].reverse()) {
       if (node.characters !== text) node.characters = text;
-      node.setSharedPluginData(ns, 'flipbookTitle', written);
+      node.setSharedPluginData(ns, key, written);
+    }
+    if (changedIds && ids) {
+      for (const { node, visible } of visibility) node.visible = visible;
+      ids.setSharedPluginData(ns, IDS_KEY, signature);
     }
     if (frame.name !== beforeName) frame.name = beforeName;
     touched.length = 0;
+    changedIds = false;
   };
   return {
     apply() {
-      if (frame.removed || frame.name !== beforeName || before.some(({ node, text, written }) => node.removed || node.characters !== text || node.getSharedPluginData(ns, 'flipbookTitle') !== written)) throw new Error(COPY.flipbookTitleConflict);
+      if (frame.removed || frame.name !== beforeName || before.some(({ node, text, written, key }) => node.removed || node.characters !== text || node.getSharedPluginData(ns, key) !== written)
+        || (ids && (ids.getSharedPluginData(ns, IDS_KEY) !== signature || ('children' in ids && (ids.children.length !== idChildren.length || ids.children.some((n, i) => n !== idChildren[i]))) || visibility.some(v => v.node.visible !== v.visible)))) throw new Error(COPY.flipbookTitleConflict);
       try {
         for (const value of before) {
           touched.push(value);
-          if (value.node.characters !== item.title) value.node.characters = item.title;
-          value.node.setSharedPluginData(ns, 'flipbookTitle', item.title);
+          if (value.node.characters !== value.value) value.node.characters = value.value;
+          value.node.setSharedPluginData(ns, value.key, value.value);
         }
-        frame.name = item.title;
+        if (ids) {
+          changedIds = true;
+          if (emptyIds && 'appendChild' in ids) {
+            added = figma.createText();
+            added.fontName = { family: 'Inter', style: 'Regular' };
+            added.fontSize = 12;
+            added.characters = item.screenId!;
+            ids.appendChild(added);
+          }
+          // Keep the first ID tag's design; hide former extra ID tags atomically.
+          for (const { node } of visibility) node.visible = !!idText && texts(node).includes(idText);
+          ids.setSharedPluginData(ns, IDS_KEY, JSON.stringify([item.screenId].filter(Boolean)));
+        }
+        frame.name = item.frameName ?? item.title;
       } catch (error) { rollback(); throw error; }
     },
     rollback,
@@ -998,6 +1029,7 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
   // 꼭 있어야 하는 칸은 새로 만드는 플립북의 GUI 영역뿐이다. GUI는 만들 때만 놓고, 그 뒤로는 추적 GUI라 GUI 배포가 바꾼다.
   // 제목·Status·Screen ID·이력 칸은 없으면 그 칸만 건너뛰고 나머지를 반영한다(2026-11-02 사용자 결정).
   if (view.create && !p.gui) throw new Error(COPY.figmaFlipbook028);
+  frame.name = view.frameName ?? view.name;
   frame.locked = false;
   if (p.gui) p.gui.locked = false;
   const notes = new Set<string>();
@@ -1008,7 +1040,7 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
   await setOwnedText(ns, p.chapter, view.chapter, ['-', ...kit.defaults.chapter], kit, CHAPTER_KEY);
   // 상태 칸은 템플릿에서 연결한 태그 컴포넌트로만 바꾼다(연결이 없으면 놓인 태그를 그대로 쓴다).
   if (view.status && p.status) await applyTag(p.status, kit.big, kit, view.status.tag.name, view.status.colorKey, true);
-  if (p.ids && kit.idTag) await syncIds(ns, p.ids, view.gui.map(g => g.code), kit.idTag, kit);
+  if (p.ids && kit.idTag) await syncIds(ns, p.ids, (view.screenId !== undefined ? [view.screenId].filter(Boolean) : view.gui.map(g => g.code)), kit.idTag, kit);
   let copies: SceneNode[] = [];
   if (view.create && p.gui) {
     const overlays = frame.children.filter(n => 'layoutPositioning' in n && n.layoutPositioning === 'ABSOLUTE');

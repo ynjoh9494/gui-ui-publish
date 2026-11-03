@@ -1162,7 +1162,7 @@ test('캔버스에서 다른 Section·페이지로 옮긴 플립북은 기록이
   const fb3 = controller.store.state.flipbooks.get('fb3')!;
   assert.deepEqual([fb2.pageId, fb2.category], ['ui', { key: 'epg', name: 'EPG', order: 2 }], 'EPG Section의 정렬 순서를 따른다');
   assert.deepEqual([fb3.pageId, fb3.category.key, fb3.category.name], ['ui2', 'section:new', '새 묶음']);
-  assert.deepEqual(synced.sort(), [['fb2', 'ui', 'epg', 'EPG'], ['fb3', 'ui2', 'section:new', '새 묶음']], 'Chapter 전용 반영은 캔버스의 페이지를 사용한다');
+  assert.deepEqual(synced.sort(), [['fb2', 'ui', 'epg', '-'], ['fb3', 'ui2', 'section:new', '-']], 'Chapter 전용 반영은 캔버스의 페이지를 사용한다');
 });
 
 test('Section 밖으로 옮긴 플립북은 「(섹션 없음)」이 되어 그 페이지 맨 위에 모이고, 새로 넣거나 옮길 자리로는 고를 수 없다', () => {
@@ -1176,8 +1176,8 @@ test('Section 밖으로 옮긴 플립북은 「(섹션 없음)」이 되어 그 
   const spots = { '1:1': { pageId: 'ui', section: 'home', sectionName: '홈', sectionIndex: 0, index: 0 }, '1:2': { pageId: 'ui', section: '__nosection__', sectionIndex: -1, index: 0 } };
   const changed = followCanvasSections(store, canvasSections(store.state, found, spots), actor);
   assert.deepEqual(changed.map(fb => [fb.id, fb.category]), [['fb2', noSection()]]);
-  assert.equal(chapterName(changed[0]), '-', 'Section 밖 플립북의 Chapter는 「-」다');
-  assert.equal(chapterName(store.state.flipbooks.get('fb1')!), '홈', 'Section 안이면 Section 이름이다');
+  assert.equal(chapterName(changed[0], store.state), '-', 'Section 밖 플립북의 Chapter는 「-」다');
+  assert.equal(chapterName(store.state.flipbooks.get('fb1')!, store.state), '-', 'ID를 결정할 수 없으면 Section 안에서도 Chapter를 추측하지 않는다');
   assert.deepEqual(canvasSections(store.state, found, spots), [], '다시 읽어도 바꿀 것이 없다');
   const groups = arrangeFlipbooks(store.state, [{ id: 'ui', name: 'UI' }], id => spots[found.get(id)! as keyof typeof spots]);
   assert.deepEqual(groups.map(g => [g.section.key, g.items]), [['__nosection__', ['fb2']], ['home', ['fb1']]], '페이지 맨 위에 둔다');
@@ -1330,7 +1330,7 @@ test('캔버스 선택으로는 목록을 다시 읽지 않고, 새로고침으�
   await controller.handle({ type: 'refreshList' });
   assert.ok(posted.some(m => m.type === 'listSynced'), '바뀐 것이 없어도 새로고침이 끝났다고 알린다');
   assert.equal(controller.store.state.flipbooks.get('fb1')?.category.name, '홈 메인');
-  assert.deepEqual(chapters, [{ pageId: 'ui', flipbookId: 'fb1', name: '홈 메인' }]);
+  assert.deepEqual(chapters, [{ pageId: 'ui', flipbookId: 'fb1', name: '-' }]);
   assert.deepEqual(synced, [], 'GUI·이력까지 다시 반영하지 않는다');
   const busy = posted.filter((m): m is Extract<ToUi, { type: 'busy' }> => m.type === 'busy');
   assert.equal(busy[busy.length - 1]?.label ?? null, null, '반영 중 표시가 남지 않는다');
@@ -1365,7 +1365,7 @@ test('캔버스에서 바꾼 Section 이름을 플러그인을 열 때 그 Secti
   await controller.handle({ type: 'ready' });
   assert.equal(controller.store.state.flipbooks.get('fb1')?.category.name, '홈 메인');
   assert.equal(controller.store.state.flipbooks.get('fb2')?.category.name, 'EPG');
-  assert.deepEqual(chapters, [['fb1', '홈 메인']], 'only the renamed Section is delivered again (Chapter)');
+  assert.deepEqual(chapters, [['fb1', '-']], 'Section updates do not become Chapter names');
   assert.equal(posted.some(m => m.type === 'error'), false);
   // 열 때 플립북 페이지를 불러오는 동안은 Figma가 입력을 받지 못하므로 「불러오는 중」을 띄우고, 끝나면 닫는다.
   const loading = posted.findIndex(m => m.type === 'busy' && m.label === COPY.controller136), synced = posted.findIndex(m => m.type === 'listSynced');

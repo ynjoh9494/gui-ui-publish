@@ -90,3 +90,39 @@ test('explicit delivery targets exclude pending books; explicit retry still proc
   assert.deepEqual(calls, ['full:fb2']);
   assert.equal(controller.store.state.deliveries.get(key)?.state, 'done');
 });
+
+
+test('identity saves header fields without delivering GUI, Description, history or DATA', async () => {
+  const { controller, host, store, calls } = setup();
+  store.put(keys.category('live'), { id: 'live', name: 'Live', code: 'LI', order: 0, active: true });
+  let item: Parameters<Host['prepareFlipbookTitle']>[0] | undefined;
+  host.prepareFlipbookTitle = async request => {
+    item = request;
+    return { apply() { calls.push('metadata'); }, rollback() { calls.push('rollback'); } };
+  };
+  const before = store.state.flipbooks.get('fb1')!;
+  await controller.handle({ type: 'updateFlipbookIdentity', id: 'fb1', rev: before.rev, title: 'No dash required', screenId: 'ST_LI_POLICY' });
+  assert.deepEqual(calls, ['metadata']);
+  assert.equal(item?.title, 'No dash required');
+  assert.equal(item?.screenId, 'ST_LI_POLICY');
+  assert.equal(item?.chapter, 'Live');
+  assert.equal(item?.frameName, 'ST_LI_POLICY · No dash required');
+  assert.equal(controller.store.state.flipbooks.get('fb1')?.screenId, 'ST_LI_POLICY');
+  assert.deepEqual(controller.store.state.flipbooks.get('fb1')?.screens, before.screens);
+  await controller.handle({ type: 'renameFlipbook', id: 'fb1', title: 'Only title' });
+  assert.equal(item?.screenId, undefined, 'list rename does not write the ID field');
+  assert.equal(controller.store.state.flipbooks.get('fb1')?.screenId, 'ST_LI_POLICY');
+});
+
+test('stale identity drafts and font failures preserve saved identity', async () => {
+  const { controller, host, store, posted } = setup();
+  const before = store.state.flipbooks.get('fb1')!;
+  let prepared = false;
+  host.prepareFlipbookTitle = async () => { prepared = true; throw new Error('font unavailable'); };
+  await controller.handle({ type: 'updateFlipbookIdentity', id: 'fb1', rev: before.rev - 1, title: 'Changed', screenId: 'ST_LI_POLICY' });
+  assert.equal(prepared, false);
+  await controller.handle({ type: 'updateFlipbookIdentity', id: 'fb1', rev: before.rev, title: 'Changed', screenId: 'ST_LI_POLICY' });
+  assert.equal(prepared, true);
+  assert.deepEqual(controller.store.state.flipbooks.get('fb1'), before);
+  assert.equal(posted.filter(m => m.type === 'error').length, 2);
+});

@@ -812,3 +812,7 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .tabs .mode-switch { display: inline-flex; align-items: center; gap: 3px; height: 28px; border-radius: 6px; white-space: nowrap; color: var(--text); }
 .tabs .mode-switch:hover:not(:disabled) { background: var(--bg2); }
 .tabs .mode-switch svg { flex: none; }
+
+.fb-identity .review-actions { display: flex; justify-content: flex-end; }
+.fb-identity [readonly], .new-place [readonly] { background: var(--bg); color: var(--muted); }
+.fb-identity [data-identity-frame], .new-place [data-identity-frame] { overflow-wrap: anywhere; }

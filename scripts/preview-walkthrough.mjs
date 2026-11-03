@@ -457,9 +457,8 @@ try {
   const made = app.locator('.list .row').filter({ hasText: initialName }).first();
   const deliveriesBeforeRename = (await page.locator('#log div').allTextContents()).filter(line => line.includes('플립북 반영')).length;
   await made.click();
-  await app.locator('[data-action=fb-edit-title]').click();
-  await app.locator('[data-input=fb-title]').fill('홈 메인 플립북');
-  await app.locator('[data-input=fb-title]').press('Enter');
+  await app.locator('[data-input=fb-page-title]').fill('홈 메인 플립북');
+  await app.locator('[data-action=fb-identity-save]').click();
   await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('플립북 제목을 바꿨습니다'));
   await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('제목 변경: 홈 메인 플립북')));
   await page.waitForFunction(() => [...document.querySelectorAll('#app .list .row .name')].some(x => x.textContent === '홈 메인 플립북'));

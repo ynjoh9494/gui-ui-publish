@@ -21,6 +21,7 @@ export interface FlipbookRowRequest {
   scales?: Record<string, FlipbookScale>;
   // 비우면 첫 번째 화면의 이름, 화면이 없으면 「새 플립북」을 쓴다.
   title?: string;
+  screenId?: string;
   // 이 항목을 만들 페이지. 비우면 요청의 페이지다.
   pageId?: string;
   // 놓을 Section. 비우면 첫 화면의 카테고리(화면이 없으면 미분류)다. 만들기 화면은 정한 Section을 항상 보낸다.

@@ -96,7 +96,7 @@ export function applyRichText(node: TextNode, paragraphs: RichParagraph[], { reg
         node.setRangeListOptions(offset, end, { type: 'UNORDERED' });
         node.setRangeIndentation(offset, end, p.depth + 1);
       }
-      for (const range of p.red ?? []) if (range.end > range.start) node.setRangeFills(offset + range.start, offset + range.end, [{ type: 'SOLID', color: { r: 1, g: 0, b: 0 } }]);
+      for (const range of p.red ?? []) if (range.end > range.start) node.setRangeFills(offset + range.start, offset + range.end, [{ type: 'SOLID', color: { r: 214 / 255, g: 52 / 255, b: 52 / 255 } }]);
       for (const range of p.bold) if (range.end > range.start) node.setRangeFontName(offset + range.start, offset + range.end, bold);
     }
     offset = end + 1;

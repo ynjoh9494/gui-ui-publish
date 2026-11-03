@@ -182,12 +182,14 @@ export interface Flipbook {
   rev: number;
   kind: FlipbookKind;
   title: string;
+  // Optional local ID; absent on screen flipbooks means follow the first GUI ID.
+  screenId?: string;
   // 제목을 화면 이름에서 자동으로 만들었는가. 화면 이름이 바뀌면 함께 바꾼다.
   autoTitle: boolean;
   // 플러그인이 제목에 쓴 적 있는 값. 플립북 제목이 이 중 하나일 때만 바꾼다.
   titleNames: string[];
   scale: FlipbookScale;
-  // 배치할 Section. 만들 때 첫 화면의 GUI 카테고리를 따르고, 정책은 「정책」이다.
+  // 배치할 Section. Chapter와 독립이며 기존 캔버스 위치를 따른다.
   category: { key: string; name: string; order: number };
   screens: FlipbookScreen[];
   // 플립북 프레임이 있는 페이지. 한 파일의 여러 페이지에 플립북을 만들 수 있다.

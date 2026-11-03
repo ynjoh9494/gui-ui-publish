@@ -40,7 +40,7 @@ function paragraphHtml(p: RichParagraph): string {
     const start = cuts[i], end = cuts[i + 1];
     let part = esc(p.text.slice(start, end));
     if (p.bold.some(r => r.start <= start && r.end >= end)) part = `<b>${part}</b>`;
-    if ((p.red ?? []).some(r => r.start <= start && r.end >= end)) part = `<span style="color:#ff0000">${part}</span>`;
+    if ((p.red ?? []).some(r => r.start <= start && r.end >= end)) part = `<span style="color:#D63434">${part}</span>`;
     html += part;
   }
   const depth = p.depth === null ? '' : ` data-depth="${p.depth}" style="--depth:${p.depth}"`;
@@ -199,7 +199,7 @@ export function textEditor(root: HTMLElement): TextEditor {
     if (collapsed(sel)) {
       const rgb = String(document.queryCommandValue('foreColor')).match(/[\d.]+/g)?.map(Number);
       const on = rgb && isRed({ r: rgb[0] / 255, g: rgb[1] / 255, b: rgb[2] / 255 });
-      document.execCommand('foreColor', false, on ? '#333333' : '#ff0000');
+      document.execCommand('foreColor', false, on ? '#333333' : '#D63434');
       syncButtons();
       return;
     }
@@ -350,7 +350,7 @@ export function textEditor(root: HTMLElement): TextEditor {
         <button class="primary" data-action="text-apply">${COPY.uiApp306}</button></div>
       <div class="text-tools">
         <button class="text-tool" data-rt="bold" aria-pressed="false" title="${COPY.uiApp309} (Ctrl+B)" aria-label="${COPY.uiApp309}"><b>B</b></button>
-        <button class="text-tool" data-rt="red" aria-pressed="false" title="${COPY.uiTextRed}" aria-label="${COPY.uiTextRed}"><span style="color:#ff0000">A</span></button>
+        <button class="text-tool" data-rt="red" aria-pressed="false" title="${COPY.uiTextRed}" aria-label="${COPY.uiTextRed}"><span style="color:#D63434">A</span></button>
         <button class="text-tool" data-rt="list" aria-pressed="false" title="${COPY.uiApp310}" aria-label="${COPY.uiApp310}">${LIST_ICON}</button>
         <span class="note">${COPY.uiApp304}</span></div>
       <div class="rich-editor" contenteditable="true" role="textbox" aria-multiline="true" spellcheck="false" aria-label="${COPY.uiApp308}"></div>`;

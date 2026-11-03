@@ -87,7 +87,7 @@ export interface Host extends FingerprintReader {
   // 기존 플립북 프레임을 다른 페이지·Section의 정한 자리로 옮긴다. 프레임을 찾지 못하면 false.
   moveFlipbook(move: { flipbookId: string; fromPageId: string; pageId: string; category: { key: string; name: string }; after: string | null }): Promise<boolean>;
   // 제목 칸과 프레임 이름만 변경한다. 템플릿 검사·전체 반영·배치를 실행하지 않는다.
-  prepareFlipbookTitle(item: { flipbookId: string; pageId: string; nodeId?: string; title: string }): Promise<{ apply(): void; rollback(): void }>;
+  prepareFlipbookTitle(item: { flipbookId: string; pageId: string; nodeId?: string; title: string; frameName?: string; chapter?: string; screenId?: string }): Promise<{ apply(): void; rollback(): void }>;
   // known: 같은 작업에서 이미 찾은 플립북 프레임(플립북 ID → 노드 ID). 반영할 때 페이지를 다시 훑지 않고 이 노드부터 확인한다.
   beginDelivery?(known?: Map<string, string>): void;
   endDelivery?(): void;

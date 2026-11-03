@@ -246,7 +246,7 @@ test('Figma red and bold round trip and red removal restores body color', async 
   const read = readRichText(node);
   assert.equal(md(read), 'plain <red>**red**</red> end');
   assert.equal(colors[0][0].color.r, 0.15);
-  assert.equal(colors[6][0].color.r, 1);
+  assert.equal(colors[6][0].color.r, 214 / 255);
   await writeRichText(node, parseRichText('plain **red** end'));
   assert.ok(colors.slice(0, node.text.length).every(c => c[0].color.r === 0.15));
   assert.equal(md(readRichText(node)), 'plain **red** end');

@@ -1,4 +1,5 @@
 import { COPY } from './copy.ts';
+import { flipbookIdentity } from './flipbookIdentity.ts';
 import { formerUids } from './guiScreens.ts';
 import { flipbookHistoryRows, type HistoryRow } from './history.ts';
 import { systemTagId } from './registry.ts';
@@ -29,6 +30,8 @@ export interface FlipbookView {
   flipbookId: string;
   kind: FlipbookKind;
   name: string;
+  screenId?: string;
+  frameName?: string;
   // 플러그인이 제목에 쓴 적 있는 이름. 제목이 이 중 하나일 때만 현재 이름으로 바꾸고, 사용자가 고친 제목은 둔다.
   titleNames: string[];
   category: { key: string; name: string; order: number };
@@ -36,7 +39,7 @@ export interface FlipbookView {
   chapter: string;
   // 플립북 프레임이 있는(만들) 페이지
   pageId: string | null;
-  // 선택한 순서. 정책은 비어 있다. 상단 input-cell-id에 이 순서로 Screen ID 태그를 넣는다.
+  // 선택한 순서. 정책은 비어 있다. 헤더 ID는 screenId 하나를 쓰며, 이 배열은 화면 배치에 쓴다.
   gui: FlipbookGui[];
   scale: FlipbookScale;
   // 1x 화면의 가로 크기(설정). GUI 영역 폭이기도 하다.
@@ -81,9 +84,9 @@ export const POLICY_CATEGORY_KEY = '__policy__';
 // Section 밖(페이지 바로 아래)에 둔 플립북의 Section 키(2026-10-23 사용자 결정). 목록에서는 그 페이지 맨 위에 라벨 행 없이 모은다.
 export const NO_SECTION_KEY = '__nosection__';
 
-// Chapter 글자: Section 이름. Section 밖(「(섹션 없음)」) 플립북은 「-」다(2026-10-23 사용자 결정).
-export function chapterName(fb: Flipbook): string {
-  return fb.category.key === NO_SECTION_KEY ? '-' : fb.category.name;
+// Chapter follows the GUI category represented by the second ID code; Section is only placement.
+export function chapterName(fb: Flipbook, state: State): string {
+  return flipbookIdentity(state, fb).chapter;
 }
 // 템플릿 원본 컴포넌트의 제목 기본값
 export const TEMPLATE_TITLE = COPY.coreFlipbook001;
@@ -134,7 +137,7 @@ export function flipbookView(state: State, flipbookId: string): FlipbookView {
   }));
   return {
     flipbookId, kind: fb.kind, name: fb.title, titleNames: [TEMPLATE_TITLE, ...fb.titleNames],
-    category: fb.category, chapter: chapterName(fb), pageId: fb.pageId ?? state.project.flipbookPageId,
+    category: fb.category, ...flipbookIdentity(state, fb), pageId: fb.pageId ?? state.project.flipbookPageId,
     gui: fb.screens.map(s => ({
       uid: s.uid, code: s.code, version: s.version, key: guiKey(s.uid, s.version), sourceNodeId: state.screens.get(s.uid)?.source?.nodeId ?? null, scale: s.scale ?? fb.scale,
       ...(former.has(s.uid) ? { formerUids: former.get(s.uid) } : {}),
