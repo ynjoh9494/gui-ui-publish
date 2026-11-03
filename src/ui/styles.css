@@ -549,24 +549,25 @@ button.link.danger { color: var(--danger); }
 .danger-zone h3, .danger-zone > summary { color: var(--danger); }
 /* 설정 아코디언 */
 /* GUI 화면정보의 이전 배포 썸네일(배포 이력 위, 기본은 접힘) */
-details.prev-thumb, details.history-fold { margin: 7px 0 3px; }
-details.prev-thumb > summary, details.history-fold > summary { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; list-style: none; cursor: pointer; }
-details.prev-thumb > summary::-webkit-details-marker, details.history-fold > summary::-webkit-details-marker { display: none; }
-details.prev-thumb > summary small { color: var(--muted); font-weight: 400; }
-details.prev-thumb > summary .dropdown-caret, details.history-fold > summary .dropdown-caret { transition: transform .15s; }
-details.prev-thumb[open] > summary .dropdown-caret, details.history-fold[open] > summary .dropdown-caret { transform: rotate(180deg); }
+details.history-fold { margin: 7px 0 3px; }
+details.history-fold > summary { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; list-style: none; cursor: pointer; }
+details.history-fold > summary::-webkit-details-marker { display: none; }
+/* 화살표는 제목 왼쪽: 접으면 오른쪽, 펼치면 아래를 본다(2026-11-03 사용자 요청). */
+details.history-fold > summary .dropdown-caret { margin-left: 0; transform: rotate(-90deg); transition: transform .15s; }
+details.history-fold[open] > summary .dropdown-caret { transform: none; }
 details.history-fold table { margin-top: 6px; }
-/* 이전 배포 썸네일·배포 히스토리: 상세 아래쪽에 고정하고 위와 사이에 구분선(2026-11-03 사용자 요청). 둘 다 펼쳐도 입력란을 다 가리지 않게 높이를 제한한다. */
-.detail-foot { position: sticky; bottom: -8px; z-index: 3; max-height: 60%; overflow: auto; margin: 8px 0 -8px; min-height: 0; padding-bottom: 8px; background: var(--bg); border-top: 1px solid var(--border); }
+/* History 맨 위의 지난 배포 썸네일: 제목 없이 버전·시각을 캡션으로 단다(2026-11-03 사용자 요청). */
+.history-thumb { margin: 6px 0 0; }
+.history-thumb .thumbs :is(img, .thumb-empty) { display: block; width: 100%; max-width: 720px; height: auto; aspect-ratio: 16 / 9; }
+.history-thumb figcaption { margin-top: 3px; color: var(--muted); font-size: 11px; }
+/* History: 상세 아래쪽에 고정하고 위에 구분선(2026-11-03 사용자 요청). 펼쳐도 입력란을 다 가리지 않게 높이를 제한한다.
+   입력란이 길어도 눌려 사라지지 않게 줄어들지 않는다. */
+.detail-foot { position: sticky; bottom: -8px; z-index: 3; max-height: 60%; overflow: auto; margin: 8px 0 -8px; padding-bottom: 8px; background: var(--bg); border-top: 1px solid var(--border); }
 /* 내용이 짧아도 맨 아래에 붙도록 이 영역이 있는 상세만 세로 flex로 둔다. 항목은 줄지 않고 패널이 스크롤된다. */
 .detail:has(> .detail-foot) { display: flex; flex-direction: column; }
 .detail:has(> .detail-foot) > * { flex-shrink: 0; }
-.detail:has(> .detail-foot) > .detail-foot { flex-shrink: 1; margin-top: auto; }
+.detail:has(> .detail-foot) > .detail-foot { margin-top: auto; }
 .detail-foot:not(:has(details)) { display: none; }
-.detail-foot > .history:has(details) { border-top: 1px solid var(--border); }
-.detail-foot > .history:first-child { border-top: 0; }
-details.prev-thumb .thumbs { margin-top: 6px; }
-details.prev-thumb .thumbs :is(img, .thumb-empty) { width: 100%; max-width: 720px; height: auto; aspect-ratio: 16 / 9; }
 details.accordion { padding: 0; }
 details.accordion > summary { display: flex; align-items: center; gap: 8px; padding: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--text); list-style: none; cursor: default; pointer-events: none; }
 details.accordion > summary::-webkit-details-marker { display: none; }

@@ -151,7 +151,7 @@ export const COPY = {
   uiApp064: "추가 설명", // 346
   uiApp065: '입력하면 선택한 화면 전체에 적용', // 347
   uiApp069: "· 배포", // 365
-  uiApp071: "배포 히스토리", // 379
+  uiApp071: "History", // 379
   uiApp072: '(정정)', // 381
   // 최종 확인 — src/ui/app.ts
   uiApp073: "신규", // 390
@@ -356,7 +356,6 @@ export const COPY = {
   uiApp297: '왼쪽 목록에서 화면이나 프레임을 선택하세요.',
   uiApp298: '이름 같음',
   uiApp299: '프레임 이름이 기존 원본과 같습니다. 이름이 같으면 유사도가 낮아도 먼저 연결합니다.',
-  uiApp300: '이전 배포 썸네일',
   uiApp301: '업데이트된 화면만 보기',
   // 텍스트 편집 탭(UI Flipbook) — src/ui/textEditor.ts
   uiApp302: "플립북 목록",

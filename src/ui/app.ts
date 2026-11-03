@@ -269,7 +269,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   // 플러그인에 마지막으로 알린 텍스트 편집 탭 표시 여부
   let textTabSent = false;
   // GUI 화면정보의 이전 배포 썸네일을 펼쳐 두었는가
-  let prevThumbOpen = false;
   let historyOpen = false;
   // 「변경 사항」에서 펼쳐 보인, 보이는 값이 같은 변경의 줄 수. 지금 고른 화면에만 두고 기억하지 않는다:
   // 다른 화면을 고르거나 변경사항 확인을 다시 하면 접힌 상태로 돌아간다.
@@ -1401,8 +1400,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       html += workerField(draft, common(d => d.workerId), mixed(d => d.workerId));
       html += '</div></section>';
     }
-    // 이전 배포 썸네일과 배포 히스토리는 접어서 아래쪽에 고정한다(2026-11-03 사용자 요청: 위의 제목처럼 스크롤해도 남게).
-    if (!multi) html += `<div class="detail-foot">${previousThumb(entry)}<div class="history"></div></div>`;
+    // History(지난 배포 썸네일 + 히스토리)는 접어서 아래쪽에 고정한다(2026-11-03 사용자 요청: 위의 제목처럼 스크롤해도 남게).
+    if (!multi) html += '<div class="detail-foot"><div class="history"></div></div>';
     $('.detail').innerHTML = html;
     if (detailLocked(t)) {
       for (const control of root.querySelectorAll<HTMLInputElement>('.detail input, .detail select, .detail textarea, .detail button')) control.disabled = true;
@@ -1596,33 +1595,35 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     renderFieldErrors();
   }
 
-  // 이전 배포 썸네일(2026-10-21 사용자 요청): 배포 이력 위, 기본은 접혀 있다. 펼칠 때 이미지를 불러온다.
-  // 펼친 상태는 플러그인을 닫을 때까지 유지해 화면을 옮겨 가며 비교할 수 있다.
-  function previousThumb(entry: Entry): string {
+  // History 안 맨 위의 지난 배포 썸네일(2026-11-03 사용자 요청: 따로 접지 않고 제목 없이, 버전·시각을 캡션으로).
+  // History를 펼칠 때 이미지를 불러온다.
+  function historyThumb(entry: Entry): string {
     const rows = entry.screenId ? state?.gui.get(entry.screenId) ?? [] : [];
     const last = rows[rows.length - 1];
     if (!last || !state) return '';
     const hash = last.thumb?.hash ?? null;
-    if (prevThumbOpen) requestThumbs([hash]);
-    return `<details class="prev-thumb"${prevThumbOpen ? ' open' : ''}><summary><span>${COPY.uiApp300}</span><small>v${last.version} · ${esc(formatTime(last.committedAt, state.project.utcOffsetMinutes))}</small><span class="dropdown-caret" aria-hidden="true"></span></summary>
-      <div class="thumbs">${prevThumbOpen ? thumbImg(hash, formatFrameName(last.code, last.name)) : ''}</div></details>`;
+    if (historyOpen) requestThumbs([hash]);
+    return `<figure class="history-thumb"><div class="thumbs">${historyOpen ? thumbImg(hash, formatFrameName(last.code, last.name)) : ''}</div>
+      <figcaption>v${last.version} · ${esc(formatTime(last.committedAt, state.project.utcOffsetMinutes))}</figcaption></figure>`;
   }
 
   function renderHistory() {
     const box = root.querySelector('.detail .history');
     const entry = current();
     const id = team() === 'GUI' ? entry?.screenId : entry?.flipbookId;
-    if (!box || !id) return;
+    if (!box || !entry || !id) return;
     if (history?.id !== id) { box.innerHTML = ''; return; }
-    if (!history.rows.length) { box.innerHTML = ''; return; }
-    const table = `<table><tbody>${history.rows.slice(0, 8).map(r => `
+    const table = history.rows.length ? `<table><tbody>${history.rows.slice(0, 8).map(r => `
       <tr><td><span class="team ${r.team}">${r.team}</span></td><td>${esc(r.at)}</td>
       <td><span class="chip" style="--c:${esc(r.tag.color)}">${esc(r.tag.name)}</span></td><td>${esc(r.description)}${r.corrected ? ` <i>${COPY.uiApp072}</i>` : ''}</td><td>${esc(r.worker)}</td></tr>`).join('')}
-      </tbody></table>`;
-    // GUI 화면의 배포 히스토리는 이전 배포 썸네일처럼 접는다(2026-11-03 사용자 요청). 펼친 상태는 플러그인을 닫을 때까지 유지한다.
-    box.innerHTML = team() === 'GUI'
-      ? `<details class="history-fold"${historyOpen ? ' open' : ''}><summary><span>${COPY.uiApp071}</span><span class="dropdown-caret" aria-hidden="true"></span></summary>${table}</details>`
-      : `<h3>${COPY.uiApp071}</h3>${table}`;
+      </tbody></table>` : '';
+    if (team() !== 'GUI') { box.innerHTML = table ? `<h3>${COPY.uiApp071}</h3>${table}` : ''; return; }
+    // GUI 화면의 History는 접어서 상세 아래쪽에 고정하고, 펼치면 지난 배포 썸네일 → 히스토리 목록 순으로 보인다(2026-11-03 사용자 요청).
+    // 펼친 상태는 플러그인을 닫을 때까지 유지해 화면을 옮겨 가며 비교할 수 있다.
+    const thumb = historyThumb(entry);
+    box.innerHTML = thumb || table
+      ? `<details class="history-fold"${historyOpen ? ' open' : ''}><summary><span class="dropdown-caret" aria-hidden="true"></span><span>${COPY.uiApp071}</span></summary>${thumb}${table}</details>`
+      : '';
   }
 
   function renderConfirm() {
@@ -3363,12 +3364,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   // 설정 아코디언: 하나를 열면 나머지를 접는다. toggle 이벤트는 버블링되지 않아 캡처로 받는다.
   on('toggle', ev => {
     const details = ev.target as HTMLDetailsElement;
-    if (details.classList?.contains('history-fold')) { historyOpen = details.open; return; }
-    if (details.classList?.contains('prev-thumb')) {
-      if (prevThumbOpen === details.open) return;
-      prevThumbOpen = details.open;
-      const entry = current();
-      if (prevThumbOpen && entry) details.outerHTML = previousThumb(entry);
+    // History: 처음 펼칠 때 썸네일 이미지를 넣으려고 다시 그린다.
+    if (details.classList?.contains('history-fold')) {
+      if (historyOpen === details.open) return;
+      historyOpen = details.open;
+      if (historyOpen) renderHistory();
       return;
     }
     // 화면 선택 드롭다운: 펼치면 검색 입력에 포커스를 두고, 접으면 검색어를 비운다.

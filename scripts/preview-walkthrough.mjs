@@ -1098,6 +1098,10 @@ try {
   // 새 버전의 화면 관계도 고칠 수 있고, 처음 값은 교체할 화면의 관계다(2026-11-03 사용자 요청).
   assert.equal(await app.locator('.detail [data-field=relation][value=standalone]').isChecked(), true, 'a replacement starts with the replaced screen relation');
   await shot('11b-replace-with-published');
+  // 입력란이 길어도 아래 고정된 History가 눌려 사라지지 않는다(2026-11-03 회귀).
+  const footBox = await app.locator('.detail .detail-foot').boundingBox();
+  const detailBox = await app.locator('.detail').boundingBox();
+  assert.ok(footBox && footBox.height >= 16 && footBox.y + footBox.height <= detailBox.y + detailBox.height + 1, `History stays visible at the bottom (${JSON.stringify(footBox)})`);
   // 배포를 끄면 짝이 함께 풀린다. 같은 짝을 이전 화면 쪽에서 「아니요, 구 버전입니다」로 다시 맺는다(2026-11-03 사용자 요청).
   await wrong.locator('[data-action=include]').uncheck();
   await stateIs(keep, '변경사항 없음');
@@ -1120,6 +1124,9 @@ try {
   assert.equal(await app.locator('.detail .detail-foot').evaluate(node => getComputedStyle(node).position), 'sticky', 'thumbnail and history stick to the bottom');
   await fold.locator('summary').click();
   assert.equal(await fold.locator('table').isVisible(), true, 'opening the fold shows the history');
+  // 지난 배포 썸네일은 제목 없이 History 맨 위에 있고, 버전·시각을 캡션으로 단다.
+  assert.match(await fold.locator('.history-thumb figcaption').innerText(), /^v\d+ · /);
+  assert.equal(await fold.evaluate(node => node.querySelector('.history-thumb').compareDocumentPosition(node.querySelector('table')) & Node.DOCUMENT_POSITION_FOLLOWING), 4, 'the thumbnail sits above the history list');
   await fold.locator('summary').click();
   await wrong.click();
   // 교체는 신규 후보의 교체처럼 태그를 고른다.

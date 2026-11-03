@@ -174,16 +174,14 @@ const GUI_STEPS: Step[] = [
   {
     title: COPY.uiTutorial028, body: COPY.uiTutorial029,
     async prepare(d) {
+      // History는 접혀 있고, 펼치면 지난 배포 썸네일과 히스토리 목록이 보인다(2026-11-03).
       await d.until(() => {
-        const details = d.q<HTMLDetailsElement>('.detail details.prev-thumb');
-        if (details && !details.open) details.open = true;
-        // 배포 히스토리도 접혀 있으므로 함께 펼친다(2026-11-03).
         const history = d.q<HTMLDetailsElement>('.detail details.history-fold');
         if (history && !history.open) history.open = true;
-        return d.q('.detail details.prev-thumb[open] img') && d.q('.detail details.history-fold[open] table');
+        return d.q('.detail details.history-fold[open] .history-thumb img') && d.q('.detail details.history-fold[open] table');
       });
     },
-    spots: d => [[d.q('.detail details.prev-thumb'), d.q('.detail .history')]],
+    spots: d => [d.q('.detail .history')],
   },
   {
     title: COPY.uiTutorial030, body: COPY.uiTutorial031,
