@@ -449,8 +449,9 @@ button.link.danger { color: var(--danger); }
 .fb-screen { display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 4px; border-radius: 4px; cursor: pointer; }
 .fb-screen:hover { background: var(--bg2); }
 .fb-screen .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-screen-go { flex: none; color: var(--muted); font-size: 11px; }
 .fb-screen svg { flex: none; color: var(--muted); }
-.fb-screen:hover svg { color: var(--text); }
+.fb-screen:hover svg, .fb-screen:hover .fb-screen-go { color: var(--text); }
 /* 상세 맨 위 「삭제된 화면」 경고 */
 /* 이전 형식 플립북 안내(2026-11-02)는 「삭제된 화면」 경고와 같은 모양이다(반영되지 않아 할 일이 있는 상태). */
 .deleted-alert, .legacy-alert { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 6px 8px; border: 1px solid var(--danger); border-radius: 5px; color: var(--danger); }

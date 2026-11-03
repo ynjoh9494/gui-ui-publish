@@ -952,10 +952,16 @@ try {
   assert.equal(await app.locator('.detail .fb-screen-list .fb-screen .review-dot').count(), 1, '화면 줄에 수정된 화면을 표시한다');
   assert.equal(await app.locator('.detail .fb-screen-list .fb-screen .chip').innerText(), '검토', '가장 최근 GUI 배포의 태그를 그 화면에 붙인다');
   await shot('06a-ui-screen-state');
-  // 화면 줄을 누르면 그 화면의 추적 목록 팝업을 연다.
-  await app.locator('.detail .fb-screen-list .fb-screen').first().click();
-  await app.locator('.track-list-overlay .track-list-dialog h2').waitFor();
-  await page.keyboard.press('Escape');
+  // 화면 줄 오른쪽 화살표 왼쪽에 「GUI 보기」를 쓰고, 누르면 그 화면의 GUI 원본 프레임으로 이동한다(2026-11-03 사용자 요청).
+  {
+    const row = app.locator('.detail .fb-screen-list .fb-screen').first();
+    assert.equal(await row.locator('.fb-screen-go').innerText(), 'GUI 보기');
+    assert.ok(await row.evaluate(el => el.querySelector('.fb-screen-go').getBoundingClientRect().right <= el.querySelector('svg').getBoundingClientRect().left), '「GUI 보기」는 화살표 왼쪽에 둔다');
+    const moves = await page.locator('#log div').filter({ hasText: '캔버스 이동' }).count();
+    await row.click();
+    await page.waitForFunction(n => [...document.querySelectorAll('#log div')].filter(x => x.textContent?.includes('캔버스 이동')).length > n, moves);
+    assert.equal(await app.locator('.track-list-overlay').count(), 0, '화면 사용처 팝업은 열지 않는다');
+  }
   // 히스토리 모달에 수정된 화면을 보여 준다. 상태를 비우면 확인 완료를 막는다(필수). 다시 「현행」을 고르고 코멘트(선택)를 쓴다.
   await app.locator('.detail [data-action=fb-history-open]').click();
   const modal = app.locator('.history-overlay .history-dialog');

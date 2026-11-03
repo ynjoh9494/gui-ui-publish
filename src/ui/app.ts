@@ -1524,7 +1524,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     }
   }
   // 플립북에 들어 있는 화면 목록(2026-11-03 사용자 요청: 썸네일 그리드 대신 목록). 한 줄에 Screen ID·이름, 오른쪽에 상태 태그와 확인이 필요한 화면의 빨간 점을 둔다.
-  // 상태 태그는 플립북이 가장 최근에 받은 태그를 만든 화면에만 붙인다(PRD §4.7). 마우스를 올리면 GUI 썸네일을 띄우고, 누르면 그 화면의 화면 사용처 팝업을 연다(PRD 1.3).
+  // 상태 태그는 플립북이 가장 최근에 받은 태그를 만든 화면에만 붙인다(PRD §4.7). 마우스를 올리면 GUI 썸네일을 띄우고, 누르면 그 화면의 GUI 원본 프레임으로 이동한다(2026-11-03 사용자 요청: 화살표 왼쪽에 「GUI 보기」).
   function flipbookScreenList(flipbookId: string, changed = new Set<string>()): string {
     const fb = state?.flipbooks.get(flipbookId);
     if (!fb?.screens.length) return '';
@@ -1532,7 +1532,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     return `<ul class="fb-screen-list">${fb.screens.map(s => {
       const tag = tags.get(s.uid);
       const hash = thumbOf(s.uid);
-      return `<li class="fb-screen" data-action="fb-screen-track" data-uid="${esc(s.uid)}"${hash ? ` data-thumb="${esc(hash)}"` : ''} title="${COPY.trackList006}"><span class="id-tag">${esc(s.code)}</span><span class="name">${esc(s.name)}</span>${tag ? `<span class="chip" style="--c:${esc(tag.color)}">${esc(tag.name)}</span>` : ''}${changed.has(s.uid) ? `<span class="review-dot" role="img" title="${COPY.uiApp193}" aria-label="${COPY.uiApp193}"></span>` : ''}${CHEVRON_RIGHT_ICON}</li>`;
+      return `<li class="fb-screen" data-action="fb-screen-gui" data-uid="${esc(s.uid)}"${hash ? ` data-thumb="${esc(hash)}"` : ''}><span class="id-tag">${esc(s.code)}</span><span class="name">${esc(s.name)}</span>${tag ? `<span class="chip" style="--c:${esc(tag.color)}">${esc(tag.name)}</span>` : ''}${changed.has(s.uid) ? `<span class="review-dot" role="img" title="${COPY.uiApp193}" aria-label="${COPY.uiApp193}"></span>` : ''}<span class="fb-screen-go">${COPY.fbScreenGui}</span>${CHEVRON_RIGHT_ICON}</li>`;
     }).join('')}</ul>`;
   }
 
@@ -3138,10 +3138,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'renumber-cancel': renumberArmed = false; renderDetail(); break;
       case 'text-open': textOpen = true; flowOpen = false; pdfOpen = false; pasteOpen = false; renderAll(); root.querySelector<HTMLElement>('.text-view .rich-editor')?.focus(); break;
       case 'text-close': textOpen = false; flowOpen = false; pdfOpen = false; pasteOpen = false; renderAll(); break;
-      case 'fb-screen-track': {
-        const fb = selectedEntries('UI').length === 1 ? state?.flipbooks.get(selectedEntries('UI')[0].flipbookId ?? '') : undefined;
-        const screen = fb?.screens.find(s => s.uid === el.dataset.uid);
-        if (screen) trackList.open(screen.uid, screen.name);
+      case 'fb-screen-gui': {
+        const source = el.dataset.uid ? state?.screens.get(el.dataset.uid)?.source : null;
+        if (source) bridge.send({ type: 'revealNode', nav: ++navSeq, nodeId: source.nodeId });
+        else notify('error', COPY.controller015);
         break;
       }
       case 'fb-dismiss-deleted': if (el.dataset.id) bridge.send({ type: 'dismissDeletedAlert', id: el.dataset.id }); break;

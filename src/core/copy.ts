@@ -910,6 +910,7 @@ export const COPY = {
   trackList004: '이 화면이 든 플로우가 없습니다.',
   trackList005: '닫기',
   trackList006: '화면 사용처',
+  fbScreenGui: 'GUI 보기',
   // GUI 목록 탭 — src/ui/pasteView.ts
   paste001: 'GUI 목록',
   paste002: '카테고리',
