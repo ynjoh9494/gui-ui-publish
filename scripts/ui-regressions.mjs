@@ -15,7 +15,7 @@ await page.addInitScript(() => {
   // before the UI can mistake them for Main responses with the same type.
   window.addEventListener('message', event => {
     const message = event.data?.pluginMessage;
-    if (message?.type === 'retry') window.retryRequests++;
+    if (message?.type === 'retry') { window.retryRequests++; window.lastRetry = message; }
     if (message?.type === 'thumbnails' && !('items' in message)) {
       window.requests.push(message);
       event.stopImmediatePropagation();
@@ -151,7 +151,16 @@ try {
   assert.equal(await page.evaluate(() => window.retryRequests), 0, 'reopening never automatically resumes canvas writes');
   await page.locator('.recovery-status [data-action=retry]').click();
   await page.waitForFunction(() => window.retryRequests === 1);
+  assert.equal(await page.evaluate(() => window.lastRetry.reconcile), undefined, 'the banner retry never starts the full re-sync');
+  assert.equal(await page.locator('.recovery-list').count(), 0);
+  await page.locator('.recovery-status [data-action=recovery-toggle]').click();
+  const row = page.locator('.recovery-status .recovery-item');
+  await row.waitFor();
+  assert.equal(await row.count(), 1);
+  assert.deepEqual((await row.innerText()).split('\n'), ['GUI', 'screen', '반영 도중 중단됨']);
   await page.screenshot({ path: 'tmp/safety-pending-preview.png' });
+  await page.locator('.recovery-status [data-action=recovery-toggle]').click();
+  await page.locator('.recovery-list').waitFor({ state: 'detached' });
   assert.deepEqual(errors, []);
   console.log('UI regressions: 100 images, 1 request, 0 list replacements; reset releases all Blob URLs');
   console.log('UI regressions: 26 stale destinations excluded; 1 pending GUI job shown, retry requires a click');
