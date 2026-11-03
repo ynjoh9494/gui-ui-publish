@@ -321,7 +321,7 @@ test('새 제목·본문 레이어는 슬롯에 있던 텍스트의 서식을 �
       assert.equal(node.chars[0].font.family, 'Pretendard');
       assert.equal(node.fontSize, 14);
       assert.deepEqual(node.lineHeight, { unit: 'PIXELS', value: 20 });
-      assert.deepEqual(node.fills, [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }]);
+      assert.deepEqual(node.fills, [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }]);
     }
     return groups;
   };

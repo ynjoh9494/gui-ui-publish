@@ -246,16 +246,16 @@ test('Figma red and bold round trip and red removal resets to black', async () =
   await writeRichText(node, parseRichText('plain <red>**red**</red> end'));
   const read = readRichText(node);
   assert.equal(md(read), 'plain <red>**red**</red> end');
-  assert.deepEqual(colors[0][0].color, { r: 0, g: 0, b: 0 });
+  assert.deepEqual(colors[0][0].color, { r: 0.2, g: 0.2, b: 0.2 });
   assert.equal(colors[6][0].color.r, 214 / 255);
   await writeRichText(node, parseRichText('plain **red** end'));
-  assert.ok(colors.slice(0, node.text.length).every(c => c[0].color.r === 0 && c[0].color.g === 0 && c[0].color.b === 0));
+  assert.ok(colors.slice(0, node.text.length).every(c => c[0].color.r === 0.2 && c[0].color.g === 0.2 && c[0].color.b === 0.2));
   assert.equal(md(readRichText(node)), 'plain **red** end');
 });
 
 
 test('plain text always becomes black regardless of inherited fills, even without red markup', async () => {
-  const black = [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }];
+  const black = [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }];
   for (const initial of [
     [{ type: 'SOLID', color: { r: 0, g: 0, b: 1 } }],
     [{ type: 'SOLID', color: { r: 1, g: 0, b: 0 } }],

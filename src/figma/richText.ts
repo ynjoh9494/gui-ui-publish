@@ -3,7 +3,7 @@ import { isRed } from '../core/richText.ts';
 import type { RichParagraph } from '../core/richText.ts';
 
 // 텍스트 편집 탭: 캔버스에서 고른 텍스트 레이어 하나를 읽고 쓴다. 글꼴·크기·행간은 레이어 것을 그대로 두고
-// 내용, 목록(글머리표)·들여쓰기, 굵기와 색을 적용한다. 빨간 범위 외에는 검은색으로 쓴다. 목록 기호는 글자로 쓰지 않고 Figma 목록 서식을 쓴다.
+// 내용, 목록(글머리표)·들여쓰기, 굵기와 색을 적용한다. 빨간 범위 외에는 #333333으로 쓴다. 목록 기호는 글자로 쓰지 않고 Figma 목록 서식을 쓴다.
 
 export const BOLD_STYLE = /bold|black|heavy/i;
 // 굵은 글씨로 쓸 같은 글꼴 계열의 스타일. 앞에서부터 불러올 수 있는 것을 쓴다.
@@ -81,7 +81,7 @@ export function applyRichText(node: TextNode, paragraphs: RichParagraph[], { reg
   const text = paragraphs.map(p => p.text).join('\n');
   node.characters = text;
   if (!text.length) return;
-  node.setRangeFills(0, text.length, [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }]);
+  node.setRangeFills(0, text.length, [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }]);
   node.setRangeFontName(0, text.length, regular);
   node.setRangeListOptions(0, text.length, { type: 'NONE' });
   node.setRangeIndentation(0, text.length, 0);
