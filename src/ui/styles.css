@@ -420,16 +420,20 @@ button.link.danger { color: var(--danger); }
 .review-dot.none { background: var(--border); }
 .review-count { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text); }
 .review-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 4px; }
-/* UI Flipbook 상세: 위(썸네일·이력)와 아래(확인 완료 입력, 항상 표시)로 나눈다. */
+/* UI Flipbook 상세: 한 영역이 스크롤한다. 상태·코멘트·확인 완료는 히스토리 모달에 있다(2026-11-03 사용자 요청). */
 .detail.flipbook-detail { display: flex; flex-direction: column; overflow: hidden; padding: 0; }
 .fb-top { flex: 1 1 auto; min-height: 80px; overflow: auto; padding: 0 10px 8px; }
-.fb-bottom { flex: 0 1 auto; max-height: 62%; overflow: auto; padding: 8px 10px 0; border-top: 1px solid var(--border); background: var(--bg); }
-.fb-bottom.flagged { background: color-mix(in srgb, var(--danger) 5%, var(--bg)); }
-.fb-bottom .review-title { display: flex; align-items: center; gap: 6px; margin: 0; }
-.fb-bottom .review-form { display: grid; gap: 2px; margin-top: 4px; }
-.fb-bottom .review-form textarea { resize: vertical; }
-/* 내용이 길어도 확인 완료 버튼은 아래 영역 맨 아래에 보인다. */
-.fb-bottom .review-actions { position: sticky; bottom: 0; display: flex; justify-content: flex-end; padding: 6px 0 8px; background: inherit; }
+/* 히스토리 모달: History 목록 → (수정된 화면) → 상태·코멘트 → 닫기·확인 완료 */
+.history-dialog { display: flex; flex-direction: column; max-width: 560px; }
+.history-dialog h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-dialog .history { flex: 0 1 auto; min-height: 0; max-height: 40vh; overflow: auto; }
+.history-dialog .history:empty { display: none; }
+.history-review { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); }
+.history-dialog .history:empty + .history-review { margin-top: 0; padding-top: 0; border-top: 0; }
+.history-review .review-title { display: flex; align-items: center; gap: 6px; margin: 0; }
+.history-review .review-title .template-help { margin-left: 2px; }
+.history-review .review-form { display: grid; gap: 2px; margin-top: 4px; }
+.history-review .review-form textarea { resize: vertical; }
 .review-screens { list-style: none; margin: 0 0 4px; padding: 0; }
 .review-screens li { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
 .review-screens .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -439,13 +443,13 @@ button.link.danger { color: var(--danger); }
 .thumbs figure { margin: 0; width: 240px; max-width: 100%; }
 .thumbs img, .thumbs .thumb-empty { display: flex; align-items: center; justify-content: center; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: contain; background: #000; border-radius: 4px; color: #aaa; font-size: 11px; }
 .thumbs figcaption { display: flex; align-items: center; gap: 4px; margin-top: 3px; font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-/* 화면 썸네일: 왼쪽 위에 상태 태그·알림 뱃지, 캡션 오른쪽 >(누르면 추적 목록 팝업) */
-.fb-screen { cursor: pointer; }
-.fb-screen .thumb-box { position: relative; }
-.fb-screen .thumb-state { position: absolute; left: 4px; top: 4px; display: flex; align-items: center; gap: 3px; pointer-events: none; }
-.fb-screen figcaption .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.fb-screen figcaption svg { flex: none; color: var(--muted); }
-.fb-screen:hover figcaption svg { color: var(--text); }
+/* 플립북에 들어 있는 화면 목록(2026-11-03 사용자 요청: 그리드 대신 목록): 한 줄에 ID·이름·상태 태그·빨간 점·>(누르면 화면 사용처 팝업), 마우스를 올리면 썸네일 */
+.fb-screen-list { list-style: none; margin: 2px 0 0; padding: 0; }
+.fb-screen { display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 4px; border-radius: 4px; cursor: pointer; }
+.fb-screen:hover { background: var(--bg2); }
+.fb-screen .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-screen svg { flex: none; color: var(--muted); }
+.fb-screen:hover svg { color: var(--text); }
 /* 상세 맨 위 「삭제된 화면」 경고 */
 /* 이전 형식 플립북 안내(2026-11-02)는 「삭제된 화면」 경고와 같은 모양이다(반영되지 않아 할 일이 있는 상태). */
 .deleted-alert, .legacy-alert { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 6px 8px; border: 1px solid var(--danger); border-radius: 5px; color: var(--danger); }
@@ -490,6 +494,9 @@ button.link.danger { color: var(--danger); }
 .title-head .icon-button:hover, .title-head .icon-button[aria-pressed="true"] { color: var(--text); }
 /* 목록에서 삭제(2026-11-02): 빼는 동작은 빨간 글자(템플릿 목록의 해제·삭제와 같다). */
 .title-head .remove-text { flex: none; color: var(--danger); }
+/* 플립북 상세 제목 줄 오른쪽 버튼: 히스토리 · 목록에서 삭제 · 적용하기(2026-11-03 사용자 요청) */
+.title-actions { display: flex; flex: none; align-items: center; gap: 4px; }
+.history-button { display: inline-flex; align-items: center; gap: 5px; }
 /* 새 플립북 상세: 머리 「플립북 편집」, 그 아래 페이지·Section·제목을 한 줄씩, 아래 화면 선택이 남은 높이를 쓴다. */
 /* 좁으면 버튼을 제목 아래 줄로 내린다. 제목·설명이 한두 글자씩 접히지 않게 한다. */
 .edit-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
@@ -822,25 +829,13 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .tabs .mode-switch:hover:not(:disabled) { background: var(--bg2); }
 .tabs .mode-switch svg { flex: none; }
 
-/* 플립북 관리 정보: Screen ID와 거기서 정해지는 Chapter를 한 줄에, 프레임 이름 줄 오른쪽에 「적용」(2026-11-03 사용자 요청) */
+/* 플립북 관리 정보: Screen ID와 거기서 정해지는 Chapter를 한 줄에(2026-11-03 사용자 요청) */
 .identity-pair { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 8px; }
 .identity-pair > label { min-width: 0; }
-.identity-foot { display: flex; align-items: center; gap: 8px; }
-.identity-foot .note { flex: 1; min-width: 0; }
-.identity-foot button { flex: none; }
 .fb-identity { padding-bottom: 6px; border-bottom: 1px solid var(--border); }
-/* 화면·History 접기: 제목 줄 오른쪽에 확인이 필요한 화면의 빨간 점 */
+/* 화면 목록 접기: 제목 줄 오른쪽에 확인이 필요한 화면의 빨간 점 */
 details.fb-fold > summary .review-dot { margin-left: 2px; }
-details.fb-fold .thumbs { margin-top: 2px; }
-/* 아래 확인 영역의 맨 아래 줄: 왼쪽 상태·코멘트 접기, 오른쪽 「확인 완료」 */
-.fb-bottom .review-actions { justify-content: space-between; gap: 8px; }
-.fold-toggle { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 4px 3px 0; border: 0; background: none; color: var(--text); font-weight: 600; }
-.fold-toggle:hover:not(:disabled) { background: none; }
-.fold-toggle .dropdown-caret { margin-left: 0; transform: rotate(-90deg); transition: transform .15s; }
-.fold-toggle[aria-expanded="true"] .dropdown-caret { transform: none; }
-.fb-bottom .review-title .template-help { margin-left: 2px; }
 .fb-identity [data-identity-chapter], .new-place [data-identity-chapter] { background: var(--bg); color: var(--muted); }
-.fb-identity [data-identity-frame], .new-place [data-identity-frame] { overflow-wrap: anywhere; }
 
 .category-field > select { margin-top: 2px; }
 

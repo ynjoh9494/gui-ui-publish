@@ -42,12 +42,16 @@ try {
   assert.equal(await page.locator('[data-identity-chapter]').inputValue(), 'Live');
   assert.equal(await page.locator('[data-identity-chapter]').isDisabled(), true);
   assert.equal(await page.locator('[data-input=fb-screen-id]').inputValue(), 'ST_LI_POLICY');
-  const saveIsPrimary = () => page.locator('[data-action=fb-identity-save]').evaluate(b => b.classList.contains('primary'));
-  assert.equal(await saveIsPrimary(), false, 'nothing to apply yet');
+  const save = page.locator('[data-action=fb-identity-save]');
+  assert.equal(await save.innerText(), '적용하기');
+  assert.equal(await save.isDisabled(), true, 'nothing to apply yet');
   await page.locator('[data-input=fb-page-title]').fill('A title without a dash');
-  assert.equal(await saveIsPrimary(), true, 'unsaved input highlights 적용');
+  assert.equal(await save.isDisabled(), false, 'unsaved input enables 적용하기');
+  await page.locator('[data-input=fb-page-title]').fill('Policy');
+  assert.equal(await save.isDisabled(), true, 'typing the saved title back disables 적용하기 again');
+  await page.locator('[data-input=fb-page-title]').fill('A title without a dash');
   await page.locator('[data-input=fb-screen-id]').fill('ST_LI_POLICY_05');
-  assert.equal(await page.locator('[data-identity-frame]').innerText(), 'ST_LI_POLICY_05 \u00b7 A title without a dash');
+  assert.equal(await page.locator('[data-identity-frame]').count(), 0, 'no frame-name preview row');
   await page.locator('[data-action=fb-identity-save]').click();
   await page.waitForFunction(() => window.requests.at(-1)?.type === 'updateFlipbookIdentity');
   assert.deepEqual(await page.evaluate(() => window.requests.at(-1)), { type: 'updateFlipbookIdentity', id: 'fb', title: 'A title without a dash', screenId: 'ST_LI_POLICY_05', rev: 1 });
@@ -65,5 +69,5 @@ try {
   // 안내 화면(release/screens)은 배포 직전에만 갱신하므로 검사 화면은 tmp에 남긴다.
   mkdirSync('tmp/walkthrough', { recursive: true });
   await page.locator('#app').screenshot({ path: 'tmp/walkthrough/ui-identity.png' });
-  console.log('Identity UI: automatic Chapter/policy ID, editable ID/title, frame preview and title-only double click passed');
+  console.log('Identity UI: automatic Chapter/policy ID, editable ID/title, 적용하기 enabled only with changes and title-only double click passed');
 } finally { await browser.close(); }

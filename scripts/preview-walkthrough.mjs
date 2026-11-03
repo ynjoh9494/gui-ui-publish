@@ -479,10 +479,12 @@ try {
   // 화면 편집은 없다(2026-10-29 사용자 결정: 화면은 캔버스·GUI 목록에서 넣고 뺀다). 상세에는 들어 있는 화면 수만 보인다.
   assert.equal(await app.locator('[data-action=fb-edit-screens]').count(), 0, '플립북 상세에 화면 편집이 없다');
   assert.match(await app.locator('.detail .fb-screens-head').innerText(), /화면 1개/);
-  // 상세의 주 기능은 Page title·Screen ID이고, 들어 있는 화면과 상태·코멘트는 처음에 접혀 있다(2026-11-03 사용자 요청).
-  assert.equal(await app.locator('.detail details[data-fold=screens]').evaluate(d => d.open), false, '들어 있는 화면은 접혀 있다');
-  assert.equal(await app.locator('.fb-bottom [data-action=fb-review-toggle]').getAttribute('aria-expanded'), 'false', '상태·코멘트는 접혀 있다');
-  assert.equal(await app.locator('.fb-bottom [data-field=description]').count(), 0, '접혀 있으면 코멘트 입력을 그리지 않는다');
+  // 제목 줄 오른쪽은 [히스토리] [목록에서 삭제] [적용하기]이고, 들어 있는 화면은 펼친 목록이다. 상태·코멘트는 상세에 없다(2026-11-03 사용자 요청).
+  assert.deepEqual(await app.locator('.detail .title-actions button').allInnerTexts(), ['히스토리', '목록에서 삭제', '적용하기']);
+  assert.equal(await app.locator('.detail [data-action=fb-identity-save]').isDisabled(), true, '수정사항이 없으면 적용하기를 누를 수 없다');
+  assert.equal(await app.locator('.detail details[data-fold=screens]').evaluate(d => d.open), true, '들어 있는 화면은 펼쳐 둔다');
+  assert.equal(await app.locator('.detail .fb-screen-list .fb-screen').count(), 1, '화면은 목록 줄로 보여 준다');
+  assert.equal(await app.locator('.detail [data-field=description]').count(), 0, '상세에 코멘트 입력이 없다');
   // 기존 플립북도 드래그해 다른 Section으로 옮긴다(2026-10-22). 만들기 전까지는 목록에서만 옮기고, 캔버스 배치에 반영할지 묻는다.
   {
     const groupOfRow = name => app.locator('.list .section-group').filter({ has: page.locator('.row:not(.new-row) .name', { hasText: name }) }).locator('.section-label').innerText();
@@ -560,16 +562,19 @@ try {
   const groupNames = await app.locator('.group-head').allInnerTexts();
   assert.ok(['UI 플립북', 'UI 두 번째 페이지'].every(page => groupNames.some(name => name.includes(page))), '페이지별로 묶는다');
   await app.locator('.row').filter({ hasText: initialName }).first().click();
-  // 플립북을 고르면 들어 있는 화면의 GUI 썸네일을 보여 준다.
-  // 접혀 있어도 썸네일은 미리 받아 둔다.
-  await app.locator('.detail .thumbs img').waitFor({ state: 'attached' });
+  // 플립북을 고르면 들어 있는 화면 목록을 보여 주고, 줄에 마우스를 올리면 GUI 썸네일을 띄운다.
+  await app.locator('.detail .fb-screen-list .fb-screen').first().hover();
+  await app.locator('.thumb-hover img').waitFor();
+  await app.locator('.detail h2').hover();
   assert.equal(await app.locator('.detail [data-field=workerId]').count(), 0, '작업자 입력이 없다');
-  // 오른쪽 아래 확인 줄은 수정된 화면이 없어도 항상 보이며, 접힌 줄에 기본 상태 「현행」을 보여 준다.
-  await app.locator('.detail .fb-bottom').waitFor();
-  assert.equal(await app.locator('.fb-bottom .fold-toggle .chip').innerText(), '현행');
-  assert.equal(await app.locator('.fb-bottom [data-action=mark-reviewed]').evaluate(b => b.classList.contains('primary')), false, '수정된 화면이 없으면 확인 완료는 기본 버튼이다');
-  assert.equal(await app.locator('.fb-bottom [data-action=mark-reviewed]').isEnabled(), true);
+  // 히스토리를 누르면 상태·코멘트 모달을 띄운다. 수정된 화면이 없어도 열리며, 상태는 기본 태그 「현행」이다.
+  await app.locator('.detail [data-action=fb-history-open]').click();
+  await app.locator('.history-overlay .history-dialog').waitFor();
+  assert.equal(await app.locator('.history-overlay .tag-picker summary .chip').innerText(), '현행');
+  assert.equal(await app.locator('.history-overlay [data-action=mark-reviewed]').isEnabled(), true);
   await shot('04-ui-list');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.querySelector('#app .history-overlay')?.hidden);
   // 목록 새로고침: 캔버스 선택만으로는 목록을 맞추지 않으므로 새로고침 아이콘으로 플립북 페이지를 다시 읽고 동기화 시각을 보여 준다.
   {
     await app.locator('.sync-status [data-action=refresh-list]').click();
@@ -909,36 +914,38 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('#app .list .row').length === 1);
   const flagged = app.locator('.row').filter({ has: page.locator('.review-dot') }).first();
   await flagged.click();
-  await app.locator('.detail .fb-bottom.flagged').waitFor();
-  assert.equal(await app.locator('.fb-bottom .review-screens li').count(), 1, '아래 영역에 수정된 화면을 보여 준다');
-  // 썸네일 왼쪽 위 상태: 가장 최근 GUI 배포의 태그(그 배포로 바뀐 화면에만)와 확인이 필요한 화면의 알림 뱃지
-  assert.equal(await app.locator('.detail .thumbs .thumb-state .review-dot').count(), 1, '썸네일에도 수정된 화면을 표시한다');
-  assert.equal(await app.locator('.detail .thumbs .thumb-state .chip').textContent(), '검토', '가장 최근 GUI 배포의 태그를 그 화면에 붙인다');
+  // 확인이 필요한 플립북은 「히스토리」 버튼에 빨간 점이 붙는다.
+  await app.locator('.detail [data-action=fb-history-open] .review-dot').waitFor();
+  // 화면 줄의 상태: 가장 최근 GUI 배포의 태그(그 배포로 바뀐 화면에만)와 확인이 필요한 화면의 빨간 점
+  assert.equal(await app.locator('.detail .fb-screen-list .fb-screen .review-dot').count(), 1, '화면 줄에 수정된 화면을 표시한다');
+  assert.equal(await app.locator('.detail .fb-screen-list .fb-screen .chip').innerText(), '검토', '가장 최근 GUI 배포의 태그를 그 화면에 붙인다');
   await shot('06a-ui-screen-state');
-  // 화면을 누르면 그 화면의 추적 목록 팝업을 연다.
-  assert.equal(await app.locator('.fb-bottom [data-action=mark-reviewed]').evaluate(b => b.classList.contains('primary')), true, '수정된 화면이 있으면 확인 완료를 파란 버튼으로 둔다');
-  await app.locator('.detail .fb-screens-head').click();
-  await app.locator('.detail .thumbs .fb-screen').first().click();
+  // 화면 줄을 누르면 그 화면의 추적 목록 팝업을 연다.
+  await app.locator('.detail .fb-screen-list .fb-screen').first().click();
   await app.locator('.track-list-overlay .track-list-dialog h2').waitFor();
   await page.keyboard.press('Escape');
-  // 상태를 비우면 확인 완료를 막는다(필수). 다시 「현행」을 고르고 코멘트(선택)를 쓴다.
-  await app.locator('.fb-bottom [data-action=fb-review-toggle]').click();
-  await app.locator('.fb-bottom .tag-picker summary').waitFor();
-  await app.locator('.fb-bottom .tag-picker summary').click();
-  await app.locator('.fb-bottom .tag-options [data-action=select-tag][data-id=""]').click();
-  assert.equal(await app.locator('.fb-bottom [data-action=mark-reviewed]').isDisabled(), true, '상태는 필수');
-  await app.locator('.fb-bottom .tag-picker summary').click();
-  await app.locator('.fb-bottom .tag-options [data-action=select-tag]').filter({ hasText: '현행' }).click();
-  await app.locator('.fb-bottom [data-field=description]').fill('콜아웃 위치 확인');
+  // 히스토리 모달에 수정된 화면을 보여 준다. 상태를 비우면 확인 완료를 막는다(필수). 다시 「현행」을 고르고 코멘트(선택)를 쓴다.
+  await app.locator('.detail [data-action=fb-history-open]').click();
+  const modal = app.locator('.history-overlay .history-dialog');
+  await modal.waitFor();
+  assert.equal(await modal.locator('.review-screens li').count(), 1, '모달에 수정된 화면을 보여 준다');
+  await modal.locator('.tag-picker summary').click();
+  await modal.locator('.tag-options [data-action=select-tag][data-id=""]').click();
+  assert.equal(await modal.locator('[data-action=mark-reviewed]').isDisabled(), true, '상태는 필수');
+  await modal.locator('.tag-picker summary').click();
+  await modal.locator('.tag-options [data-action=select-tag]').filter({ hasText: '현행' }).click();
+  await modal.locator('[data-field=description]').fill('콜아웃 위치 확인');
   await shot('06-ui-review');
-  await app.locator('[data-action=mark-reviewed]').click();
+  await modal.locator('[data-action=mark-reviewed]').click();
   await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('확인 완료'));
   await page.waitForFunction(() => document.querySelector('#app .review-count')?.textContent?.includes('확인이 필요한 플립북 0개'));
-  assert.equal(await app.locator('.detail .fb-bottom.flagged').count(), 0, '확인 완료하면 빨간 점이 풀린다');
-  assert.equal(await app.locator('.detail .fb-bottom').count(), 1, '확인 영역은 계속 보인다');
-  assert.equal(await app.locator('.fb-bottom [data-field=description]').inputValue(), '', '코멘트를 비운다');
-  // 확인 완료의 상태·코멘트는 플립북 이력에 남는다.
-  await page.waitForFunction(() => document.querySelector('#app .detail .history')?.textContent?.includes('콜아웃 위치 확인'));
+  assert.equal(await app.locator('.history-overlay').isHidden(), true, '확인 완료하면 모달을 닫는다');
+  assert.equal(await app.locator('.detail [data-action=fb-history-open] .review-dot').count(), 0, '확인 완료하면 빨간 점이 풀린다');
+  // 확인 완료의 상태·코멘트는 플립북 히스토리에 남고, 코멘트 입력은 비운다.
+  await app.locator('.detail [data-action=fb-history-open]').click();
+  await page.waitForFunction(() => document.querySelector('#app .history-overlay .history')?.textContent?.includes('콜아웃 위치 확인'));
+  assert.equal(await app.locator('.history-overlay [data-field=description]').inputValue(), '', '코멘트를 비운다');
+  await app.locator('.history-overlay [data-action=fb-history-close]').click();
   await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('현행(Black)')));
   await app.locator('[data-action=changed-only]').uncheck();
   await page.waitForFunction(() => document.querySelectorAll('#app .list .row').length === 3);

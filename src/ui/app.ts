@@ -57,7 +57,7 @@ const ADMIN_MODE_PANELS: Record<Team, [form: string, title: string][]> = {
 };
 
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
-const WHILE_BUSY = new Set(['recovery-toggle', 'tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel', 'fb-review-toggle']);
+const WHILE_BUSY = new Set(['recovery-toggle', 'tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel', 'fb-history-open', 'fb-history-close']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
 const BEFORE_CHECK = new Set([...WHILE_BUSY, 'switch-mode', 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'category-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'fb-identity-save', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'text-import', 'text-apply',
@@ -192,9 +192,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   function updateNewIdentity(n: NewFlipbook) {
     const info = newIdentity(n);
     const chapter = root.querySelector<HTMLInputElement>('.new-place [data-identity-chapter]');
-    const frame = root.querySelector('.new-place [data-identity-frame]');
     if (chapter) chapter.value = info.chapter;
-    if (frame) frame.textContent = info.frameName;
     const row = root.querySelector<HTMLElement>(`.list-box .new-row[data-key="${CSS.escape(n.key)}"] .name`);
     if (row) row.textContent = info.frameName;
   }
@@ -312,9 +310,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let textTabSent = false;
   // History를 펼친 화면·플립북 ID. 다른 화면으로 옮기면 접힌 채로 시작한다(2026-11-03 사용자 요청).
   let historyOpenId: string | null = null;
-  // UI Flipbook 상세에서 펼친 영역(2026-11-03 사용자 요청: 화면 목록·상태/코멘트는 주 기능이 아니라 접는다).
-  // 처음에는 모두 접혀 있고, 펼친 상태는 다른 플립북을 골라도 유지한다(플러그인을 닫으면 처음으로).
-  const fbOpen = { screens: false, history: false, review: false };
+  // UI Flipbook 상세의 「화면 N개」 펼침(처음에는 펼침, 접으면 다른 플립북을 골라도 접힌 채로, 플러그인을 닫으면 처음으로)과 히스토리 모달 표시(2026-11-03 사용자 요청)
+  let fbScreensOpen = true;
+  let historyModal = false;
   // 마지막으로 히스토리를 요청한 화면·플립북 ID. 같은 ID를 거듭 요청하지 않는다.
   let historyAsked: string | null = null;
   // 「변경 사항」에서 펼쳐 보인, 보이는 값이 같은 변경의 줄 수. 지금 고른 화면에만 두고 기억하지 않는다:
@@ -357,6 +355,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     <div class="overlay" hidden></div>
     <div class="overlay bulk-overlay" hidden></div>
     <div class="overlay arrange-overlay" hidden></div>
+    <div class="overlay history-overlay" hidden></div>
     <div class="resize-handle" title="${COPY.uiApp208}" aria-label="${COPY.uiApp208}"></div>`;
   const $ = (sel: string) => root.querySelector(sel) as HTMLElement;
   bridge = windowCollapse(bridge, root, () => mode, events.signal);
@@ -1520,20 +1519,17 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       placeholder.replaceWith(img);
     }
   }
-  // changed: 확인이 필요한(다시 배포된) 화면. 썸네일 왼쪽 위의 상태에 알림 뱃지를 붙인다(2026-10-29 사용자 결정, PRD 1.2).
-  // 상태 태그는 플립북이 가장 최근에 받은 태그를 만든 화면에만 붙인다(PRD §4.7). 화면을 누르면 그 화면의 추적 목록 팝업을 연다(PRD 1.3).
-  function flipbookThumbs(flipbookId: string, changed = new Set<string>()): string {
+  // 플립북에 들어 있는 화면 목록(2026-11-03 사용자 요청: 썸네일 그리드 대신 목록). 한 줄에 Screen ID·이름, 오른쪽에 상태 태그와 확인이 필요한 화면의 빨간 점을 둔다.
+  // 상태 태그는 플립북이 가장 최근에 받은 태그를 만든 화면에만 붙인다(PRD §4.7). 마우스를 올리면 GUI 썸네일을 띄우고, 누르면 그 화면의 화면 사용처 팝업을 연다(PRD 1.3).
+  function flipbookScreenList(flipbookId: string, changed = new Set<string>()): string {
     const fb = state?.flipbooks.get(flipbookId);
     if (!fb?.screens.length) return '';
-    const hashes = fb.screens.map(s => thumbOf(s.uid));
-    requestThumbs(hashes);
     const tags = screenTags(state!, flipbookId);
-    return `<div class="thumbs">${fb.screens.map((s, i) => {
+    return `<ul class="fb-screen-list">${fb.screens.map(s => {
       const tag = tags.get(s.uid);
-      const badge = `${tag ? `<span class="chip" style="--c:${esc(tag.color)}">${esc(tag.name)}</span>` : ''}${changed.has(s.uid) ? `<span class="review-dot" role="img" title="${COPY.uiApp193}" aria-label="${COPY.uiApp193}"></span>` : ''}`;
-      return `<figure class="fb-screen" data-action="fb-screen-track" data-uid="${esc(s.uid)}" title="${COPY.trackList006}"><div class="thumb-box">${thumbImg(hashes[i], s.name)}${badge ? `<span class="thumb-state">${badge}</span>` : ''}</div>
-        <figcaption><span class="id-tag">${esc(s.code)}</span><span class="name">${esc(s.name)}</span>${CHEVRON_RIGHT_ICON}</figcaption></figure>`;
-    }).join('')}</div>`;
+      const hash = thumbOf(s.uid);
+      return `<li class="fb-screen" data-action="fb-screen-track" data-uid="${esc(s.uid)}"${hash ? ` data-thumb="${esc(hash)}"` : ''} title="${COPY.trackList006}"><span class="id-tag">${esc(s.code)}</span><span class="name">${esc(s.name)}</span>${tag ? `<span class="chip" style="--c:${esc(tag.color)}">${esc(tag.name)}</span>` : ''}${changed.has(s.uid) ? `<span class="review-dot" role="img" title="${COPY.uiApp193}" aria-label="${COPY.uiApp193}"></span>` : ''}${CHEVRON_RIGHT_ICON}</li>`;
+    }).join('')}</ul>`;
   }
 
   // 고른 플립북 중 이전 형식 플립북(목록에 있고 프레임이 연결된, 화면 목록을 추적 GUI로 읽지 않는 플립북) ID
@@ -1544,23 +1540,19 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     }).map(e => e.flipbookId!);
   }
 
-  // UI Flipbook 상세: 오른쪽 영역을 위아래로 나눈다(2026-10-20 사용자 결정).
-  // 위: 들어 있는 화면의 GUI 썸네일과 플립북 이력. 아래(항상 표시): 수정된 화면, 상태(필수, 기본 「현행」)·코멘트(선택), 확인 완료.
+  // UI Flipbook 상세(2026-11-03 사용자 요청): 제목 줄 오른쪽에 [히스토리] [목록에서 삭제] [적용하기], 그 아래 Page title, Screen ID·Chapter, 들어 있는 화면 목록.
+  // 상태·코멘트와 확인 완료는 「히스토리」 모달에서 한다(renderHistoryModal).
   function renderFlipbookDetail() {
     const detail = $('.detail');
     const chosen = selectedEntries('UI').filter(e => !!e.flipbookId);
     const entry = current();
     detail.classList.toggle('flipbook-detail', !!state && !!entry?.flipbookId && !!chosen.length);
-    if (!state || !entry?.flipbookId || !chosen.length) { detail.innerHTML = `<p class="empty">${COPY.uiApp217}</p>`; return; }
+    if (!state || !entry?.flipbookId || !chosen.length) { detail.innerHTML = `<p class="empty">${COPY.uiApp217}</p>`; renderHistoryModal(); return; }
     const multi = chosen.length > 1;
-    const drafts = chosen.map(e => draftOf('UI', e));
-    const common = (value: (d: Draft) => string | undefined) => { const values = drafts.map(d => value(d) ?? ''); return values.every(v => v === values[0]) ? values[0] : ''; };
-    const mixed = (value: (d: Draft) => string | undefined) => drafts.some(d => (value(d) ?? '') !== (value(drafts[0]) ?? ''));
     const flagged = chosen.filter(e => needsReview(state!, e.flipbookId!));
-    const changed = new Map<string, ImportedGuiRecord>();
-    if (!multi) for (const r of unreviewed(state, entry.flipbookId)) if ((changed.get(r.uid)?.version ?? -1) < r.version) changed.set(r.uid, r);
-    // 제목 변경(2026-10-21 사용자 요청): 연필을 눌러 고치고 Enter·포커스 이동으로 바꾼다. 비우면 첫 화면 이름으로 돌아간다.
-    // 연결이 끊긴 플립북은 프레임이 없어 반영할 수 없으므로 바꾸지 않는다.
+    const changed = new Set<string>();
+    if (!multi) for (const r of unreviewed(state, entry.flipbookId)) changed.add(r.uid);
+    // 연결이 끊긴 플립북은 프레임이 없어 반영할 수 없으므로 제목·ID를 바꾸지 않는다.
     const fb = state.flipbooks.get(entry.flipbookId);
     const renamable = !multi && !!fb && entry.estimate !== 'missing';
     const heading = `<h2>${esc(entryName(state, entry))}${multi ? ` ${COPY.uiApp046} ${chosen.length - 1}${COPY.uiApp015}` : ''}</h2>`;
@@ -1571,25 +1563,28 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     // 맨 위에 안내와 「새 형식으로 변환」을 둔다. 여러 개를 고르면 고른 것 중 이전 형식 플립북만 함께 바꾼다.
     const legacy = legacyChosen(chosen);
     const legacyAlert = legacy.length ? `<div class="legacy-alert" role="alert"><p>${multi ? `${COPY.legacyAlertMulti} <b>${legacy.length}</b>${COPY.uiApp015}` : COPY.legacyAlert}</p><button data-action="fb-convert-legacy" title="${esc(COPY.legacyConvertHint)}">${COPY.legacyConvert}</button></div>` : '';
-    // 목록에서 삭제(2026-11-02 사용자 결정): 제목 줄 오른쪽 빨간 글자, 한 번 누르면 고른 플립북을 모두 뺀다. 캔버스 프레임은 남는다.
+    // 목록에서 삭제(2026-11-02 사용자 결정): 빨간 글자, 한 번 누르면 고른 플립북을 모두 뺀다. 캔버스 프레임은 남는다.
     // 고른 플립북이 모두 연결 끊김이면 아래 연결 끊김 안내의 「목록에서 삭제」만 둔다.
     const removable = chosen.some(e => e.estimate !== 'missing');
     const removeButton = removable ? `<button class="remove-text" data-action="fb-remove-list" title="${esc(COPY.flipbookRemoveHint)}">${COPY.uiApp237}</button>` : '';
-    let top = `${legacyAlert}${deletedAlert}<div class="detail-head title-head">${heading}${removeButton}</div>`;
+    // 확인이 필요한 플립북이 있으면 「히스토리」에 빨간 점을 붙인다(확인 완료는 히스토리 모달에서 한다).
+    const historyButton = `<button class="history-button" data-action="fb-history-open">${flagged.length ? `<span class="review-dot" role="img" title="${COPY.uiApp193}" aria-label="${COPY.uiApp193}"></span>` : ''}${COPY.fbHistory}</button>`;
+    let draft: { rev: number; title: string; screenId: string } | undefined;
     if (renamable) {
-      let draft = identityDrafts.get(fb.id);
+      draft = identityDrafts.get(fb.id);
       if (!draft || draft.rev !== fb.rev) {
         draft = { rev: fb.rev, title: fb.title, screenId: flipbookIdentity(state, fb).screenId };
         identityDrafts.set(fb.id, draft);
       }
+    }
+    // 적용하기는 저장하지 않은 입력이 있을 때만 누를 수 있다(2026-11-03 사용자 요청).
+    const saveButton = renamable && draft ? `<button class="primary" data-action="fb-identity-save" data-id="${esc(fb.id)}" ${identityDirty(fb, draft) ? '' : 'disabled'}>${COPY.fbIdentitySave}</button>` : '';
+    let top = `${legacyAlert}${deletedAlert}<div class="detail-head title-head">${heading}<div class="title-actions">${historyButton}${removeButton}${saveButton}</div></div>`;
+    if (renamable && draft) {
       const info = flipbookIdentity(state, { ...fb, title: draft.title, screenId: draft.screenId });
-      // 상세의 주 기능(2026-11-03 사용자 요청): Page title 한 줄, Screen ID와 거기서 정해지는 Chapter를 한 줄에 두고,
-      // 적용될 프레임 이름 줄 오른쪽에 「적용」을 둔다. 저장하지 않은 입력이 있으면 「적용」을 파란 버튼으로 보여 준다.
       top += `<div class="fb-identity new-place" data-id="${esc(fb.id)}">
         <label>${COPY.fbPageTitle}<input data-input="fb-page-title" value="${esc(draft.title)}" aria-label="${COPY.fbPageTitle}"></label>
         ${identityPair(`<input data-input="fb-screen-id" value="${esc(draft.screenId)}" placeholder="${esc(COPY.fbIdPlaceholder)}" aria-label="${COPY.fbScreenId}">`, info.chapter)}
-        <div class="identity-foot"><p class="note">${COPY.fbFrameName}: <span data-identity-frame>${esc(info.frameName)}</span></p>
-          <button class="${identityDirty(fb, draft) ? 'primary' : ''}" data-action="fb-identity-save" data-id="${esc(fb.id)}">${COPY.fbIdentitySave}</button></div>
       </div>`;
     }
     // 연결이 끊긴 플립북은 목록에서 삭제할 수 있다. 한 번 누르면 삭제한다(2026-10-20 사용자 결정).
@@ -1597,41 +1592,59 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (unlinked.length) {
       top += `<div class="unlinked">${unlinkedBadge()}<p class="note">${multi ? `${COPY.uiApp238} <b>${unlinked.length}</b>${COPY.uiApp015}` : COPY.uiApp236}</p><button class="danger" data-action="remove-flipbooks">${COPY.uiApp237}</button></div>`;
     }
-    // 들어 있는 화면과 History는 접는다(2026-11-03 사용자 요청). 접혀 있어도 썸네일은 미리 받아 펼치면 바로 보인다.
-    if (!multi) {
-      const fb = state.flipbooks.get(entry.flipbookId);
-      if (fb && entry.estimate !== 'missing') {
-        const dot = changed.size ? `<span class="review-dot" role="img" title="${COPY.uiApp193}" aria-label="${COPY.uiApp193}"></span>` : '';
-        top += `<details class="history-fold fb-fold" data-fold="screens"${fbOpen.screens ? ' open' : ''}><summary class="fb-screens-head"><span class="dropdown-caret" aria-hidden="true"></span><span>${COPY.uiApp205} ${fb.screens.length}${COPY.uiApp015}</span>${dot}</summary>
-          ${fb.screens.length ? flipbookThumbs(entry.flipbookId, new Set(changed.keys())) : `<p class="note">${COPY.uiApp221}</p>`}</details>`;
-      }
-      top += '<div class="history"></div>';
+    // 들어 있는 화면 목록은 처음에 펼쳐 둔다(2026-11-03 사용자 요청). 접으면 다른 플립북을 골라도 접힌 채로 둔다.
+    if (!multi && fb && entry.estimate !== 'missing') {
+      const dot = changed.size ? `<span class="review-dot" role="img" title="${COPY.uiApp193}" aria-label="${COPY.uiApp193}"></span>` : '';
+      top += `<details class="history-fold fb-fold" data-fold="screens"${fbScreensOpen ? ' open' : ''}><summary class="fb-screens-head"><span class="dropdown-caret" aria-hidden="true"></span><span>${COPY.uiApp205} ${fb.screens.length}${COPY.uiApp015}</span>${dot}</summary>
+        ${fb.screens.length ? flipbookScreenList(entry.flipbookId, changed) : `<p class="note">${COPY.uiApp221}</p>`}</details>`;
     }
-    // 아래 확인 영역(2026-11-03 사용자 요청: 상태·코멘트는 접는다): 맨 아래 한 줄에 접기 버튼과 「확인 완료」를 두고, 펼치면 상태·코멘트가 그 위에 열린다.
-    // 「확인 완료」는 늘 입력 아래에 있다. 수정된 화면이 있을 때만 그 위에 알림 제목과 화면 줄을 붙이고 「확인 완료」를 파란 버튼으로 둔다.
-    let bottom = '';
+    // 같은 플립북을 다시 그릴 때(상태 갱신 등)는 스크롤 위치를 유지한다.
+    const prevTop = detail.querySelector<HTMLElement>(`.fb-top[data-id="${CSS.escape(entry.flipbookId)}"]`)?.scrollTop ?? 0;
+    detail.innerHTML = `<div class="fb-top" data-id="${esc(entry.flipbookId)}">${top}</div>`;
+    detail.querySelector<HTMLElement>('.fb-top')!.scrollTop = prevTop;
+    renderHistoryModal();
+  }
+
+  // 「히스토리」 모달(2026-11-03 사용자 요청): 고른 플립북의 History, 수정된 화면, 상태(필수, 기본 「현행」)·코멘트(선택)와 「확인 완료」.
+  // 여러 플립북을 고르면 History 없이 확인이 필요한 개수와 상태·코멘트만 보여 주고 한 번에 확인 완료한다.
+  // 상세를 다시 그릴 때 함께 다시 그린다(태그 선택·추가 등). 입력 중인 코멘트의 커서는 유지한다.
+  function renderHistoryModal() {
+    const overlay = $('.history-overlay');
+    const chosen = state && tab === 'UI' && listTabOpen() && !currentNew() ? selectedEntries('UI').filter(e => !!e.flipbookId) : [];
+    const entry = current();
+    if (!historyModal || !state || !chosen.length || !entry) { historyModal = false; overlay.hidden = true; overlay.innerHTML = ''; return; }
+    const multi = chosen.length > 1;
+    const drafts = chosen.map(e => draftOf('UI', e));
+    const common = (value: (d: Draft) => string | undefined) => { const values = drafts.map(d => value(d) ?? ''); return values.every(v => v === values[0]) ? values[0] : ''; };
+    const mixed = (value: (d: Draft) => string | undefined) => drafts.some(d => (value(d) ?? '') !== (value(drafts[0]) ?? ''));
+    const flagged = chosen.filter(e => needsReview(state!, e.flipbookId!));
+    const changed = new Map<string, ImportedGuiRecord>();
+    if (!multi && entry.flipbookId) for (const r of unreviewed(state, entry.flipbookId)) if ((changed.get(r.uid)?.version ?? -1) < r.version) changed.set(r.uid, r);
+    let notice = '';
     if (multi) {
-      bottom += `<p class="review-title"><span class="review-dot${flagged.length ? '' : ' none'}" aria-hidden="true"></span><span>${COPY.uiApp220} <b>${flagged.length}</b>${COPY.uiApp015}</span></p>`;
+      notice = `<p class="review-title"><span class="review-dot${flagged.length ? '' : ' none'}" aria-hidden="true"></span><span>${COPY.uiApp220} <b>${flagged.length}</b>${COPY.uiApp015}</span></p>`;
     } else if (changed.size) {
       const offset = state.project.utcOffsetMinutes;
-      bottom += `<p class="review-title"><span class="review-dot" aria-hidden="true"></span><b>${COPY.uiApp193}</b>${helpTip(COPY.uiApp215)}</p>
+      notice = `<p class="review-title"><span class="review-dot" aria-hidden="true"></span><b>${COPY.uiApp193}</b>${helpTip(COPY.uiApp215)}</p>
         <ul class="review-screens" aria-label="${COPY.uiApp216}">${[...changed.values()].map(r => `<li><span class="id-tag">${esc(r.code)}</span><span class="name">${esc(r.name)}</span><small>${esc(formatTime(r.committedAt, offset))}</small></li>`).join('')}</ul>`;
     }
     const tagMissing = drafts.some(d => !d.tagId || !state!.tags.get(d.tagId)?.active);
     const commentMixed = multi && mixed(d => d.description);
-    const tagId = common(d => d.tagId);
-    const chosenTag = tagId && !mixed(d => d.tagId) ? state.tags.get(tagId) : undefined;
-    const tagChip = !fbOpen.review && chosenTag?.active ? `<span class="chip" style="--c:${esc(chosenTag.color)}">${esc(chosenTag.name)}</span>` : '';
-    if (fbOpen.review) bottom += `<div class="review-form">${tagField('UI', drafts[0], multi, tagId, mixed(d => d.tagId), COPY.uiApp223)}
-      <label class="wide">${COPY.uiApp224}<textarea data-field="description" rows="2" placeholder="${commentMixed ? esc(COPY.uiApp175) : ''}">${esc(common(d => d.description))}</textarea></label></div>`;
-    bottom += `<div class="review-actions"><button class="fold-toggle" data-action="fb-review-toggle" aria-expanded="${fbOpen.review}"><span class="dropdown-caret" aria-hidden="true"></span><span>${COPY.fbReviewFold}</span>${tagChip}</button>
-      <button class="${flagged.length ? 'primary' : ''}" data-action="mark-reviewed" ${tagMissing ? 'disabled' : ''}>${COPY.uiApp214}</button></div>`;
-    // 같은 플립북을 다시 그릴 때(접기·상태 갱신)는 위 영역의 스크롤 위치를 유지한다.
-    const prevTop = detail.querySelector<HTMLElement>(`.fb-top[data-id="${CSS.escape(entry.flipbookId)}"]`)?.scrollTop ?? 0;
-    detail.innerHTML = `<div class="fb-top" data-id="${esc(entry.flipbookId)}">${top}</div><section class="fb-bottom${flagged.length ? ' flagged' : ''}" aria-label="${COPY.uiApp214}">${bottom}</section>`;
-    if (tagMissing) detail.querySelector('.fb-bottom summary[data-required-field="tagId"]')?.classList.add('input-error');
+    const typing = overlay.querySelector<HTMLTextAreaElement>('[data-field="description"]');
+    const typed = typing && document.activeElement === typing ? { start: typing.selectionStart, end: typing.selectionEnd } : null;
+    const name = `${esc(entryName(state, entry))}${multi ? ` ${COPY.uiApp046} ${chosen.length - 1}${COPY.uiApp015}` : ''}`;
+    overlay.innerHTML = `<div class="dialog history-dialog" role="dialog" aria-modal="true" aria-label="${COPY.fbHistory}">
+      <h2>${COPY.fbHistory} · ${name}</h2>
+      ${multi ? '' : '<div class="history"></div>'}
+      <section class="history-review${flagged.length ? ' flagged' : ''}" aria-label="${COPY.uiApp214}">${notice}
+        <div class="review-form">${tagField('UI', drafts[0], multi, common(d => d.tagId), mixed(d => d.tagId), COPY.uiApp223)}
+          <label class="wide">${COPY.uiApp224}<textarea data-field="description" rows="2" placeholder="${commentMixed ? esc(COPY.uiApp175) : ''}">${esc(common(d => d.description))}</textarea></label></div></section>
+      <div class="dialog-actions"><button data-action="fb-history-close">${COPY.trackList005}</button><button class="primary" data-action="mark-reviewed" ${tagMissing ? 'disabled' : ''}>${COPY.uiApp214}</button></div></div>`;
+    overlay.hidden = false;
+    if (tagMissing) overlay.querySelector('summary[data-required-field="tagId"]')?.classList.add('input-error');
+    const field = overlay.querySelector<HTMLTextAreaElement>('[data-field="description"]');
+    if (field && typed) { field.focus(); field.setSelectionRange(typed.start, typed.end); }
     renderHistory();
-    detail.querySelector<HTMLElement>('.fb-top')!.scrollTop = prevTop;
   }
 
   // 플립북 Screen ID 입력과 그 ID에서 정해지는 Chapter(바꿀 수 없음)를 한 줄에 둔다. 기존 플립북 상세와 새 플립북 편집이 같이 쓴다.
@@ -1717,7 +1730,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   }
 
   function renderHistory() {
-    const box = root.querySelector('.detail .history');
+    // 플립북 History는 히스토리 모달 안에 그린다.
+    const box = root.querySelector(team() === 'UI' ? '.history-overlay .history' : '.detail .history');
     const entry = current();
     const id = team() === 'GUI' ? entry?.screenId : entry?.flipbookId;
     if (!box || !entry || !id) return;
@@ -1729,11 +1743,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       <tr><td><span class="team ${r.team}">${r.team}</span></td><td>${esc(r.at)}</td>
       <td><span class="chip" style="--c:${esc(r.tag.color)}">${esc(r.tag.name)}</span></td><td>${esc(r.description)}${r.corrected ? ` <i>${COPY.uiApp072}</i>` : ''}</td><td>${esc(r.worker)}</td></tr>`).join('')}
       </tbody></table>` : '';
-    // 플립북 History도 접는다(2026-11-03 사용자 요청). 펼친 상태는 다른 플립북을 골라도 유지한다.
-    if (team() !== 'GUI') {
-      box.innerHTML = table ? `<details class="history-fold fb-fold" data-fold="history"${fbOpen.history ? ' open' : ''}><summary><span class="dropdown-caret" aria-hidden="true"></span><span>${COPY.uiApp071}</span></summary>${table}</details>` : '';
-      return;
-    }
+    if (team() !== 'GUI') { box.innerHTML = table; return; }
     // GUI 화면의 History는 접어서 상세 아래쪽에 고정하고, 펼치면 지난 배포 썸네일 → 히스토리 목록 순으로 보인다(2026-11-03 사용자 요청).
     const thumb = historyThumb(entry);
     box.innerHTML = thumb || table
@@ -1870,7 +1880,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         <label>${COPY.uiApp338}${sectionField}</label>
         <label>${COPY.fbPageTitle}<input class="title-input" data-input="new-title" data-key="${esc(n.key)}" value="${esc(title)}" placeholder="${esc(auto)}" aria-label="${COPY.fbPageTitle}"></label>
         ${identityPair(`<input data-input="new-screen-id" data-key="${esc(n.key)}" value="${esc(identity.screenId)}" placeholder="${esc(COPY.fbIdPlaceholder)}" aria-label="${COPY.fbScreenId}">`, identity.chapter)}
-        <p class="note">${COPY.fbFrameName}: <span data-identity-frame>${esc(identity.frameName)}</span></p>
       </div>
       ${screenBrowser(n)}`;
     renderCreateScreenList();
@@ -2862,7 +2871,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         break;
       case 'create-page-manage': tab = 'ADMIN'; adminOpen = COPY.uiApp107; renderAll(); bridge.send({ type: 'templateInfo', templateId: templatePick ?? undefined }); break;
       case 'register-existing': bridge.send({ type: 'registerFlipbooks' }); break;
-      case 'fb-review-toggle': fbOpen.review = !fbOpen.review; renderFlipbookDetail(); break;
+      case 'fb-history-open': historyModal = true; renderHistoryModal(); root.querySelector<HTMLElement>('.history-overlay [data-action="mark-reviewed"]')?.focus(); break;
+      case 'fb-history-close': historyModal = false; renderHistoryModal(); break;
       case 'fb-identity-save': {
         const fb = state?.flipbooks.get(el.dataset.id!);
         const draft = fb && identityDrafts.get(fb.id);
@@ -3071,8 +3081,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         if (s) navigate('source', s);
         break;
       }
-      case 'begin-add': addMode = el.dataset.kind as typeof addMode; editMode = null; renderDetail(); (root.querySelector('.detail .addable input') as HTMLInputElement | null)?.focus(); break;
-      case 'begin-edit': editMode = el.dataset.kind as typeof editMode; addMode = null; renderDetail(); (root.querySelector('.detail .addable input') as HTMLInputElement | null)?.focus(); break;
+      case 'begin-add': addMode = el.dataset.kind as typeof addMode; editMode = null; renderDetail(); (root.querySelector('.history-overlay:not([hidden]) .addable input, .detail .addable input') as HTMLInputElement | null)?.focus(); break;
+      case 'begin-edit': editMode = el.dataset.kind as typeof editMode; addMode = null; renderDetail(); (root.querySelector('.history-overlay:not([hidden]) .addable input, .detail .addable input') as HTMLInputElement | null)?.focus(); break;
       case 'cancel-add': addMode = null; editMode = null; renderDetail(); break;
       case 'prepare': {
         // 누락이 있으면 확인 창 대신 첫 누락 항목으로 간다. GUI 작업자가 비었으면 그 입력란으로 간다(2026-11-03 사용자 요청).
@@ -3537,9 +3547,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   // 설정 아코디언: 하나를 열면 나머지를 접는다. toggle 이벤트는 버블링되지 않아 캡처로 받는다.
   on('toggle', ev => {
     const details = ev.target as HTMLDetailsElement;
-    // UI Flipbook 상세의 화면·History 접기: 펼친 상태만 기억한다(내용은 이미 그려져 있다).
+    // UI Flipbook 상세의 화면 목록 접기: 펼친 상태만 기억한다(내용은 이미 그려져 있다).
     const fold = details.classList?.contains('fb-fold') ? details.dataset.fold : undefined;
-    if (fold === 'screens' || fold === 'history') { fbOpen[fold] = details.open; return; }
+    if (fold === 'screens') { fbScreensOpen = details.open; return; }
     // History: 처음 펼칠 때 썸네일 이미지를 넣으려고 다시 그린다.
     if (details.classList?.contains('history-fold')) {
       const shownId = team() === 'GUI' ? current()?.screenId : current()?.flipbookId;
@@ -3569,6 +3579,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const el = ev.target as HTMLElement;
     if (bulk && ev.key === 'Escape' && !bulk.submitting) { ev.preventDefault(); bulk = null; renderBulk(); return; }
     if (newDialog && ev.key === 'Escape') { ev.preventDefault(); newDialog = null; renderNewDialog(); return; }
+    // 히스토리 모달: 태그 목록을 펼쳐 두었으면 그것부터 닫는다.
+    if (historyModal && ev.key === 'Escape' && !ev.isComposing) {
+      ev.preventDefault();
+      const picker = root.querySelector<HTMLDetailsElement>('.history-overlay .tag-picker[open]');
+      if (picker) picker.open = false; else { historyModal = false; renderHistoryModal(); }
+      return;
+    }
     // 관리의 템플릿: 연결된 항목 줄은 Enter·Space로도 연결된 레이어를 보여 준다.
     if (el.classList.contains('template-item') && el.dataset.action && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); el.click(); return; }
     // 새 플립북 행: Enter·Space로 고르고, Alt+↑↓로 자리를 옮기며, Delete로 지운다.
@@ -3699,10 +3716,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         else draft.screenId = el.value;
         const info = flipbookIdentity(state!, { ...fb, title: draft.title, screenId: draft.screenId.trim().toUpperCase() });
         const chapter = root.querySelector<HTMLInputElement>('[data-identity-chapter]');
-        const name = root.querySelector('[data-identity-frame]');
         if (chapter) chapter.value = info.chapter;
-        if (name) name.textContent = info.frameName;
-        root.querySelector('.fb-identity [data-action="fb-identity-save"]')?.classList.toggle('primary', identityDirty(fb, draft));
+        const save = root.querySelector<HTMLButtonElement>('.detail [data-action="fb-identity-save"]');
+        if (save) save.disabled = !identityDirty(fb, draft);
       }
       return;
     }
@@ -4174,8 +4190,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         if (tab === 'UI' && listTabOpen()) { renderList(); if (currentNew()) renderDetail(); }
         break;
       case 'reviewed':
-        // 확인 완료한 플립북은 상태를 기본 「현행」으로, 코멘트를 빈 값으로 돌린다.
+        // 확인 완료한 플립북은 상태를 기본 「현행」으로, 코멘트를 빈 값으로 돌리고 히스토리 모달을 닫는다.
         for (const id of msg.ids) delete drafts.UI[id];
+        historyModal = false;
         // 상태·코멘트가 이력 한 줄로 남았으므로 열어 둔 이력을 다시 받는다.
         if (selection.UI.size === 1 && selected.UI && msg.ids.includes(selected.UI)) bridge.send({ type: 'history', team: 'UI', id: selected.UI });
         notify('info', msg.message);
