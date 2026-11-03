@@ -2579,6 +2579,15 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     renderList(); renderFooter(); renderDetail();
   }
 
+  // 여러 화면을 한 번에 켜고 끄는 컨트롤(「모두 배포하기」·묶음 체크·상세 배포 스위치). 바꿀 수 있는 화면 중
+  // 하나라도 켜져 있으면(일부 선택 포함) 모두 끄고, 하나도 없을 때만 모두 켠다(2026-11-03 사용자 요청).
+  function toggleIncluded(keys: string[]) {
+    const t = team();
+    const byKey = new Map(entriesFor(t).map(e => [e.key, e]));
+    const anyOn = keys.some(key => { const entry = byKey.get(key); return !!entry && !entryLocked(t, entry) && draftOf(t, entry).included; });
+    includeVisible(keys, !anyOn);
+  }
+
   // ── 교체 짝(2026-10-20 사용자 결정) ──
   // 신규 후보의 「기존 화면 교체」와 삭제 화면의 「다른 화면으로 교체」는 같은 짝이다. 어느 쪽에서 고르든 두 항목의
   // 포함 여부·등록 방식을 함께 바꾸고, 이전 화면에는 정보를 입력하지 않는다.
@@ -2935,16 +2944,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'include': ev.stopPropagation(); toggleInclude(el.dataset.key!, (el as HTMLInputElement).checked); break;
       case 'include-all': {
         ev.stopPropagation();
-        includeVisible(listModel(t).groups.flatMap(g => g.visibleRows.map(r => r.entry.key)), (el as HTMLInputElement).checked);
+        toggleIncluded(listModel(t).groups.flatMap(g => g.visibleRows.map(r => r.entry.key)));
         break;
       }
       case 'include-group': {
         ev.stopPropagation();
         const group = listModel(t).groups.find(g => g.key === el.dataset.group);
-        if (group) includeVisible(group.visibleRows.map(r => r.entry.key), (el as HTMLInputElement).checked);
+        if (group) toggleIncluded(group.visibleRows.map(r => r.entry.key));
         break;
       }
-      case 'include-selected': includeVisible(selectedKeys(t), (el as HTMLInputElement).checked); break;
+      case 'include-selected': toggleIncluded(selectedKeys(t)); break;
       case 'pick': pick(el.dataset.field!, el.dataset.value!); break;
       case 'mark-reviewed': {
         const requests = selectedEntries('UI').filter(e => !!e.flipbookId).map(e => {
