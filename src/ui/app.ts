@@ -970,7 +970,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         <div class="group-bar"${movable(g.key) ? ` draggable="true" title="${COPY.uiApp391}"` : ''}>${movable(g.key) ? '<span class="drag-handle" aria-hidden="true">⠿</span>' : ''}<input type="checkbox" data-action="include-group" data-group="${esc(g.key)}" ${g.visibleRows.length && g.visibleRows.every(r => draftOf(t, r.entry).included) ? 'checked' : ''} ${g.visibleRows.length && !lock ? '' : 'disabled'} aria-label="${esc(g.name)}${COPY.uiApp032}">
         <button class="group-head" data-action="group" data-group="${esc(g.key)}" aria-expanded="${g.expanded}">
           <span class="caret">${g.expanded ? '▾' : '▸'}</span> ${esc(g.name)}
-          <span class="count">${g.total}${COPY.uiApp033} ${g.included}</span>
+          <span class="count">${g.total}${COPY.uiApp033} <span class="${g.included ? 'count-on' : ''}">${g.included}</span></span>
         </button></div>
         ${g.rows.map(r => {
           const draft = drafts[t][r.entry.key];
@@ -1162,7 +1162,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
 
   function footerLine(model: ListModel, unchecked: boolean, blocked: boolean): string {
     return `
-      ${unchecked ? `<span class="note">${COPY.uiApp035}</span>` : `<span>${COPY.uiApp036} <b>${model.included}</b> ${COPY.uiApp037} <b class="${model.invalid ? 'bad' : ''}">${model.invalid}</b></span>
+      ${unchecked ? `<span class="note">${COPY.uiApp035}</span>` : `<span>${COPY.uiApp036} <b class="${model.included ? 'count-on' : ''}">${model.included}</b> ${COPY.uiApp037} <b class="${model.invalid ? 'bad' : ''}">${model.invalid}</b></span>
       ${model.invalid ? `<button data-action="first-invalid">${COPY.uiApp038}</button>` : ''}`}
       <button class="primary" data-action="prepare" ${blocked ? 'disabled' : ''}>${COPY.uiApp039}</button>`;
   }
