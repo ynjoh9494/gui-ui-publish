@@ -2,7 +2,7 @@ import { COPY } from '../core/copy.ts';
 import { isRed } from '../core/richText.ts';
 import type { RichParagraph } from '../core/richText.ts';
 
-// 텍스트 편집 탭: 캔버스에서 고른 텍스트 레이어 하나를 읽고 쓴다. 글꼴·크기·행간은 레이어 것을 그대로 두고
+// 텍스트 편집 탭: 캔버스에서 고른 텍스트 레이어 하나를 읽고 쓴다. 글꼴·크기는 레이어 것을 그대로 두고
 // 내용, 목록(글머리표)·들여쓰기, 굵기와 색을 적용한다. 빨간 범위 외에는 #333333으로 쓴다. 목록 기호는 글자로 쓰지 않고 Figma 목록 서식을 쓴다.
 
 export const BOLD_STYLE = /bold|black|heavy/i;
@@ -80,6 +80,8 @@ export async function writeRichText(node: TextNode, paragraphs: RichParagraph[])
 export function applyRichText(node: TextNode, paragraphs: RichParagraph[], { regular, bold }: TextFonts): void {
   const text = paragraphs.map(p => p.text).join('\n');
   node.characters = text;
+  node.lineHeight = { unit: 'PERCENT', value: 140 };
+  node.listSpacing = 2;
   if (!text.length) return;
   node.setRangeFills(0, text.length, [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }]);
   node.setRangeFontName(0, text.length, regular);

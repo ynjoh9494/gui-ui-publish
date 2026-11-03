@@ -120,6 +120,8 @@ const MIXED = Symbol('mixed');
 class FakeText {
   type = 'TEXT';
   name = 'Body';
+  lineHeight: unknown = { unit: 'AUTO' };
+  listSpacing = 9;
   hasMissingFont = false;
   chars: Char[] = [];
   text = '';
@@ -184,6 +186,8 @@ test('레이어 글꼴은 그대로 두고 목록·들여쓰기·굵기만 적�
   const source = '**정책**\n- 항목\n\t- 하위 **굵게**\n\n끝';
   await writeRichText(node as unknown as TextNode, parseRichText(source));
   assert.equal(node.characters, '정책\n항목\n하위 굵게\n\n끝');
+  assert.deepEqual(node.lineHeight, { unit: 'PERCENT', value: 140 });
+  assert.equal(node.listSpacing, 2);
   assert.deepEqual(node.chars.map(c => c.indent), [0, 0, 0, 1, 1, 0, 2, 2, 2, 2, 2, 0, 0, 0]);
   assert.equal(node.chars[3].list, 'UNORDERED');
   assert.equal(node.chars[12].list, 'NONE');

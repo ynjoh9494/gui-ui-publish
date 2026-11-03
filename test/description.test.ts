@@ -74,6 +74,7 @@ class Text extends Node {
   hasMissingFont = false;
   fontSize = 12;
   lineHeight: unknown = { unit: 'AUTO' };
+  listSpacing = 9;
   letterSpacing: unknown = { unit: 'PERCENT', value: 0 };
   fills: unknown = [];
   textAutoResize = 'NONE';
@@ -101,6 +102,7 @@ class Text extends Node {
     copy.chars = this.chars.map(char => ({ ...char }));
     copy.fontSize = this.fontSize;
     copy.lineHeight = this.lineHeight;
+    copy.listSpacing = this.listSpacing;
     copy.fills = this.fills;
     copy.letterSpacing = this.letterSpacing;
     copy.width = this.width;
@@ -320,7 +322,8 @@ test('새 제목·본문 레이어는 슬롯에 있던 텍스트의 서식을 �
     for (const group of groups) for (const node of group.children as Text[]) {
       assert.equal(node.chars[0].font.family, 'Pretendard');
       assert.equal(node.fontSize, 14);
-      assert.deepEqual(node.lineHeight, { unit: 'PIXELS', value: 20 });
+      assert.deepEqual(node.lineHeight, { unit: 'PERCENT', value: 140 });
+      assert.equal(node.listSpacing, 2);
       assert.deepEqual(node.fills, [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }]);
     }
     return groups;
