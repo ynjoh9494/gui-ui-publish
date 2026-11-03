@@ -350,9 +350,12 @@ export function validateDraft(team: Team, state: State, entry: Entry, draft: Dra
   const missing: string[] = [];
   const errors: string[] = [];
 
-  const worker = draft.workerId ? state.workers.get(draft.workerId) : null;
-  if (!worker) missing.push(COPY.coreDrafts003);
-  else if (!worker.active) errors.push(COPY.coreDrafts004);
+  // GUI 작업자는 화면마다가 아니라 배포 한 번에 아래 줄에서 입력한다(2026-11-03 사용자 요청, publish.ts BatchComment.worker).
+  if (team !== 'GUI') {
+    const worker = draft.workerId ? state.workers.get(draft.workerId) : null;
+    if (!worker) missing.push(COPY.coreDrafts003);
+    else if (!worker.active) errors.push(COPY.coreDrafts004);
+  }
 
   const tag = draft.tagId ? state.tags.get(draft.tagId) : null;
   if (!tag) missing.push(COPY.coreDrafts005);

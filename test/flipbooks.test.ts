@@ -754,6 +754,19 @@ test('화면 바꾸기의 새 버전은 화면 관계를 고칠 수 있고, 배�
   assert.equal(store.state.screens.get('other')!.baseScreenId, screenId);
 });
 
+test('GUI 배포의 작업자는 아래 줄에 입력한 이름 하나이고, 이름도 화면별 작업자도 없으면 막는다', () => {
+  const { store, screenId, frame } = seeded();
+  const entries = classify(store.state, [frame('1:1', '[STB_HO_001] 홈', 'fp-changed')]);
+  const live = entries.find(e => e.screenId === screenId)!;
+  const draft: Draft = { ...defaultDraft('GUI', store.state, live), included: true, tagId: systemTagId(store.state, 'add')!, workerId: undefined };
+  assert.equal(validateDraft('GUI', store.state, live, draft).status, 'ready', '화면마다 작업자를 고르지 않는다');
+  const blocked = buildPlan('GUI', store.state, entries, { [live.key]: draft }, actor, 'worker-none');
+  assert.ok(blocked.blockers.some(b => b.messages.some(m => m.includes('작업자'))), '이름이 없으면 막는다');
+  const plan = buildPlan('GUI', store.state, entries, { [live.key]: draft }, actor, 'worker-name', { description: '', extra: {}, worker: ' 작업자 A ' });
+  assert.deepEqual(plan.blockers, []);
+  assert.deepEqual(plan.items[0].worker, { id: actor.id, name: '작업자 A' }, '입력한 이름과 배포한 계정을 기록한다');
+});
+
 test('이미 배포한 화면을 화면이 아님으로 배포하면 프레임을 제외하고 화면과 그 화면만 쓰던 플립북을 사용 안 함으로 바꾼다', () => {
   const { store, screenId, frame } = seeded();
   const [fb] = planFlipbooks({ pageId: 'p', rows: [row([screenId])] }, guiScreens(store.state), actor, 2000, () => 'fb1');

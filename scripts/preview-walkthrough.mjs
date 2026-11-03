@@ -183,10 +183,10 @@ try {
   await page.waitForFunction(() => [...document.querySelectorAll('#app [data-field=categoryId] option')].some(x => x.textContent === '홈'));
   assert.equal(await app.locator('[data-field=categoryId]').getAttribute('aria-invalid'), null, '카테고리 지정 시 오류 표시 해제');
 
-  await app.locator('[data-action=begin-add][data-kind=worker]').click();
-  await app.locator('[data-form=worker-add] [data-f=name]').fill('테스트 작업자');
-  await app.locator('[data-form=worker-add] [data-f=name]').press('Enter');
-  await page.waitForFunction(() => [...document.querySelectorAll('#app [data-field=workerId] option')].some(x => x.textContent?.includes('테스트 작업자')));
+  // 작업자는 화면마다 고르지 않고 아래 줄 입력란에 배포 한 번에 하나를 쓴다(2026-11-03 사용자 요청). 처음에는 계정 이름이 들어 있다.
+  assert.equal(await app.locator('.detail [data-field=workerId]').count(), 0, 'no per-screen worker field');
+  assert.notEqual(await app.locator('.footer [data-input=worker]').inputValue(), '', 'the worker starts with the account name');
+  await app.locator('.footer [data-input=worker]').fill('테스트 작업자');
 
   await app.locator('[data-action=begin-add][data-kind=tag]').click();
   await app.locator('[data-form=tag-add] [data-f=name]').fill('검토');
@@ -1334,15 +1334,11 @@ try {
   await app.locator('[data-field=newCategory]').fill('홈');
   await app.locator('[data-field=newCategory]').press('Enter');
   await page.waitForFunction(() => [...document.querySelectorAll('#app [data-field=categoryId] option')].some(x => x.textContent === '홈'));
-  await app.locator('[data-action=begin-add][data-kind=worker]').click();
-  await app.locator('[data-form=worker-add] [data-f=name]').fill('동시 배포 작업자');
-  await app.locator('[data-form=worker-add] [data-f=name]').press('Enter');
-  await page.waitForFunction(() => [...document.querySelectorAll('#app [data-field=workerId] option')].some(x => x.textContent.includes('동시 배포 작업자')));
+  await app.locator('.footer [data-input=worker]').fill('동시 배포 작업자');
   const pendingBaseCode = await app.locator('[data-field=code]').inputValue();
   await pendingRow(pendingCaseKey).click();
   await pendingRow(pendingCaseKey).locator('[data-action=include]').check();
   await app.locator('[data-field=categoryId]').selectOption({ label: '홈' });
-  await app.locator('[data-field=workerId]').selectOption({ label: '동시 배포 작업자' });
   await app.locator('[data-field=relation][value=case]').check();
   await app.locator('.screen-picker summary').click();
   const pendingOption = () => app.locator(`.screen-picker [data-action=pick][data-value="${pendingBaseKey}"]`);

@@ -16,6 +16,8 @@ const writes = new Set<ToMain['type']>([
 const isWrite = (msg: ToMain) => writes.has(msg.type) || msg.type === 'scanUi' || (msg.type === 'scanSelected' && msg.team === 'UI');
 let writeQueue: Promise<void> = Promise.resolve();
 const TUTORIAL_KEY = 'gui-ui-publish:new-tutorial:2026-10-30-revised';
+// GUI 배포 작업자 이름(사용자별 마지막 값)
+const WORKER_KEY = 'gui-ui-publish:worker-name';
 figma.ui.onmessage = (msg: ToMain) => {
   if (msg.type === 'tutorialSeenGet') {
     void figma.clientStorage.getAsync(`${TUTORIAL_KEY}:${msg.mode}`).then(seen => {
@@ -25,6 +27,16 @@ figma.ui.onmessage = (msg: ToMain) => {
   }
   if (msg.type === 'tutorialSeenSet') {
     void figma.clientStorage.setAsync(`${TUTORIAL_KEY}:${msg.mode}`, true).catch(() => {});
+    return;
+  }
+  if (msg.type === 'workerNameGet') {
+    void figma.clientStorage.getAsync(WORKER_KEY).then(name => {
+      figma.ui.postMessage({ type: 'workerNameResult', name: typeof name === 'string' && name.trim() ? name : null });
+    }).catch(() => figma.ui.postMessage({ type: 'workerNameResult', name: null }));
+    return;
+  }
+  if (msg.type === 'workerNameSet') {
+    if (msg.name.trim()) void figma.clientStorage.setAsync(WORKER_KEY, msg.name.trim()).catch(() => {});
     return;
   }
   if (isWrite(msg)) writeQueue = writeQueue.then(() => controller.handle(msg), () => controller.handle(msg));

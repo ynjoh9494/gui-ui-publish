@@ -134,6 +134,9 @@ export type ToMain =
   | { type: 'ready' }
   | { type: 'tutorialSeenGet'; mode: Team }
   | { type: 'tutorialSeenSet'; mode: Team }
+  // GUI 배포 작업자 이름: 사용자별로 마지막에 배포한 이름을 기억한다(figma.clientStorage, 2026-11-03 사용자 요청).
+  | { type: 'workerNameGet' }
+  | { type: 'workerNameSet'; name: string }
   | { type: 'scan' }
   // UI 목록: 아직 반영하지 않은 GUI 갱신을 플립북에 반영한 뒤 UI 작성 영역을 비교
   | { type: 'scanUi' }
@@ -225,6 +228,7 @@ export type ToUi =
   // 첫 실행 시 UI Flipbook의 템플릿·플립북 페이지 확인과 Section 맞추기가 끝났다(실패해도 보냄).
   | { type: 'startupReady' }
   | { type: 'tutorialSeenResult'; mode: Team; seen: boolean }
+  | { type: 'workerNameResult'; name: string | null }
   | { type: 'state'; state: WireState; pages: PageInfo[]; managedPages?: ManagedPageInfo[] }
   | { type: 'entries'; entries: Entry[] }
   | { type: 'uiScan'; scans: UiScan[] }

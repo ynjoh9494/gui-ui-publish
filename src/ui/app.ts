@@ -170,6 +170,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let tab: Tab = 'GUI';
   // GUI 배포의 추가 설명. 배포 한 번에 하나(2026-10-20 사용자 결정)
   let comment: BatchComment = emptyComment();
+  // GUI 배포 작업자 이름(아래 줄 입력란). 처음에는 Figma 계정 이름, 배포한 뒤에는 그때 쓴 이름을 기본으로 쓴다(2026-11-03 사용자 요청).
+  let workerName = '';
+  let workerTyped = false;
+  let workerAsked = false;
   // 새 플립북(2026-10-21 사용자 요청: 플립북 만들기 탭을 플립북 목록에 합친다). 「새 플립북」을 누르면 목록에 바로 들어가는 미리보기이며,
   // 만들기를 누르기 전에는 저장하지 않는다. 목록에서 드래그하거나 Alt+↑↓로 자리를, 오른쪽에서 페이지·Section을 정한다.
   // section: null이면 첫 화면의 카테고리 Section(화면이 없으면 그 페이지 맨 아래 Section). after: Section 안에서 바로 앞 항목(기존 플립북 ID 또는 새 플립북 키, null이면 맨 앞, 없으면 맨 뒤).
@@ -1151,29 +1155,31 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (tab === 'ADMIN' || !state) { $('.footer').innerHTML = ''; return; }
     const model = sharedModel ?? listModel(team());
     const unchecked = locked(team());
-    const blocked = model.included === 0 || model.invalid > 0 || unchecked;
+    // 누락이 있어도 최종 확인을 누를 수 있고, 누르면 첫 누락 항목으로 간다(2026-11-03 사용자 요청).
+    const blocked = model.included === 0 || unchecked;
     const commentArea = team() === 'GUI' ? `<div class="batch-comment">
-        <label>${COPY.uiApp064}<textarea data-input="comment" rows="2" ${unchecked ? 'disabled' : ''}>${esc(comment.description)}</textarea></label></div>` : '';
+        <textarea data-input="comment" rows="2" placeholder="${COPY.commentPlaceholder}" aria-label="${COPY.uiApp064}" ${unchecked ? 'disabled' : ''}>${esc(comment.description)}</textarea></div>` : '';
     // 추가 설명을 입력하는 동안에는 하단을 다시 그리지 않는다(포커스 유지).
     const focused = document.activeElement as HTMLElement | null;
-    if (focused?.closest('.batch-comment') && $('.footer').querySelector('.batch-comment')) {
-      $('.footer .footer-line').innerHTML = footerLine(model, unchecked, blocked);
+    if (focused?.closest('.batch-comment, .worker-field') && $('.footer').querySelector('.footer-status')) {
+      $('.footer .footer-status').innerHTML = footerStatus(model, unchecked);
+      $('.footer [data-action="prepare"]').toggleAttribute('disabled', blocked);
       return;
     }
     $('.footer').innerHTML = commentArea + `<div class="footer-line">${footerLine(model, unchecked, blocked)}</div>`;
   }
 
+  // 아래 줄(2026-11-03 사용자 요청): 왼쪽 작업자 입력, 오른쪽 「배포 n · 필수 정보 누락 n」과 최종 확인.
   function footerLine(model: ListModel, unchecked: boolean, blocked: boolean): string {
-    return `
-      ${unchecked ? `<span class="note">${COPY.uiApp035}</span>` : `<span>${COPY.uiApp036} <b class="${model.included ? 'count-on' : ''}">${model.included}</b> ${COPY.uiApp037} <b class="${model.invalid ? 'bad' : ''}">${model.invalid}</b></span>
-      ${model.invalid ? `<button data-action="first-invalid">${COPY.uiApp038}</button>` : ''}`}
+    return `<label class="worker-field"><span>${COPY.coreDrafts003}</span><input data-input="worker" data-required-field="worker" value="${esc(workerName)}" aria-label="${COPY.coreDrafts003}" ${unchecked ? 'disabled' : ''}></label>
+      <span class="footer-status">${footerStatus(model, unchecked)}</span>
       <button class="primary" data-action="prepare" ${blocked ? 'disabled' : ''}>${COPY.uiApp039}</button>`;
   }
-
-  function workerOptions(selectedId?: string, mixed = false) {
-    const workers = [...state!.workers.values()].filter(w => w.active || w.id === selectedId).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-    return (mixed ? mixedOption() : '') + option('', COPY.uiApp041, !selectedId && !mixed) + workers.map(w => option(w.id, workerLabel(w), w.id === selectedId)).join('');
+  function footerStatus(model: ListModel, unchecked: boolean): string {
+    return unchecked ? `<span class="note">${COPY.uiApp035}</span>`
+      : `${COPY.uiApp036} <b class="${model.included ? 'count-on' : ''}">${model.included}</b> ${COPY.uiApp037} <b class="${model.invalid ? 'bad' : ''}">${model.invalid}</b>`;
   }
+
 
   // GUI Publish에서 새 화면으로 등록하는 항목. 이름·화면 관계를 입력한다.
   function registersNew(t: Team, entry: Entry): boolean {
@@ -1303,10 +1309,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       return values.some(v => v !== values[0]);
     };
     const allIncluded = chosen.every(e => draftOf(t, e).included);
+    // 제목은 Screen ID 없이 화면 이름만 한 줄로, 길면 말줄임한다. 「외 n개」는 줄이지 않는다(2026-11-03 사용자 요청).
+    const title = guiDisplay(entry).name || parseFrameName(name).name;
     // 배포 스위치는 위쪽 고정 제목 줄 오른쪽에 둔다(2026-11-03 사용자 요청). 「변경된 화면만 보기」와 같은 스위치다.
     const includeSwitch = `<label class="switch include-switch"><span>${COPY.uiApp034}</span><input type="checkbox" role="switch" data-action="include-selected" aria-label="${COPY.uiApp034}" ${allIncluded ? 'checked' : ''}></label>`;
-    let html = `<div class="detail-head"><div class="detail-title"><h2>${esc(name)}${multi ? ` ${COPY.uiApp046} ${chosen.length - 1}${COPY.uiApp015}` : ''}</h2>${includeSwitch}</div><div class="validation" aria-live="polite"></div></div>`;
-    if (detailLocked(t)) html += `<p class="note">${locked(t) ? COPY.uiApp176 : COPY.uiApp181}</p>`;
+    let html = `<div class="detail-head"><div class="detail-title"><h2 title="${esc(title)}"><span class="title-name">${esc(title)}</span>${multi ? `<span class="title-more"> ${COPY.uiApp046} ${chosen.length - 1}${COPY.uiApp015}</span>` : ''}</h2>${includeSwitch}</div><div class="validation" aria-live="polite"></div></div>`;
+    // 「비교 전」 화면을 골랐으면 안내를 상세 영역 가운데에 둔다(2026-11-03 사용자 요청).
+    if (detailLocked(t)) html += locked(t) ? `<p class="note">${COPY.uiApp176}</p>` : `<div class="detail-hint entry-hint"><p>${COPY.uiApp181}</p></div>`;
     if (!multi) html += entry.notes.map(n => `<p class="note">${esc(n)}</p>`).join('');
     // 변경사항(변경 감지 이유)은 「변경 무시」를 고르기 전에 본다. 한 화면을 골랐을 때만 보여 준다.
     if (reasonShown?.key !== entry.key) reasonShown = null;
@@ -1408,7 +1417,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         html += `<label class="wide">Screen ID<input data-field="code" data-required-field="code" value="${esc(codeMixed ? '' : codes[0])}"${codeMixed ? ' placeholder="-"' : ''} required></label>`;
       }
       html += tagField(t, draft, multi, common(d => d.tagId), mixed(d => d.tagId));
-      html += workerField(draft, common(d => d.workerId), mixed(d => d.workerId));
       html += '</div></section>';
     }
     // History(지난 배포 썸네일 + 히스토리)는 접어서 아래쪽에 고정한다(2026-11-03 사용자 요청: 위의 제목처럼 스크롤해도 남게).
@@ -1557,8 +1565,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     renderHistory();
   }
 
+  // 필수 정보 확인 줄은 누락이 있을 때만 보인다. 배포를 끈(제외)·입력을 마친 화면에서는 숨긴다(2026-11-03 사용자 요청).
   function renderValidation() {
-    const box = root.querySelector('.detail .validation');
+    const box = root.querySelector<HTMLElement>('.detail .validation');
     const entry = current();
     if (!box || !entry || !state) return;
     const chosen = selectedEntries();
@@ -1568,12 +1577,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       const included = chosen.filter(e => draftOf(team(), e).included).length;
       const status = invalid ? STATUS_LABEL.invalid : included ? STATUS_LABEL.ready : STATUS_LABEL.excluded;
       const details = [...new Set(checks.flatMap(v => [...v.missing, ...v.errors]))];
+      box.hidden = !invalid;
       box.innerHTML = `<b class="${invalid ? 'bad' : ''}">${esc(status)}</b>${details.length ? ` - ${details.map(esc).join(', ')}` : ''} ${COPY.uiApp069} ${included}/${chosen.length}${COPY.uiApp015}`;
       renderFieldErrors();
       return;
     }
     const v = validation(team(), entry);
     const details = [...v.missing, ...v.errors];
+    box.hidden = v.status !== 'invalid';
     box.innerHTML = `<b class="${v.status === 'invalid' ? 'bad' : ''}">${esc(STATUS_LABEL[v.status])}</b>${details.length ? ` - ${details.map(esc).join(', ')}` : ''}`;
     renderFieldErrors();
   }
@@ -2389,11 +2400,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     </div>`;
   }
 
-  function workerField(draft: Draft, selectedId = draft.workerId ?? '', isMixed = false): string {
-    return `<div class="wide"><label>${COPY.uiApp089}</label>${addMode === 'worker'
-      ? `<div class="addable" data-form="worker-add"><input data-f="name" data-required-field="workerId" placeholder="${COPY.uiApp160}" aria-label="${COPY.uiApp160}"><button data-action="add-worker">${COPY.uiApp148}</button><button data-action="cancel-add">${COPY.uiApp149}</button></div>`
-      : `<div class="addable"><select data-field="workerId" data-required-field="workerId">${workerOptions(selectedId, isMixed)}</select><button class="add-button" data-action="begin-add" data-kind="worker">${ADD_LABEL}</button></div>`}</div>`;
-  }
 
   // GUI Publish의 카테고리: 선택하고, 이름을 입력해 추가하거나 선택한 카테고리 이름을 바꾸고, 삭제한다.
   function categoryField(entry: Entry, draft: Draft, multi = false, selectedId = draft.categoryId ?? '', isMixed = false): string {
@@ -2948,7 +2954,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         admin({ op: 'addWorker', name, alias: '' });
         break;
       }
-      case 'first-invalid': {
+      case 'prepare': {
+        // 누락이 있으면 확인 창 대신 첫 누락 항목으로 간다. GUI 작업자가 비었으면 그 입력란으로 간다(2026-11-03 사용자 요청).
         const invalid = entriesFor(t).find(e => validation(t, e).status === 'invalid');
         if (invalid) {
           revealed[t].add(invalid.key);
@@ -2958,14 +2965,18 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
           for (const g of listModel(t).groups) expanded[t].add(g.key);
           renderToolbar();
           select(invalid.key);
+          break;
         }
-        break;
-      }
-      case 'prepare': {
+        if (t === 'GUI' && !workerName.trim()) {
+          const input = root.querySelector<HTMLInputElement>('.footer [data-input="worker"]');
+          input?.classList.add('input-error');
+          input?.focus();
+          break;
+        }
         // 전체 확인 전에는 「비교 전」 화면의 입력은 보내지 않는다(배포 대상에서 빠진다).
         const byKey = new Map(entriesFor(t).map(e => [e.key, e]));
         const sendable = Object.fromEntries(Object.entries(drafts[t]).filter(([key]) => { const e = byKey.get(key); return !e || !entryLocked(t, e); }));
-        bridge.send({ type: 'prepare', team: t, drafts: sendable, ...(t === 'GUI' ? { comment } : {}) });
+        bridge.send({ type: 'prepare', team: t, drafts: sendable, ...(t === 'GUI' ? { comment: { ...comment, worker: workerName.trim() } } : {}) });
         break;
       }
       case 'cancel-plan': if (plan) bridge.send({ type: 'cancelPlan', batchId: plan.batchId }); plan = null; quietPublish = false; renderConfirm(); break;
@@ -3569,6 +3580,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       return;
     }
     if (el.dataset.input === 'comment') { comment = { ...comment, description: el.value }; return; }
+    if (el.dataset.input === 'worker') { workerName = el.value; workerTyped = true; el.classList.toggle('input-error', !el.value.trim()); return; }
     if (el.dataset.requiredField && (el.dataset.field === 'newCategory' || el.closest('[data-form="worker-add"], [data-form="tag-add"]'))) { renderFieldErrors(); return; }
     const t = team();
     if (el.dataset.input === 'query') { query[t] = el.value; renderList(); return; }
@@ -3738,6 +3750,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'init':
         previewCache.clear();
         state = fromWire(msg.state); actor = msg.actor; pages = msg.pages; issues = msg.issues;
+        // 작업자 이름: 처음에는 계정 이름을 넣고, 마지막으로 배포한 이름이 저장돼 있으면 그 이름으로 바꾼다.
+        if (!workerTyped && !workerName && msg.actor?.name) workerName = msg.actor.name;
+        if (!workerAsked && msg.mode === 'GUI') { workerAsked = true; bridge.send({ type: 'workerNameGet' }); }
         if (mode !== msg.mode || tab !== 'ADMIN') { mode = msg.mode; tab = mode; }
         // GUI Publish는 플립북 페이지를 확인하지 않으므로 초기 데이터가 오면 바로 연다.
         if (mode === 'GUI') startupPending = false;
@@ -3776,6 +3791,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         renderBusy();
         renderAll();
         openNewFeatures();
+        break;
+      case 'workerNameResult':
+        if (msg.name && !workerTyped) { workerName = msg.name; renderFooter(); }
         break;
       case 'tutorialSeenResult':
         if (msg.mode !== mode || !newFeaturesRequested || newFeaturesOpened || msg.seen || disposed) break;
@@ -3944,7 +3962,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       }
       case 'plan': plan = msg.plan; quietPublish = false; renderConfirm(); break;
       case 'committed':
-        if (msg.ok && mode === 'GUI') { comment = emptyComment(); renderFooter(); }
+        // 배포한 작업자 이름을 다음에 기본으로 쓴다(사용자별 clientStorage).
+        if (msg.ok && mode === 'GUI') { comment = emptyComment(); if (workerName.trim()) bridge.send({ type: 'workerNameSet', name: workerName.trim() }); renderFooter(); }
         if (msg.ok) {
           // 확정한 화면의 입력만 지운다. 확정하지 못한 화면은 입력을 남겨 다시 Publish할 수 있게 한다.
           const t = plan?.team ?? team();

@@ -88,8 +88,16 @@ function toFrame(entry: Entry): PlanFrame | null {
 }
 
 // GUI 배포의 추가 설명(설명·참고 링크). 화면별이 아니라 배포 한 번에 하나이며 선택 입력이다(2026-10-20 사용자 결정).
-export interface BatchComment { description: string; extra: Record<string, string> }
+// worker: GUI 배포의 작업자 이름. 화면마다 고르지 않고 배포 한 번에 하나를 직접 입력한다(2026-11-03 사용자 요청).
+export interface BatchComment { description: string; extra: Record<string, string>; worker?: string }
 export const emptyComment = (): BatchComment => ({ description: '', extra: {} });
+
+// GUI 배포의 작업자 사본: 입력한 이름과 배포한 계정. 입력이 없으면(이전 형식 입력) 화면별 작업자를 쓴다.
+function batchWorker(state: State, comment: BatchComment, actor: Actor, draft: Draft): Snapshot {
+  const name = comment.worker?.trim();
+  if (name) return { id: actor.id, name };
+  return draft.workerId && state.workers.get(draft.workerId) ? workerSnapshot(state, draft.workerId) : { id: actor.id, name: actor.name };
+}
 
 export function buildPlan(
   team: Team, state: State, entries: Entry[], drafts: Record<string, Draft>, actor: Actor, batchId: string, comment: BatchComment = emptyComment(),
@@ -132,7 +140,7 @@ export function buildPlan(
       if (entry.frame) plan.exclusions.push({ entryKey: entry.key, nodeId: entry.frame.nodeId, name: entry.frame.name, reason: COPY.corePublish016, replacedBy: entry.screenId! });
       continue;
     }
-    const item = team === 'GUI' ? guiItem(state, entry, draft, batchId, comment) : uiItem(state, entry, draft);
+    const item = team === 'GUI' ? guiItem(state, entry, draft, batchId, comment, actor) : uiItem(state, entry, draft);
     const previous = targets.get(item.screenId);
     if (previous) {
       plan.blockers.push({ entryKey: entry.key, name, messages: [`${COPY.corePublish002} ${item.name}`] });
@@ -177,10 +185,12 @@ export function buildPlan(
   }
   if (!plan.items.length && !plan.exclusions.length && !plan.unpublished.length && !plan.blockers.length) plan.blockers.push({ entryKey: '', name: '', messages: [COPY.corePublish003] });
   if (team === 'GUI') for (const error of commentErrors(comment)) plan.blockers.push({ entryKey: '', name: '', messages: [error] });
+  // GUI 배포는 작업자 이름이 있어야 한다(아래 줄 입력란). 이름이 없으면 화면별 작업자(이전 형식 입력)가 모두 있을 때만 그것을 쓴다.
+  if (team === 'GUI' && !comment.worker?.trim() && plan.items.some(item => { const id = drafts[item.entryKey]?.workerId; return !id || !state.workers.get(id); })) plan.blockers.push({ entryKey: '', name: '', messages: [`${COPY.coreDrafts003} ${COPY.corePublish001}`] });
   return plan;
 }
 
-function guiItem(state: State, entry: Entry, draft: Draft, batchId: string, comment: BatchComment): PlanItem {
+function guiItem(state: State, entry: Entry, draft: Draft, batchId: string, comment: BatchComment, actor: Actor): PlanItem {
   const description = comment.description.trim();
   const extra = cleanExtra(comment.extra);
   const workType = workTypeOf(entry, draft);
@@ -191,13 +201,13 @@ function guiItem(state: State, entry: Entry, draft: Draft, batchId: string, comm
       entryKey: entry.key, team: 'GUI', screenId: screen.id, isNew: false, workType, expectedRev: screen.rev,
       fromVersion: screen.guiVersion, toVersion: screen.guiVersion + 1, frame: null, needsThumb: false,
       code: screen.code, name: screen.name, categoryId: screen.categoryId, fromCategoryId: screen.categoryId, newCategoryName: null,
-      baseScreenId: screen.baseScreenId, tag: tagSnapshot(state, draft.tagId!), worker: workerSnapshot(state, draft.workerId!),
+      baseScreenId: screen.baseScreenId, tag: tagSnapshot(state, draft.tagId!), worker: batchWorker(state, comment, actor, draft),
       description, extra, metadataChanged: false,
     };
   }
   const common = {
     entryKey: entry.key, team: 'GUI' as const, workType, frame: toFrame(entry), code: draftCode(state, entry, draft), name: draftName(state, entry, draft),
-    tag: tagSnapshot(state, draft.tagId!), worker: workerSnapshot(state, draft.workerId!), description, extra,
+    tag: tagSnapshot(state, draft.tagId!), worker: batchWorker(state, comment, actor, draft), description, extra,
   };
   if (needsLink(entry) && draft.link === 'new') {
     return {
