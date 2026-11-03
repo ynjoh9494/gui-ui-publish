@@ -71,6 +71,8 @@ export const COPY = {
   registerExistingDone: '개를 목록에 등록했습니다. 이미 등록된 프레임은 중복 추가하지 않았습니다.',
   adminAutoPages: '자동 관리 페이지',
   adminWorkSetup: '작업 환경',
+  adminTemplateGroup: '템플릿',
+  adminSystem: '시스템',
   adminMaintenance: '관리자',
   adminDataTitle: 'DATA',
   adminThumbTitle: 'GUI 썸네일',
@@ -180,7 +182,7 @@ export const COPY = {
   quietPublishHint: '플립북의 히스토리에 배포 내역이 남지 않습니다.',
   skipLayers: '화면 반영 건너뛰기',
   // 관리 — src/ui/app.ts
-  uiApp097: "GUI 원본 범위", // 423
+  uiApp097: "GUI 페이지", // 423
   uiApp098: "추가할 GUI 원본 페이지", // 424
   uiApp099: '추가할 페이지 선택', // 425
   uiApp100: '추가할 페이지 없음', // 425
@@ -190,7 +192,7 @@ export const COPY = {
   uiApp104: "제거", // 429
   uiApp105: "삭제", // 429
   uiApp106: '추가된 페이지가 없습니다.', // 429
-  uiApp107: "플립북", // 432
+  uiApp107: "플립북 페이지", // 432
   uiApp108: "플립북 페이지", // 433
   uiApp209: '설정에서 UI 페이지를 지정하세요.',
   uiApp210: '추가할 UI 페이지',
@@ -309,7 +311,7 @@ export const COPY = {
   // 새 버전 페이지 전환(2026-10-21 사용자 결정: 프레임 이름이 아닌 화면 내용으로 연결)
   uiApp248: '새 버전 페이지',
   uiApp249: '다른 파일에서 붙여 넣은 페이지를 등록 화면과 비교해 연결합니다. 화면 내용으로 비교하고, 프레임 이름이 기존 원본과 같으면 단서로 씁니다. 지난 배포와 같은 화면은 「동일」, 기존 원본과 내용이 비슷한 화면은 「유사」로 제안하며, 연결은 직접 바꿀 수 있습니다.',
-  uiApp250: '전환하면 연결한 프레임이 그 화면의 원본이 되고(프레임 이름은 그대로), 이 페이지가 GUI 원본 범위가 됩니다. 기존 페이지는 바꾸지 않습니다. 버전은 만들지 않으며, 내용이 바뀐 화면은 변경 감지로 나와 평소처럼 배포합니다.',
+  uiApp250: '전환하면 연결한 프레임이 그 화면의 원본이 되고(프레임 이름은 그대로), 이 페이지가 GUI 페이지가 됩니다. 기존 페이지는 바꾸지 않습니다. 버전은 만들지 않으며, 내용이 바뀐 화면은 변경 감지로 나와 평소처럼 배포합니다.',
   uiApp251: '비교할 페이지',
   uiApp252: '비교',
   uiApp253: '동일',
@@ -322,7 +324,7 @@ export const COPY = {
   uiApp260: '개는 전환 후 신규 후보로 나옵니다.',
   uiApp261: '전환',
   uiApp262: '정말 전환합니다 · 한 번 더 누르세요',
-  uiApp263: '비교할 페이지가 없습니다. GUI 원본 범위와 DATA 페이지가 아닌 페이지에 붙여 넣으세요.',
+  uiApp263: '비교할 페이지가 없습니다. GUI 페이지와 DATA 페이지가 아닌 페이지에 붙여 넣으세요.',
   uiApp264: '등록된 화면이 없습니다.',
   // 새 버전 페이지 탭 — src/ui/app.ts
   uiApp272: '화면 목록',
@@ -826,7 +828,7 @@ export const COPY = {
   controller105: 'GUI 썸네일 이름을 바꾸지 못했습니다.',
   controller106: '새 버전 페이지 비교 중',
   controller107: '새 버전 페이지 전환 중',
-  controller108: 'GUI 원본 범위와 DATA 페이지가 아닌 페이지를 고르세요.',
+  controller108: 'GUI 페이지와 DATA 페이지가 아닌 페이지를 고르세요.',
   controller109: '새 버전 페이지를 다시 비교한 뒤 전환하세요.',
   controller110: '새 버전 페이지로 전환했습니다.',
   controller111: '변경사항 없음',

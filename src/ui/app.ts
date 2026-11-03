@@ -50,7 +50,7 @@ export function sortScreenItems(items: ScreenItem[], preferredCategoryId?: strin
 }
 
 type Tab = Team | 'ADMIN';
-// 관리에서 한쪽 모드만 쓰는 항목(메뉴 순서)과 그 제목. 톱니바퀴로 열면 다른 모드의 항목을 보던 중이었을 때 지금 모드의 첫 항목을 연다.
+// 관리에서 한쪽 모드만 쓰는 항목과 그 제목(첫 항목이 그 모드의 시작 항목). 톱니바퀴로 열면 다른 모드의 항목을 보던 중이었을 때 지금 모드의 첫 항목을 연다.
 const ADMIN_MODE_PANELS: Record<Team, [form: string, title: string][]> = {
   GUI: [['scope', COPY.uiApp097], ['screen-id-prefix', COPY.uiApp162], ['exclusions', COPY.uiApp120]],
   UI: [['flipbook', COPY.uiApp107], ['template', COPY.uiApp392], ['gui-width', COPY.uiApp225]],
@@ -2044,9 +2044,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const maintenanceHeading = document.createElement('h3');
     maintenanceHeading.textContent = COPY.adminMaintenance;
     maintenance.append(maintenanceHeading, ...pick(['pending', 'audit', 'issues', 'reset']));
-    // 묶음 이름이 null이면 이름 없이 구분선으로 나눈다.
+    // 묶음 이름이 null이면 이름 없이 구분선으로 나눈다(2026-11-03 사용자 요청: 작업 환경·템플릿·시스템, 구분선 아래 관리자).
     const groups: [string | null, HTMLElement[]][] = [
-      [COPY.adminWorkSetup, [...pick([...ADMIN_MODE_PANELS.GUI, ...ADMIN_MODE_PANELS.UI].map(([form]) => form)), ...pick(['automatic-pages'])]],
+      [COPY.adminWorkSetup, pick(['scope', 'flipbook', 'screen-id-prefix'])],
+      [COPY.adminTemplateGroup, pick(['template', 'gui-width'])],
+      [COPY.adminSystem, pick(['exclusions', 'automatic-pages'])],
       [null, [maintenance]],
     ];
     const nav = document.createElement('nav');

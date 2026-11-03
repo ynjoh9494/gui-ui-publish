@@ -94,7 +94,7 @@ try {
   // UI Flipbook: 관리 → 새 플립북
   await mode('UI');
   await app.locator('[data-action=settings]').click();
-  await app.locator('[data-action=admin-nav][data-key="플립북"]').click();
+  await app.locator('[data-action=admin-nav][data-key="플립북 페이지"]').click();
   await app.locator('[data-form=flipbook] [data-f=page]').selectOption('0:3');
   await page.waitForFunction(() => document.querySelectorAll('#app [data-form=flipbook] .scope-page').length === 2);
   await app.locator('[data-action=admin-ui-page-remove][data-id="0:2"]').click();
