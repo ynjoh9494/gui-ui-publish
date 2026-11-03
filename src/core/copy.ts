@@ -260,7 +260,6 @@ export const COPY = {
   uiApp185: '삭제',
   uiApp212: '플립북 프레임이 없습니다. 배포하면 이 플립북을 삭제로 기록하고 목록에서 제외합니다.',
   uiApp187: '새 화면 선택',
-  uiApp189: '이 화면에는 정보를 입력하지 않습니다.',
   uiApp190: '목록에 없음',
   uiApp191: '플립북 만들기',
   uiApp192: '확인이 필요한 플립북',
@@ -472,7 +471,6 @@ export const COPY = {
   uiApp419: '제안',
   uiApp421: '교체할 화면의 지난 배포와 같습니다.',
   uiApp422: '교체할 화면의 지난 배포와 비교하는 중입니다.',
-  uiApp420: '교체할 화면이 정해지지 않은 화면이 있습니다. 그 화면만 골라 교체할 화면을 정하세요:',
   // 튜토리얼 — src/ui/tutorial.ts. 단계마다 말풍선 제목·설명 순서다.
   uiTutorial001: '도움말',
   uiTutorial002: '튜토리얼 종료',
@@ -1163,8 +1161,6 @@ export const COPY = {
   replaceSideNewHint: '이 화면으로 교체합니다',
   replaceSideOld: '아니요, 구 버전입니다',
   replaceSideOldHint: '목록에서 제외되며 선택한 화면으로 교체됩니다',
-  replaceSideNewBlocked: '원본 프레임이 없는 화면은 새 버전이 될 수 없습니다.',
-  replaceSideOldBlocked: '아직 배포하지 않은 화면은 이어받을 히스토리가 없어 구 버전으로 고를 수 없습니다.',
 } as const;
 
 // 화면·안내·오류 문구. 원본 파일과 행은 추출 당시 위치다.

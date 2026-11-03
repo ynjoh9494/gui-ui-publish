@@ -1151,14 +1151,14 @@ try {
     assert.equal(await app.locator('.screen-picker .suggest-tag').count(), 2, 'only the suggestion is tagged (head + first option)');
     await shot('11b2-replace-suggestion');
     await app.locator('.screen-picker .picker-search').press('Escape');
-    // 여러 화면을 골라도 기존 화면 교체를 고를 수 있다. 교체할 화면이 정해지지 않은 화면은 이름을 알린다.
+    // 여러 화면을 골라도 화면 바꾸기를 고를 수 있다. 정해지지 않은 화면을 알리는 안내 문구는 없다(2026-11-03 사용자 요청).
     const otherKey = await app.locator('.row:not(:has(.id-tag))').first().getAttribute('data-key');
     await app.locator(`.row[data-key="${otherKey}"]`).click({ modifiers: ['Control'] });
     await app.locator('.detail [data-action=include-selected]').check();
     await app.locator('[data-field=disposition][value=replace]').check();
     assert.equal(await app.locator('[data-field=disposition][value=replace]').isChecked(), true, 'replace can be chosen for several screens');
     assert.equal(await app.locator('.detail .screen-picker').count(), 0, 'the picker is shown for one screen only');
-    assert.ok((await app.locator('.detail .note').allInnerTexts()).some(text => text.includes('교체할 화면이 정해지지 않은')), 'unpaired screens are named');
+    assert.equal(await app.locator('.detail .choices .note').count(), 0, 'no unrequested notes in 등록 방식');
     assert.equal(await app.locator('.detail [data-field=code]').getAttribute('placeholder'), '-', 'different IDs show the mixed mark');
     await stateIs(pasted, '화면 교체됨');
     await shot('11b3-replace-multi');

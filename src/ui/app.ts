@@ -1219,19 +1219,17 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   // 등록 방식: 왼쪽에 선택 체크가 있는 아코디언(2026-11-03 사용자 요청). 이름 옆에 설명을 두고, 고른 항목만 펼쳐 그 메뉴를 보여 준다.
   interface Choice { value: string; label: string; hint: string; checked: boolean; body?: () => string }
   function choiceField(field: string, choices: Choice[], mixed: boolean): string {
-    return `<fieldset class="choices"><legend>${COPY.uiApp047}${mixedMark(mixed)}</legend>${choices.map(c => {
+    return `<div class="choices" role="radiogroup" aria-label="${esc(COPY.uiApp047)}"><div class="choices-title">${COPY.uiApp047}${mixedMark(mixed)}</div>${choices.map(c => {
       const body = c.checked && c.body ? c.body() : '';
-      return `<div class="choice${c.checked ? ' open' : ''}"><label class="choice-head"><input type="radio" name="${field}" value="${c.value}" data-field="${field}" ${c.checked ? 'checked' : ''}><span class="choice-label">${esc(c.label)}</span><span class="choice-hint">${esc(c.hint)}</span></label>${body ? `<div class="choice-body">${body}</div>` : ''}</div>`;
-    }).join('')}</fieldset>`;
+      return `<div class="choice${c.checked ? ' open' : ''}"><label class="choice-head"><input type="radio" name="${field}" value="${c.value}" data-field="${field}" ${c.checked ? 'checked' : ''}><span class="choice-label">${esc(c.label)}</span><span class="choice-hint" title="${esc(c.hint)}">${esc(c.hint)}</span></label>${body ? `<div class="choice-body">${body}</div>` : ''}</div>`;
+    }).join('')}</div>`;
   }
   // 화면 바꾸기: 이 화면이 새 버전인지 두 버튼으로 고르고, 그 아래에서 짝이 될 화면을 고른다.
   // only: 고를 수 있는 한쪽(신규 후보는 새 버전, 원본이 없는 화면은 구 버전). 다른 쪽 버튼은 비활성화한다.
   function replaceSides(side: 'new' | 'old' | null, only: 'new' | 'old' | null, picker: string): string {
-    const button = (value: 'new' | 'old', title: string, hint: string, blocked: string) => {
-      const off = !!only && only !== value;
-      return `<button type="button" class="side-button" data-action="replace-side" data-side="${value}" aria-pressed="${side === value}"${off ? ` disabled title="${esc(blocked)}"` : ''}><b>${esc(title)}</b><small>${esc(hint)}</small></button>`;
-    };
-    return `<p class="choice-question">${COPY.replaceSideQuestion}</p><div class="side-buttons">${button('new', COPY.replaceSideNew, COPY.replaceSideNewHint, COPY.replaceSideNewBlocked)}${button('old', COPY.replaceSideOld, COPY.replaceSideOldHint, COPY.replaceSideOldBlocked)}</div>${picker}`;
+    const button = (value: 'new' | 'old', title: string, hint: string) =>
+      `<button type="button" class="side-button" data-action="replace-side" data-side="${value}" aria-pressed="${side === value}"${only && only !== value ? ' disabled' : ''}><b>${esc(title)}</b><small>${esc(hint)}</small></button>`;
+    return `<p class="choice-question">${COPY.replaceSideQuestion}</p><div class="side-buttons">${button('new', COPY.replaceSideNew, COPY.replaceSideNewHint)}${button('old', COPY.replaceSideOld, COPY.replaceSideOldHint)}</div>${picker}`;
   }
   // 구 버전 쪽에서 새 화면 드롭다운에 「제안」으로 둘 항목: 원본이 없는 화면은 교체 제안, 원본이 있으면 이 화면을 교체하도록 제안된 프레임
   function newVersionSuggestion(entry: Entry): string | null {
@@ -1303,15 +1301,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const showInputs = allIncluded;
     if (t === 'GUI' && allIncluded) {
       const excludeReason = `<label>${COPY.uiApp053}<input data-field="excludeReason" value="${esc(common(d => d.excludeReason))}" placeholder="${mixed(d => d.excludeReason) ? esc(COPY.uiApp175) : ''}"></label>`;
-      // 여러 화면을 골라도 기존 화면 교체를 고를 수 있다(2026-11-02 사용자 요청). 교체할 화면은 화면마다 다르므로 드롭다운은 하나만 골랐을 때 보이고,
-      // 여러 개일 때는 화면마다 고른 화면이나 교체 제안을 쓴다. 정해지지 않은 화면은 아래에 이름을 알린다.
-      const unpaired = (pick: (e: Entry, d: Draft) => boolean) => multi ? chosen.filter(e => pick(e, draftOf(t, e))).map(e => entryName(state!, e)) : [];
-      const unpairedNote = (names: string[]) => names.length ? `<p class="note">${COPY.uiApp420} ${names.map(esc).join(', ')}</p>` : '';
+      // 여러 화면을 골라도 화면 바꾸기를 고를 수 있다(2026-11-02 사용자 요청). 짝이 될 화면은 화면마다 다르므로 드롭다운은 하나만 골랐을 때 보이고,
+      // 여러 개일 때는 화면마다 고른 화면이나 교체 제안을 쓴다. 정해지지 않은 화면은 입력 검사(필수 정보)로만 알린다.
+      // 등록 방식에는 요청받은 설명 외의 안내 문구를 붙이지 않는다(2026-11-03 사용자 요청).
       // 화면 바꾸기의 두 쪽. 새 버전은 이 화면이 이전 화면을 이어받고, 구 버전은 고른 새 화면이 이 화면을 이어받는다.
-      const newSide = () => (!multi ? screenPicker('replaceScreenId', registeredItems(id => id !== entry.screenId), draft.replaceScreenId, COPY.uiApp052, { suggested: entry.pairKey }) : '')
-        + unpairedNote(unpaired((_, d) => !d.replaceScreenId));
-      const oldSide = () => (!multi ? screenPicker('replaceWith', candidateItems(entry.key), draft.replacedBy, COPY.uiApp187, { suggested: newVersionSuggestion(entry) }) : '')
-        + unpairedNote(unpaired((_, d) => !d.replacedBy)) + (!multi && isPrevious(entry, draft) ? `<p class="note">${COPY.uiApp189}</p>` : '');
+      const newSide = () => !multi ? screenPicker('replaceScreenId', registeredItems(id => id !== entry.screenId), draft.replaceScreenId, COPY.uiApp052, { suggested: entry.pairKey }) : '';
+      const oldSide = () => !multi ? screenPicker('replaceWith', candidateItems(entry.key), draft.replacedBy, COPY.uiApp187, { suggested: newVersionSuggestion(entry) }) : '';
       if (chosen.every(e => needsLink(e))) {
         const allNew = chosen.every(e => { const d = draftOf(t, e); return d.link === 'new' && !d.notScreen; });
         const allReplace = chosen.every(e => { const d = draftOf(t, e); return d.link === 'replace' && !d.notScreen; });
@@ -1344,9 +1339,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         const side = allMerge ? 'new' : allOld ? 'old' : null;
         html += choiceField('disposition', [
           { value: 'modify', label: COPY.uiApp243, hint: COPY.dispositionModifyHint, checked: allModify },
-          { value: 'replace', label: COPY.uiApp049, hint: COPY.dispositionReplaceHint, checked: allReplace, body: () => replaceSides(side, null, side === 'new' ? newSide() + `<p class="note">${COPY.uiApp353}</p>` : side === 'old' ? oldSide() : '') },
+          { value: 'replace', label: COPY.uiApp049, hint: COPY.dispositionReplaceHint, checked: allReplace, body: () => replaceSides(side, null, side === 'new' ? newSide() : side === 'old' ? oldSide() : '') },
           { value: 'not-screen', label: COPY.uiApp050, hint: COPY.dispositionNotScreenHint, checked: allNotScreen, body: () => excludeReason },
-          { value: 'unpublish', label: COPY.uiApp355, hint: COPY.dispositionUnpublishHint, checked: allUnpublish, body: () => `<p class="note">${COPY.uiApp357}</p>` },
+          { value: 'unpublish', label: COPY.uiApp355, hint: COPY.dispositionUnpublishHint, checked: allUnpublish },
         ], multi && !allModify && !allNotScreen && !allReplace && !allUnpublish);
       }
     }
