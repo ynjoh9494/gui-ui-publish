@@ -455,7 +455,6 @@ async function seed(demo: Demo, mode: Team, alive: () => boolean): Promise<void>
     await call({ type: 'admin', action: { op: 'setCategoryCode', id: categoryId(name), code } });
   }
   await call({ type: 'admin', action: { op: 'setScreenIdPrefix', prefix: 'STB' } });
-  await call({ type: 'admin', action: { op: 'addWorker', name: COPY.uiTutorial064, alias: '' } });
   await call({ type: 'admin', action: { op: 'addTag', team: 'GUI', name: COPY.uiTutorial065, colorKey: TAG_PALETTE[0].key } });
 
   type Item = { name: string; category?: string; code?: string; base?: string; tag?: string };
@@ -473,7 +472,7 @@ async function seed(demo: Demo, mode: Team, alive: () => boolean): Promise<void>
       if (item.tag) draft.tagId = [...s.tags.values()].find(t => t.team === 'GUI' && t.name === item.tag)!.id;
       drafts[entry.key] = draft;
     }
-    const plan = (await call({ type: 'prepare', team: 'GUI', drafts, comment: { description, extra: {} } }))
+    const plan = (await call({ type: 'prepare', team: 'GUI', drafts, comment: { description, extra: {}, worker: COPY.uiTutorial064 } }))
       .flatMap(m => m.type === 'plan' ? [m.plan] : [])[0] as Plan;
     if (plan.blockers.length) throw new Error(plan.blockers.map(b => `${b.name}: ${b.messages.join(', ')}`).join(' / '));
     await call({ type: 'commit', batchId: plan.batchId });

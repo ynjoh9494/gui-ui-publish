@@ -71,7 +71,6 @@ export const COPY = {
   registerExistingDone: '개를 목록에 등록했습니다. 이미 등록된 프레임은 중복 추가하지 않았습니다.',
   adminAutoPages: '자동 관리 페이지',
   adminWorkSetup: '작업 환경',
-  adminCommon: '공통 관리',
   adminMaintenance: '관리자',
   adminDataTitle: 'DATA',
   adminThumbTitle: 'GUI 썸네일',
@@ -197,10 +196,6 @@ export const COPY = {
   uiApp109: '선택', // 433
   uiApp110: "저장", // 434
   uiApp114: "대표 템플릿 프레임을 복제해 플립북을 만듭니다. 연결한 칸에만 화면 이름·Chapter·상태·Screen ID·GUI·히스토리를 넣고, Description 내용과 콜아웃은 건드리지 않습니다. 목록에서 템플릿을 누르면 아래에 그 템플릿의 연결 항목이 나옵니다. 캔버스에서 레이어를 고른 뒤 그 항목의 「연결」이나 「재연결」을 누르세요. 연결된 항목을 누르면 그 레이어를 캔버스에서 보여 줍니다.", // 437
-  uiApp116: "변경", // 440
-  uiApp117: '비활성화', // 440
-  uiApp118: '활성화', // 440
-  uiApp119: "이름", // 441
   uiApp120: "제외 설정", // 442
   uiApp121: "제외 해제", // 443
   uiApp122: '없음', // 443

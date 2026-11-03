@@ -25,7 +25,7 @@ import { defaultTitle, displayScale, GUI_WIDTH_MAX, GUI_WIDTH_MIN, NO_SECTION_KE
 import { TAG_PALETTE } from '../core/palette.ts';
 import { TEMPLATE_GROUPS, TEMPLATE_ITEMS, isFallbackItem, isTemplateItem, type ItemKind, type TemplateInfo, type TemplateItemDef, type TemplateItemState } from '../core/templateParts.ts';
 import { templateEntries, type TemplateEntry } from '../core/templateList.ts';
-import { findCategoryByName, systemTagId, workerLabel } from '../core/registry.ts';
+import { findCategoryByName, systemTagId } from '../core/registry.ts';
 import { formatFrameName, parseFrameName } from '../core/screenName.ts';
 import type { State } from '../core/store.ts';
 import type { Actor, Category, Flipbook, FlipbookScale, ImportedGuiRecord, SystemTag, Team } from '../core/types.ts';
@@ -265,14 +265,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   const selected: Record<Team, string | null> = { GUI: null, UI: null };
   const selection: Record<Team, Set<string>> = { GUI: new Set(), UI: new Set() };
   const anchor: Record<Team, string | null> = { GUI: null, UI: null };
-  let addMode: 'tag' | 'worker' | null = null;
+  let addMode: 'tag' | null = null;
   let editMode: 'tag' | null = null;
   // 그룹은 접힌 상태가 기본이다. 펼친 그룹만 기억한다.
   const expanded: Record<Team, Set<string>> = { GUI: new Set(), UI: new Set() };
   const query: Record<Team, string> = { GUI: '', UI: '' };
   // UI는 만든 플립북 전체를 먼저 보여 준다.
   const changedOnly: Record<Team, boolean> = { GUI: true, UI: false };
-  const recentWorker: Record<Team, string | undefined> = { GUI: undefined, UI: undefined };
   let plan: Plan | null = null;
   let quietPublish = false;
   let toast: { kind: 'info' | 'error'; text: string } | null = null;
@@ -285,7 +284,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let categoryManageKeys: string[] = [];
   // 태그 입력란: 추가 후 선택할 태그와 사용 안 함을 한 번 누른 태그
   let pendingTag: { name: string; team: Team; keys: string[] } | null = null;
-  let pendingWorker: { name: string; team: Team; keys: string[] } | null = null;
   let tagArmed: string | null = null;
   // 데이터 초기화를 한 번 눌렀는가. 한 번 더 누르면 초기화한다.
   let resetArmed = false;
@@ -474,7 +472,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
 
   const team = (): Team => (tab === 'ADMIN' ? mode : tab);
   function draftOf(t: Team, entry: Entry): Draft {
-    if (!drafts[t][entry.key]) drafts[t][entry.key] = defaultDraft(t, state!, entry, recentWorker[t]);
+    if (!drafts[t][entry.key]) drafts[t][entry.key] = defaultDraft(t, state!, entry);
     return drafts[t][entry.key];
   }
 
@@ -1648,7 +1646,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const draft = draftOf(t, entry);
     if (!draft.included || draft.notScreen || draft.unpublish || isPrevious(entry, draft)) return false;
     if (t === 'GUI' && isOldSide(entry, draft)) return field === 'replaceWith' && !draft.replacedBy;
-    if (field === 'workerId') return !draft.workerId;
     if (field === 'tagId') return !draft.tagId;
     if (t !== 'GUI' || isDeletion(entry, draft)) return false;
     if (field === 'code') return !draftCode(state!, entry, draft).trim();
@@ -1665,7 +1662,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const chosen = selectedEntries(t);
     for (const control of root.querySelectorAll<HTMLElement>('.detail [data-required-field]')) {
       const field = control.dataset.requiredField!;
-      const filledNewItem = (!!control.closest('[data-form="worker-add"], [data-form="tag-add"]'))
+      const filledNewItem = !!control.closest('[data-form="tag-add"]')
         && (control as HTMLInputElement).value.trim();
       const invalid = !filledNewItem && chosen.some(entry =>
         (revealed[t].has(entry.key) || touched[t][entry.key]?.has(field)) && missingRequired(t, entry, field));
@@ -1948,7 +1945,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const availableScopePages = pages.filter(p => p.id !== s.project.dataPageId && !scopeIds.includes(p.id));
     const uiPageIds = s.project.flipbookPageIds;
     const availableUiPages = pages.filter(p => p.id !== s.project.dataPageId && !uiPageIds.includes(p.id));
-    const workers = [...s.workers.values()].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
     const pending = retryableDeliveries(s);
     const exclusions = [...s.exclusions.values()].filter(e => e.active);
     // GUI Publish와 UI Flipbook의 관리는 한 화면이다(2026-11-03 사용자 요청). 어느 쪽에서 열어도 모든 항목을 보여 준다.
@@ -1982,9 +1978,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         <p class="note gui-width-sizes">${guiWidthSizes(s.project.guiWidth)}</p>
         <p class="note">${COPY.uiApp227} ${COPY.uiApp228}</p></section>
       ${renderDataSection(s)}
-      <section class="admin" data-form="workers"><h3>${COPY.uiApp089}</h3>
-        ${workers.map(w => `<div class="inline" data-form="wrk" data-id="${w.id}"><input data-f="name" value="${esc(w.name)}"><button data-action="admin-wrk-rename">${COPY.uiApp116}</button><button data-action="admin-wrk-active" data-active="${!w.active}">${w.active ? COPY.uiApp117 : COPY.uiApp118}</button></div>`).join('')}
-        <div class="inline" data-form="wrk-add"><input data-f="name" placeholder="${COPY.uiApp119}"><button class="add-button" data-action="admin-wrk-add">${ADD_LABEL}</button></div></section>
       <section class="admin" data-form="exclusions"><h3>${COPY.uiApp120}</h3>
         ${exclusions.length ? exclusions.map(e => `<div class="inline" data-form="exc" data-id="${e.id}"><span>${esc(e.name)}</span><small>${esc(e.reason)}</small><button data-action="admin-unexclude">${COPY.uiApp121}</button></div>`).join('') : `<p class="note">${COPY.uiApp122}</p>`}</section>
       <section class="admin" data-form="pending"><h3>${COPY.adminPending}</h3><p>${pending.length}${COPY.uiApp081}</p>${pending.length ? recoveryList(s) : ''}<p class="note">${COPY.recoveryRetryHint}</p><button data-action="retry" data-reconcile="1">${COPY.uiApp124}</button></section>
@@ -2010,7 +2003,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     // 묶음 이름이 null이면 이름 없이 구분선으로 나눈다.
     const groups: [string | null, HTMLElement[]][] = [
       [COPY.adminWorkSetup, [...pick([...ADMIN_MODE_PANELS.GUI, ...ADMIN_MODE_PANELS.UI].map(([form]) => form)), ...pick(['automatic-pages'])]],
-      [COPY.adminCommon, pick(['workers'])],
       [null, [maintenance]],
     ];
     const nav = document.createElement('nav');
@@ -3051,13 +3043,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'begin-add': addMode = el.dataset.kind as typeof addMode; editMode = null; renderDetail(); (root.querySelector('.detail .addable input') as HTMLInputElement | null)?.focus(); break;
       case 'begin-edit': editMode = el.dataset.kind as typeof editMode; addMode = null; renderDetail(); (root.querySelector('.detail .addable input') as HTMLInputElement | null)?.focus(); break;
       case 'cancel-add': addMode = null; editMode = null; renderDetail(); break;
-      case 'add-worker': {
-        const name = formValue(el, 'name').trim();
-        if (!name) break;
-        pendingWorker = { name, team: t, keys: selectedKeys(t) };
-        admin({ op: 'addWorker', name, alias: '' });
-        break;
-      }
       case 'prepare': {
         // 누락이 있으면 확인 창 대신 첫 누락 항목으로 간다. GUI 작업자가 비었으면 그 입력란으로 간다(2026-11-03 사용자 요청).
         const invalid = entriesFor(t).find(e => validation(t, e).status === 'invalid');
@@ -3273,13 +3258,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
           admin({ op: 'setFlipbookPages', pageIds: state.project.flipbookPageIds.filter(id => id !== pageId) });
         break;
       }
-      case 'admin-wrk-add': admin({ op: 'addWorker', name: formValue(el, 'name'), alias: '' }); break;
-      case 'admin-wrk-rename': {
-        const id = el.closest<HTMLElement>('[data-form]')!.dataset.id!;
-        admin({ op: 'renameWorker', id, name: formValue(el, 'name'), alias: state?.workers.get(id)?.alias ?? '' });
-        break;
-      }
-      case 'admin-wrk-active': admin({ op: 'setWorkerActive', id: el.closest<HTMLElement>('[data-form]')!.dataset.id!, active: el.dataset.active === 'true' }); break;
       case 'tag-add': {
         const entry = current();
         const name = formValue(el, 'name').trim();
@@ -3755,7 +3733,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     }
     if (el.dataset.input === 'comment') { comment = { ...comment, description: el.value }; return; }
     if (el.dataset.input === 'worker') { workerName = el.value; workerTyped = true; el.classList.toggle('input-error', !el.value.trim()); return; }
-    if (el.dataset.requiredField && el.closest('[data-form="worker-add"], [data-form="tag-add"]')) { renderFieldErrors(); return; }
+    if (el.dataset.requiredField && el.closest('[data-form="tag-add"]')) { renderFieldErrors(); return; }
     const t = team();
     if (el.dataset.input === 'query') { query[t] = el.value; renderList(); return; }
     const entry = current();
@@ -3892,7 +3870,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         }
         break;
       }
-      case 'workerId': for (const e of selectedEntries(t)) draftOf(t, e).workerId = el.value || undefined; if (el.value) recentWorker[t] = el.value; touchField(t, field); refreshAfterInput(); return;
       case 'tagId': for (const e of selectedEntries(t)) draftOf(t, e).tagId = el.value || undefined; refreshAfterInput(); return;
       case 'categoryId': {
         for (const e of selectedEntries(t)) {
@@ -3985,7 +3962,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         openNewFeatures();
         break;
       case 'state': {
-        const previousActiveWorkers = state ? [...state.workers.values()].filter(worker => worker.active).length : 0;
         const previousRules = state ? codeRules(state) : '';
         state = fromWire(msg.state);
         renderRecovery();
@@ -3994,11 +3970,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         pages = msg.pages;
         for (const key of selection.UI) if (state.flipbooks.get(key)?.status !== 'active') selection.UI.delete(key);
         if (selected.UI && !selection.UI.has(selected.UI)) selected.UI = [...selection.UI][0] ?? null;
-        const activeWorkers = [...state.workers.values()].filter(worker => worker.active);
-        if (previousActiveWorkers !== 1 && activeWorkers.length === 1) {
-          for (const teamDrafts of Object.values(drafts))
-            for (const draft of Object.values(teamDrafts)) if (!draft.workerId) draft.workerId = activeWorkers[0].id;
-        }
         if (pendingTag) {
           const { name, team: tagTeam, keys } = pendingTag;
           const found = [...state.tags.values()].find(x => x.team === tagTeam && x.active && x.name === name);
@@ -4011,13 +3982,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
           if (found) for (const entry of entries.filter(e => pendingCategory!.keys.includes(e.key))) { const draft = draftOf('GUI', entry); draft.categoryId = found.id; draft.newCategoryName = undefined; }
           if (found) renumberCodes();
           pendingCategory = null;
-          if (found) addMode = null;
-        }
-        if (pendingWorker) {
-          const { name, team: workerTeam, keys } = pendingWorker;
-          const found = [...state.workers.values()].find(w => w.active && w.name === name && !w.alias);
-          if (found) for (const entry of entriesFor(workerTeam).filter(e => keys.includes(e.key))) draftOf(workerTeam, entry).workerId = found.id;
-          pendingWorker = null;
           if (found) addMode = null;
         }
         if (tab === 'ADMIN') renderDetailKeepingFocus();
@@ -4277,7 +4241,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'notice': notify('info', msg.message); break;
       case 'busy': busyLabel = msg.label; renderBusy(); break;
       case 'error':
-        pendingCategory = null; pendingTag = null; pendingWorker = null;
+        pendingCategory = null; pendingTag = null;
         // 목록 새로고침이 실패해도 아이콘이 계속 돌지 않게 한다.
         if (refreshingList) { refreshingList = false; paintSyncStatus(); }
         // PDF 저장이 실패하면 취소 버튼을 저장 버튼으로 되돌린다.
