@@ -109,6 +109,7 @@ class Text extends Node {
     return copy;
   }
   range(start: number, end: number) { assert.ok(start < end && end <= this.text.length); return this.chars.slice(start, end); }
+  setRangeFills(start: number, end: number, fills: unknown[]) { this.range(start, end); this.fills = fills; }
   setRangeFontName(start: number, end: number, font: Font) { assert.ok(loaded.has(key(font))); this.range(start, end).forEach(char => { char.font = font; }); }
   setRangeListOptions(start: number, end: number, option: { type: string }) { this.range(start, end).forEach(char => { char.list = option.type; }); }
   setRangeIndentation(start: number, end: number, value: number) { this.range(start, end).forEach(char => { char.indent = value; }); }
@@ -320,7 +321,7 @@ test('새 제목·본문 레이어는 슬롯에 있던 텍스트의 서식을 �
       assert.equal(node.chars[0].font.family, 'Pretendard');
       assert.equal(node.fontSize, 14);
       assert.deepEqual(node.lineHeight, { unit: 'PIXELS', value: 20 });
-      assert.deepEqual(node.fills, blue);
+      assert.deepEqual(node.fills, [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }]);
     }
     return groups;
   };

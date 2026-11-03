@@ -2,8 +2,8 @@ import { COPY } from '../core/copy.ts';
 import { isRed } from '../core/richText.ts';
 import type { RichParagraph } from '../core/richText.ts';
 
-// 텍스트 편집 탭: 캔버스에서 고른 텍스트 레이어 하나를 읽고 쓴다. 글꼴·크기·행간·색은 레이어 것을 그대로 두고
-// 내용, 목록(글머리표)·들여쓰기, 굵기만 바꾼다. 목록 기호는 글자로 쓰지 않고 Figma 목록 서식을 쓴다.
+// 텍스트 편집 탭: 캔버스에서 고른 텍스트 레이어 하나를 읽고 쓴다. 글꼴·크기·행간은 레이어 것을 그대로 두고
+// 내용, 목록(글머리표)·들여쓰기, 굵기와 색을 적용한다. 빨간 범위 외에는 검은색으로 쓴다. 목록 기호는 글자로 쓰지 않고 Figma 목록 서식을 쓴다.
 
 export const BOLD_STYLE = /bold|black|heavy/i;
 // 굵은 글씨로 쓸 같은 글꼴 계열의 스타일. 앞에서부터 불러올 수 있는 것을 쓴다.
@@ -79,12 +79,9 @@ export async function writeRichText(node: TextNode, paragraphs: RichParagraph[])
 // textFonts로 글꼴을 불러온 레이어에 쓴다. 여러 레이어를 바꿀 때 모든 글꼴을 먼저 불러온 뒤 차례로 쓴다.
 export function applyRichText(node: TextNode, paragraphs: RichParagraph[], { regular, bold }: TextFonts): void {
   const text = paragraphs.map(p => p.text).join('\n');
-  const segments = node.characters.length ? node.getStyledTextSegments(['fills']) : [];
-  const base = segments.find(s => s.fills?.length && !s.fills.some(p => p.type === 'SOLID' && isRed(p.color)))?.fills ?? (node.fills !== figma.mixed && node.fills?.length && !node.fills.some(p => p.type === 'SOLID' && isRed(p.color)) ? node.fills : undefined);
-  const hadRed = segments.some(s => s.fills?.some(p => p.type === 'SOLID' && isRed(p.color)));
   node.characters = text;
   if (!text.length) return;
-  if (hadRed || paragraphs.some(p => p.red?.length)) node.setRangeFills(0, text.length, base ? [...base] : [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }]);
+  node.setRangeFills(0, text.length, [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }]);
   node.setRangeFontName(0, text.length, regular);
   node.setRangeListOptions(0, text.length, { type: 'NONE' });
   node.setRangeIndentation(0, text.length, 0);

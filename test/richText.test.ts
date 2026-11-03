@@ -140,6 +140,7 @@ class FakeText {
     this.chars = [...value].map(() => ({ ...first }));
   }
   private range(start: number, end: number) { assert.ok(start < end && end <= this.text.length, `범위 ${start}-${end}`); return this.chars.slice(start, end); }
+  setRangeFills(start: number, end: number, _fills: unknown[]) { this.range(start, end); }
   setRangeFontName(start: number, end: number, font: Font) { assert.ok(this.loaded.has(key(font))); this.range(start, end).forEach(c => (c.font = font)); }
   setRangeListOptions(start: number, end: number, options: { type: Char['list'] }) { this.range(start, end).forEach(c => (c.list = options.type)); }
   setRangeIndentation(start: number, end: number, indent: number) { this.range(start, end).forEach(c => (c.indent = indent)); }
@@ -232,7 +233,7 @@ test('red survives nested bold, clipboard, split, join and removal', () => {
 });
 
 
-test('Figma red and bold round trip and red removal restores body color', async () => {
+test('Figma red and bold round trip and red removal resets to black', async () => {
   const loaded = setup(['Inter/Regular', 'Inter/Bold']);
   const node = new FakeText(loaded, 'old', { family: 'Inter', style: 'Regular' }) as any;
   const body = { type: 'SOLID', color: { r: 0.15, g: 0.15, b: 0.15 } };
@@ -245,9 +246,32 @@ test('Figma red and bold round trip and red removal restores body color', async 
   await writeRichText(node, parseRichText('plain <red>**red**</red> end'));
   const read = readRichText(node);
   assert.equal(md(read), 'plain <red>**red**</red> end');
-  assert.equal(colors[0][0].color.r, 0.15);
+  assert.deepEqual(colors[0][0].color, { r: 0, g: 0, b: 0 });
   assert.equal(colors[6][0].color.r, 214 / 255);
   await writeRichText(node, parseRichText('plain **red** end'));
-  assert.ok(colors.slice(0, node.text.length).every(c => c[0].color.r === 0.15));
+  assert.ok(colors.slice(0, node.text.length).every(c => c[0].color.r === 0 && c[0].color.g === 0 && c[0].color.b === 0));
   assert.equal(md(readRichText(node)), 'plain **red** end');
+});
+
+
+test('plain text always becomes black regardless of inherited fills, even without red markup', async () => {
+  const black = [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }];
+  for (const initial of [
+    [{ type: 'SOLID', color: { r: 0, g: 0, b: 1 } }],
+    [{ type: 'SOLID', color: { r: 1, g: 0, b: 0 } }],
+    [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 }, opacity: 0.3 }],
+    [],
+  ]) {
+    const loaded = setup(['Inter/Regular', 'Inter/Bold']);
+    const node = new FakeText(loaded, 'old', { family: 'Inter', style: 'Regular' }) as any;
+    let colors: unknown[][] = Array.from(node.text, () => initial);
+    node.getStyledTextSegments = () => node.chars.map((c: Char, i: number) => ({ start: i, end: i + 1, fontName: c.font, fills: colors[i] ?? initial }));
+    node.setRangeFills = (start: number, end: number, fills: unknown[]) => {
+      for (let i = start; i < end; i++) colors[i] = fills;
+    };
+    await writeRichText(node, parseRichText('**title**\n- body'));
+    for (const color of colors.slice(0, node.text.length)) assert.deepEqual(color, black);
+    await writeRichText(node, parseRichText(''));
+    assert.equal(node.characters, '');
+  }
 });
