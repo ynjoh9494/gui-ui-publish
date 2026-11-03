@@ -15,6 +15,26 @@ import { scanCopies } from '../src/figma/tracked.ts';
 // 이전 형식 템플릿은 처음 쓸 때, 이전 형식 플립북은 플립북 상세의 「새 형식으로 변환」에서 표식으로 바꾼다.
 const NS = 'guiuipublish';
 
+test('마커 인스턴스를 컴포넌트로 연결하고 보기·해제하며 텍스트 없는 마커도 허용한다', async () => {
+  const w = world();
+  const template = w.make('FRAME', 'Template');
+  template.setSharedPluginData(NS, LINKS_KEY, '{"components":{}}');
+  w.page.appendChild(template);
+  const component = w.component('Marker', []);
+  w.page.appendChild(component);
+  const instance = component.createInstance();
+  instance.getMainComponentAsync = async () => component;
+  template.appendChild(instance);
+  w.select(instance);
+  await connectTemplateItem(template.id, 'marker');
+  assert.equal(parseLinks(template.getSharedPluginData(NS, LINKS_KEY))?.components.marker, component.id);
+  const state = (await describeTemplate(template.id)).items.find(i => i.key === 'marker')!;
+  assert.equal(state.problem, null);
+  assert.equal(state.layers[0].id, component.id);
+  await disconnectTemplateItem(template.id, 'marker');
+  assert.equal(parseLinks(template.getSharedPluginData(NS, LINKS_KEY))?.components.marker, undefined);
+});
+
 class Node {
   [key: string]: any;
   id: string;

@@ -14,6 +14,7 @@ import {
   type Parts, type RowParts, type TagKit,
 } from './template.ts';
 import { LINKS_KEY } from '../core/templateParts.ts';
+import { liftMarkers } from './markers.ts';
 
 export { NS, GUI_AREA, DESCRIPTION_AREA, findPart, templateFromSelection, templateIssues, templateProblems, type TagKit } from './template.ts';
 
@@ -547,6 +548,7 @@ export async function syncGui(ns: string, area: FrameNode, gui: FlipbookGui[], s
     throw error;
   }
   // 마커·콜아웃 등 사용자가 넣은 노드는 두고 이전 복사본만 바꾼다.
+  for (const copy of copies) if (!retained.has(copy)) await liftMarkers(ns, copy, area);
   const first = copies.length ? area.children.indexOf(copies[0]) : 0;
   // 크기를 바꾸기 전에 마커마다 따라갈 화면과 그 화면 안의 위치를 기록한다.
   const anchors: Anchor[] = copies.map(c => ({ uid: uidOf(c.getSharedPluginData(ns, COPY_KEY)), x: c.x, y: c.y, width: c.width }));
@@ -696,6 +698,7 @@ export async function syncFreeGui(ns: string, frame: FrameNode, area: FrameNode,
   }
 
   // 바꾸는 복사본 위에 놓인 마커(플립북 프레임에 놓은, 복사본이 아닌 노드 중 중심이 그 복사본 안인 것)는 크기를 두고 같은 상대 위치로 옮긴다.
+  for (const item of items) if (item.from && !item.reused) await liftMarkers(ns, item.from.node, frame);
   // 오토 레이아웃 플립북이면 절대 위치로 놓은 노드만 마커다(나머지는 템플릿 칸).
   const markers = frame.children.filter(n => !own(n) && (frame.layoutMode === 'NONE' || ('layoutPositioning' in n && n.layoutPositioning === 'ABSOLUTE')));
   const pins = items.filter(i => i.from).flatMap(i => markers

@@ -268,7 +268,7 @@ try {
   await app.locator('.template-entry[data-node="tpl-old"] .template-item-name').click();
   await page.waitForFunction(() => document.querySelector('#app .template-entry[data-node="tpl-old"][aria-selected="true"]') && document.querySelector('#app .template-item[data-key="title"]') && !document.querySelector('#app .template-item[data-key="gui"]'));
   rows = await templateRows();
-  assert.deepEqual(rows.map(r => r.key), ['title', 'chapter', 'idTag', 'row', 'statusTag', 'rowStatusTag', 'rowStatus', 'rowComment', 'rowWorker', 'rowDate', 'rowTeam'], '반영에 쓰는 항목만');
+  assert.deepEqual(rows.map(r => r.key), ['title', 'chapter', 'idTag', 'row', 'statusTag', 'rowStatusTag', 'marker', 'rowStatus', 'rowComment', 'rowWorker', 'rowDate', 'rowTeam'], '반영에 쓰는 항목만');
   assert.ok((await app.locator('[data-form=template] .note').allTextContents()).some(t => t.includes('대표가 아닌 템플릿')), '대표가 아닌 템플릿 안내');
   await app.locator('.template-item[data-key="rowTeam"] [data-action=admin-template-disconnect]').click();
   await page.waitForFunction(() => document.querySelector('#app .template-item[data-key="rowTeam"] .template-state.optional'));

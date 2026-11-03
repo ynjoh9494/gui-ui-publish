@@ -6,6 +6,7 @@ import type { CopyUpdate, PasteItem, PasteSpot } from '../host.ts';
 import { COPY_SCALE_KEY, FLIPBOOK_KEY, loadPages, NODE_KEY } from './flipbook.ts';
 import { COPY_KEY, copyLayers, rescaleExact, SCREEN_KEY } from './layers.ts';
 import { linksOf } from './template.ts';
+import { liftMarkers } from './markers.ts';
 
 // 추적 GUI(core/tracks.ts)의 캔버스 쪽: 페이지에서 GUI 복사본을 찾고, 새 버전으로 바꾸고, 추적 기록 ID를 적는다.
 
@@ -304,6 +305,8 @@ export async function updateCopies(ns: string, items: CopyUpdate[]): Promise<{ u
           if (Math.abs(factor - 1) > 1e-6) for (const font of await rescaleExact(prepared, factor)) notes.add(`${COPY.figmaFlipbook026} ${font}`);
           byWidth.set(width, prepared);
         }
+        if (wrapped && oldGui && old.type === 'FRAME') await liftMarkers(ns, oldGui, old);
+        else if (old.parent.type === 'FRAME') await liftMarkers(ns, old, old.parent);
         const copy = prepared.clone();
         if (wrapped && screen && oldGui) {
           screen.insertChild(screen.children.indexOf(oldGui), copy);

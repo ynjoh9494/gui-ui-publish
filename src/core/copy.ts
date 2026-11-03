@@ -749,6 +749,8 @@ export const COPY = {
   coreTemplate037: '플립북 칸',
   coreTemplate038: '컴포넌트',
   coreTemplate039: '이력 행 안의 칸',
+  coreTemplate040: '마커',
+  coreTemplate041: '템플릿에 둔 마커 인스턴스 또는 컴포넌트를 연결합니다. 같은 컴포넌트의 마커가 GUI 복사본 안에 있으면 업데이트 전에 화면 밖으로 옮겨 보존합니다.',
   // 플립북 만들기 — src/core/flipbooks.ts
   coreFlipbooks002: 'GUI 배포 기록에 없는 화면입니다. 목록을 다시 불러오세요.',
   coreFlipbooks003: '사용 종료된 화면입니다:',

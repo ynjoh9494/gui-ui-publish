@@ -13,7 +13,7 @@ export const LINKS_KEY = 'templateLinks';
 export type FlipbookPart = 'title' | 'chapter' | 'status' | 'ids' | 'gui' | 'description' | 'history' | 'previous' | 'pdfHidden';
 export type RowPart = 'rowStatus' | 'rowComment' | 'rowWorker' | 'rowDate' | 'rowTeam';
 // 컴포넌트는 표식 대신 연결 기록에 노드 ID로 둔다. 이력 행 컴포넌트에는 'row' 표식도 달아 인스턴스(이력 행)를 알아본다.
-export type ComponentPart = 'idTag' | 'row' | 'statusTag' | 'rowStatusTag';
+export type ComponentPart = 'idTag' | 'row' | 'statusTag' | 'rowStatusTag' | 'marker';
 export type TemplateItem = FlipbookPart | RowPart | ComponentPart;
 
 // text: 텍스트 레이어, tag: 태그 인스턴스나 텍스트, area: 레이어를 넣을 칸(슬롯이나 인스턴스 밖 프레임), frame: 인스턴스 밖 프레임,
@@ -44,6 +44,7 @@ export const TEMPLATE_ITEMS: readonly TemplateItemDef[] = [
   { key: 'row', group: 'component', kind: 'component', label: COPY.coreTemplate021, hint: COPY.coreTemplate022 },
   { key: 'statusTag', group: 'component', kind: 'component', label: COPY.coreTemplate023, hint: COPY.coreTemplate024 },
   { key: 'rowStatusTag', group: 'component', kind: 'component', label: COPY.coreTemplate025, hint: COPY.coreTemplate026 },
+  { key: 'marker', group: 'component', kind: 'component', label: COPY.coreTemplate040, hint: COPY.coreTemplate041 },
   { key: 'rowStatus', group: 'row', kind: 'tag', label: COPY.coreTemplate027, hint: COPY.coreTemplate028 },
   { key: 'rowComment', group: 'row', kind: 'text', label: COPY.coreTemplate029, hint: COPY.coreTemplate030 },
   { key: 'rowWorker', group: 'row', kind: 'text', label: COPY.coreTemplate031, hint: COPY.coreTemplate032 },
@@ -61,7 +62,7 @@ export const TEMPLATE_GROUPS: readonly { group: ItemGroup; label: string }[] = [
 // 그때 템플릿에서 읽는 것은 화면 이름·Chapter의 기본 글자, 컴포넌트, 이력 행 안의 칸(컴포넌트 안 표식이라 기존 이력 행이 이어받는다)이다.
 // 나머지 칸은 플립북이 만들 때 이어받은 표식을 쓰므로 대표가 아닌 템플릿에서 바꿔도 기존 플립북에 반영되지 않는다.
 const FALLBACK_ITEMS: ReadonlySet<TemplateItem> = new Set<TemplateItem>([
-  'title', 'chapter', 'idTag', 'row', 'statusTag', 'rowStatusTag', 'rowStatus', 'rowComment', 'rowWorker', 'rowDate', 'rowTeam',
+  'title', 'chapter', 'idTag', 'row', 'statusTag', 'rowStatusTag', 'marker', 'rowStatus', 'rowComment', 'rowWorker', 'rowDate', 'rowTeam',
 ]);
 export const isFallbackItem = (key: TemplateItem) => FALLBACK_ITEMS.has(key);
 

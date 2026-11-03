@@ -319,7 +319,7 @@ export interface TagKit {
 }
 
 async function linkedComponents(links: TemplateLinks): Promise<Record<ComponentPart, ComponentNode | null>> {
-  const out: Record<ComponentPart, ComponentNode | null> = { idTag: null, row: null, statusTag: null, rowStatusTag: null };
+  const out: Record<ComponentPart, ComponentNode | null> = { idTag: null, row: null, statusTag: null, rowStatusTag: null, marker: null };
   await Promise.all(Object.entries(links.components).map(async ([key, id]) => {
     const node = await figma.getNodeByIdAsync(id);
     out[key as ComponentPart] = node?.type === 'COMPONENT' && !node.removed ? node : null;
@@ -382,7 +382,7 @@ async function linkedItems(template: FrameNode, links: TemplateLinks, ns: string
       const key = def.key as ComponentPart;
       const node = components[key];
       let problem: string | null = links.components[key] && !node ? COPY.figmaTemplate001 : null;
-      if (!problem && node && key !== 'row' && !hasText(node)) problem = COPY.figmaTemplate011;
+      if (!problem && node && key !== 'row' && key !== 'marker' && !hasText(node)) problem = COPY.figmaTemplate011;
       if (!problem && !node && key === 'idTag' && connected('ids')) problem = COPY.figmaTemplate008;
       if (!problem && !node && key === 'row' && connected('history')) problem = COPY.figmaTemplate009;
       return { key: def.key, layers: layers([node], null), problem };
@@ -576,7 +576,7 @@ export async function connectTemplateItem(templateId: string, key: TemplateItem,
       const before = (await linkedComponents(links)).row;
       if (before && before.id !== component.id && !before.remote) before.setSharedPluginData(ns, PART_KEY, '');
       setRole(component, 'row', ns);
-    } else if (!hasText(component)) throw new Error(COPY.figmaTemplate011);
+    } else if (key !== 'marker' && !hasText(component)) throw new Error(COPY.figmaTemplate011);
     links.components[key as ComponentPart] = component.id;
     template.setSharedPluginData(ns, LINKS_KEY, linksValue(links));
     return;

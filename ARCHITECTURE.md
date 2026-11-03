@@ -1,5 +1,7 @@
 # GUI·UI Publish 아키텍처
 
+마커 보존은 `src/figma/markers.ts`에서 처리한다. `templateLinks.components.marker`의 컴포넌트와 같은 인스턴스·변형을 교체할 GUI 하위에서 찾고, 절대 변환을 새 부모 좌표로 바꿔 GUI 밖으로 옮긴다. `flipbook.ts`와 `tracked.ts`는 새 GUI 준비가 끝난 뒤 기존 GUI 삭제 전에 이를 호출한다. 기존 플립북은 `flipbookTemplate`으로 원본 템플릿의 최신 연결을 읽는다.
+
 이 문서는 현재 `src/` 구현의 경계와 데이터 흐름을 설명한다. 사용 방법과 화면 정책은 [BEHAVIOR](BEHAVIOR.md), 코드 변경 기준은 [CONVENTION](CONVENTION.md), 성능 측정과 개선 근거는 [PERFORMANCE_REVIEW](PERFORMANCE_REVIEW.md)를 본다.
 
 ## 실행 구조
