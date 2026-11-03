@@ -36,6 +36,15 @@ try {
   await page.goto(pathToFileURL('tmp/build/preview.html').href + '?mode=ui');
   await page.locator('#app [data-action=tutorial]').waitFor();
   const before = await listeners();
+  const switcher = page.locator('#app [data-action=switch-mode]');
+  assert.equal(await switcher.innerText(), 'GUI 배포');
+  await switcher.click();
+  await page.locator('#app [data-action=version-open]').waitFor();
+  assert.equal(await switcher.innerText(), '플립북 관리');
+  await page.locator('#app [data-action=settings]').click();
+  await switcher.click();
+  await page.locator('#app [data-action=text-open]').waitFor();
+  assert.equal(await switcher.innerText(), 'GUI 배포');
   for (let i = 0; i < 3; i++) {
     await page.locator('#app [data-action=tutorial]').click();
     await page.waitForFunction(() => document.querySelector('.tutorial-layer')?.dataset.step === '1' && !document.querySelector('.tutorial-bubble')?.hidden);

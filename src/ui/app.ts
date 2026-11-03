@@ -53,7 +53,7 @@ type Tab = Team | 'ADMIN';
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
 const WHILE_BUSY = new Set(['tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
-const BEFORE_CHECK = new Set([...WHILE_BUSY, 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
+const BEFORE_CHECK = new Set([...WHILE_BUSY, 'switch-mode', 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'text-import', 'text-apply',
   'version-open', 'version-close', 'version-match', 'version-select', 'version-review-only', 'version-reveal', 'version-switch', 'version-cancel']);
 
@@ -816,7 +816,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     $('.tabs').innerHTML = `${settings ? `<span class="app-title">${COPY.uiApp004}</span>` : ''}` +
       `${mode === 'GUI' && !settings ? `<div class="create-tabs" role="tablist">${headerTab('version-close', COPY.uiApp272, !versionOpen, 'list')}${headerTab('version-open', COPY.uiApp248, versionOpen, 'versions')}</div>` : ''}` +
       `${mode === 'UI' && !settings ? `<div class="create-tabs" role="tablist">${headerTab('text-close', COPY.uiApp302, listTabOpen(), 'book')}${headerTab('paste-open', COPY.paste001, pasteOpen, 'paste')}<span class="tab-separator tab-group-separator" aria-hidden="true"></span>${headerTab('text-open', COPY.uiApp303, textOpen, 'text')}${headerTab('flow-open', COPY.flow020, flowOpen, 'flow')}${headerTab('pdf-open', COPY.pdf001, pdfOpen, 'pdf')}</div>` : ''}` +
-      `<div class="tab-tools">${mode === 'GUI' ? '<span class="tab-separator" aria-hidden="true"></span>' : ''}` +
+      `<div class="tab-tools"><button class="mode-switch" data-action="switch-mode" title="${mode === 'GUI' ? COPY.modeUi : COPY.modeGui}" ${busyLabel || pdfBusy ? 'disabled' : ''}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10V5h16l-4-4M21 14v5H5l4 4M19 5l-4 4M5 19l4-4"/></svg><span>${mode === 'GUI' ? COPY.modeUi : COPY.modeGui}</span></button><span class="tab-separator" aria-hidden="true"></span>` +
       `<button class="icon-button" data-action="settings" aria-pressed="${settings}" title="${COPY.uiApp004}" aria-label="${COPY.uiApp004}">${GEAR}</button>` +
       `<button class="icon-button" data-action="collapse-window" title="${COPY.windowCollapse}" aria-label="${COPY.windowCollapse}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/><path d="M3 15v6h6M3 21l9-9"/></svg></button>` +
       `<button class="icon-button help-button" data-action="tutorial" title="${COPY.uiTutorial001}" aria-label="${COPY.uiTutorial001}">${HELP}</button></div>`;
@@ -2700,6 +2700,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     switch (action) {
       case 'tutorial':
         startTutorial({ mode, actor: actor ?? { id: '', name: '' }, root, startApp, resize: (width, height) => bridge.send({ type: 'resize', width, height }) });
+        break;
+      case 'switch-mode':
+        closeVersion(false);
+        mode = mode === 'GUI' ? 'UI' : 'GUI';
+        tab = mode;
+        addMode = null; editMode = null;
+        bridge.send({ type: 'switchMode', mode });
+        if (mode === 'UI') bridge.send({ type: 'guiScreens' });
+        if (mode === 'GUI' && !workerAsked) { workerAsked = true; bridge.send({ type: 'workerNameGet' }); }
+        renderAll();
         break;
       case 'settings':
         closeVersion(false);

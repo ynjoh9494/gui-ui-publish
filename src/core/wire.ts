@@ -132,6 +132,7 @@ export type ScanState = 'idle' | 'loading' | 'comparing' | 'done' | 'cancelled' 
 
 export type ToMain =
   | { type: 'ready' }
+  | { type: 'switchMode'; mode: Team }
   | { type: 'tutorialSeenGet'; mode: Team }
   | { type: 'tutorialSeenSet'; mode: Team }
   // GUI 배포 작업자 이름: 사용자별로 마지막에 배포한 이름을 기억한다(figma.clientStorage, 2026-11-03 사용자 요청).

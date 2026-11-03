@@ -67,7 +67,8 @@ export function figmaHost(mode: Host['mode']): Host {
 
   return {
     kv,
-    mode,
+    get mode() { return mode; },
+    set mode(value) { mode = value; },
     actor: { id: user?.id ?? 'unknown', name: user?.name ?? COPY.figmaHost004 },
     post: message => figma.ui.postMessage(message),
     resize(width, height, save, collapsed) {

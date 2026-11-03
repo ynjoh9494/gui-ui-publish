@@ -808,3 +808,7 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .paste-track:not(:disabled) svg { color: var(--brand); }
 
 .paste-card-meta > .label { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+.tabs .mode-switch { display: inline-flex; align-items: center; gap: 3px; height: 28px; border-radius: 6px; white-space: nowrap; color: var(--text); }
+.tabs .mode-switch:hover:not(:disabled) { background: var(--bg2); }
+.tabs .mode-switch svg { flex: none; }

@@ -152,6 +152,11 @@ export class Controller {
     if (label) await this.progress(label);
     try {
       switch (msg.type) {
+        case 'switchMode':
+          this.host.mode = msg.mode;
+          this.postEntries();
+          if (msg.mode === 'UI') await this.checkTemplate();
+          break;
         case 'ready':
           this.store.reload();
           this.host.normalizeManagedPageNames?.();

@@ -103,7 +103,7 @@ try {
   assert.notEqual(nativeTab.fullBg, 'rgba(0, 0, 0, 0)', '선택 배경은 아이콘과 텍스트를 함께 감싼다');
   assert.equal(nativeTab.weight, '400', '선택한 탭은 볼드 없음');
   assert.equal(nativeTab.iconWidth, 28);
-  assert.equal(await app.locator('.tab-tools button').count(), 3);
+  assert.equal(await app.locator('.tab-tools button').count(), 4);
   await app.evaluate((root, size) => { root.style.width = size.width; root.style.height = size.height; }, headerBefore);
 
   const divider = app.locator('.pane-divider');
@@ -1125,7 +1125,10 @@ try {
   assert.equal(await app.locator('.detail .detail-foot').evaluate(node => node.previousElementSibling?.classList.contains('detail-main') && getComputedStyle(node.previousElementSibling).overflowY === 'auto' && getComputedStyle(node.parentElement).overflowY === 'hidden'), true, 'History is a separate pane below the scrolling form');
   await fold.locator('summary').click();
   assert.equal(await fold.locator('table').isVisible(), true, 'opening the fold shows the history');
-  assert.equal(await fold.locator('summary').evaluate(node => getComputedStyle(node).position), 'sticky', 'the History row stays on top while its content scrolls');
+  await page.waitForFunction(() => {
+    const summary = document.querySelector('#app .detail .detail-foot details.history-fold > summary');
+    return summary && getComputedStyle(summary).position === 'sticky';
+  });
   // 지난 배포 썸네일은 제목 없이 History 맨 위에 있고, 버전·시각을 캡션으로 단다.
   assert.match(await fold.locator('.history-thumb figcaption').innerText(), /^v\d+ · /);
   assert.equal(await fold.evaluate(node => node.querySelector('.history-thumb').compareDocumentPosition(node.querySelector('table')) & Node.DOCUMENT_POSITION_FOLLOWING), 4, 'the thumbnail sits above the history list');

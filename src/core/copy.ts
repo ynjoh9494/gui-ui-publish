@@ -60,6 +60,8 @@ export const INDICATOR_LABEL: Record<'new' | 'changed' | 'unchanged' | 'pending'
 // 화면·안내·오류 문구. 각 항목의 주석은 문구가 처음 표시되던 코드의 행이다.
 // 문구를 바꿀 때 HTML 태그·동적 값은 사용처에 두고 여기의 텍스트만 수정한다.
 export const COPY = {
+  modeGui: 'GUI 배포',
+  modeUi: '플립북 관리',
   registerExisting: '기존 플립북 등록',
   registerExistingHint: '캔버스에서 선택한 프레임을 기존 모습 그대로 목록에 등록합니다.',
   registerExistingSelect: '등록할 플립북의 바깥쪽 프레임을 캔버스에서 선택하세요. 여러 프레임을 함께 선택할 수 있습니다.',

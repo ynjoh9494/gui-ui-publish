@@ -68,10 +68,7 @@ try {
   await app.locator('[data-field=newCategory]').press('Enter');
   await page.waitForFunction(() => [...document.querySelectorAll('#app [data-field=categoryId] option')].some(x => x.textContent === '홈'));
   await app.locator('[data-field=code]').fill('STB_HO_001');
-  await app.locator('[data-action=begin-add][data-kind=worker]').click();
-  await app.locator('[data-form=worker-add] [data-f=name]').fill('예시 작업자');
-  await app.locator('[data-form=worker-add] [data-f=name]').press('Enter');
-  await page.waitForFunction(() => [...document.querySelectorAll('#app [data-field=workerId] option')].some(x => x.textContent?.includes('예시 작업자')));
+  await app.locator('.footer [data-input=worker]').fill('예시 작업자');
   await app.locator('.footer [data-input=comment]').fill('홈 화면 첫 배포');
   await shot('gui-form');
 
