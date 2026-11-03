@@ -417,7 +417,7 @@ button.link.danger { color: var(--danger); }
 .pending-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; width: 100%; }
 .pending-line .new-actions { display: flex; gap: 6px; margin-left: auto; }
 /* 플립북: 화면이 수정되었습니다 */
-.review-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+.review-dot { display: inline-block; flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--danger); }
 .review-dot.none { background: var(--border); }
 .review-count { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text); }
 .review-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 4px; }
