@@ -80,3 +80,59 @@ test('기본 화면이 확정 직전 충돌하면 케이스도 보류하고 무�
   assert.equal(store.state.screens.has(base.screenId), false);
   assert.equal(store.state.screens.has(caseItem.screenId), false);
 });
+
+// 기본 화면 X와 그 케이스 B, 독립 화면 Y를 배포해 두고 등록 화면 항목을 만든다.
+function registered() {
+  const { store, entries, drafts, input } = setup();
+  Object.assign(drafts['new:case'], { relation: 'case', baseScreenId: 'new:base' });
+  const first = buildPlan('GUI', store.state, entries, drafts, actor, 'first');
+  assert.equal(commitPlan(store, first, input).conflicts.length, 0);
+  const id = (key: string) => first.items.find(i => i.entryKey === key)!.screenId;
+  const ids = { x: id('new:base'), b: id('new:case'), y: id('new:other') };
+  const rows = Object.entries(ids).map(([name, screenId]) => ({
+    key: screenId, screenId, estimate: 'unchanged', categoryMissing: false, notes: [], suggestedScreenId: null, pairKey: null,
+    frame: { nodeId: name === 'x' ? 'base' : name === 'b' ? 'case' : 'other', pageId: 'p', name, width: 1920, height: 1080, screenTag: null, fingerprint: name === 'x' ? 'base' : name === 'b' ? 'case' : 'other', error: null },
+  } as unknown as Entry));
+  const next: Record<string, Draft> = Object.fromEntries(rows.map(entry => [entry.key, { ...defaultDraft('GUI', store.state, entry), included: true, workerId: 'w', tagId: drafts['new:base'].tagId }]));
+  return { store, ids, rows, next, input: { fingerprints: { [ids.x]: 'base', [ids.b]: 'case', [ids.y]: 'other' }, thumbs: {} } };
+}
+
+test('케이스였던 화면을 같은 배포에서 독립으로 바꾸면 다른 화면의 기본 화면으로 고를 수 있다', () => {
+  const { store, ids, rows, next, input } = registered();
+  Object.assign(next[ids.b], { relation: 'standalone', baseScreenId: undefined });
+  Object.assign(next[ids.y], { relation: 'case', baseScreenId: ids.b });
+  assert.deepEqual(validateDraft('GUI', store.state, rows[2], next[ids.y], next, rows).errors, []);
+  next[ids.b].included = false;
+  assert.ok(validateDraft('GUI', store.state, rows[2], next[ids.y], next, rows).errors.includes(COPY.coreRegistry018), '독립으로 바꾼 화면을 배포에서 빼면 여전히 케이스다');
+  next[ids.b].included = true;
+  const plan = buildPlan('GUI', store.state, rows, next, actor, 'second');
+  assert.deepEqual(plan.blockers, []);
+  assert.deepEqual(commitPlan(store, plan, input).conflicts, []);
+  assert.equal(store.state.screens.get(ids.b)?.baseScreenId, null);
+  assert.equal(store.state.screens.get(ids.y)?.baseScreenId, ids.b);
+});
+
+test('같은 배포에서 케이스를 모두 다른 관계로 바꾼 기본 화면은 케이스가 될 수 있다', () => {
+  const { store, ids, rows, next, input } = registered();
+  Object.assign(next[ids.x], { relation: 'case', baseScreenId: ids.y });
+  assert.ok(validateDraft('GUI', store.state, rows[0], next[ids.x], next, rows).errors.includes(COPY.coreRegistry019));
+  Object.assign(next[ids.b], { relation: 'standalone', baseScreenId: undefined });
+  assert.deepEqual(validateDraft('GUI', store.state, rows[0], next[ids.x], next, rows).errors, []);
+  const plan = buildPlan('GUI', store.state, rows, next, actor, 'third');
+  assert.deepEqual(plan.blockers, []);
+  assert.deepEqual(commitPlan(store, plan, input).conflicts, []);
+  assert.equal(store.state.screens.get(ids.x)?.baseScreenId, ids.y);
+  assert.equal(store.state.screens.get(ids.b)?.baseScreenId, null);
+});
+
+test('독립으로 바꾼 기본 화면이 확정 직전 충돌하면 그 화면을 기본 화면으로 고른 케이스도 보류한다', () => {
+  const { store, ids, rows, next, input } = registered();
+  Object.assign(next[ids.b], { relation: 'standalone', baseScreenId: undefined });
+  Object.assign(next[ids.y], { relation: 'case', baseScreenId: ids.b });
+  const plan = buildPlan('GUI', store.state, rows, next, actor, 'fourth');
+  const b = store.state.screens.get(ids.b)!;
+  store.put(keys.screen(ids.b), { ...b, rev: b.rev + 1 });
+  const result = commitPlan(store, plan, input);
+  assert.deepEqual(new Set(result.conflicts.map(c => c.entryKey)), new Set([ids.b, ids.y]));
+  assert.equal(store.state.screens.get(ids.y)?.baseScreenId, null);
+});

@@ -16,7 +16,7 @@ import type { ChangeReason } from '../core/changeDigest.ts';
 import { esc } from './html.ts';
 import { NODE_PREVIEW, PreviewCache } from './previewCache.ts';
 import { pendingRows, retryableDeliveries } from '../core/guiDelivery.ts';
-import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScreen, isDeletion, isOldSide, isPrevious, isUnpublish, mergesInto, needsLink, OPTIONAL_FIELDS, pendingScreens, renumberAutoCodes, replaceTarget, STATUS_LABEL, validateDraft, type Draft, type DraftIndex, type InputStatus, type Validation } from '../core/drafts.ts';
+import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScreen, isDeletion, isOldSide, isPrevious, isUnpublish, mergesInto, needsLink, OPTIONAL_FIELDS, pendingCaseState, pendingScreens, renumberAutoCodes, replaceTarget, STATUS_LABEL, validateDraft, type Draft, type DraftIndex, type InputStatus, type Validation } from '../core/drafts.ts';
 import { formatTime, type HistoryRow } from '../core/history.ts';
 import { arrangeFlipbooks, buildList, guiGroupKey, placeDrafts, savedGuiDisplay, savedGuiPlace, UNCATEGORIZED, type ArrangedGroup, type GuiDisplay, type GuiPlace, type ListModel } from '../core/list.ts';
 import { emptyComment, type BatchComment, type Plan } from '../core/publish.ts';
@@ -1445,10 +1445,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         const relation = common(d => d.relation);
         const allCase = relation === 'case';
         const baseMixed = allCase && mixed(d => d.baseScreenId);
+        // 기본 화면 후보는 입력 중인 관계로 거른다. 케이스였어도 같은 배포에서 독립으로 바꾸면 고를 수 있다(2026-11-03 사용자 요청).
+        const planned = pendingCaseState(state!, entriesFor('GUI'), drafts.GUI);
         html += `<fieldset class="wide"><legend>${COPY.uiApp057}</legend>
         <label class="check"><input type="radio" name="relation" value="standalone" data-field="relation" ${relation === 'standalone' ? 'checked' : ''}> ${COPY.uiApp058}</label>
         <label class="check"><input type="radio" name="relation" value="case" data-field="relation" ${allCase ? 'checked' : ''}> ${COPY.uiApp059}</label>
-        ${screenPicker('baseScreenId', [...registeredItems(id => !state!.screens.get(id)?.baseScreenId && id !== entry.screenId && id !== replaceTarget(entry, draft)), ...pendingScreens(state!, entriesFor('GUI'), drafts.GUI).filter(s => drafts.GUI[s.id]?.relation !== 'case' && s.id !== entry.key).map(s => ({ value: s.id, code: s.code, name: s.name, categoryId: s.categoryId ?? undefined }))], allCase ? common(d => d.baseScreenId) || undefined : undefined, COPY.uiApp061, { disabled: !allCase, mixed: baseMixed, preferredCategoryId: common(d => d.categoryId) })}</fieldset>`;
+        ${screenPicker('baseScreenId', [...registeredItems(id => !planned.screens.get(id)?.baseScreenId && id !== entry.screenId && id !== replaceTarget(entry, draft)), ...pendingScreens(state!, entriesFor('GUI'), drafts.GUI).filter(s => drafts.GUI[s.id]?.relation !== 'case' && s.id !== entry.key).map(s => ({ value: s.id, code: s.code, name: s.name, categoryId: s.categoryId ?? undefined }))], allCase ? common(d => d.baseScreenId) || undefined : undefined, COPY.uiApp061, { disabled: !allCase, mixed: baseMixed, preferredCategoryId: common(d => d.categoryId) })}</fieldset>`;
       }
 
       // 여러 화면의 Screen ID도 한 번에 바꾼다(2026-11-02 사용자 요청). 값이 서로 다르면 비워 두고 「-」로 표시한다.

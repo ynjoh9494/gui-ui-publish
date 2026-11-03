@@ -139,9 +139,24 @@ export function pendingScreens(state: State, entries: Entry[], drafts: Record<st
       source: { nodeId: entry.frame.nodeId, pageId: entry.frame.pageId }, guiVersion: 0, guiTag: null, createdAt: 0 }];
   });
 }
-function pendingCaseState(state: State, entries: Entry[], drafts: Record<string, Draft>, basesOnly = false): State {
+// 같은 배포에서 등록 화면의 화면 관계를 바꾸는 입력. 배포할 값과 같은 규칙(publish.ts guiItem)이며 포함한 항목만 센다.
+// 케이스였던 화면을 독립으로 바꾸면 기본 화면으로 고를 수 있고, 케이스를 모두 다른 관계로 바꾼 기본 화면은 케이스가 될 수 있다(2026-11-03 사용자 요청).
+function plannedRelations(state: State, entries: Entry[], drafts: Record<string, Draft>): [string, string | null][] {
+  return entries.flatMap(entry => {
+    const d = drafts[entry.key];
+    if (!d?.included || !d.relation || isNotScreen(entry, d) || isUnpublish(entry, d) || isDeletion(entry, d) || isPrevious(entry, d)) return [];
+    if (needsLink(entry) && d.link !== 'replace') return [];
+    const id = replaceTarget(entry, d) ?? entry.screenId;
+    if (!id || !state.screens.has(id)) return [];
+    return [[id, d.relation === 'case' ? d.baseScreenId ?? null : null] as [string, string | null]];
+  });
+}
+// 입력 중인 값을 반영한 화면 목록: 같은 배포의 신규 화면을 더하고 등록 화면의 관계를 입력값으로 바꾼다.
+export function pendingCaseState(state: State, entries: Entry[], drafts: Record<string, Draft>, basesOnly = false): State {
   const pending = pendingScreens(state, entries, drafts).filter(s => !basesOnly || drafts[s.id]?.relation !== 'case');
-  return { ...state, screens: new Map([...state.screens, ...pending.map(s => [s.id, s] as const)]) };
+  const screens = new Map([...state.screens, ...pending.map(s => [s.id, s] as const)]);
+  if (!basesOnly) for (const [id, baseScreenId] of plannedRelations(state, entries, drafts)) screens.set(id, { ...screens.get(id)!, baseScreenId });
+  return { ...state, screens };
 }
 
 // 같은 배포에서 기존 ID를 비우는 화면은 충돌로 보지 않는다. 최종 ID 중복은 buildPlan에서 다시 검사한다.

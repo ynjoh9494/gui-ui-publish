@@ -293,7 +293,24 @@ function alreadyWritten(store: Store, item: PlanItem, batchId: string): boolean 
   return store.readFresh<{ batchId: string }>(recordKey(item))?.batchId === batchId;
 }
 
-function checkItem(store: Store, item: PlanItem, input: CommitInput, planned: Map<string, PlanItem>): string[] {
+// 같은 배포의 화면을 기록한 뒤의 화면 관계. 신규 화면을 더하고 등록 화면의 관계를 배포할 값으로 바꾼다.
+// 케이스였던 화면을 독립으로 바꾸는 배포에서 그 화면을 기본 화면으로 고르거나, 케이스를 모두 옮긴 기본 화면을 케이스로 바꿀 수 있다(2026-11-03 사용자 요청).
+// 삭제로 사용 안 함이 되는 화면은 관계를 바꾸지 않으므로 그대로 둔다.
+function plannedState(state: State, items: PlanItem[]): State {
+  const screens = new Map(state.screens);
+  for (const item of items) {
+    if (item.team !== 'GUI' || item.workType === 'deleted') continue;
+    const before = screens.get(item.screenId);
+    if (before) { if (before.baseScreenId !== item.baseScreenId) screens.set(item.screenId, { ...before, baseScreenId: item.baseScreenId }); }
+    else if (item.isNew) screens.set(item.screenId, {
+      id: item.screenId, rev: 0, code: item.code, name: item.name, categoryId: item.categoryId, baseScreenId: item.baseScreenId, status: 'active',
+      source: item.frame ? { nodeId: item.frame.nodeId, pageId: item.frame.pageId } : null, guiVersion: 0, guiTag: null, createdAt: 0,
+    });
+  }
+  return { ...state, screens };
+}
+
+function checkItem(store: Store, item: PlanItem, input: CommitInput, after: State): string[] {
   const out: string[] = [];
   if (item.team === 'GUI') {
     if (item.isNew) {
@@ -307,10 +324,7 @@ function checkItem(store: Store, item: PlanItem, input: CommitInput, planned: Ma
     // 최종 확인 뒤 다른 작업자가 카테고리를 삭제했을 수 있다. 삭제는 카테고리를 다시 정하지 않는다.
     if (item.workType !== 'deleted' && item.categoryId && !store.state.categories.get(item.categoryId)?.active) out.push(COPY.corePublish007);
     if (item.workType !== 'deleted' && item.baseScreenId) {
-      const pending = planned.get(item.baseScreenId);
-      const error = pending?.isNew && pending.workType !== 'deleted'
-        ? (pending.baseScreenId ? COPY.coreRegistry018 : pending.screenId === item.screenId ? COPY.coreRegistry015 : null)
-        : caseRelationError(store.state, item.isNew ? null : item.screenId, item.baseScreenId);
+      const error = caseRelationError(after, item.screenId, item.baseScreenId);
       if (error) out.push(error);
     }
     if (item.needsThumb) {
@@ -348,10 +362,10 @@ export function commitPlan(store: Store, plan: Plan, input: CommitInput): Commit
   const conflicts: Blocker[] = [];
   const written: PlanItem[] = [];
   const ready: PlanItem[] = [];
-  const plannedItems = new Map(plan.items.map(item => [item.screenId, item]));
+  const after = plannedState(store.state, plan.items);
   for (const item of plan.items) {
     if (alreadyWritten(store, item, plan.batchId)) { written.push(item); continue; }
-    const messages = checkItem(store, item, input, plannedItems);
+    const messages = checkItem(store, item, input, after);
     if (messages.length) conflicts.push({ entryKey: item.entryKey, name: item.name, messages });
     else ready.push(item);
   }
@@ -379,11 +393,14 @@ export function commitPlan(store: Store, plan: Plan, input: CommitInput): Commit
       removed = false;
       const retiring = new Set([...excluded, ...ready.flatMap(item => item.mergeFrom ? [item.mergeFrom.screenId] : [])]);
       const readyById = new Map(ready.map(item => [item.screenId, item]));
+      // 기본 화면이나 그 케이스가 충돌로 빠지면 남은 화면으로 관계를 다시 검사한다(신규 기본 화면이 빠지면 기본 화면 없음).
+      const remaining = plannedState(store.state, [...written, ...ready]);
       for (let index = ready.length - 1; index >= 0; index--) {
         const item = ready[index];
         if (item.workType === 'deleted') continue;
-        if (item.baseScreenId && plannedItems.get(item.baseScreenId)?.isNew && !readyById.has(item.baseScreenId) && !written.some(w => w.screenId === item.baseScreenId)) {
-          conflicts.push({ entryKey: item.entryKey, name: item.name, messages: [COPY.coreRegistry016] });
+        const relationError = item.baseScreenId ? caseRelationError(remaining, item.screenId, item.baseScreenId) : null;
+        if (relationError) {
+          conflicts.push({ entryKey: item.entryKey, name: item.name, messages: [relationError] });
           ready.splice(index, 1); removed = true; continue;
         }
         const owner = [...store.state.screens.values()].find(screen => screen.status === 'active' && !retiring.has(screen.id) && screen.id !== item.screenId && screen.code === item.code);
