@@ -1001,6 +1001,8 @@ try {
   assert.equal(await app.locator('.screen-picker .picker-empty').isVisible(), false);
   await pickerSearch.press('Enter');
   assert.equal(await app.locator('[data-field=code]').inputValue(), 'STB_HO_001-01', 'case ID is filled automatically');
+  // 새 화면의 ID 태그는 파란 점선, 기존 ID에서 바뀐 화면은 청록 점선이다(2026-11-03 사용자 요청).
+  await page.waitForFunction(k => !!document.querySelector(`#app .row[data-key="${k}"] .id-tag.code-new`), await candidate.getAttribute('data-key'));
   await app.locator('[data-field=code]').scrollIntoViewIfNeeded();
   await shot('08-case-id-autofill');
   await app.locator('[data-field=disposition][value=replace]').check();
@@ -1021,6 +1023,7 @@ try {
   assert.equal(await app.locator('[data-action=replace-side][data-side=new]').getAttribute('aria-pressed'), 'true', 'a new frame is the new version');
   assert.equal(await app.locator('[data-action=replace-side][data-side=old]').isDisabled(), true, 'a new frame cannot be the old version');
   assert.equal(await candidate.locator('.id-tag').innerText(), 'STB_HO_001', 'the replacing frame takes the replaced screen ID');
+  assert.equal(await candidate.locator('.id-tag.code-new, .id-tag.code-changed').count(), 0, 'an inherited ID is not marked as changed');
   await shot('09-replace-pair');
   await candidate.locator('[data-action=include]').uncheck();
   await stateIs(target, '변경 감지');

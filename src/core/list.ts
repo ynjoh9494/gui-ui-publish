@@ -20,7 +20,13 @@ export interface ListRow {
   status: InputStatus;
   // 교체 짝의 이전 화면. 새 버전 바로 아래에 이름에 취소선을 긋고 흐리게 보인다.
   previous?: boolean;
+  // 배포하면 Screen ID가 새로 생기거나(new) 바뀌는(changed) 화면. ID 태그를 색과 점선 테두리로 표시한다.
+  codeMark?: CodeMark;
 }
+
+export type CodeMark = 'new' | 'changed';
+// GUI 목록에 보이는 이름·Screen ID와 ID 변경 표시
+export interface GuiDisplay { name: string; code: string; mark?: CodeMark }
 
 export interface ListGroup {
   key: string;
@@ -42,7 +48,7 @@ export interface ListView {
   // UI 목록: 플립북 프레임의 캔버스 위치. Section과 Section 안의 순서를 캔버스대로 보여 준다(2026-10-21 사용자 요청).
   spots?: (flipbookId: string) => FlipbookSpot | null | undefined;
   // GUI 입력 중인 화면 이름·Screen ID를 목록에도 반영한다.
-  guiDisplay?: (entry: Entry, saved: { name: string; code: string }) => { name: string; code: string };
+  guiDisplay?: (entry: Entry, saved: GuiDisplay) => GuiDisplay;
   // GUI 입력 중인 카테고리·케이스 관계를 목록의 그룹·들여쓰기에도 반영한다.
   guiPlace?: (entry: Entry, saved: GuiPlace) => GuiPlace;
   // 「변경된 화면만 보기」(UI 목록은 「업데이트된 화면만 보기」)에 남길 항목. UI 목록은 화면이 수정된(확인이 필요한) 플립북이다.
@@ -188,7 +194,7 @@ export function placeDrafts(groups: ArrangedGroup[], drafts: DraftPlace[], pages
 }
 
 // GUI 목록에 보이는 저장된 이름·Screen ID. 입력 중인 값은 ListView.guiDisplay가 덮어쓴다.
-export function savedGuiDisplay(state: State, entry: Entry): { name: string; code: string } {
+export function savedGuiDisplay(state: State, entry: Entry): GuiDisplay {
   return { name: parseFrameName(entryName(state, entry)).name, code: entry.screenId ? state.screens.get(entry.screenId)?.code ?? '' : '' };
 }
 
@@ -206,7 +212,7 @@ export function buildList(team: Team, state: State, entries: Entry[], statusOf: 
   }
   const following = new Set([...followers.values()].flat());
   const visible = shown.filter(e => !following.has(e));
-  const guiDisplayCache = new Map<string, { name: string; code: string }>();
+  const guiDisplayCache = new Map<string, GuiDisplay>();
   const guiDisplay = (entry: Entry) => {
     const cached = guiDisplayCache.get(entry.key);
     if (cached) return cached;
@@ -248,7 +254,7 @@ export function buildList(team: Team, state: State, entries: Entry[], statusOf: 
     // UI 목록의 code는 검색용으로 플립북에 든 화면의 Screen ID를 모은다.
     const flipbookCodes = (entry: Entry) => (entry.flipbookId ? state.flipbooks.get(entry.flipbookId)?.screens.map(x => x.code).join(' ') : '') ?? '';
     const placed: { entry: Entry; depth: 0 | 1; previous?: boolean }[] = sortedRows.flatMap(row => [row, ...(followers.get(row.entry.key) ?? []).map(entry => ({ entry, depth: row.depth, previous: true }))]);
-    const rows: ListRow[] = placed.map(({ entry, depth, previous }) => ({ entry, depth, name: team === 'GUI' ? guiDisplay(entry).name : entryName(state, entry), code: team === 'GUI' ? guiDisplay(entry).code : flipbookCodes(entry), status: statusOf(entry), ...(previous ? { previous } : {}) }));
+    const rows: ListRow[] = placed.map(({ entry, depth, previous }) => ({ entry, depth, name: team === 'GUI' ? guiDisplay(entry).name : entryName(state, entry), code: team === 'GUI' ? guiDisplay(entry).code : flipbookCodes(entry), status: statusOf(entry), ...(previous ? { previous } : {}), ...(team === 'GUI' && guiDisplay(entry).mark ? { codeMark: guiDisplay(entry).mark } : {}) }));
     const included = rows.filter(r => r.status !== 'excluded').length;
     model.included += included;
     model.invalid += rows.filter(r => r.status === 'invalid').length;

@@ -17,7 +17,7 @@ import { NODE_PREVIEW, PreviewCache } from './previewCache.ts';
 import { retryableDeliveries } from '../core/guiDelivery.ts';
 import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScreen, isDeletion, isOldSide, isPrevious, isUnpublish, mergesInto, needsLink, OPTIONAL_FIELDS, pendingScreens, renumberAutoCodes, replaceTarget, STATUS_LABEL, validateDraft, type Draft, type DraftIndex, type InputStatus, type Validation } from '../core/drafts.ts';
 import { formatTime, type HistoryRow } from '../core/history.ts';
-import { arrangeFlipbooks, buildList, guiGroupKey, placeDrafts, savedGuiDisplay, savedGuiPlace, UNCATEGORIZED, type ArrangedGroup, type GuiPlace, type ListModel } from '../core/list.ts';
+import { arrangeFlipbooks, buildList, guiGroupKey, placeDrafts, savedGuiDisplay, savedGuiPlace, UNCATEGORIZED, type ArrangedGroup, type GuiDisplay, type GuiPlace, type ListModel } from '../core/list.ts';
 import { emptyComment, type BatchComment, type Plan } from '../core/publish.ts';
 import { customSection, defaultSection, filterScreens, needsReview, pageSections, rowKind, screenCategoryKey, uncreatedScreens, unreviewed, type FlipbookMove, type FlipbookRowRequest, type FlipbookSection, type ScreenFilter, type ScreenKind } from '../core/flipbooks.ts';
 import { defaultTitle, displayScale, GUI_WIDTH_MAX, GUI_WIDTH_MIN, NO_SECTION_KEY, screenTags, SMALL_SCALE, validGuiWidth } from '../core/flipbook.ts';
@@ -448,11 +448,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   }
 
   // GUI 목록에 보이는 이름·Screen ID. 배포 전이라도 배포할 값(draftName·draftCode)을 쓴다. 화면 선택 드롭다운도 같은 값을 쓴다.
-  // 미배포 신규 등록은 ID 태그를 보이지 않고, 기존 화면을 교체하는 신규 후보는 그 화면의 자리에 이어받을 Screen ID로 보인다.
-  function guiDisplay(entry: Entry, saved = savedGuiDisplay(state!, entry)): { name: string; code: string } {
+  // 기존 화면을 교체하는 신규 후보는 그 화면의 자리에 이어받을 Screen ID로 보인다.
+  // mark: 배포하면 ID가 생기거나 바뀌는 화면. 신규 등록은 'new'(파랑), 이어받을 화면의 ID와 다르면 'changed'(청록)로 ID 태그에 표시한다(2026-11-03 사용자 요청).
+  function guiDisplay(entry: Entry, saved = savedGuiDisplay(state!, entry)): GuiDisplay {
     const draft = shownDraft(entry);
     if (!draft) return saved;
-    return { name: draftName(state!, entry, draft) || saved.name, code: entry.screenId || replaceTarget(entry, draft) ? draftCode(state!, entry, draft) : '' };
+    const name = draftName(state!, entry, draft) || saved.name;
+    const code = draftCode(state!, entry, draft);
+    const owner = replaceTarget(entry, draft) ?? entry.screenId;
+    if (!owner) return code ? { name, code, mark: 'new' } : { name, code };
+    return code && code !== state!.screens.get(owner)?.code ? { name, code, mark: 'changed' } : { name, code };
   }
 
   // 교체 짝이 정해진 이전 화면은 숨기지 않고 새 버전 바로 아래에 둔다(2026-11-03 사용자 요청). 새 버전이 이 화면을 가리킬 때만 따라간다.
@@ -971,10 +976,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
           const draft = drafts[t][r.entry.key];
           const sel = selection[t].has(r.entry.key);
           return `<div class="row${sel ? ' selected' : ''}${r.depth ? ' case' : ''}${r.previous ? ' previous' : ''}" data-action="select" data-key="${esc(r.entry.key)}" tabindex="0" aria-selected="${sel}">
+            ${r.depth ? '<span class="case-indent" aria-hidden="true">└</span>' : ''}
             ${dot(r.status)}
             <input type="checkbox" data-action="include" data-key="${esc(r.entry.key)}" ${draft?.included ? 'checked' : ''} ${entryLocked(t, r.entry) ? 'disabled' : ''} aria-label="${esc(r.name)} ${COPY.uiApp034}">
-            ${r.depth ? '<span class="case-indent" aria-hidden="true">└</span>' : ''}
-            ${r.code ? `<span class="id-tag">${esc(r.code)}</span>` : ''}
+            ${r.code ? `<span class="id-tag${r.codeMark ? ` code-${r.codeMark}` : ''}">${esc(r.code)}</span>` : ''}
             <span class="name">${esc(r.name)}</span>
             ${guiStateBadge(state!, r.entry, draft)}
           </div>`;

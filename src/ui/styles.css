@@ -11,6 +11,9 @@
   --warning: var(--figma-color-bg-warning, #ffcd29);
   --onwarning: var(--figma-color-text-onwarning, #000);
   --ok: #2f9e44;
+  /* GUI 상태 색(팔레트 색과 같은 값). 상태 아이콘과 ID 변경 태그가 같이 쓴다. */
+  --state-blue: #0088FF;
+  --state-teal: #19A8B8;
   --id-font: "Roboto Condensed", Inter, "Noto Sans KR", system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
@@ -108,8 +111,8 @@ legend { color: var(--muted); padding: 0 4px; }
 .row { display: flex; gap: 6px; align-items: center; padding: 4px 8px; border-left: 3px solid transparent; cursor: pointer; }
 .row:hover { background: var(--bg2); }
 .row.selected { background: var(--selected); border-left-color: var(--brand); outline: 1px solid var(--brand); outline-offset: -1px; }
-.row.case { padding-left: 22px; }
-.row .case-indent { flex: none; color: var(--muted); }
+/* 케이스 표시(└)는 들여쓰기 자리, 상태 점 왼쪽에 둔다(2026-11-03 사용자 요청). */
+.row .case-indent { flex: none; width: 8px; margin-right: -2px; color: var(--muted); line-height: 1; }
 .row input[type="checkbox"] { width: auto; margin: 0; }
 .row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 교체 짝의 이전 화면: 새 버전 바로 아래에 이름을 취소선과 흐린 글자로 보인다(2026-11-03 사용자 요청). */
@@ -125,14 +128,18 @@ legend { color: var(--muted); padding: 0 4px; }
 .estimate-new, .estimate-changed { color: var(--brand); }
 .estimate-attention { color: #ad6800; }
 /* GUI 상태 아이콘 색(팔레트 색과 같은 값) */
-.estimate-blue { color: #0088FF; }
+.estimate-blue { color: var(--state-blue); }
 .estimate-yellow { color: #D9AE00; }
 .estimate-red { color: #FF384C; }
-.estimate-teal { color: #19A8B8; }
+.estimate-teal { color: var(--state-teal); }
 .estimate-orange { color: #ad6800; }
 .estimate-gray { color: var(--muted); }
 /* 화면 ID: 작은 회색 태그 */
 .id-tag { display: inline-flex; align-items: center; flex: none; font-family: var(--id-font); font-size: 10px; font-weight: 600; line-height: 1; padding: 2px 5px; border-radius: 4px; color: #6b6b6b; background: color-mix(in srgb, #888 16%, var(--bg)); white-space: nowrap; }
+/* 배포하면 ID가 새로 생기거나(파랑, 추가됨 색) 바뀌는(청록, 수정됨 색) 화면: 다른 태그처럼 연한 배경 + 색 글씨에 같은 색 점선 테두리(2026-11-03 사용자 요청) */
+.id-tag.code-new, .id-tag.code-changed { padding: 1px 4px; border: 1px dashed var(--c); color: color-mix(in srgb, var(--c) 88%, #1e1e1e); background: color-mix(in srgb, var(--c) 12%, var(--bg)); }
+.id-tag.code-new { --c: var(--state-blue); }
+.id-tag.code-changed { --c: var(--state-teal); }
 .screen-option { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .screen-option .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 교체 제안: Figma 경고 배경(노랑) 토큰을 그대로 쓰고, 화면 이름 줄의 오른쪽 끝에 둔다 */
