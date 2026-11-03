@@ -1430,3 +1430,28 @@ test('GUI 모드에서 화면 안 레이어나 GUI 페이지 밖 노드를 고�
   assert.equal(listed, 2);
   assert.equal(entriesPosts(), before);
 });
+
+test('GUI Publish로 열고 처음 UI Flipbook으로 바꾸면 UI Flipbook으로 열 때처럼 플립북 연결 상태를 읽고, 다시 바꿀 때는 읽지 않는다', async () => {
+  const posted: ToUi[] = [];
+  const store = new Store(memoryKV());
+  store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['ui'], flipbookPageId: 'ui' });
+  for (const fb of planFlipbooks({ pageId: 'ui', rows: [row([], false, 'A')] }, new Map(), actor, 1000, () => 'fb1')) store.put(keys.flipbook(fb.id), fb);
+  let inspected = 0;
+  const host = {
+    kv: store.kv, mode: 'GUI', actor, post: (m: ToUi) => posted.push(m), pages: () => [{ id: 'ui', name: 'UI' }], selectionNodeIds: () => [],
+    templateIssues: async () => [],
+    inspectFlipbooks: async () => (inspected++, { found: new Map([['fb1', '1:1']]), spots: {} }),
+  } as unknown as Host;
+  const controller = new Controller(host);
+  await controller.handle({ type: 'ready' });
+  assert.equal(inspected, 0, 'GUI Publish로 열 때는 플립북 페이지를 읽지 않는다');
+  await controller.handle({ type: 'switchMode', mode: 'UI' });
+  assert.equal(inspected, 1);
+  const scans = posted.filter((m): m is Extract<ToUi, { type: 'uiScan' }> => m.type === 'uiScan').pop();
+  assert.equal(scans?.scans.find(s => s.flipbookId === 'fb1')?.nodeId, '1:1', '연결 상태를 보여 준다');
+  const busy = posted.filter((m): m is Extract<ToUi, { type: 'busy' }> => m.type === 'busy');
+  assert.equal(busy[busy.length - 1]?.label ?? null, null, '불러오는 중 표시를 닫는다');
+  await controller.handle({ type: 'switchMode', mode: 'GUI' });
+  await controller.handle({ type: 'switchMode', mode: 'UI' });
+  assert.equal(inspected, 1);
+});

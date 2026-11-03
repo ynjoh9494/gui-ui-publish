@@ -246,9 +246,13 @@ export async function nodePlaces(ns: string, items: { nodeId: string; copy: bool
 export async function createdCopies(ns: string, nodeIds: string[]): Promise<FoundCopy[]> {
   const out: FoundCopy[] = [];
   const seen = new Set<string>();
-  for (const id of nodeIds) {
-    const node = await figma.getNodeByIdAsync(id);
-    if (!node || node.removed || node.type === 'PAGE' || node.type === 'DOCUMENT') continue;
+  // 플러그인이 반영하며 만든 레이어도 여기로 온다(부모와 그 안의 레이어가 함께 올 수 있다). 노드는 함께 읽고,
+  // 다른 새 노드 안에 든 노드는 그 바깥 노드의 검색에 들어가므로 따로 검색하지 않는다.
+  const nodes = (await Promise.all([...new Set(nodeIds)].map(id => figma.getNodeByIdAsync(id))))
+    .filter((node): node is SceneNode => !!node && !node.removed && node.type !== 'PAGE' && node.type !== 'DOCUMENT');
+  const ids = new Set(nodes.map(node => node.id));
+  const outer = nodes.filter(node => { for (let p = node.parent; p && p.type !== 'PAGE'; p = p.parent) if (ids.has(p.id)) return false; return true; });
+  for (const node of outer) {
     const inside = 'findAllWithCriteria' in node ? node.findAllWithCriteria({ sharedPluginData: { namespace: ns, keys: [TRACK_KEY] } }) : [];
     for (const copy of [node as SceneNode, ...inside]) {
       if (seen.has(copy.id)) continue;

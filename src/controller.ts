@@ -157,7 +157,12 @@ export class Controller {
         case 'switchMode':
           this.host.mode = msg.mode;
           this.postEntries();
-          if (msg.mode === 'UI') await this.checkTemplate();
+          // GUI Publish로 열고 처음 UI Flipbook으로 바꾸면 UI Flipbook으로 열 때와 같이 플립북 페이지를 읽어 연결 상태·순서·Section을 맞춘다.
+          // 그 뒤에 다시 바꿀 때는 읽지 않는다(바꿀 때마다 「불러오는 중」으로 멈추지 않게). 캔버스 변경은 목록 새로고침으로 맞춘다.
+          if (msg.mode === 'UI') {
+            if (this.uiStarted) await this.checkTemplate();
+            else await this.startUi();
+          }
           break;
         case 'ready':
           this.store.reload();
@@ -176,16 +181,7 @@ export class Controller {
           this.host.post({ type: 'init', mode: this.host.mode, state: toUiWire(this.store.state), actor: this.host.actor, pages: this.host.pages(), managedPages: this.host.managedPages?.(), issues: this.store.issues.map(i => `${i.key}: ${i.message}`) });
           this.postEntries();
           this.textTargetSelectionIds = null;
-          if (this.host.mode === 'UI' && this.textTabOpen) this.postTextTarget();
-          if (this.host.mode === 'UI') this.pdf.selectionChanged();
-          // UI Flipbook 목록은 프레임이 캔버스에 있는지 바로 보여 준다(연결 끊김 표시).
-          // 플립북 페이지를 불러오는 동안은 Figma가 입력을 받지 못하므로 아무 표시가 없으면 오류처럼 보인다. 그동안 「불러오는 중」을 띄운다.
-          if (this.host.mode === 'UI') {
-            await this.progress(COPY.controller136);
-            // 템플릿 페이지와 플립북 페이지는 서로 기다리지 않고 함께 불러온다.
-            const [, canvas] = await Promise.all([this.checkTemplate(), this.linkFlipbooks()]);
-            await this.syncCanvasSections(canvas);
-          }
+          if (this.host.mode === 'UI') await this.startUi();
           break;
         case 'scan': await this.scan(); break;
         case 'scanUi': await this.scanUi(); break;
@@ -385,11 +381,27 @@ export class Controller {
       this.host.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
     } finally {
       if (label || AUTO_DELIVERY_REQUESTS.has(msg.type)) this.busy(null);
+      if (msg.type === 'switchMode') this.busy(null);
       if (msg.type === 'ready') {
         this.busy(null);
         this.host.post({ type: 'startupReady' });
       }
     }
+  }
+
+  // UI Flipbook 시작: 텍스트 편집·PDF 대상을 알리고, 템플릿을 확인하며 플립북 페이지를 읽어 목록의 연결 상태·순서·Section을 맞춘다.
+  // UI Flipbook으로 열 때와 GUI Publish에서 처음 UI Flipbook으로 바꿀 때 부른다.
+  private uiStarted = false;
+  private async startUi(): Promise<void> {
+    this.uiStarted = true;
+    if (this.textTabOpen) this.postTextTarget();
+    this.pdf.selectionChanged();
+    // UI Flipbook 목록은 프레임이 캔버스에 있는지 바로 보여 준다(연결 끊김 표시).
+    // 플립북 페이지를 불러오는 동안은 Figma가 입력을 받지 못하므로 아무 표시가 없으면 오류처럼 보인다. 그동안 「불러오는 중」을 띄운다.
+    await this.progress(COPY.controller136);
+    // 템플릿 페이지와 플립북 페이지는 서로 기다리지 않고 함께 불러온다.
+    const [, canvas] = await Promise.all([this.checkTemplate(), this.linkFlipbooks()]);
+    await this.syncCanvasSections(canvas);
   }
 
   // DATA 페이지가 새로 생길 수 있으므로 페이지 목록도 함께 보낸다.
@@ -1050,7 +1062,7 @@ export class Controller {
       const changed = await this.followCanvas(canvas);
       if (!changed.length) return;
       // Chapter·Screen ID는 Section이 아니라 ID의 카테고리 코드를 따르므로 캔버스에 다시 쓰지 않는다
-      // (ID를 저장하지 않은 정책 플립북은 옮기기 전 ID를 저장한다, core/flipbooks.ts keptPolicyId).
+      // (ID를 저장하지 않은 정책 플립북은 옮기기 전 ID를 모두 저장한다, core/flipbooks.ts pinPolicyIds).
       this.postState();
       await this.refreshData();
     } catch (e) {

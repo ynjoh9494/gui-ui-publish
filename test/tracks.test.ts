@@ -267,3 +267,31 @@ test('목록에서 삭제한 플립북 안의 추적 GUI는 추적을 멈춰 배
   await tracks.publish(new Set(['s1']));
   assert.ok(calls.updates.flatMap(u => u.copies.map(c => c.nodeId)).includes('in'));
 });
+
+test('새로 생긴 노드의 추적 GUI는 바깥 노드에서만 찾고 같은 결과를 돌려준다', async () => {
+  const { createdCopies } = await import('../src/figma/tracked.ts');
+  const nodes = new Map<string, any>();
+  const searched: string[] = [];
+  function node(id: string, parent: any, data: Record<string, string> = {}) {
+    const n: any = {
+      id, type: parent ? 'FRAME' : 'PAGE', parent, children: [], removed: false, data,
+      getSharedPluginData(_ns: string, key: string) { return this.data[key] ?? ''; },
+      findAllWithCriteria() {
+        searched.push(this.id);
+        const out: any[] = [];
+        const walk = (p: any) => { for (const c of p.children) { if (c.data.trackOf) out.push(c); walk(c); } };
+        walk(this); return out;
+      },
+    };
+    parent?.children.push(n); nodes.set(id, n); return n;
+  }
+  const page = node('page', null);
+  const outer = node('outer', page);
+  const middle = node('middle', outer);
+  node('copy', middle, { guiCopy: 's1@2', trackOf: 't1' });
+  const lone = node('lone', page, { guiCopy: 's2@1', trackOf: 't2' });
+  Object.assign(globalThis, { figma: { getNodeByIdAsync: async (id: string) => nodes.get(id) ?? null } });
+  const found = await createdCopies('ns', ['copy', 'middle', 'outer', lone.id, 'outer', 'missing']);
+  assert.deepEqual(found.map(c => [c.nodeId, c.uid, c.version, c.trackId]).sort(), [['copy', 's1', 2, 't1'], ['lone', 's2', 1, 't2']]);
+  assert.deepEqual(searched.sort(), ['lone', 'outer']);
+});

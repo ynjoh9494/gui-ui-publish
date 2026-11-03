@@ -961,9 +961,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   }
 
   // GUI 행 선택은 목록 구조를 바꾸지 않으므로 기존 DOM을 유지한다.
-  function paintGuiSelection() {
+  // 행 선택만 바뀌면 목록을 다시 만들지 않고 행의 선택 표시만 바꾼다(GUI·UI 목록 공통).
+  function paintRowSelection(t: Team) {
     for (const row of root.querySelectorAll<HTMLElement>('.list-box .row[data-action="select"]')) {
-      const selected = selection.GUI.has(row.dataset.key ?? '');
+      const selected = selection[t].has(row.dataset.key ?? '');
       if (row.classList.contains('selected') === selected) continue;
       row.classList.toggle('selected', selected);
       row.setAttribute('aria-selected', String(selected));
@@ -2607,6 +2608,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
 
   function select(key: string, modifiers?: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }) {
     const t = team();
+    // UI 목록: 새 플립북을 고르거나 제목·Section을 입력하던 중이 아니면 목록 구성이 그대로이므로 선택 표시만 바꾼다.
+    const uiSelectOnly = t === 'UI' && selectedNew === null && editingTitle === null && !addingSection && $('.list').dataset.team === 'UI';
     // 기존 플립북을 고르면 새 플립북 선택과 제목 입력을 닫는다.
     if (t === 'UI') { selectedNew = null; editingTitle = null; addingSection = false; renderFooter(); }
     if (modifiers?.shiftKey && anchor[t]) {
@@ -2637,7 +2640,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (selected[t]) bridge.send({ type: 'selectFrames', nav: ++navSeq, team: t, entryKeys: selectedKeys(t), lastKey: selected[t]! });
     const historyId = t === 'GUI' ? entry?.screenId : entry?.flipbookId;
     if (selection[t].size === 1 && historyId) { historyAsked = historyId; bridge.send({ type: 'history', team: t, id: historyId }); }
-    if (t === 'GUI' && $('.list').dataset.team === 'GUI') paintGuiSelection(); else renderList();
+    if ((t === 'GUI' && $('.list').dataset.team === 'GUI') || uiSelectOnly) paintRowSelection(t); else renderList();
     renderDetail();
   }
 
