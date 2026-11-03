@@ -563,17 +563,14 @@ export class Controller {
     const oldReads = this.oldSourcesToRead();
     const total = frames.length + oldReads.length;
     this.scanStatus('GUI', 'comparing', 0, total);
-    let lastListPost = Date.now();
+    // 확인하는 동안에는 진행 표시만 바꾸고 목록은 끝났을 때 한 번 보낸다(2026-11-04 사용자 결정: 확인 중 목록 갱신 불필요).
     const pause = yielder();
     for (let i = 0; i < frames.length; i++) {
       const frame = await this.readFrame(reader, frames[i], legacy, targets, fresh);
       await pause();
       if (seq !== this.scanSeq) return;
       this.frames[i] = frame;
-      if ((i + 1) % PROGRESS_STEP === 0 && i < frames.length - 1) {
-        if (Date.now() - lastListPost >= 100) { this.postEntries(); lastListPost = Date.now(); }
-        this.scanStatus('GUI', 'comparing', i + 1, total);
-      }
+      if ((i + 1) % PROGRESS_STEP === 0 && i < frames.length - 1) this.scanStatus('GUI', 'comparing', i + 1, total);
     }
     for (let i = 0; i < oldReads.length; i++) {
       await this.readOldSource(reader, oldReads[i]);
@@ -611,7 +608,7 @@ export class Controller {
     const targets = this.uiScans.filter(u => u.nodeId && this.store.state.flipbooks.get(u.flipbookId)?.status !== 'deleted');
     this.postUiScans();
     this.scanStatus('UI', 'comparing', 0, targets.length);
-    let lastListPost = Date.now();
+    // GUI 확인과 같이 확인하는 동안에는 진행 표시만 바꾼다.
     const pause = yielder();
     const reader = this.host.createFingerprintReader?.() ?? this.host;
     for (let i = 0; i < targets.length; i++) {
@@ -619,10 +616,7 @@ export class Controller {
       await pause();
       if (seq !== this.uiScanSeq) return;
       Object.assign(targets[i], result);
-      if ((i + 1) % PROGRESS_STEP === 0 && i < targets.length - 1) {
-        if (Date.now() - lastListPost >= 100) { this.postUiScans(); lastListPost = Date.now(); }
-        this.scanStatus('UI', 'comparing', i + 1, targets.length);
-      }
+      if ((i + 1) % PROGRESS_STEP === 0 && i < targets.length - 1) this.scanStatus('UI', 'comparing', i + 1, targets.length);
     }
     this.uiCheckedAt = this.store.now();
     this.postUiScans();
