@@ -27,6 +27,13 @@ try {
   const category = app.locator('[data-form=cat-code]').filter({ has: page.locator('[data-f=name][value="Home"]') });
   await category.waitFor();
   const id = await category.getAttribute('data-id');
+  // 한 줄에 이름·코드·삭제를 두고, 저장은 고친 줄에만 보인다. Esc는 저장된 값으로 되돌린다.
+  assert.equal(await category.locator('[data-action=admin-cat-save]').isVisible(), false, 'save is hidden until the row changes');
+  await category.locator('[data-f=name]').fill('Changed');
+  assert.equal(await category.locator('[data-action=admin-cat-save]').isVisible(), true, 'save appears on a changed row');
+  await category.locator('[data-f=name]').press('Escape');
+  assert.equal(await category.locator('[data-f=name]').inputValue(), 'Home', 'Esc restores the saved name');
+  assert.equal(await category.locator('[data-action=admin-cat-save]').isVisible(), false, 'save hides again after Esc');
   await category.locator('[data-f=name]').fill('Home English');
   await category.locator('[data-f=code]').fill('HM');
   await category.locator('[data-action=admin-cat-save]').click();
@@ -38,10 +45,17 @@ try {
   assert.equal(await app.locator('[data-field=categoryId] option:checked').innerText(), 'Home English');
   await app.locator('[data-action=category-manage]').click();
   await app.screenshot({ path: 'tmp/category-management.png' });
+  await add.locator('[data-f=name]').fill('Search');
+  await add.locator('[data-f=name]').press('Enter');
+  const other = app.locator('[data-form=cat-code]').filter({ has: page.locator('[data-f=name][value="Search"]') });
+  await other.waitFor();
+  await other.locator('[data-f=name]').fill('Search typing');
   await saved.locator('[data-action=admin-cat-delete]').click();
   assert.equal(await saved.count(), 1, 'first delete click only arms removal');
+  assert.equal(await other.locator('[data-f=name]').inputValue(), 'Search typing', 'arming delete keeps edits in other rows');
+  assert.equal(await saved.locator('p.bad').count(), 1, 'armed row shows the confirmation');
   await saved.locator('[data-action=admin-cat-delete]').click();
   await saved.waitFor({ state: 'detached' });
   assert.deepEqual(errors, []);
-  console.log('Category UI: manage link, renamed menu, add/edit/delete and original draft selection passed');
+  console.log('Category UI: manage link, one-line rows, save-on-change, Esc, add/edit/delete and original draft selection passed');
 } finally { await browser.close(); }

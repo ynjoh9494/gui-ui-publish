@@ -10,6 +10,17 @@ mkdirSync(outDir, { recursive: true });
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 2 });
 const app = page.locator('#app');
+// 카테고리는 화면정보의 「관리」 링크로 관리의 카테고리에서 추가하고 돌아온다. 추가한 카테고리는 고른 화면에 지정된다.
+const addCategory = async name => {
+  await app.locator('[data-action=category-manage]').click();
+  const input = app.locator('[data-form=cat-add] [data-f=name]');
+  await input.fill(name);
+  // 새 항목 입력란의 Enter는 추가 버튼과 같다.
+  await input.press('Enter');
+  await page.waitForFunction(n => [...document.querySelectorAll('#app [data-form=cat-code] [data-f=name]')].some(x => x.value === n), name);
+  await app.locator('[data-action=settings]').click();
+  await page.waitForFunction(n => [...document.querySelectorAll('#app [data-field=categoryId] option')].some(x => x.textContent === n), name);
+};
 // 입력하며 내려간 스크롤을 맨 위로 올려 화면 위쪽부터 보이게 찍는다.
 const shot = async (name, target = app) => {
   await app.evaluate(root => root.querySelectorAll('*').forEach(el => { if (el.scrollTop) el.scrollTop = 0; }));
@@ -63,10 +74,7 @@ try {
   const name = await first.locator('.name').innerText();
   await first.click();
   await first.locator('[data-action=include]').check();
-  await app.locator('[data-action=begin-add][data-kind=category]').click();
-  await app.locator('[data-field=newCategory]').fill('홈');
-  await app.locator('[data-field=newCategory]').press('Enter');
-  await page.waitForFunction(() => [...document.querySelectorAll('#app [data-field=categoryId] option')].some(x => x.textContent === '홈'));
+  await addCategory('홈');
   await app.locator('[data-field=code]').fill('STB_HO_001');
   await app.locator('.footer [data-input=worker]').fill('예시 작업자');
   await app.locator('.footer [data-input=comment]').fill('홈 화면 첫 배포');

@@ -188,7 +188,6 @@ legend { color: var(--muted); padding: 0 4px; }
 .addable .swatches { flex-basis: 100%; }
 .addable > select, .addable > input { flex: 1; min-width: 0; }
 .addable button { white-space: nowrap; }
-.addable .category-delete { color: var(--danger); }
 .add-button { display: inline-flex; align-items: center; gap: 3px; }
 .add-icon { flex: none; }
 /* 드롭다운 화살표: 태그 선택 목록의 ▾ 모양으로 통일한다. 테마 글자색을 쓰도록 그라데이션 두 개로 아래쪽 삼각형을 그린다. */
@@ -254,7 +253,6 @@ summary { cursor: pointer; color: var(--muted); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
 .admin { border-bottom: 1px solid var(--border); padding-bottom: 8px; }
 .admin .inline { margin: 3px 0; }
-.category-code > span { flex: 0 0 40%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scope-pages { margin: 6px 0; }
 .scope-page { display: flex; gap: 6px; align-items: center; justify-content: space-between; padding: 4px 0; border-top: 1px solid var(--border); }
 .scope-page span { min-width: 0; overflow-wrap: anywhere; }
@@ -505,9 +503,10 @@ button.link.danger { color: var(--danger); }
 /* 페이지 선택: 라벨 줄 오른쪽에 관리 링크. 링크가 select보다 먼저 오므로 label로 감싸지 않는다(라벨 클릭이 링크로 가지 않게). */
 .new-place .field { margin: 4px 0; color: var(--muted); }
 .new-place .field > select { margin-top: 2px; color: var(--text); }
-.new-place .field-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.new-place .field-head .link { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; line-height: inherit; }
-.new-place .field-head .link svg { width: 12px; height: 12px; }
+/* 입력 이름 오른쪽의 「관리」 링크(플립북 페이지, GUI 카테고리) */
+:is(.new-place, .category-field) .field-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+:is(.new-place, .category-field) .field-head .link { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; line-height: inherit; }
+:is(.new-place, .category-field) .field-head .link svg { width: 12px; height: 12px; }
 /* 필드 이름의 흐린 글자색을 버튼이 물려받으면 비활성처럼 보인다. */
 .new-place .addable { margin-top: 2px; color: var(--text); }
 .create-browser { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1 1 auto; }
@@ -817,9 +816,16 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .fb-identity [data-identity-chapter], .new-place [data-identity-chapter] { background: var(--bg); color: var(--muted); }
 .fb-identity [data-identity-frame], .new-place [data-identity-frame] { overflow-wrap: anywhere; }
 
-.category-field .field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.category-field .field-head .link { display: inline-flex; align-items: center; gap: 2px; }
 .category-field > select { margin-top: 2px; }
-.admin-category { display: grid; grid-template-columns: minmax(0, 1fr) minmax(90px, .6fr); gap: 6px 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
-.admin-category .category-actions, .admin-category > p { grid-column: 1 / -1; }
-.category-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+/* 관리의 카테고리: 카테고리 하나가 한 줄(이름 · 코드 · 저장 · 삭제). 저장은 고친 줄에만 보이고 자리는 남겨 칸을 맞춘다. */
+.help-label { display: flex; align-items: center; gap: 4px; }
+.category-row { display: grid; grid-template-columns: minmax(0, 1fr) 112px 44px 24px; gap: 4px; align-items: center; min-height: 32px; }
+.category-row > p { grid-column: 1 / -1; margin: 0 0 4px; }
+.category-row:not(.dirty) .category-save { visibility: hidden; }
+.category-row .icon-button.armed { color: var(--danger); }
+.category-head { min-height: 0; margin-top: 12px; color: var(--muted); font-size: 11px; }
+.category-head .template-help { grid-column: 4; justify-self: center; }
+.category-add { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
+.category-add .add-button { grid-column: 3 / -1; justify-self: end; }
+.admin .category-renumber { margin-top: 12px; }

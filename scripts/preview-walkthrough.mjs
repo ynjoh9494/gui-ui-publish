@@ -15,6 +15,17 @@ page.on('pageerror', e => errors.push('pageerror: ' + e.message));
 // 튜토리얼은 예시 화면 조작이 실패하면 경고만 남기고 넘어가므로 경고도 실패로 본다.
 page.on('console', m => { if (m.type() === 'error' || (m.type() === 'warning' && m.text().startsWith('tutorial'))) errors.push('console: ' + m.text()); });
 const app = page.locator('#app');
+// 카테고리는 화면정보의 「관리」 링크로 관리의 카테고리에서 추가하고 돌아온다. 추가한 카테고리는 고른 화면에 지정된다.
+const addCategory = async name => {
+  await app.locator('[data-action=category-manage]').click();
+  const input = app.locator('[data-form=cat-add] [data-f=name]');
+  await input.fill(name);
+  // 새 항목 입력란의 Enter는 추가 버튼과 같다.
+  await input.press('Enter');
+  await page.waitForFunction(n => [...document.querySelectorAll('#app [data-form=cat-code] [data-f=name]')].some(x => x.value === n), name);
+  await app.locator('[data-action=settings]').click();
+  await page.waitForFunction(n => [...document.querySelectorAll('#app [data-field=categoryId] option')].some(x => x.textContent === n), name);
+};
 const shot = async name => { await page.screenshot({ path: `${outDir}/${name}.png` }); console.log('step', name); };
 const ready = async () => page.waitForFunction(() => document.querySelector('#app .toolbar .progress')?.textContent?.includes('마지막 검토'));
 const collapseWindow = async name => {
@@ -176,11 +187,7 @@ try {
   await nameInput.fill(originalName);
   assert.equal(await nameInput.getAttribute('aria-invalid'), null, '화면 이름 입력 시 오류 표시 해제');
 
-  await app.locator('[data-action=begin-add][data-kind=category]').click();
-  await app.locator('[data-field=newCategory]').fill('홈');
-  // 새 항목 입력란의 Enter는 확인 버튼과 같다.
-  await app.locator('[data-field=newCategory]').press('Enter');
-  await page.waitForFunction(() => [...document.querySelectorAll('#app [data-field=categoryId] option')].some(x => x.textContent === '홈'));
+  await addCategory('홈');
   assert.equal(await app.locator('[data-field=categoryId]').getAttribute('aria-invalid'), null, '카테고리 지정 시 오류 표시 해제');
 
   // 작업자는 화면마다 고르지 않고 아래 줄 입력란에 배포 한 번에 하나를 쓴다(2026-11-03 사용자 요청). 처음에는 계정 이름이 들어 있다.
@@ -1252,10 +1259,7 @@ try {
   {
     const thirdKey = await app.locator('.row').nth(2).getAttribute('data-key');
     for (const name of ['홈', '검색', 'VOD']) {
-      await app.locator('[data-action=begin-add][data-kind=category]').click();
-      await app.locator('[data-field=newCategory]').fill(name);
-      await app.locator('[data-field=newCategory]').press('Enter');
-      await page.waitForFunction(n => [...document.querySelectorAll('#app [data-field=categoryId] option')].some(x => x.textContent === n), name);
+      await addCategory(name);
     }
     for (const [key, name] of [[firstKey, '홈'], [secondKey, '검색'], [thirdKey, 'VOD']]) {
       const row = app.locator(`.row[data-key="${key}"]`);
@@ -1295,8 +1299,8 @@ try {
     assert.deepEqual((await app.locator('[data-field=categoryId] option').allInnerTexts()).slice(-3), ['VOD', '검색', '홈'], '카테고리 선택도 바뀐 순서');
     await app.locator('[data-action=settings]').click();
     assert.equal(await app.locator('details[data-form=category-order]').count(), 0, '관리에는 카테고리 순서가 없다');
-    await app.locator('[data-action=admin-nav][data-key="Screen ID"]').click();
-    assert.deepEqual(await app.locator('details[data-form=screen-id-prefix] .category-code > span').allInnerTexts(), ['VOD', '검색', '홈'], '관리의 카테고리 코드 목록도 같은 순서');
+    await app.locator('[data-action=admin-nav][data-key="카테고리"]').click();
+    assert.deepEqual(await app.locator('details[data-form=screen-id-prefix] [data-form=cat-code] [data-f=name]').evaluateAll(xs => xs.map(x => x.value)), ['VOD', '검색', '홈'], '관리의 카테고리 코드 목록도 같은 순서');
     await app.locator('[data-action=settings]').click();
   }
   // 새 관리 구성과 미배포 기본 화면을 쓰는 케이스 배포는 독립된 미리보기에서 확인한다.
@@ -1332,10 +1336,7 @@ try {
   await pendingRow(pendingBaseKey).locator('[data-action=include]').check();
   assert.equal(await app.locator('.detail .section-body [data-field]').first().getAttribute('data-field'), 'categoryId', '카테고리가 화면 정보의 첫 입력');
   await app.locator('[data-field=name]').fill('동시 배포 기본 화면');
-  await app.locator('[data-action=begin-add][data-kind=category]').click();
-  await app.locator('[data-field=newCategory]').fill('홈');
-  await app.locator('[data-field=newCategory]').press('Enter');
-  await page.waitForFunction(() => [...document.querySelectorAll('#app [data-field=categoryId] option')].some(x => x.textContent === '홈'));
+  await addCategory('홈');
   await app.locator('.footer [data-input=worker]').fill('동시 배포 작업자');
   const pendingBaseCode = await app.locator('[data-field=code]').inputValue();
   await pendingRow(pendingCaseKey).click();

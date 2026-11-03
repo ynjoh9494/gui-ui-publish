@@ -28,7 +28,7 @@ import { templateEntries, type TemplateEntry } from '../core/templateList.ts';
 import { findCategoryByName, systemTagId, workerLabel } from '../core/registry.ts';
 import { formatFrameName, parseFrameName } from '../core/screenName.ts';
 import type { State } from '../core/store.ts';
-import type { Actor, Flipbook, FlipbookScale, ImportedGuiRecord, SystemTag, Team } from '../core/types.ts';
+import type { Actor, Category, Flipbook, FlipbookScale, ImportedGuiRecord, SystemTag, Team } from '../core/types.ts';
 import { SIMILAR_MIN, type VersionEvidence, type VersionLink } from '../core/versionMatch.ts';
 import { clampWindow, fromWire, PANE, pasteDropMetadata, type AdminOp, type NavTarget, type PageInfo, type ManagedPageInfo, type ScanState, type ToMain, type ToUi, type VersionMatchView } from '../core/wire.ts';
 
@@ -260,8 +260,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   const selected: Record<Team, string | null> = { GUI: null, UI: null };
   const selection: Record<Team, Set<string>> = { GUI: new Set(), UI: new Set() };
   const anchor: Record<Team, string | null> = { GUI: null, UI: null };
-  let addMode: 'category' | 'tag' | 'worker' | null = null;
-  let editMode: 'category' | 'tag' | null = null;
+  let addMode: 'tag' | 'worker' | null = null;
+  let editMode: 'tag' | null = null;
   // 그룹은 접힌 상태가 기본이다. 펼친 그룹만 기억한다.
   const expanded: Record<Team, Set<string>> = { GUI: new Set(), UI: new Set() };
   const query: Record<Team, string> = { GUI: '', UI: '' };
@@ -1427,7 +1427,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       if (t === 'GUI' && !deleting && chosen.every(e => {
         const d = draftOf(t, e);
         return e.estimate !== 'missing' && !d.notScreen;
-      })) html += categoryField(entry, draft, multi, common(d => d.categoryId), mixed(d => d.categoryId));
+      })) html += categoryField(entry, draft, common(d => d.categoryId), mixed(d => d.categoryId));
       if (t === 'GUI' && chosen.every(e => !isDeletion(e, draftOf(t, e)))) {
         const names = chosen.map(e => draftName(state!, e, draftOf(t, e)));
         const nameMixed = multi && names.some(value => value !== names[0]);
@@ -1658,7 +1658,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const chosen = selectedEntries(t);
     for (const control of root.querySelectorAll<HTMLElement>('.detail [data-required-field]')) {
       const field = control.dataset.requiredField!;
-      const filledNewItem = (control.dataset.field === 'newCategory' || !!control.closest('[data-form="worker-add"], [data-form="tag-add"]'))
+      const filledNewItem = (!!control.closest('[data-form="worker-add"], [data-form="tag-add"]'))
         && (control as HTMLInputElement).value.trim();
       const invalid = !filledNewItem && chosen.some(entry =>
         (revealed[t].has(entry.key) || touched[t][entry.key]?.has(field)) && missingRequired(t, entry, field));
@@ -2393,29 +2393,52 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     [...root.querySelectorAll<HTMLElement>('.version-row')].find(r => r.dataset.kind === versionSelected!.kind && r.dataset.id === versionSelected!.id)?.focus();
   }
 
-  // Screen ID 자동 입력 규칙: 플랫폼 Prefix와 카테고리별 코드(2026-10-20 사용자 요청). 저장하면 배포 화면의 ID도 바로 바꾼다.
+  // 관리의 카테고리: 플랫폼 Prefix와 카테고리 이름·코드(2026-10-20 사용자 요청, 2026-11-03 관리로 모음). 저장하면 배포 화면의 ID도 바로 바꾼다.
+  // 카테고리 하나를 한 줄(이름 · 코드 · 삭제)로 보여 주고, 고친 줄에만 저장을 띄운다. 안내는 ? 툴팁에 둔다.
   function renderScreenIdSection(s: State): string {
     const cats = [...s.categories.values()].filter(c => c.active).sort((a, b) => a.order - b.order);
     const prefix = s.project.screenIdPrefix;
     const sample = `${prefix ? `${prefix}_` : ''}${cats.find(c => c.code)?.code ?? 'HO'}_001`;
-    return `<section class="admin" data-form="screen-id-prefix"><h3>${COPY.uiApp162}</h3><p class="note">${COPY.categoryManageHint}</p>
-      <label>${COPY.uiApp229}</label>
+    const row = (c: Category) => {
+      const armed = deleteArmed === c.id;
+      return `<div class="category-row" data-form="cat-code" data-id="${esc(c.id)}">
+        <input data-f="name" value="${esc(c.name)}" aria-label="${esc(c.name)} ${COPY.categoryNameLabel}">
+        <input data-f="code" value="${esc(c.code ?? '')}" aria-label="${esc(c.name)} ${COPY.uiApp230}">
+        <button class="category-save" data-action="admin-cat-save">${COPY.uiApp110}</button>
+        <button class="icon-button${armed ? ' armed' : ''}" data-action="admin-cat-delete" title="${COPY.uiApp169}" aria-label="${esc(c.name)} ${COPY.uiApp169}">${X_ICON}</button>
+        ${armed ? categoryDeleteNote(s, c.id) : ''}</div>`;
+    };
+    return `<section class="admin" data-form="screen-id-prefix"><h3>${COPY.uiApp162}</h3>
+      <label class="help-label">${COPY.uiApp229}${helpTip(COPY.uiApp233)}</label>
       <div class="inline"><input data-f="prefix" value="${esc(prefix)}" placeholder="STB" aria-label="${COPY.uiApp229}"><button data-action="admin-screen-prefix">${COPY.uiApp110}</button></div>
-      ${cats.length ? cats.map(c => `<div class="admin-category" data-form="cat-code" data-id="${esc(c.id)}">
-        <label>${COPY.categoryNameLabel}<input data-f="name" value="${esc(c.name)}" aria-label="${esc(c.name)} ${COPY.categoryNameLabel}"></label>
-        <label>${COPY.uiApp230}<input data-f="code" value="${esc(c.code ?? '')}" aria-label="${esc(c.name)} ${COPY.uiApp230}"></label>
-        <div class="category-actions"><button data-action="admin-cat-save">${COPY.uiApp110}</button><button class="category-delete" data-action="admin-cat-delete">${COPY.uiApp169}</button></div>
-        ${deleteArmed === c.id ? `<p class="bad" role="status">${COPY.uiApp211}</p>` : ''}</div>`).join('') : `<p class="note">${COPY.uiApp234}</p>`}
-      <div class="admin-category" data-form="cat-add">
-        <label>${COPY.categoryNameLabel}<input data-f="name" placeholder="${COPY.uiApp163}" aria-label="${COPY.uiApp163}"></label>
-        <label>${COPY.uiApp230}<input data-f="code" placeholder="${COPY.categoryCodeAuto}" aria-label="${COPY.uiApp230}"></label>
-        <div class="category-actions"><button class="add-button" data-action="admin-cat-add">${ADD_LABEL}</button></div>
-      </div>
       <p class="note">${COPY.uiApp231} ${esc(sample)}</p>
-      <p class="note">${COPY.uiApp232} ${COPY.uiApp233}</p>
-      <label>${COPY.uiApp245}</label>
-      <p class="note">${COPY.uiApp247}</p>
-      <div class="inline"><button class="danger" data-action="admin-renumber">${renumberArmed ? COPY.uiApp246 : COPY.uiApp245}</button>${renumberArmed ? `<button data-action="renumber-cancel">${COPY.uiApp132}</button>` : ''}</div></section>`;
+      <div class="category-row category-head"><span>${COPY.categoryNameLabel}</span><span>${COPY.uiApp230}</span>${helpTip(`${COPY.categoryManageHint} ${COPY.uiApp232}`)}</div>
+      ${cats.length ? cats.map(row).join('') : `<p class="note">${COPY.uiApp234}</p>`}
+      <div class="category-row category-add" data-form="cat-add">
+        <input data-f="name" placeholder="${COPY.uiApp163}" aria-label="${COPY.uiApp163}">
+        <input data-f="code" placeholder="${COPY.categoryCodeAuto}" aria-label="${COPY.uiApp230}">
+        <button class="add-button" data-action="admin-cat-add">${ADD_LABEL}</button>
+      </div>
+      <div class="inline category-renumber"><button class="danger" data-action="admin-renumber">${renumberArmed ? COPY.uiApp246 : COPY.uiApp245}</button>${renumberArmed ? `<button data-action="renumber-cancel">${COPY.uiApp132}</button>` : ''}${helpTip(COPY.uiApp247)}</div></section>`;
+  }
+
+  // 카테고리 삭제를 한 번 누른 뒤의 안내. 사용 중인 화면이 있으면 그 수도 알린다.
+  function categoryDeleteNote(s: State, id: string): string {
+    const inUse = [...s.screens.values()].filter(x => x.categoryId === id && x.status === 'active').length;
+    return `<p class="bad" role="status">${COPY.uiApp211}${inUse ? ` ${COPY.uiApp167} ${inUse}${COPY.uiApp168}.` : ''}</p>`;
+  }
+
+  // 관리 항목 옆의 회색 ? 아이콘. 안내 문구는 툴팁으로만 보여 준다.
+  function helpTip(text: string): string {
+    return `<span class="template-help" role="img" title="${esc(text)}" aria-label="${esc(text)}">${SMALL_HELP_ICON}</span>`;
+  }
+
+  // 관리 카테고리 줄: 이름이나 코드를 저장된 값과 다르게 고친 줄에만 저장을 보인다.
+  function syncCategoryRow(row: HTMLElement) {
+    const c = state?.categories.get(row.dataset.id ?? '');
+    const name = row.querySelector<HTMLInputElement>('[data-f="name"]')!;
+    const code = row.querySelector<HTMLInputElement>('[data-f="code"]')!;
+    row.classList.toggle('dirty', !!c && (name.value.trim() !== c.name || code.value.trim() !== (c.code ?? '')));
   }
 
   // 공유 DATA 페이지 연결과 표시 갱신 상태. 갱신 실패는 확정 기록과 별개로 표시한다.
@@ -2461,8 +2484,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   }
 
 
-  // GUI category selection; all edits are centralized in its management panel.
-  function categoryField(entry: Entry, draft: Draft, _multi = false, selectedId = draft.categoryId ?? '', isMixed = false): string {
+  // GUI Publish의 카테고리: 선택만 한다. 추가·이름 변경·코드 변경·삭제는 「관리」 링크로 여는 관리의 카테고리에서 한다.
+  function categoryField(entry: Entry, draft: Draft, selectedId = draft.categoryId ?? '', isMixed = false): string {
     const cats = [...state!.categories.values()].filter(c => c.active).sort((a, b) => a.order - b.order);
     const chosen = selectedId && state!.categories.get(selectedId)?.active ? selectedId : '';
     return `<div class="wide category-field">${entry.categoryMissing ? `<p class="bad">${COPY.uiApp161}</p>` : ''}
@@ -3184,21 +3207,28 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         break;
       }
       case 'admin-cat-save': {
-        const id = el.closest<HTMLElement>('[data-form]')!.dataset.id!;
+        const row = el.closest<HTMLElement>('[data-form]')!;
+        const id = row.dataset.id!;
+        syncCategoryRow(row);
+        if (!row.classList.contains('dirty')) break;
         admin({ op: 'updateCategory', id, name: formValue(el, 'name').trim(), code: formValue(el, 'code').trim() });
         break;
       }
       case 'admin-cat-delete': {
-        const id = el.closest<HTMLElement>('[data-form]')!.dataset.id!;
-        if (deleteArmed !== id) { deleteArmed = id; renderAdmin(); break; }
+        const row = el.closest<HTMLElement>('[data-form]')!;
+        const id = row.dataset.id!;
+        // 다시 그리지 않고 표시만 바꿔 다른 줄에서 고치던 값을 지킨다.
+        if (deleteArmed !== id) {
+          deleteArmed = id;
+          for (const other of root.querySelectorAll<HTMLElement>('[data-form="cat-code"]')) {
+            other.querySelector('[data-action="admin-cat-delete"]')!.classList.toggle('armed', other === row);
+            other.querySelector(':scope > p')?.remove();
+          }
+          if (state) row.insertAdjacentHTML('beforeend', categoryDeleteNote(state, id));
+          break;
+        }
         deleteArmed = null;
         admin({ op: 'setCategoryActive', id, active: false });
-        break;
-      }
-      case 'admin-cat-code': {
-        const id = el.closest<HTMLElement>('[data-form]')!.dataset.id!;
-        const code = formValue(el, 'code').trim();
-        if (code !== state?.categories.get(id)?.code) admin({ op: 'setCategoryCode', id, code });
         break;
       }
       case 'admin-data-connect': {
@@ -3536,6 +3566,17 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       requestAnimationFrame(() => requestAnimationFrame(() => root.querySelector<HTMLElement>(`.list-box .row[data-key="${CSS.escape(key)}"]`)?.focus()));
       return;
     }
+    // 관리 카테고리 줄: Esc는 고친 이름·코드를 저장된 값으로 되돌린다.
+    if (tab === 'ADMIN' && ev.key === 'Escape' && !ev.isComposing) {
+      const row = el.closest<HTMLElement>('[data-form="cat-code"]');
+      const c = row && state?.categories.get(row.dataset.id ?? '');
+      if (row && c) {
+        row.querySelector<HTMLInputElement>('[data-f="name"]')!.value = c.name;
+        row.querySelector<HTMLInputElement>('[data-f="code"]')!.value = c.code ?? '';
+        syncCategoryRow(row);
+        return;
+      }
+    }
     if (tab === 'ADMIN' && ev.key === 'Enter' && !ev.isComposing && ev.keyCode !== 229) {
       const form = el.closest<HTMLElement>('[data-form="cat-add"], [data-form="cat-code"]');
       if (form && el instanceof HTMLInputElement) {
@@ -3590,6 +3631,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
 
   on('input', ev => {
     const el = ev.target as HTMLInputElement;
+    const categoryRow = el.closest<HTMLElement>('[data-form="cat-code"]');
+    if (categoryRow) { syncCategoryRow(categoryRow); return; }
     if (el.classList.contains('picker-search')) { filterScreenPicker(el.closest('details')!, el.value); return; }
     if (bulk && el.dataset.input?.startsWith('bulk-')) {
       if (bulk.submitting) return;
@@ -3687,7 +3730,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     }
     if (el.dataset.input === 'comment') { comment = { ...comment, description: el.value }; return; }
     if (el.dataset.input === 'worker') { workerName = el.value; workerTyped = true; el.classList.toggle('input-error', !el.value.trim()); return; }
-    if (el.dataset.requiredField && (el.dataset.field === 'newCategory' || el.closest('[data-form="worker-add"], [data-form="tag-add"]'))) { renderFieldErrors(); return; }
+    if (el.dataset.requiredField && el.closest('[data-form="worker-add"], [data-form="tag-add"]')) { renderFieldErrors(); return; }
     const t = team();
     if (el.dataset.input === 'query') { query[t] = el.value; renderList(); return; }
     const entry = current();
