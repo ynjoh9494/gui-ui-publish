@@ -100,13 +100,14 @@ function option(value: string, label: string, selected: boolean): string {
 }
 
 // 여러 화면의 값이 서로 다를 때 표시한다. 이 항목은 고를 수 없고, 다른 값을 고르면 선택한 화면 전체에 적용한다.
+function mixedMark(mixed: boolean): string {
+  return mixed ? ` <span class="mixed">${esc(COPY.uiApp175)}</span>` : '';
+}
+
 function mixedOption(): string {
   return `<option value="" selected disabled>${esc(COPY.uiApp175)}</option>`;
 }
 
-function mixedMark(mixed: boolean): string {
-  return mixed ? ` <span class="mixed">${esc(COPY.uiApp175)}</span>` : '';
-}
 
 export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let disposed = false;
@@ -268,8 +269,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let pdfBusy: string | null = null;
   // 플러그인에 마지막으로 알린 텍스트 편집 탭 표시 여부
   let textTabSent = false;
-  // GUI 화면정보의 이전 배포 썸네일을 펼쳐 두었는가
-  let historyOpen = false;
+  // History를 펼친 화면·플립북 ID. 다른 화면으로 옮기면 접힌 채로 시작한다(2026-11-03 사용자 요청).
+  let historyOpenId: string | null = null;
   // 마지막으로 히스토리를 요청한 화면·플립북 ID. 같은 ID를 거듭 요청하지 않는다.
   let historyAsked: string | null = null;
   // 「변경 사항」에서 펼쳐 보인, 보이는 값이 같은 변경의 줄 수. 지금 고른 화면에만 두고 기억하지 않는다:
@@ -1276,8 +1277,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (tab === 'ADMIN') { renderAdmin(); return; }
     if (team() === 'UI') { if (currentNew()) renderNewDetail(); else renderFlipbookDetail(); return; }
     const t = team();
-    // 변경사항 확인 전에는 안내 문구만 가운데에 보여 주고 다른 정보는 숨긴다.
-    if (state && locked(t)) { $('.detail').innerHTML = `<div class="detail-hint"><p>${COPY.uiApp023}</p></div>`; return; }
+    // 변경사항 확인 전에는 안내 문구만 가운데에 보여 주고 입력은 숨긴다. 고른 배포 화면의 History는 아래에서 볼 수 있다(2026-11-03 사용자 요청).
+    if (state && locked(t)) {
+      const only = selectedEntries(t).length === 1 ? current() : null;
+      const hint = `<div class="detail-hint"><p>${COPY.uiApp023}</p></div>`;
+      $('.detail').innerHTML = only?.screenId ? `<div class="detail-main">${hint}</div><div class="detail-foot"><div class="history"></div></div>` : hint;
+      if (only?.screenId) renderHistory();
+      return;
+    }
     const chosen = selectedEntries(t);
     const entry = current();
     if (!state || !entry || !chosen.length) { $('.detail').innerHTML = `<p class="empty">${COPY.uiApp042}</p>`; return; }
@@ -1380,23 +1387,23 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         const nameMixed = multi && names.some(value => value !== names[0]);
         html += `<label class="wide">${COPY.uiApp056}<input data-field="name" data-required-field="name" value="${esc(nameMixed ? '' : names[0])}" placeholder="${nameMixed ? '-' : ''}"></label>`;
       }
+      // 화면 관계는 Screen ID 위에 둔다(2026-11-03 사용자 요청). 화면 바꾸기의 새 버전도 입력받고, 처음 값은 교체할 화면의 관계다.
+      if (t === 'GUI' && chosen.every(e => relationEditable(t, e))) {
+        const relation = common(d => d.relation);
+        const allCase = relation === 'case';
+        const baseMixed = allCase && mixed(d => d.baseScreenId);
+        html += `<fieldset class="wide"><legend>${COPY.uiApp057}</legend>
+        <label class="check"><input type="radio" name="relation" value="standalone" data-field="relation" ${relation === 'standalone' ? 'checked' : ''}> ${COPY.uiApp058}</label>
+        <label class="check"><input type="radio" name="relation" value="case" data-field="relation" ${allCase ? 'checked' : ''}> ${COPY.uiApp059}</label>
+        ${screenPicker('baseScreenId', [...registeredItems(id => !state!.screens.get(id)?.baseScreenId && id !== entry.screenId && id !== replaceTarget(entry, draft)), ...pendingScreens(state!, entriesFor('GUI'), drafts.GUI).filter(s => drafts.GUI[s.id]?.relation !== 'case' && s.id !== entry.key).map(s => ({ value: s.id, code: s.code, name: s.name, categoryId: s.categoryId ?? undefined }))], allCase ? common(d => d.baseScreenId) || undefined : undefined, COPY.uiApp061, { disabled: !allCase, mixed: baseMixed, preferredCategoryId: common(d => d.categoryId) })}</fieldset>`;
+      }
+
       // 여러 화면의 Screen ID도 한 번에 바꾼다(2026-11-02 사용자 요청). 값이 서로 다르면 비워 두고 「-」로 표시한다.
       // 겹치는 ID는 입력 검사(등록 화면과 중복)와 배포 계획(같은 배포 안 중복)이 막는다.
       if (t === 'GUI' && chosen.every(e => !isDeletion(e, draftOf(t, e)))) {
         const codes = chosen.map(e => draftCode(state!, e, draftOf(t, e)));
         const codeMixed = multi && codes.some(value => value !== codes[0]);
         html += `<label class="wide">Screen ID<input data-field="code" data-required-field="code" value="${esc(codeMixed ? '' : codes[0])}"${codeMixed ? ' placeholder="-"' : ''} required></label>`;
-      }
-
-      // 화면 바꾸기의 새 버전도 화면 관계를 입력받는다(2026-11-03 사용자 요청). 처음 값은 교체할 화면의 관계다.
-      if (t === 'GUI' && chosen.every(e => relationEditable(t, e))) {
-        const relation = common(d => d.relation);
-        const allCase = relation === 'case';
-        const baseMixed = allCase && mixed(d => d.baseScreenId);
-        html += `<fieldset class="wide"><legend>${COPY.uiApp057}${mixedMark(mixed(d => d.relation))}</legend>
-        <label class="check"><input type="radio" name="relation" value="standalone" data-field="relation" ${relation === 'standalone' ? 'checked' : ''}> ${COPY.uiApp058}</label>
-        <label class="check"><input type="radio" name="relation" value="case" data-field="relation" ${allCase ? 'checked' : ''}> ${COPY.uiApp059}</label>
-        ${screenPicker('baseScreenId', [...registeredItems(id => !state!.screens.get(id)?.baseScreenId && id !== entry.screenId && id !== replaceTarget(entry, draft)), ...pendingScreens(state!, entriesFor('GUI'), drafts.GUI).filter(s => drafts.GUI[s.id]?.relation !== 'case' && s.id !== entry.key).map(s => ({ value: s.id, code: s.code, name: s.name, categoryId: s.categoryId ?? undefined }))], allCase ? common(d => d.baseScreenId) || undefined : undefined, COPY.uiApp061, { disabled: !allCase, mixed: baseMixed, preferredCategoryId: common(d => d.categoryId) })}</fieldset>`;
       }
       html += tagField(t, draft, multi, common(d => d.tagId), mixed(d => d.tagId));
       html += workerField(draft, common(d => d.workerId), mixed(d => d.workerId));
@@ -1611,8 +1618,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const last = rows[rows.length - 1];
     if (!last || !state) return '';
     const hash = last.thumb?.hash ?? null;
-    if (historyOpen) requestThumbs([hash]);
-    return `<figure class="history-thumb"><div class="thumbs">${historyOpen ? thumbImg(hash, formatFrameName(last.code, last.name)) : ''}</div>
+    const open = historyOpenId === entry.screenId;
+    if (open) requestThumbs([hash]);
+    return `<figure class="history-thumb"><div class="thumbs">${open ? thumbImg(hash, formatFrameName(last.code, last.name)) : ''}</div>
       <figcaption>v${last.version} · ${esc(formatTime(last.committedAt, state.project.utcOffsetMinutes))}</figcaption></figure>`;
   }
 
@@ -1631,10 +1639,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       </tbody></table>` : '';
     if (team() !== 'GUI') { box.innerHTML = table ? `<h3>${COPY.uiApp071}</h3>${table}` : ''; return; }
     // GUI 화면의 History는 접어서 상세 아래쪽에 고정하고, 펼치면 지난 배포 썸네일 → 히스토리 목록 순으로 보인다(2026-11-03 사용자 요청).
-    // 펼친 상태는 플러그인을 닫을 때까지 유지해 화면을 옮겨 가며 비교할 수 있다.
     const thumb = historyThumb(entry);
     box.innerHTML = thumb || table
-      ? `<details class="history-fold"${historyOpen ? ' open' : ''}><summary><span class="dropdown-caret" aria-hidden="true"></span><span>${COPY.uiApp071}</span></summary>${thumb}${table}</details>`
+      ? `<details class="history-fold"${historyOpenId === id ? ' open' : ''}><summary><span class="dropdown-caret" aria-hidden="true"></span><span>${COPY.uiApp071}</span></summary>${thumb}${table}</details>`
       : '';
   }
 
@@ -3378,9 +3385,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const details = ev.target as HTMLDetailsElement;
     // History: 처음 펼칠 때 썸네일 이미지를 넣으려고 다시 그린다.
     if (details.classList?.contains('history-fold')) {
-      if (historyOpen === details.open) return;
-      historyOpen = details.open;
-      if (historyOpen) renderHistory();
+      const shownId = team() === 'GUI' ? current()?.screenId : current()?.flipbookId;
+      const next = details.open ? shownId ?? null : null;
+      if (historyOpenId === next) return;
+      historyOpenId = next;
+      if (next) renderHistory();
       return;
     }
     // 화면 선택 드롭다운: 펼치면 검색 입력에 포커스를 두고, 접으면 검색어를 비운다.

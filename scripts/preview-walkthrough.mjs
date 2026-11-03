@@ -1129,8 +1129,9 @@ try {
   // 지난 배포 썸네일은 제목 없이 History 맨 위에 있고, 버전·시각을 캡션으로 단다.
   assert.match(await fold.locator('.history-thumb figcaption').innerText(), /^v\d+ · /);
   assert.equal(await fold.evaluate(node => node.querySelector('.history-thumb').compareDocumentPosition(node.querySelector('table')) & Node.DOCUMENT_POSITION_FOLLOWING), 4, 'the thumbnail sits above the history list');
-  await fold.locator('summary').click();
+  // 다른 화면으로 옮기면 History는 접힌 채로 시작한다(2026-11-03 사용자 요청).
   await wrong.click();
+  await page.waitForFunction(() => document.querySelector('#app .detail details.history-fold')?.open === false);
   // 교체는 신규 후보의 교체처럼 태그를 고른다.
   await app.locator('.tag-picker summary[aria-label="태그 선택"]').click();
   await app.locator('.tag-options [data-action=select-tag]').filter({ hasText: '검토' }).click();
