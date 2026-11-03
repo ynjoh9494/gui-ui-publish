@@ -88,7 +88,7 @@ test('같은 이유로 실패한 플립북은 이유를 한 번만 쓰고 이름
   assert.match(message, /note \(A, B\)$/);
 });
 
-// 템플릿 폴백(2026-11-02 사용자 결정): 이미 있는 플립북은 만든 템플릿(대표·나머지 템플릿 중 구조가 맞는 첫 템플릿)으로 반영한다.
+// 템플릿 폴백(2026-11-02 사용자 결정): 이미 있는 플립북은 만든 템플릿(대표·나머지 템플릿 중 이력 행 컴포넌트가 같은 첫 템플릿)으로 반영한다.
 // 이전 형식 플립북은 변환할 때 만든 템플릿의 연결 기록을 이어받으므로(figma/legacyConvert.ts) 여기서는 표식 플립북만 본다.
 const kitOf = (id: string, links: Record<string, string> = {}, row?: string) =>
   ({ template: { id }, links: { components: links }, row: row ? { id: row } : null, fonts: new Map() }) as unknown as TagKit;
@@ -123,6 +123,22 @@ test('표식 플립북은 이어받은 연결 컴포넌트가 겹치는 이전 �
   const old = kitOf('old', { row: 'c-old', statusTag: 'tag-old' }, 'c-old');
   const session = fallbackSession({ old, older });
   assert.equal(await pick(markedFlipbook({ row: 'c-old', statusTag: 'tag-old' }), current, ['older', 'old'], session), old);
+});
+
+// 2026-11-03 사용자 결정: 태그 컴포넌트는 템플릿 프레임 밖에 두고 여러 템플릿이 함께 쓸 수 있으므로 이력 행 컴포넌트로 판별한다.
+test('태그 컴포넌트를 함께 쓰는 템플릿끼리는 이력 행 컴포넌트가 같은 템플릿으로 반영한다', async () => {
+  const shared = { statusTag: 'tag', rowStatusTag: 'small', idTag: 'id' };
+  const current = kitOf('new', { ...shared, row: 'row-new' }, 'row-new');
+  const old = kitOf('old', { ...shared, row: 'row-old' }, 'row-old');
+  const session = fallbackSession({ old });
+  assert.equal(await pick(markedFlipbook({ ...shared, row: 'row-old' }), current, ['old'], session), old);
+  assert.equal(await pick(markedFlipbook({ ...shared, row: 'row-gone' }), current, ['old'], session), current, '이력 행이 같은 템플릿이 없으면 태그가 같아도 대표로 반영한다');
+});
+
+test('연결 기록에 이력 행이 없는 플립북은 다른 연결 컴포넌트가 같은 템플릿으로 반영한다', async () => {
+  const current = kitOf('new', { row: 'row-new', statusTag: 'tag-new' }, 'row-new');
+  const old = kitOf('old', { row: 'row-old', statusTag: 'tag-old' }, 'row-old');
+  assert.equal(await pick(markedFlipbook({ statusTag: 'tag-old' }), current, ['old'], fallbackSession({ old })), old);
 });
 
 test('만든 템플릿을 적어 둔 플립북은 구조와 관계없이 그 템플릿으로 반영한다', async () => {

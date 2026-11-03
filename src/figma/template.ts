@@ -448,14 +448,29 @@ function markNamedParts(root: FrameNode, ns: string): NamedParts {
   return p;
 }
 
+// 이력 행(컴포넌트나 인스턴스)에서 이름으로 찾은 칸에 표식을 단다.
+function markRowCells(row: ChildrenMixin, ns: string): void {
+  const r = namedRowParts(row);
+  const rowMarks: [BaseNode | null, RowPart][] = [[r.status, 'rowStatus'], [r.comment, 'rowComment'], [r.worker, 'rowWorker'], [r.date, 'rowDate'], [r.team, 'rowTeam']];
+  for (const [node, role] of rowMarks) if (node) setRole(node, role, ns);
+}
+
 // 이력 행 컴포넌트와 그 안의 칸에 표식을 단다. 인스턴스(이력 행)가 표식을 이어받는다. 라이브러리 컴포넌트는 바꿀 수 없어 둔다.
 function markRowComponent(row: ComponentNode, ns: string): boolean {
   if (row.remote) return false;
   setRole(row, 'row', ns);
-  const r = namedRowParts(row);
-  const rowMarks: [BaseNode | null, RowPart][] = [[r.status, 'rowStatus'], [r.comment, 'rowComment'], [r.worker, 'rowWorker'], [r.date, 'rowDate'], [r.team, 'rowTeam']];
-  for (const [node, role] of rowMarks) if (node) setRole(node, role, ns);
+  markRowCells(row, ns);
   return true;
+}
+
+// 이미 놓인 이력 행(인스턴스)과 그 안의 칸에도 표식을 단다. 컴포넌트에 표식을 단 뒤 부른다.
+// 컴포넌트에 나중에 단 표식이 기존 인스턴스에서도 보이면 값이 같아 쓰지 않는다(setRole). 보이지 않으면 여기서 단 표식으로
+// 기존 행을 플러그인이 관리하는 행으로 알아본다. 알아보지 못하면 반영이 기록마다 새 행을 만들고 기존 행이 남아 이력이 두 벌이 된다.
+function markRowInstances(rows: InstanceNode[], ns: string): void {
+  for (const row of rows) {
+    setRole(row, 'row', ns);
+    markRowCells(row, ns);
+  }
 }
 
 // 이전 형식 템플릿을 표식 템플릿으로 바꾼다. 이름으로 찾은 칸에 역할 표식을 달고, 태그·이력 행 컴포넌트를 연결 기록에 둔다.
@@ -470,19 +485,23 @@ export async function importNamedTemplate(template: FrameNode, ns = NS): Promise
   if (tags.small) links.components.rowStatusTag = tags.small.id;
   if (tags.idTag) links.components.idTag = tags.idTag.id;
   if (row && markRowComponent(row, ns)) links.components.row = row.id;
+  // 템플릿의 예시 행도 표식을 단다. 이 템플릿으로 만든 플립북에서 예시 행 자리에 최신 기록을 놓고 예시 행은 지운다.
+  if (p.history) markRowInstances(namedRows(p.history), ns);
   template.setSharedPluginData(ns, LINKS_KEY, linksValue(links));
   return links;
 }
 
 // 이전 형식 플립북 프레임(이름 규칙 템플릿에서 만든 플립북, 기존 플립북으로 등록한 프레임)을 표식 형식으로 바꾼다.
-// 이름으로 찾은 칸에 역할 표식을 달고, 그 플립북의 이력 행 컴포넌트(여러 변형이면 모두)에도 표식을 단다.
+// 이름으로 찾은 칸에 역할 표식을 달고, 그 플립북의 이력 행 컴포넌트(여러 변형이면 모두)와 이미 놓인 이력 행에도 표식을 단다.
 // 연결 기록은 그 플립북을 만든 템플릿의 기록(base)을 이어받는다(새 템플릿에서 만들 때 복제로 이어받는 것과 같다). base에 이력 행이 없으면
 // 플립북의 첫 이력 행 컴포넌트를 둔다. 찾은 칸이 없어도 연결 기록을 남겨 표식 형식으로 본다(없는 칸은 반영할 때 건너뛴다).
 // base: 이어받을 연결 기록이나, 플립북의 이력 행 컴포넌트를 보고 고르는 함수(figma/legacyConvert.ts).
 export async function importNamedFrame(frame: FrameNode, base: TemplateLinks | null | ((rows: ComponentNode[]) => TemplateLinks | null), ns = NS): Promise<TemplateLinks> {
   const p = markNamedParts(frame, ns);
-  const rows = p.history ? await namedRowComponents(p.history) : [];
+  const instances = p.history ? namedRows(p.history) : [];
+  const rows = await rowComponents(instances);
   for (const row of rows) markRowComponent(row, ns);
+  markRowInstances(instances, ns);
   const from = typeof base === 'function' ? base(rows) : base;
   const links: TemplateLinks = { components: { ...(from?.components ?? {}) } };
   if (!links.components.row && rows[0] && !rows[0].remote) links.components.row = rows[0].id;
@@ -490,13 +509,14 @@ export async function importNamedFrame(frame: FrameNode, base: TemplateLinks | n
   return links;
 }
 
-// 이전 형식 이력 영역의 일반 이력 행(시스템 행 빼고)이 쓰는 컴포넌트들. 놓인 순서대로, 겹치지 않게.
-export async function namedRowComponents(history: ChildrenMixin): Promise<ComponentNode[]> {
+// 이전 형식 이력 영역의 일반 이력 행(시스템 행 빼고). 놓인 순서대로.
+const namedRows = (history: ChildrenMixin) => history.findAll(n => isNamedRow(n) && !isSystemRow(n)) as InstanceNode[];
+
+// 이력 행들이 쓰는 컴포넌트. 놓인 순서대로, 겹치지 않게. 행마다 차례로 기다리지 않고 함께 읽는다.
+async function rowComponents(rows: InstanceNode[]): Promise<ComponentNode[]> {
   const out: ComponentNode[] = [];
-  for (const row of history.findAll(n => isNamedRow(n) && !isSystemRow(n)) as InstanceNode[]) {
-    const main = await row.getMainComponentAsync();
+  for (const main of await Promise.all(rows.map(row => row.getMainComponentAsync())))
     if (main && !out.some(c => c.id === main.id)) out.push(main);
-  }
   return out;
 }
 

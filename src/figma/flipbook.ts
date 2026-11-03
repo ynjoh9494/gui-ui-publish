@@ -875,7 +875,7 @@ export interface SyncResult { nodeId: string; notes: string[]; tracked: boolean;
 
 // 템플릿 폴백(2026-11-02 사용자 결정): 이미 있는 플립북을 반영할 때 쓸 템플릿 키트.
 // 만든 템플릿을 적어 둔 플립북은 그 템플릿이 템플릿 목록에 있으면 그 템플릿을 쓴다.
-// 적어 두지 않은 플립북은 대표, 나머지 템플릿(위부터) 순서로 구조가 맞는 첫 템플릿을 쓴다(fitsTemplate).
+// 적어 두지 않은 플립북은 대표, 나머지 템플릿(위부터) 순서로 구조가 맞는(이력 행 컴포넌트가 같은) 첫 템플릿을 쓴다(fitsTemplate).
 // 맞는 템플릿이 없으면 대표 템플릿으로 있는 칸만 반영한다. 대표 말고 템플릿이 없으면 아무것도 더 읽지 않는다.
 export async function deliveryKit(ns: string, frame: FrameNode, p: Parts, current: TagKit, fallbacks: string[], session: FlipbookSession): Promise<TagKit> {
   if (!fallbacks.length) return current;
@@ -898,10 +898,14 @@ export async function deliveryKit(ns: string, frame: FrameNode, p: Parts, curren
   return current;
 }
 
-// 플립북 구조가 그 템플릿에서 만든 것인지 본다: 만들 때(이전 형식이면 변환할 때) 이어받은 연결 기록의 컴포넌트가
-// 템플릿의 연결 컴포넌트와 하나라도 같다.
+// 플립북 구조가 그 템플릿에서 만든 것인지 본다. 만들 때(이전 형식이면 변환할 때) 이어받은 연결 기록의 이력 행 컴포넌트가
+// 템플릿의 이력 행 컴포넌트와 같아야 한다(변환이 만든 템플릿을 고르는 기준과 같다, figma/legacyConvert.ts).
+// 태그 컴포넌트는 템플릿 프레임 밖에 두고 여러 템플릿이 함께 쓸 수 있어 이력 행 대신 보지 않는다(2026-11-03 사용자 결정).
+// 연결 기록에 이력 행이 없는 플립북만 다른 연결 컴포넌트가 하나라도 같은지 본다.
 function fitsTemplate(p: Parts, kit: TagKit): boolean {
   if (!p.links) return false;
+  const row = p.links.components.row;
+  if (row) return kit.links.components.row === row;
   const mine = new Set(Object.values(p.links.components));
   return Object.values(kit.links.components).some(id => mine.has(id));
 }

@@ -171,6 +171,9 @@ test('이전 형식 템플릿은 처음 볼 때 이름으로 찾은 칸을 모�
     ['title', 'title', 'chapter', 'status', 'ids', 'gui', 'history', 'previous', 'pdfHidden', 'pdfHidden']);
   assert.equal(t.gui.getSharedPluginData(NS, GUI_EXAMPLE_KEY), 'clear', '이전처럼 플립북을 만들 때 GUI 영역 예시를 비운다');
   assert.equal(roleOf(t.rowComponent), 'row');
+  const sample = t.list.children.find((n: Node) => n.name === 'Update History')!;
+  assert.equal(roleOf(sample), 'row', '템플릿의 예시 행에도 표식을 단다(이 템플릿으로 만든 플립북에서 예시 행 자리에 최신 기록을 놓는다)');
+  assert.equal(roleOf(sample.findOne((n: Node) => n.type === 'TEXT' && n.parent?.name === 'Comment')!), 'rowComment');
   assert.equal(roleOf(t.rowComponent.findOne((n: Node) => n.type === 'TEXT' && n.parent?.name === 'Comment')!), 'rowComment');
   assert.equal(roleOf(t.rowComponent.findOne((n: Node) => n.name === 'Team')!), 'rowTeam');
   assert.deepEqual(before.items.find(i => i.key === 'gui')?.layers.map(l => l.name), ['GUI Image Slot']);
@@ -368,6 +371,31 @@ test('고른 이전 형식 플립북만 표식 형식으로 바꾸고, 만든 �
   a.frame.setSharedPluginData(NS, TEMPLATE_KEY, 'kept');
   assert.deepEqual((await convertLegacyFlipbooks({ pageIds: [w.page.id], flipbookIds: ['fb-a'], templateIds: [t.template.id] })).flipbooks, ['fb-a']);
   assert.equal(a.frame.getSharedPluginData(NS, TEMPLATE_KEY), 'kept', '이미 바꾼 플립북은 다시 고쳐 쓰지 않는다');
+});
+
+// 이 모형의 인스턴스는 만들 때만 컴포넌트 표식을 복사한다. 변환 전에 놓인 이력 행은 컴포넌트에 나중에 단 표식을 보지 못하므로,
+// 변환이 그 행에 직접 표식을 달아야 기존 행으로 알아본다(못 알아보면 기록마다 새 행을 만들어 이력이 두 벌이 된다).
+test('변환한 이전 형식 플립북은 이미 놓인 이력 행을 다시 채우고 새 행을 만들지 않는다', async () => {
+  const w = world();
+  const t = namedTemplate(w);
+  const a = legacyFlipbook(w, t, 'fb-a');
+  const old = a.frame.findOne((n: Node) => n.name === 'Update History')!;
+  old.findOne((n: Node) => n.name === 'Team')!.getMainComponentAsync = async () => null;
+  // 이전 형식 반영이 남긴 기록 키
+  old.setSharedPluginData(NS, 'historyKey', 'GUI:batch1');
+  assert.equal(old.getSharedPluginData(NS, PART_KEY), '', '변환 전 행에는 표식이 없다');
+  await convertLegacyFlipbooks({ pageIds: [w.page.id], flipbookIds: ['fb-a'], templateIds: [t.template.id] });
+  assert.equal(old.getSharedPluginData(NS, PART_KEY), 'row');
+  let made = 0;
+  const create = t.rowComponent.createInstance;
+  t.rowComponent.createInstance = () => { made++; return create(); };
+  const p = flipbookParts(a.frame as unknown as FrameNode);
+  const kit = { template: t.template, links: { components: { row: t.rowComponent.id } }, big: null, small: null, idTag: null, row: t.rowComponent, defaults: { title: [], chapter: [] }, fonts: new Map() } as unknown as TagKit;
+  const data: FlipbookRow = { key: 'GUI:batch1', team: 'GUI', description: 'change 1', worker: 'User', at: '10/21 12:00', colorKey: 'Green', tag: { id: 't', name: 'tag 1', colorKey: 'Green', color: '#fff' } };
+  await syncMarkedRows(NS, p.list as unknown as SceneNode, p.previous as unknown as SceneNode, { pageId: 'p', templateId: t.template.id }, [data], kit, new Set());
+  assert.equal(made, 0, '기존 행을 다시 쓴다');
+  assert.deepEqual(a.frame.findAll((n: Node) => n.name === 'Update History'), [old], '이력이 두 벌이 되지 않는다');
+  assert.equal(old.findOne((n: Node) => n.type === 'TEXT' && n.parent?.name === 'Comment')!.characters, 'change 1', '기존 행의 칸도 표식으로 찾아 채운다');
 });
 
 test('이력 행이 없는 이전 형식 플립북은 첫 이전 형식 템플릿을, 맞는 템플릿이 없으면 자기 이력 행 컴포넌트만 이어받는다', async () => {
