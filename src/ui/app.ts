@@ -270,6 +270,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let textTabSent = false;
   // GUI 화면정보의 이전 배포 썸네일을 펼쳐 두었는가
   let historyOpen = false;
+  // 마지막으로 히스토리를 요청한 화면·플립북 ID. 같은 ID를 거듭 요청하지 않는다.
+  let historyAsked: string | null = null;
   // 「변경 사항」에서 펼쳐 보인, 보이는 값이 같은 변경의 줄 수. 지금 고른 화면에만 두고 기억하지 않는다:
   // 다른 화면을 고르거나 변경사항 확인을 다시 하면 접힌 상태로 돌아간다.
   let reasonShown: { key: string; count: number } | null = null;
@@ -1619,8 +1621,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const entry = current();
     const id = team() === 'GUI' ? entry?.screenId : entry?.flipbookId;
     if (!box || !entry || !id) return;
-    if (history?.id !== id) { box.innerHTML = ''; return; }
-    const table = history.rows.length ? `<table><tbody>${history.rows.slice(0, 8).map(r => `
+    // 히스토리를 아직 받지 않았으면 여기서 요청한다. 목록 클릭뿐 아니라 캔버스에서 골라 선택이 바뀐 때도 보이게 한다(2026-11-03 회귀).
+    // 같은 화면은 한 번만 요청하고, 받기 전에도 GUI는 지난 배포 썸네일로 History를 보여 준다.
+    if (history?.id !== id && historyAsked !== id) { historyAsked = id; bridge.send({ type: 'history', team: team(), id }); }
+    const rows = history?.id === id ? history.rows : [];
+    const table = rows.length ? `<table><tbody>${rows.slice(0, 8).map(r => `
       <tr><td><span class="team ${r.team}">${r.team}</span></td><td>${esc(r.at)}</td>
       <td><span class="chip" style="--c:${esc(r.tag.color)}">${esc(r.tag.name)}</span></td><td>${esc(r.description)}${r.corrected ? ` <i>${COPY.uiApp072}</i>` : ''}</td><td>${esc(r.worker)}</td></tr>`).join('')}
       </tbody></table>` : '';
@@ -2476,7 +2481,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (entry && t === 'GUI') draftOf(t, entry);
     if (selected[t]) bridge.send({ type: 'selectFrames', nav: ++navSeq, team: t, entryKeys: selectedKeys(t), lastKey: selected[t]! });
     const historyId = t === 'GUI' ? entry?.screenId : entry?.flipbookId;
-    if (selection[t].size === 1 && historyId) bridge.send({ type: 'history', team: t, id: historyId });
+    if (selection[t].size === 1 && historyId) { historyAsked = historyId; bridge.send({ type: 'history', team: t, id: historyId }); }
     if (t === 'GUI' && $('.list').dataset.team === 'GUI') paintGuiSelection(); else renderList();
     renderDetail();
   }
@@ -3743,6 +3748,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         uiScans = new Map();
         plan = null;
         history = null;
+        historyAsked = null;
         resetArmed = false;
         renumberArmed = false;
         versionMatch = null;
