@@ -822,7 +822,23 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .tabs .mode-switch:hover:not(:disabled) { background: var(--bg2); }
 .tabs .mode-switch svg { flex: none; }
 
-.fb-identity .review-actions { display: flex; justify-content: flex-end; }
+/* 플립북 관리 정보: Screen ID와 거기서 정해지는 Chapter를 한 줄에, 프레임 이름 줄 오른쪽에 「적용」(2026-11-03 사용자 요청) */
+.identity-pair { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 8px; }
+.identity-pair > label { min-width: 0; }
+.identity-foot { display: flex; align-items: center; gap: 8px; }
+.identity-foot .note { flex: 1; min-width: 0; }
+.identity-foot button { flex: none; }
+.fb-identity { padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+/* 화면·History 접기: 제목 줄 오른쪽에 확인이 필요한 화면의 빨간 점 */
+details.fb-fold > summary .review-dot { margin-left: 2px; }
+details.fb-fold .thumbs { margin-top: 2px; }
+/* 아래 확인 영역의 맨 아래 줄: 왼쪽 상태·코멘트 접기, 오른쪽 「확인 완료」 */
+.fb-bottom .review-actions { justify-content: space-between; gap: 8px; }
+.fold-toggle { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 4px 3px 0; border: 0; background: none; color: var(--text); font-weight: 600; }
+.fold-toggle:hover:not(:disabled) { background: none; }
+.fold-toggle .dropdown-caret { margin-left: 0; transform: rotate(-90deg); transition: transform .15s; }
+.fold-toggle[aria-expanded="true"] .dropdown-caret { transform: none; }
+.fb-bottom .review-title .template-help { margin-left: 2px; }
 .fb-identity [data-identity-chapter], .new-place [data-identity-chapter] { background: var(--bg); color: var(--muted); }
 .fb-identity [data-identity-frame], .new-place [data-identity-frame] { overflow-wrap: anywhere; }
 

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright-core';
 import { pathToFileURL } from 'node:url';
+import { mkdirSync } from 'node:fs';
 import { Store, memoryKV, keys } from '../src/core/store.ts';
 import { toUiWire } from '../src/core/wire.ts';
 import { ensureSystemTags } from '../src/core/registry.ts';
@@ -41,7 +42,10 @@ try {
   assert.equal(await page.locator('[data-identity-chapter]').inputValue(), 'Live');
   assert.equal(await page.locator('[data-identity-chapter]').isDisabled(), true);
   assert.equal(await page.locator('[data-input=fb-screen-id]').inputValue(), 'ST_LI_POLICY');
+  const saveIsPrimary = () => page.locator('[data-action=fb-identity-save]').evaluate(b => b.classList.contains('primary'));
+  assert.equal(await saveIsPrimary(), false, 'nothing to apply yet');
   await page.locator('[data-input=fb-page-title]').fill('A title without a dash');
+  assert.equal(await saveIsPrimary(), true, 'unsaved input highlights 적용');
   await page.locator('[data-input=fb-screen-id]').fill('ST_LI_POLICY_05');
   assert.equal(await page.locator('[data-identity-frame]').innerText(), 'ST_LI_POLICY_05 \u00b7 A title without a dash');
   await page.locator('[data-action=fb-identity-save]').click();
@@ -58,6 +62,8 @@ try {
   await page.evaluate(state => window.postMessage({ pluginMessage: { type: 'state', state, pages: [{ id: 'p', name: 'Pages' }] } }, '*'), toUiWire(store.state));
   await page.waitForFunction(() => document.querySelector('[data-input=fb-page-title]')?.value === 'Only Page title');
   await page.waitForFunction(() => document.querySelector('.list .row .name')?.textContent === 'ST_LI_POLICY_05 · Only Page title');
-  await page.locator('#app').screenshot({ path: 'release/screens/ui-identity.png' });
+  // 안내 화면(release/screens)은 배포 직전에만 갱신하므로 검사 화면은 tmp에 남긴다.
+  mkdirSync('tmp/walkthrough', { recursive: true });
+  await page.locator('#app').screenshot({ path: 'tmp/walkthrough/ui-identity.png' });
   console.log('Identity UI: automatic Chapter/policy ID, editable ID/title, frame preview and title-only double click passed');
 } finally { await browser.close(); }

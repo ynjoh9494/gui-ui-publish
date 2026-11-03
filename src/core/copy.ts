@@ -372,6 +372,7 @@ export const COPY = {
   fbFrameName: "프레임 이름",
   fbChapterAuto: "Screen ID의 Chapter 코드에 따라 자동 결정",
   fbIdPlaceholder: "<기기>_<챕터>_POLICY",
+  fbReviewFold: "상태·코멘트",
   uiTextRed: "빨간 글씨",
   uiApp309: "굵게",
   uiApp310: "목록",
