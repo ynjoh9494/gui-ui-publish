@@ -62,7 +62,12 @@ export class TrackController {
       const tracked = (c: { nodeId: string }) => ({ nodeId: c.nodeId, trackId: read.records.get(c.nodeId)?.id ?? '' });
       // 옛 버전이거나, 교체로 이어받은 옛 화면의 복사본(표식의 화면이 다름)이면 바꾼다.
       const stale = read.found.filter(c => c.uid === uid && (c.version !== screen.guiVersion || read.original.get(c.nodeId) !== uid));
-      const keep = canRetag && keepLayers.has(uid) ? stale.filter(c => read.original.get(c.nodeId) === uid) : [];
+      // 표식만 바꾸는 복사본은 그 버전의 지문이 새 버전과 같은 것뿐이다. 앞선 반영이 실패해 더 오래된 내용으로 남은 복사본이나
+      // 옛 복사본을 복제한 레이어는 레이어를 새로 복사한다(표식만 바꾸면 최신으로 보여 다시 바뀌지 않는다).
+      const records = s.state.gui.get(uid) ?? [];
+      const sourceOf = (version: number) => { const r = records.find(x => x.version === version); return r?.fingerprint ? `${r.fpVersion ?? 1}:${r.fingerprint}` : null; };
+      const current = sourceOf(screen.guiVersion);
+      const keep = canRetag && keepLayers.has(uid) && current ? stale.filter(c => read.original.get(c.nodeId) === uid && sourceOf(c.version) === current) : [];
       const copies = stale.filter(c => !keep.includes(c)).map(tracked).filter(c => c.trackId);
       const kept = keep.map(tracked).filter(c => c.trackId);
       if (copies.length) items.push({ uid, code: screen.code, key, sourceNodeId: screen.source.nodeId, copies });

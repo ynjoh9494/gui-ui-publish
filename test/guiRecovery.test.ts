@@ -287,6 +287,8 @@ test('미완료 목록은 같은 대상의 기록을 한 줄로 묶고 최근 �
 
 test('화면 반영 건너뛰기로 확정한 화면은 붙인 화면의 레이어를 복사하지 않고 표식만 바꾸며 플립북은 반영한다', async () => {
   const f = fixture(false);
+  // 건너뛰기는 지난 버전과 원본이 같을 때만 기록된다.
+  f.store.put(keys.gui('s1', 1), { ...f.record, version: 1, batchId: 'b1', committedAt: 1 });
   const record = { ...f.record, skipLayers: true };
   queueGuiDelivery(f.store, 'b2', f.before, f.after, record);
   f.store.put(keys.gui('s1', 2), record);
@@ -303,6 +305,27 @@ test('화면 반영 건너뛰기로 확정한 화면은 붙인 화면의 레이�
   assert.deepEqual(f.counts(), { copies: 0, syncs: 1 });
   assert.equal(f.store.state.flipbooks.get('fb')?.screens[0].version, 2);
   assert.equal(f.store.state.imported.get('fb')?.length, 1, '히스토리는 남긴다');
+});
+
+test('화면 반영 건너뛰기여도 새 버전과 내용이 다른 버전의 복사본은 레이어를 새로 복사한다', async () => {
+  const f = fixture(false);
+  // v2 반영이 복사본에 닿지 않아 복사본은 v1(fp1) 내용이다. v3는 v2(fp2)와 같아 건너뛰기로 확정했다.
+  f.store.put(keys.gui('s1', 2), f.record);
+  const record = { ...f.record, version: 3, batchId: 'b3', skipLayers: true };
+  const after = { ...f.after, guiVersion: 3, rev: 3 };
+  queueGuiDelivery(f.store, 'b3', { ...f.after }, after, record);
+  f.store.put(keys.gui('s1', 3), record);
+  f.store.put(keys.screen('s1'), after);
+  const retagged: CopyUpdate[] = [];
+  (f.host as { retagCopies?: Host['retagCopies'] }).retagCopies = async items => {
+    retagged.push(...items);
+    return { updated: items.flatMap(item => item.copies.map(copy => ({ trackId: copy.trackId, nodeId: copy.nodeId }))), notes: [] };
+  };
+  await new Controller(f.host).handle({ type: 'retry' });
+  f.store.reload();
+  assert.equal(f.store.state.deliveries.get(keys.guiDelivery('b3', 's1'))?.state, 'done');
+  assert.deepEqual(retagged, []);
+  assert.equal(f.counts().copies, 1);
 });
 
 test('원본 변경이 없는 배포에서만 화면 반영 건너뛰기를 고를 수 있고 지난 버전과 지문이 같은 화면만 기록한다', () => {

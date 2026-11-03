@@ -7,7 +7,7 @@ import { guiRecordInfos, guiScreens } from '../src/core/guiScreens.ts';
 import { updateCategory, addCategory, ensureCategoryCodes, ensureScreenIdPrefix, ensureScreenIdRules, renumberScreenIds, setCategoryCode, setScreenIdPrefix } from '../src/core/registry.ts';
 import { canvasOrder, codeLetters, generateCategoryCode, nextScreenCode } from '../src/core/screenCode.ts';
 import { keys, memoryKV, Store } from '../src/core/store.ts';
-import type { Category, Screen } from '../src/core/types.ts';
+import type { Category, Flipbook, Screen } from '../src/core/types.ts';
 import { Controller, type Host } from '../src/controller.ts';
 import type { ToUi } from '../src/core/wire.ts';
 
@@ -369,4 +369,41 @@ test('category management accepts explicit codes and rejects invalid edits befor
   assert.equal(store.state.screens.get(source.id)?.code, 'ST_HM_001');
   assert.equal(renames.length, 1);
   assert.equal(store.state.categories.get(live.id)?.code, 'LI');
+});
+
+test('Prefix·카테고리 코드·번호를 바꾸면 플립북에 저장한 정책 ID와 화면 ID도 함께 바꾼다', () => {
+  const store = new Store(memoryKV());
+  setScreenIdPrefix(store, 'STB', actor);
+  category(store, 'home', '홈', 'HO');
+  screen(store, 'a', 'STB_HO_001', 'home');
+  screen(store, 'b', 'STB_HO_002', 'home');
+  const book = (id: string, screenId: string, screens: Flipbook['screens'] = []): void => store.put(keys.flipbook(id), {
+    id, rev: 1, kind: screens.length ? 'single' : 'policy', title: id, autoTitle: false, titleNames: [], scale: 1,
+    category: { key: 'home', name: '홈', order: 0 }, screens, pageId: 'p', status: 'active', createdAt: 0, actor, screenId,
+  } satisfies Flipbook);
+  book('policy', 'STB_HO_POLICY');
+  book('policy2', 'STB_HO_POLICY_02');
+  // 둘째 화면의 ID를 헤더로 쓰는 플립북(직접 정한 값이 다른 화면의 ID)
+  book('custom', 'STB_HO_002', [{ uid: 'a', code: 'STB_HO_001', name: 'A', version: 1 }]);
+  book('manual', 'HOME_POLICY');
+  const id = (fb: string) => store.state.flipbooks.get(fb)!.screenId;
+
+  setCategoryCode(store, 'home', 'HM', actor);
+  assert.deepEqual([id('policy'), id('policy2'), id('custom'), id('manual')], ['STB_HM_POLICY', 'STB_HM_POLICY_02', 'STB_HM_002', 'HOME_POLICY']);
+  assert.ok(store.state.audit.some(a => a.action === 'flipbook.screenId' && a.target === 'policy'));
+
+  setScreenIdPrefix(store, 'MOB', actor);
+  assert.deepEqual([id('policy'), id('policy2'), id('custom')], ['MOB_HM_POLICY', 'MOB_HM_POLICY_02', 'MOB_HM_002']);
+
+  // 번호를 다시 매기면 저장한 ID는 가리키던 화면(b)의 새 번호를 따른다.
+  const positions = new Map([['b', { page: 0, x: 0, y: 0, height: 10 }], ['a', { page: 0, x: 0, y: 100, height: 10 }]]);
+  renumberScreenIds(store, positions, actor);
+  assert.equal(store.state.screens.get('a')!.code, 'MOB_HM_002');
+  assert.equal(id('custom'), 'MOB_HM_001');
+  assert.equal(id('policy'), 'MOB_HM_POLICY');
+  // 가리키던 화면이 첫 화면이고 그 새 ID와 같아지면 저장하지 않고 첫 화면을 따른다.
+  store.put(keys.flipbook('custom'), { ...store.state.flipbooks.get('custom')!, screenId: 'MOB_HM_002' });
+  renumberScreenIds(store, new Map([['a', { page: 0, x: 0, y: 0, height: 10 }], ['b', { page: 0, x: 0, y: 100, height: 10 }]]), actor);
+  assert.equal(store.state.screens.get('a')!.code, 'MOB_HM_001');
+  assert.equal(id('custom'), undefined);
 });

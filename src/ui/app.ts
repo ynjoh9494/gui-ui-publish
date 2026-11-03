@@ -1,4 +1,4 @@
-import { flipbookIdentity, withFlipbookId } from '../core/flipbookIdentity.ts';
+import { flipbookIdentity, unsavedPolicyIds, withFlipbookId } from '../core/flipbookIdentity.ts';
 import { windowCollapse } from './windowCollapse.ts';
 import { headerTab } from './headerTab.ts';
 import { COPY } from '../core/copy.ts';
@@ -1074,6 +1074,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const shown = new Map(model.groups.map(g => [g.key, g]));
     const moving = new Set(movedFlipbooks.map(m => m.key));
     const rows = new Map(model.groups.flatMap(g => g.rows).map(r => [r.entry.key, r]));
+    // ID를 저장하지 않은 정책 플립북의 ID는 목록을 그릴 때 한 번에 정한다(행마다 전체 화면·플립북을 다시 보지 않는다).
+    const policies = unsavedPolicyIds(state!);
     const groups = arrangement().filter(g => shown.has(g.key) || g.items.some(item => isNewKey(item) || moving.has(item)));
     if (!groups.length) {
       box.innerHTML = `<p class="empty">${!made ? COPY.uiApp218 : query.UI ? COPY.uiApp028 : changedOnly.UI ? COPY.uiApp222 : COPY.uiApp029}</p>`;
@@ -1138,7 +1140,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
           // 연결이 끊긴 플립북은 프레임이 없어 반영할 수 없으므로 제목을 고치지 않는다(오른쪽 영역의 연필과 같다).
           const record = r.entry.flipbookId ? state!.flipbooks.get(r.entry.flipbookId) : undefined;
           const fb = r.entry.estimate !== 'missing' ? record : undefined;
-          const frameName = record ? flipbookIdentity(state!, record).frameName : r.name;
+          const frameName = record ? flipbookIdentity(state!, record, policies).frameName : r.name;
           const name = fb && editingAt(fb.id, 'list')
             ? `<input class="title-input" data-input="fb-title" data-id="${esc(fb.id)}" value="${esc(fb.title)}" placeholder="${esc(defaultTitle(fb.kind, fb.screens))}" aria-label="${COPY.uiApp203}">`
             : `<span class="name"${fb ? ` data-edit-title="${esc(fb.id)}" title="${COPY.uiApp314}"` : ''}>${esc(frameName)}</span>`;
@@ -4023,6 +4025,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'state': {
         const previousRules = state ? codeRules(state) : '';
         state = fromWire(msg.state);
+        replaceReasons.clear();
         renderRecovery();
         retainThumbs();
         if (previousRules && previousRules !== codeRules(state)) renumberCodes();
@@ -4052,7 +4055,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         const before = entries.find(e => e.key === selected.GUI)?.estimate;
         const pairsBefore = new Map(entries.map(e => [e.key, e.pairKey]));
         entries = msg.entries;
-        replaceReasons.clear();
+        // 교체 비교 결과는 프레임 지문을 키에 넣어 두므로 목록을 다시 받을 때마다 비우지 않는다(확인 중 같은 프레임을 다시 읽지 않게).
+        // 비교 기준(지난 배포·변경 무시)이 바뀌는 기록 변경 때만 비운다(아래 'state').
         // 교체 제안은 변경사항 확인이 끝나야 나온다. 제안이 생기거나 바뀐 항목은 배포를 켜지 않았으면 기본값(교체 짝)을 다시 채운다.
         // 배포를 켠 항목은 사용자가 정한 값을 둔다.
         for (const e of entries) {

@@ -2,6 +2,7 @@
 import { COPY } from './copy.ts';
 import type { FlipbookSpot } from './compare.ts';
 import { defaultTitle, NO_CATEGORY_KEY, NO_SECTION_KEY } from './flipbook.ts';
+import { unsavedPolicy, unsavedPolicyIds } from './flipbookIdentity.ts';
 import { importedRecord, recordsToImport, type GuiRecordInfo, type GuiScreenInfo } from './guiScreens.ts';
 import { keys, type State, type Store } from './store.ts';
 import type { Actor, Flipbook, FlipbookKind, FlipbookReview, FlipbookScale, ImportedGuiRecord, TagSnapshot, UiRecord, UiState } from './types.ts';
@@ -136,8 +137,24 @@ export function checkMoves(state: State, moves: FlipbookMove[], pageIds: readonl
   }
 }
 
+// ID를 저장하지 않은 정책 플립북(이전 버전에서 만든 정책 플립북)의 지금 ID를 모두 기록에 저장한다.
+// 그 ID는 Section과 다른 플립북의 저장 ID·기록 순서로 정하므로, 하나만 저장하거나 플립북을 만들고·지우고·옮기면 나머지 ID가 밀린다.
+// 그런 기록 변경 직전에 한 번에 저장해 보이던 ID를 지킨다. 저장한 플립북 ID를 돌려준다(없으면 아무것도 쓰지 않는다).
+export function pinPolicyIds(store: Store, actor: Actor): string[] {
+  const ids = unsavedPolicyIds(store.state);
+  for (const [id, screenId] of ids) {
+    const fb = store.state.flipbooks.get(id)!;
+    store.put(keys.flipbook(id), { ...fb, rev: fb.rev + 1, screenId } satisfies Flipbook);
+  }
+  if (ids.size) store.audit(actor, 'flipbook.pinPolicyIds', 'project', null, Object.fromEntries(ids));
+  return [...ids.keys()];
+}
+const hasUnsavedPolicy = (state: State, ids: Iterable<string>) => [...ids].some(id => { const fb = state.flipbooks.get(id); return !!fb && unsavedPolicy(fb); });
+
 export function moveFlipbooks(store: Store, moves: FlipbookMove[], pageIds: readonly string[], actor: Actor): Flipbook[] {
   checkMoves(store.state, moves, pageIds);
+  // 정책 플립북을 옮기면 ID·Chapter가 바뀌지 않게 먼저 저장한다(BEHAVIOR: Section 이동 뒤 Chapter는 ID에서 결정한 값을 유지한다).
+  if (hasUnsavedPolicy(store.state, moves.map(m => m.flipbookId))) pinPolicyIds(store, actor);
   const out: Flipbook[] = [];
   for (const move of moves) {
     const before = store.state.flipbooks.get(move.flipbookId)!;
@@ -180,6 +197,8 @@ export function canvasSections(state: State, frames: Map<string, string>, spots:
 // 캔버스의 페이지·Section을 기록에 옮기고 바뀐 플립북을 돌려준다. Chapter는 반영할 때 이 이름으로 바뀐다.
 export function followCanvasSections(store: Store, changes: CanvasSection[], actor: Actor): Flipbook[] {
   const out: Flipbook[] = [];
+  // canvasSections는 기록과 다른 자리만 돌려주므로 여기 든 정책 플립북은 실제로 옮겨진다.
+  if (hasUnsavedPolicy(store.state, changes.map(c => c.flipbookId))) pinPolicyIds(store, actor);
   for (const { flipbookId, pageId, section } of changes) {
     const before = store.state.flipbooks.get(flipbookId);
     if (!before || before.status !== 'active') continue;
@@ -390,6 +409,8 @@ export function retireFlipbooks(store: Store, actor: Actor): string[] {
 // 기록은 지우지 않고 사용 안 함으로 바꾼다. linked: 빼지 않을 플립북(연결 끊긴 플립북만 뺄 때 지금 프레임이 있는 플립북).
 export function removeFlipbooks(store: Store, ids: string[], linked: Set<string>, actor: Actor): string[] {
   const out: string[] = [];
+  // 지우는 플립북의 번호가 빠지면 남은 정책 플립북의 ID가 밀리므로 먼저 저장한다.
+  if (ids.some(id => store.state.flipbooks.get(id)?.status === 'active' && !linked.has(id))) pinPolicyIds(store, actor);
   for (const id of new Set(ids)) {
     const fb = store.state.flipbooks.get(id);
     if (!fb || fb.status !== 'active' || linked.has(id)) continue;

@@ -44,7 +44,7 @@ export function activeCategoryCodes(state: State, exceptId?: string): string[] {
   return [...state.categories.values()].filter(c => c.active && c.id !== exceptId && c.code).map(c => c.code!);
 }
 
-function stem(prefix: string, code: string): string {
+export function stem(prefix: string, code: string): string {
   return prefix ? `${prefix}_${code}_` : `${code}_`;
 }
 
@@ -74,6 +74,26 @@ export function codeRenames(state: State, change: { prefix?: string; categoryId?
     if (from === to) continue;
     const match = new RegExp(`^${escape(from)}(\\d+(?:-\\d+)?)$`).exec(screen.code);
     if (match) out.push({ screenId: screen.id, from: screen.code, to: `${to}${match[1]}` });
+  }
+  return out;
+}
+
+export interface FlipbookIdRename { flipbookId: string; from: string; to: string }
+
+// 플립북에 저장한 Screen ID(정책 플립북의 ID, 직접 정한 ID)도 화면 ID와 함께 바꾼다(BEHAVIOR 「Screen ID 규칙」: 플립북 Screen ID도 바로 바꾼다).
+// 바뀌는 화면의 지금 ID와 같은 값은 그 화면의 새 ID로, 바뀌는 규칙 머리(heads: `{Prefix}_{코드}_`)의 정책 ID(`…_POLICY`, `…_POLICY_NN`)는
+// 새 머리로 바꾼다. 그 밖에 직접 정한 ID는 그대로 둔다. 플립북 ID는 대문자로 저장한다(flipbookIdentity.withFlipbookId).
+export function flipbookIdRenames(state: State, renames: CodeRename[], heads: { from: string; to: string }[] = []): FlipbookIdRename[] {
+  const byCode = new Map(renames.map(r => [r.from.toUpperCase(), r.to.toUpperCase()]));
+  const policy = heads.filter(h => h.from.toUpperCase() !== h.to.toUpperCase())
+    .map(h => ({ pattern: new RegExp(`^${escape(h.from.toUpperCase())}(POLICY(?:_\\d+)?)$`), to: h.to.toUpperCase() }));
+  const out: FlipbookIdRename[] = [];
+  for (const fb of state.flipbooks.values()) {
+    if (fb.status !== 'active' || !fb.screenId) continue;
+    const id = fb.screenId.toUpperCase();
+    let to = byCode.get(id) ?? null;
+    for (const p of policy) { if (to) break; const match = p.pattern.exec(id); if (match) to = `${p.to}${match[1]}`; }
+    if (to && to !== fb.screenId) out.push({ flipbookId: fb.id, from: fb.screenId, to });
   }
   return out;
 }

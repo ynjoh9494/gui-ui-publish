@@ -42,11 +42,11 @@ test('reviewing A never delivers unrelated moved or failed B', async () => {
   assert.equal(controller.store.state.flipbooks.get('fb2')?.category.key, store.state.flipbooks.get('fb2')?.category.key);
 });
 
-test('moving between Sections only updates chapters', async () => {
+test('moving between Sections neither delivers nor rewrites chapters', async () => {
   const { controller, calls } = setup();
   await controller.handle({ type: 'createFlipbooks', request: { pageId: 'ui', rows: [], moves: [{ flipbookId: 'fb1', pageId: 'ui', section: customSection('New', 'section:new'), after: null }] } });
   assert.ok(!calls.includes('full:fb1'), JSON.stringify(calls));
-  assert.ok(calls.includes('chapters'), JSON.stringify(calls));
+  assert.ok(!calls.includes('chapters'), JSON.stringify(calls));
 
 });
 

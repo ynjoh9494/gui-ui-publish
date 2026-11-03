@@ -1,6 +1,6 @@
 import { COPY } from './copy.ts';
 import { isColorKey, paletteHex } from './palette.ts';
-import { activeCategoryCodes, CATEGORY_CODE_PATTERN, codeRenames, generateCategoryCode, inferCategoryCode, inferScreenIdPrefix, renameConflicts, renumberRenames, SCREEN_ID_PREFIX_PATTERN, type CanvasPosition, type CodeRename } from './screenCode.ts';
+import { activeCategoryCodes, CATEGORY_CODE_PATTERN, codeRenames, flipbookIdRenames, generateCategoryCode, inferCategoryCode, inferScreenIdPrefix, renameConflicts, renumberRenames, SCREEN_ID_PREFIX_PATTERN, stem, type CanvasPosition, type CodeRename, type FlipbookIdRename } from './screenCode.ts';
 import { keys, type State, type Store } from './store.ts';
 import type { Actor, Category, Exclusion, GuiRecord, ProjectConfig, Screen, SystemTag, TagDef, Team, UiRecord, Worker } from './types.ts';
 
@@ -118,9 +118,12 @@ export function setCategoryCode(store: Store, id: string, code: string, actor: A
   if (value === before.code) return [];
   const renames = before.code ? codeRenames(store.state, { categoryId: id, code: value }) : [];
   checkRenames(store.state, renames);
+  const prefix = store.state.project.screenIdPrefix ?? '';
+  const flipbooks = flipbookIdRenames(store.state, renames, before.code ? [{ from: stem(prefix, before.code), to: stem(prefix, value) }] : []);
   store.put(keys.category(id), { ...before, code: value });
   store.audit(actor, 'category.code', id, before.code ?? null, value);
   applyRenames(store, renames, actor, 'category.code');
+  applyFlipbookIdRenames(store, flipbooks, renames, actor);
   return renames;
 }
 
@@ -132,9 +135,12 @@ export function setScreenIdPrefix(store: Store, prefix: string, actor: Actor): C
   if (value === before.screenIdPrefix) return [];
   const renames = codeRenames(store.state, { prefix: value });
   checkRenames(store.state, renames);
+  const heads = [...store.state.categories.values()].filter(c => c.active && c.code).map(c => ({ from: stem(before.screenIdPrefix ?? '', c.code!), to: stem(value, c.code!) }));
+  const flipbooks = flipbookIdRenames(store.state, renames, heads);
   store.saveProject({ ...before, screenIdPrefix: value });
   store.audit(actor, 'project.screenIdPrefix', 'project', before.screenIdPrefix, value);
   applyRenames(store, renames, actor, 'project.screenIdPrefix');
+  applyFlipbookIdRenames(store, flipbooks, renames, actor);
   return renames;
 }
 
@@ -144,7 +150,9 @@ export function renumberScreenIds(store: Store, positions: Map<string, CanvasPos
   const renames = renumberRenames(store.state, positions);
   checkRenames(store.state, renames);
   if (renames.length) store.audit(actor, 'project.renumberScreenIds', 'project', null, renames.length);
+  const flipbooks = flipbookIdRenames(store.state, renames);
   applyRenames(store, renames, actor, 'project.renumberScreenIds');
+  applyFlipbookIdRenames(store, flipbooks, renames, actor);
   return renames;
 }
 
@@ -156,6 +164,20 @@ function checkRenames(state: State, renames: CodeRename[]): void {
 // 과거 GUI 기록은 당시 Screen ID를 그대로 둔다.
 function applyRenames(store: Store, renames: CodeRename[], actor: Actor, reason: string): void {
   for (const r of renames) updateScreen(store, r.screenId, s => ({ ...s, code: r.to }), actor, 'screen.code', reason);
+}
+
+// 플립북에 저장한 Screen ID를 바꾼다. 첫 화면의 새 ID와 같아지면 저장하지 않고 첫 화면 ID를 따르게 둔다(withFlipbookId와 같다).
+// 헤더 반영은 호출한 쪽이 한다(controller admin).
+function applyFlipbookIdRenames(store: Store, list: FlipbookIdRename[], renames: CodeRename[], actor: Actor): void {
+  const next = new Map(renames.map(r => [r.screenId, r.to]));
+  for (const r of list) {
+    const fb = store.state.flipbooks.get(r.flipbookId);
+    if (!fb) continue;
+    const first = fb.screens[0] ? next.get(fb.screens[0].uid) ?? store.state.screens.get(fb.screens[0].uid)?.code : undefined;
+    const screenId = first && first.toUpperCase() === r.to ? undefined : r.to;
+    store.put(keys.flipbook(fb.id), { ...fb, rev: fb.rev + 1, screenId });
+    store.audit(actor, 'flipbook.screenId', fb.id, r.from, screenId ?? null);
+  }
 }
 
 // ── 작업자 ───────────────────────────────────────────────

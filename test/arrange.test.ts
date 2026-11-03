@@ -151,7 +151,7 @@ test('항목마다 페이지·Section·자리를 정해 만들고, 같은 요청
   assert.equal(controller.store.state.deliveries.get(keys.delivery('unrelated', 'old'))?.state, 'failed');
 });
 
-test('목록에서 옮긴 기존 플립북을 목록 순서대로 캔버스에서 옮기고, Section이 바뀐 플립북만 다시 반영한다. 잘못된 요청은 아무것도 옮기지 않는다', async () => {
+test('목록에서 옮긴 기존 플립북을 목록 순서대로 캔버스에서 옮기고 기록만 바꾼다(Chapter는 Screen ID를 따른다). 잘못된 요청은 아무것도 옮기지 않는다', async () => {
   const posted: ToUi[] = [];
   const store = new Store(memoryKV());
   store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['ui', 'ui2'], flipbookPageId: 'ui' });
@@ -196,7 +196,7 @@ test('목록에서 옮긴 기존 플립북을 목록 순서대로 캔버스에�
   ], '목록 순서대로, 원래 페이지에서 옮긴다');
   const c = controller.store.state.flipbooks.get('fb3')!;
   assert.deepEqual([c.pageId, c.category.key, c.category.name], ['ui2', 'home', '홈'], '옮긴 페이지·Section을 기록한다');
-  assert.deepEqual(synced, ['fb3'], 'Section이 바뀐 플립북만 다시 반영해 Chapter를 맞춘다');
+  assert.deepEqual(synced, [], 'Chapter는 Section을 따르지 않으므로 옮겨도 다시 쓰지 않는다');
   const done = posted.find(m => m.type === 'flipbooksCreated') as Extract<ToUi, { type: 'flipbooksCreated' }>;
   assert.deepEqual([done.ids, done.moved], [[], ['fb2', 'fb3']]);
 });

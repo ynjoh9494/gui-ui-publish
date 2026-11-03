@@ -1162,7 +1162,7 @@ test('캔버스에서 다른 Section·페이지로 옮긴 플립북은 기록이
   const fb3 = controller.store.state.flipbooks.get('fb3')!;
   assert.deepEqual([fb2.pageId, fb2.category], ['ui', { key: 'epg', name: 'EPG', order: 2 }], 'EPG Section의 정렬 순서를 따른다');
   assert.deepEqual([fb3.pageId, fb3.category.key, fb3.category.name], ['ui2', 'section:new', '새 묶음']);
-  assert.deepEqual(synced.sort(), [['fb2', 'ui', 'epg', '-'], ['fb3', 'ui2', 'section:new', '-']], 'Chapter 전용 반영은 캔버스의 페이지를 사용한다');
+  assert.deepEqual(synced, [], 'Chapter는 Section이 아니라 Screen ID를 따르므로 옮겨도 다시 쓰지 않는다');
 });
 
 test('Section 밖으로 옮긴 플립북은 「(섹션 없음)」이 되어 그 페이지 맨 위에 모이고, 새로 넣거나 옮길 자리로는 고를 수 없다', () => {
@@ -1293,7 +1293,7 @@ test('GUI 확정은 플립북을 반영한 뒤 「DATA 페이지 갱신 중」�
   assert.equal(controller.store.state.flipbooks.get('fb1')?.screens[0].version, 2, '플립북은 새 버전을 받는다');
 });
 
-test('캔버스 선택으로는 목록을 다시 읽지 않고, 새로고침으로 찾은 Section 이름 변경은 Chapter만 다시 쓰며 반영 중 표시를 닫는다', async () => {
+test('캔버스 선택으로는 목록을 다시 읽지 않고, 새로고침으로 찾은 Section 이름 변경은 기록만 바꾸며 반영 중 표시를 닫는다', async () => {
   const posted: ToUi[] = [];
   const store = new Store(memoryKV());
   store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['ui'], flipbookPageId: 'ui' });
@@ -1330,13 +1330,13 @@ test('캔버스 선택으로는 목록을 다시 읽지 않고, 새로고침으�
   await controller.handle({ type: 'refreshList' });
   assert.ok(posted.some(m => m.type === 'listSynced'), '바뀐 것이 없어도 새로고침이 끝났다고 알린다');
   assert.equal(controller.store.state.flipbooks.get('fb1')?.category.name, '홈 메인');
-  assert.deepEqual(chapters, [{ pageId: 'ui', flipbookId: 'fb1', name: '-' }]);
+  assert.deepEqual(chapters, [], 'Section 이름은 Chapter가 아니므로 캔버스에 다시 쓰지 않는다');
   assert.deepEqual(synced, [], 'GUI·이력까지 다시 반영하지 않는다');
   const busy = posted.filter((m): m is Extract<ToUi, { type: 'busy' }> => m.type === 'busy');
   assert.equal(busy[busy.length - 1]?.label ?? null, null, '반영 중 표시가 남지 않는다');
 });
 
-test('캔버스에서 바꾼 Section 이름을 플러그인을 열 때 그 Section 플립북의 기록과 Chapter에 반영하고, 캔버스 이름은 덮어쓰지 않는다', async () => {
+test('캔버스에서 바꾼 Section 이름을 플러그인을 열 때 그 Section 플립북의 기록에 반영하고, Chapter와 캔버스 이름은 덮어쓰지 않는다', async () => {
   const posted: ToUi[] = [];
   const store = new Store(memoryKV());
   store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['ui'], flipbookPageId: 'ui' });
@@ -1365,7 +1365,7 @@ test('캔버스에서 바꾼 Section 이름을 플러그인을 열 때 그 Secti
   await controller.handle({ type: 'ready' });
   assert.equal(controller.store.state.flipbooks.get('fb1')?.category.name, '홈 메인');
   assert.equal(controller.store.state.flipbooks.get('fb2')?.category.name, 'EPG');
-  assert.deepEqual(chapters, [['fb1', '-']], 'Section updates do not become Chapter names');
+  assert.deepEqual(chapters, [], 'Section updates do not rewrite Chapter');
   assert.equal(posted.some(m => m.type === 'error'), false);
   // 열 때 플립북 페이지를 불러오는 동안은 Figma가 입력을 받지 못하므로 「불러오는 중」을 띄우고, 끝나면 닫는다.
   const loading = posted.findIndex(m => m.type === 'busy' && m.label === COPY.controller136), synced = posted.findIndex(m => m.type === 'listSynced');

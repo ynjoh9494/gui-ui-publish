@@ -1,12 +1,12 @@
 import { digestFingerprint, NO_RECORD, type ChangeReason, type DigestRequest, type PreviousReason } from './core/changeDigest.ts';
-import { flipbookIdentity, withFlipbookId } from './core/flipbookIdentity.ts';
+import { flipbookIdentity, unsavedPolicy, unsavedPolicyIds, withFlipbookId } from './core/flipbookIdentity.ts';
 import { COPY } from './core/copy.ts';
 import { planExistingFlipbooks } from './core/registerFlipbooks.ts';
 import { baseline, changeDetected, classify, ignoreBlock, uiEstimate, uncheckedEntries, uiEntries, UI_FINGERPRINT_VERSION, type Entry, type FlipbookSpot, type ScannedFrame, type UiScan } from './core/compare.ts';
 import { FINGERPRINT_VERSION, LEGACY_FINGERPRINT_VERSION } from './core/fingerprint.ts';
 import { dataModel } from './core/data.ts';
 import { chapterName, flipbookView, guiKey, validGuiWidth } from './core/flipbook.ts';
-import { canvasSections, checkMoves, followCanvasSections, importGuiUpdates, markReviewed, moveFlipbooks, pageSections, planFlipbooks, plannedFlipbookTitle, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookMove, type FlipbookRequest, type ReviewRequest } from './core/flipbooks.ts';
+import { canvasSections, checkMoves, followCanvasSections, importGuiUpdates, markReviewed, moveFlipbooks, pageSections, pinPolicyIds, planFlipbooks, plannedFlipbookTitle, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookMove, type FlipbookRequest, type ReviewRequest } from './core/flipbooks.ts';
 import type { Draft } from './core/drafts.ts';
 import type { SelectionWrite } from './core/description.ts';
 import { flipbookHistoryRows, guiHistoryRows } from './core/history.ts';
@@ -1047,7 +1047,8 @@ export class Controller {
     try {
       const changed = await this.followCanvas(canvas);
       if (!changed.length) return;
-      await this.syncChapters(changed);
+      // Chapter·Screen ID는 Section이 아니라 ID의 카테고리 코드를 따르므로 캔버스에 다시 쓰지 않는다
+      // (ID를 저장하지 않은 정책 플립북은 옮기기 전 ID를 저장한다, core/flipbooks.ts keptPolicyId).
       this.postState();
       await this.refreshData();
     } catch (e) {
@@ -1411,6 +1412,8 @@ export class Controller {
     // 새 행은 기록만 읽어 검사하므로 옮기기 전에 확인한다. 잘못된 행이 있으면 기존 플립북도 옮기지 않는다.
     let made = request.rows.length ? planFlipbooks(request, guiScreens(s.state), this.host.actor, s.now(), s.newId, pageId => pageSections(s.state, pageId)) : [];
     // 기존 플립북 옮기기(2026-10-22 사용자 요청)를 먼저 반영한다. 새 플립북의 자리(앞 항목)가 옮긴 플립북일 수 있다.
+    // 새 플립북이 번호를 가져가면 ID를 저장하지 않은 정책 플립북의 ID가 밀리므로 먼저 저장한다.
+    if (made.length) pinPolicyIds(s, this.host.actor);
     const identityState = { ...s.state, flipbooks: new Map(s.state.flipbooks) };
     made = made.map((fb, i) => {
       const next = withFlipbookId(identityState, fb, request.rows[i].screenId);
@@ -1457,11 +1460,10 @@ export class Controller {
   }
 
   // 목록에서 옮긴 기존 플립북을 기록과 캔버스에 반영하고 옮긴 플립북 ID를 돌려준다. 목록 순서대로 옮겨야 앞 항목이 이미 제자리에 있다.
-  // Section이 바뀐 플립북은 Chapter도 새 Section 이름으로 맞춘다. 캔버스에서 프레임을 찾지 못한 플립북은 기록만 바꾸지 않고 건너뛴다.
+  // Chapter는 Section이 아니라 Screen ID를 따르므로 다시 쓰지 않는다. 캔버스에서 프레임을 찾지 못한 플립북은 기록만 바꾸지 않고 건너뛴다.
   private async moveFlipbooks(moves: FlipbookMove[]): Promise<string[]> {
     const s = this.store;
     const fromPage = new Map(moves.map(m => { const fb = s.state.flipbooks.get(m.flipbookId); return [m.flipbookId, fb?.pageId ?? s.state.project.flipbookPageId ?? '']; }));
-    const sections = new Map(moves.map(m => [m.flipbookId, s.state.flipbooks.get(m.flipbookId)?.category.key]));
     checkMoves(s.state, moves, s.state.project.flipbookPageIds);
     const done: FlipbookMove[] = [];
     // 중간에 실패해도 이미 옮긴 프레임은 기록에 남긴 뒤 오류를 낸다. 기록이 옛 자리로 남으면 다음 반영에서 프레임이 되돌아가고,
@@ -1476,9 +1478,7 @@ export class Controller {
         break;
       }
     }
-    const changed = moveFlipbooks(s, done, s.state.project.flipbookPageIds, this.host.actor);
-    const retitled = changed.filter(fb => sections.get(fb.id) !== fb.category.key || fromPage.get(fb.id) !== fb.pageId).map(fb => fb.id);
-    if (retitled.length) await this.syncChapters(retitled);
+    moveFlipbooks(s, done, s.state.project.flipbookPageIds, this.host.actor);
     if (done.length) {
       await this.refreshData();
       this.postState();
@@ -1494,8 +1494,10 @@ export class Controller {
   private async renameFlipbook(id: string, title: string, screenId?: string, rev?: number): Promise<void> {
     const s = this.store;
     s.reload();
-    const before = s.state.flipbooks.get(id);
+    let before = s.state.flipbooks.get(id);
     if (rev !== undefined && before?.rev !== rev) throw new Error(COPY.flipbookTitleConflict);
+    // ID를 바꾸면 ID를 저장하지 않은 정책 플립북의 ID가 밀리므로 먼저 저장한다(이 플립북이면 rev가 바뀐 기록으로 이어 간다).
+    if (screenId !== undefined && pinPolicyIds(s, this.host.actor).length) before = s.state.flipbooks.get(id);
     const planned = plannedFlipbookTitle(s.state, id, title);
     const fb = screenId === undefined ? planned : withFlipbookId(s.state, planned, screenId);
     const identity = flipbookIdentity(s.state, fb);
@@ -1563,6 +1565,8 @@ export class Controller {
     if (issues.length) return { ...report, skipped: `${COPY.controller027} ${targets.length}${COPY.controller033} ${COPY.controller103} ${issues.join(' / ')}` };
     report.screens = targets.length;
     const byFlipbook = groupBy(unfinishedDeliveries(s.state, { kind: 'flipbook' }), d => d.targetId);
+    // ID를 저장하지 않은 정책 플립북을 반영하면 캔버스에 쓰는 ID를 기록에도 저장한다. 하나만 저장하면 나머지가 밀리므로 모두 저장한다.
+    if (targets.some(id => { const fb = s.state.flipbooks.get(id); return !!fb && unsavedPolicy(fb); })) pinPolicyIds(s, this.host.actor);
     const reader = this.host.createFingerprintReader?.() ?? this.host;
     this.host.beginDelivery?.(canvas?.found);
     try {
@@ -1681,6 +1685,8 @@ export class Controller {
     s.reload();
     let renames: CodeRename[] = [];
     let chapterCategoryId: string | undefined;
+    // Screen ID 규칙을 바꾸면 플립북에 저장한 ID도 바뀐다(core/registry.ts). 바뀐 플립북은 헤더를 다시 반영한다.
+    const storedIds = new Map([...s.state.flipbooks.values()].map(fb => [fb.id, fb.screenId]));
     switch (action.op) {
       case 'addCategory': chapterCategoryId = addCategory(s, action.name, a, action.code).id; break;
       case 'renameCategory': renameCategory(s, action.id, action.name, a); chapterCategoryId = action.id; break;
@@ -1801,7 +1807,12 @@ export class Controller {
       }
     }
     // Prefix·카테고리 코드로 Screen ID가 바뀐 화면은 원본 프레임 이름과 플립북도 바로 맞춘다(2026-10-20 사용자 결정).
+    const renamedFlipbooks = [...s.state.flipbooks.values()].filter(fb => fb.status === 'active' && storedIds.has(fb.id) && storedIds.get(fb.id) !== fb.screenId).map(fb => fb.id);
     if (renames.length) await this.applyCodeRenames(renames);
+    if (renamedFlipbooks.length) {
+      const report = await this.deliverFlipbooks({}, { targets: renamedFlipbooks, onlyTargets: true });
+      if (report.failed.length || report.skipped) this.host.post({ type: 'error', message: deliveryMessage(report) });
+    }
     // 정정한 UI 설명은 그 플립북 이력에도 반영한다.
     if (action.op === 'correctRecord' && action.team === 'UI' && await this.findFlipbook(action.screenId)) {
       const report = await this.deliverFlipbooks({}, { targets: [action.screenId] });
@@ -1814,8 +1825,9 @@ export class Controller {
     }
     if (chapterCategoryId) {
       const code = s.state.categories.get(chapterCategoryId)?.code?.toUpperCase();
+      const policies = unsavedPolicyIds(s.state);
       const ids = code ? [...s.state.flipbooks.values()]
-        .filter(fb => fb.status === 'active' && flipbookIdentity(s.state, fb).screenId.split('_')[1]?.toUpperCase() === code).map(fb => fb.id) : [];
+        .filter(fb => fb.status === 'active' && flipbookIdentity(s.state, fb, policies).screenId.split('_')[1]?.toUpperCase() === code).map(fb => fb.id) : [];
       if (ids.length) {
         try { await this.syncChapters(ids); }
         catch (error) { this.postState(); throw error; }

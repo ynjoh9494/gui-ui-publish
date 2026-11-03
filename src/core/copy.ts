@@ -1171,6 +1171,8 @@ export const COPY = {
   flipbookRemoveHint: '목록에서 뺍니다. 캔버스의 프레임은 지우지 않고 기록도 남기며, 그 안의 GUI는 더 바뀌지 않습니다. 되살리려면 그 프레임을 골라 「기존 플립북 등록」을 누르세요.',
   flipbookRemoveRestore: '캔버스의 프레임은 그대로 두었습니다. 되살리려면 그 프레임을 골라 「기존 플립북 등록」을 누르세요.',
   flipbookTitleConflict: '제목 변경 준비 중 플립북이 수정되었습니다. 다시 시도하세요.',
+  // 마커 옮기기: 마커를 옮길 프레임의 변환을 되돌릴 수 없음(크기 0 등). 마커가 지워지지 않게 그 화면은 바꾸지 않는다 — src/figma/markers.ts
+  markerTransformFailed: '마커 위치를 계산하지 못해 이 화면을 바꾸지 않았습니다. 마커를 옮길 프레임의 크기가 0인지 확인하세요.',
   // GUI 등록 방식 아코디언의 설명과 화면 바꾸기의 새 버전·구 버전 버튼(2026-11-03 사용자 요청) — src/ui/app.ts
   dispositionNewHint: '기존에 없던 화면을 추가합니다',
   dispositionReplaceHint: '기존 화면을 새 화면으로 교체합니다',
