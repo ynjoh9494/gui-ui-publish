@@ -1004,11 +1004,11 @@ try {
   await app.locator('[data-field=code]').scrollIntoViewIfNeeded();
   await shot('08-case-id-autofill');
   await app.locator('[data-field=disposition][value=replace]').check();
-  await app.locator('.screen-picker summary').click();
-  await app.locator('.screen-picker .picker-search').press('Escape');
-  assert.equal(await app.locator('.screen-picker').evaluate(node => node.open), false, 'Esc closes the screen picker');
-  await app.locator('.screen-picker summary').click();
-  await app.locator('.screen-picker [data-action=pick]').filter({ hasText: 'STB_HO_001' }).click();
+  await app.locator('.choice.open .screen-picker summary').click();
+  await app.locator('.choice.open .screen-picker .picker-search').press('Escape');
+  assert.equal(await app.locator('.choice.open .screen-picker').evaluate(node => node.open), false, 'Esc closes the screen picker');
+  await app.locator('.choice.open .screen-picker summary').click();
+  await app.locator('.choice.open .screen-picker [data-action=pick]').filter({ hasText: 'STB_HO_001' }).click();
   // 목록은 다음 프레임에 다시 그려지므로 상태 아이콘이 바뀔 때까지 기다린다.
   const stateIs = async (row, label) => {
     const key = await row.getAttribute('data-key');
@@ -1085,14 +1085,15 @@ try {
   await wrong.locator('[data-action=include]').check();
   assert.equal(await app.locator('[data-field=disposition][value=modify]').isChecked(), true);
   await app.locator('[data-field=disposition][value=replace]').check();
-  await app.locator('.screen-picker summary').click();
-  assert.equal(await app.locator('.screen-picker [data-action=pick]').filter({ hasText: 'STB_HO_003' }).count(), 0, 'a screen cannot replace itself');
-  await app.locator('.screen-picker [data-action=pick]').filter({ hasText: 'STB_HO_002' }).click();
+  await app.locator('.choice.open .screen-picker summary').click();
+  assert.equal(await app.locator('.choice.open .screen-picker [data-action=pick]').filter({ hasText: 'STB_HO_003' }).count(), 0, 'a screen cannot replace itself');
+  await app.locator('.choice.open .screen-picker [data-action=pick]').filter({ hasText: 'STB_HO_002' }).click();
   await stateIs(wrong, '화면 교체됨');
   await previousUnder(wrong, keep);
   assert.equal(await wrong.locator('.id-tag').innerText(), 'STB_HO_002', 'the list shows the replacing screen in the replaced place');
   assert.equal(await app.locator('[data-field=code]').inputValue(), 'STB_HO_002', 'the replaced screen ID is filled');
-  assert.equal(await app.locator('.detail [data-field=relation]').count(), 0, 'a replacement keeps the relation');
+  // 새 버전의 화면 관계도 고칠 수 있고, 처음 값은 교체할 화면의 관계다(2026-11-03 사용자 요청).
+  assert.equal(await app.locator('.detail [data-field=relation][value=standalone]').isChecked(), true, 'a replacement starts with the replaced screen relation');
   await shot('11b-replace-with-published');
   // 배포를 끄면 짝이 함께 풀린다. 같은 짝을 이전 화면 쪽에서 「아니요, 구 버전입니다」로 다시 맺는다(2026-11-03 사용자 요청).
   await wrong.locator('[data-action=include]').uncheck();
@@ -1102,8 +1103,8 @@ try {
   await app.locator('[data-field=disposition][value=replace]').check();
   assert.equal(await app.locator('[data-action=replace-side][data-side=new]').getAttribute('aria-pressed'), 'true', '화면 바꾸기 starts on the new-version side');
   await app.locator('[data-action=replace-side][data-side=old]').click();
-  await app.locator('.screen-picker summary').click();
-  await app.locator('.screen-picker [data-action=pick]').filter({ hasText: 'STB_HO_003' }).click();
+  await app.locator('.choice.open .screen-picker summary').click();
+  await app.locator('.choice.open .screen-picker [data-action=pick]').filter({ hasText: 'STB_HO_003' }).click();
   await stateIs(wrong, '화면 교체됨');
   await previousUnder(wrong, keep);
   assert.equal(await app.locator('[data-action=replace-side][data-side=old]').getAttribute('aria-pressed'), 'true', 'the old screen shows the old-version side');
@@ -1140,24 +1141,24 @@ try {
     await pasted.locator('[data-action=include]').check();
     assert.equal(await app.locator('[data-field=disposition][value=replace]').isChecked(), true, 'a pasted copy of a published screen defaults to 화면 바꾸기');
     assert.equal(await app.locator('[data-field=code]').inputValue(), 'STB_HO_002', 'the replaced screen ID is filled');
-    assert.equal(await app.locator('.screen-picker summary .suggest-tag').count(), 1, 'the suggested screen carries the 제안 tag');
+    assert.equal(await app.locator('.choice.open .screen-picker summary .suggest-tag').count(), 1, 'the suggested screen carries the 제안 tag');
     await stateIs(pasted, '화면 교체됨');
     await previousUnder(pasted, replaced);
     assert.equal(await pasted.locator('.id-tag').innerText(), 'STB_HO_002', 'the pasted frame sits in the replaced place');
-    await app.locator('.screen-picker summary').click();
-    const suggestedOption = app.locator('.screen-picker [data-action=pick]').first();
+    await app.locator('.choice.open .screen-picker summary').click();
+    const suggestedOption = app.locator('.choice.open .screen-picker [data-action=pick]').first();
     assert.equal(await suggestedOption.locator('.suggest-tag').count(), 1, 'the suggestion is the first option');
     assert.match(await suggestedOption.innerText(), /STB_HO_002/);
-    assert.equal(await app.locator('.screen-picker .suggest-tag').count(), 2, 'only the suggestion is tagged (head + first option)');
+    assert.equal(await app.locator('.choice.open .screen-picker .suggest-tag').count(), 2, 'only the suggestion is tagged (head + first option)');
     await shot('11b2-replace-suggestion');
-    await app.locator('.screen-picker .picker-search').press('Escape');
+    await app.locator('.choice.open .screen-picker .picker-search').press('Escape');
     // 여러 화면을 골라도 화면 바꾸기를 고를 수 있다. 정해지지 않은 화면을 알리는 안내 문구는 없다(2026-11-03 사용자 요청).
     const otherKey = await app.locator('.row:not(:has(.id-tag))').first().getAttribute('data-key');
     await app.locator(`.row[data-key="${otherKey}"]`).click({ modifiers: ['Control'] });
     await app.locator('.detail [data-action=include-selected]').check();
     await app.locator('[data-field=disposition][value=replace]').check();
     assert.equal(await app.locator('[data-field=disposition][value=replace]').isChecked(), true, 'replace can be chosen for several screens');
-    assert.equal(await app.locator('.detail .screen-picker').count(), 0, 'the picker is shown for one screen only');
+    assert.equal(await app.locator('.detail .choice.open .screen-picker').count(), 0, 'the picker is shown for one screen only');
     assert.equal(await app.locator('.detail .choices .note').count(), 0, 'no unrequested notes in 등록 방식');
     assert.equal(await app.locator('.detail [data-field=code]').getAttribute('placeholder'), '-', 'different IDs show the mixed mark');
     await stateIs(pasted, '화면 교체됨');

@@ -208,9 +208,10 @@ export function autoCode(state: State, entry: Entry, draft: Draft, reserved: Ite
   if (draft.notScreen || draft.unpublish) return '';
   if (isNewRegistration('GUI', entry, draft))
     return draft.relation === 'case' ? suggestedCaseCode(state, draft.baseScreenId, reserved) : nextScreenCode(state, draft.categoryId, reserved);
+  // 화면 바꾸기는 교체할 화면을 기준으로 같은 규칙을 쓴다: 관계·카테고리가 그 화면과 같으면 그 화면의 ID다.
   const target = replaceTarget(entry, draft);
-  if (target) return state.screens.get(target)?.code ?? '';
-  const screen = entry.screenId ? state.screens.get(entry.screenId) : null;
+  const screenId = target ?? entry.screenId;
+  const screen = screenId ? state.screens.get(screenId) : null;
   if (!screen || !entry.frame || entry.estimate === 'missing' || entry.estimate === 'retired') return '';
   if (draft.relation === 'case') {
     if (!draft.baseScreenId) return '';
@@ -260,13 +261,19 @@ export function clearAutoCaseCode(draft: Draft): void {
   draft.autoCode = undefined;
 }
 
-// 기존 화면 교체: 이전 화면의 Screen ID·카테고리를 입력란에 채운다(2026-10-20 사용자 요청). 사용자가 고칠 수 있다.
+// 화면 바꾸기: 이전 화면의 Screen ID·카테고리를 입력란에 채운다(2026-10-20 사용자 요청). 사용자가 고칠 수 있다.
+// 화면 관계도 이전 화면 값으로 채우고 고칠 수 있다(2026-11-03 사용자 요청).
 export function fillFromScreen(state: State, draft: Draft, screenId: string): void {
   const screen = state.screens.get(screenId);
   if (!screen) return;
   draft.autoCode = undefined;
   draft.code = screen.code;
   draft.categoryId = screen.categoryId && state.categories.get(screen.categoryId)?.active ? screen.categoryId : undefined;
+  fillRelation(draft, screen);
+}
+export function fillRelation(draft: Draft, screen: Screen): void {
+  draft.relation = screen.baseScreenId ? 'case' : 'standalone';
+  draft.baseScreenId = screen.baseScreenId ?? undefined;
 }
 
 // 교체를 풀면 채웠던 값을 되돌린다. 사용자가 고친 값은 둔다.
@@ -275,6 +282,11 @@ export function clearFill(state: State, entry: Entry, draft: Draft, screenId: st
   if (!screen) return;
   if (draft.code === screen.code) draft.code = undefined;
   if (draft.categoryId === screen.categoryId) draft.categoryId = undefined;
+  if ((draft.baseScreenId ?? null) === screen.baseScreenId) {
+    const own = entry.screenId ? state.screens.get(entry.screenId) : null;
+    if (own) fillRelation(draft, own);
+    else { draft.relation = 'standalone'; draft.baseScreenId = undefined; }
+  }
 }
 
 // 행을 처음 열 때 채우는 기본값. 기존 값이 유효하면 재입력을 요구하지 않는다.
@@ -310,10 +322,10 @@ export function defaultDraft(team: Team, state: State, entry: Entry, recentWorke
       draft.link = 'replace';
       draft.replaceScreenId = entry.pairKey;
     }
-    if (screen && entry.estimate !== 'missing') {
-      draft.relation = screen.baseScreenId ? 'case' : 'standalone';
-      draft.baseScreenId = screen.baseScreenId ?? undefined;
-    }
+    if (screen && entry.estimate !== 'missing') fillRelation(draft, screen);
+    // 다른 화면을 교체하는 배포 화면의 화면 관계는 교체할 화면 값으로 시작한다(2026-11-03 사용자 요청: 새 버전의 관계도 고칠 수 있게).
+    const target = screen && draft.link === 'replace' && draft.replaceScreenId ? state.screens.get(draft.replaceScreenId) : null;
+    if (target) fillRelation(draft, target);
   } else {
     // 플립북 확인 완료의 상태는 기본 태그 「현행」(이전 이름 「최신」)을 먼저 고른다(2026-10-20 사용자 결정).
     draft.tagId = systemTagId(state, 'latest') ?? undefined;
@@ -394,6 +406,11 @@ function validateGui(state: State, entry: Entry, draft: Draft, drafts: Record<st
       if (partner && !(partner.included && partner.replacedBy === entry.key)) errors.push(COPY.coreDrafts032);
       // 다른 화면을 교체하는 배포 화면은 그 자신이 교체될 수 없다.
       if (merging && draft.replacedBy) errors.push(COPY.coreDrafts032);
+      // 새 버전의 화면 관계는 배포 뒤 교체할 화면의 관계가 된다(2026-11-03 사용자 요청).
+      if (draft.relation === 'case') {
+        if (!draft.baseScreenId) missing.push(COPY.coreDrafts024);
+        else { const e = caseRelationError(pendingCaseState(state, entries, drafts), target.id, draft.baseScreenId); if (e) errors.push(e); }
+      }
       if (entry.frame?.error) errors.push(`${COPY.coreDrafts027} ${entry.frame.error}`);
       return;
     }

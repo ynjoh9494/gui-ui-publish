@@ -712,11 +712,11 @@ test('원본이 남은 화면도 교체할 수 있고, 남은 원본 프레임�
   const live = entries.find(e => e.screenId === screenId)!, fresh = entries.find(e => !e.screenId)!;
   const drafts: Record<string, Draft> = {
     [live.key]: { ...defaultDraft('GUI', store.state, live), included: true, replacedBy: fresh.key },
-    // 신규 등록으로 케이스를 골랐다가 교체로 바꾼 경우: 숨은 화면 관계 값은 배포에 쓰지 않는다.
+    // 신규 등록으로 케이스를 골랐다가 교체로 바꾼 경우: 짝을 정하면 화면 관계를 이전 화면 값으로 다시 채운다.
     [fresh.key]: { ...defaultDraft('GUI', store.state, fresh), included: true, link: 'replace', replaceScreenId: screenId, relation: 'case', baseScreenId: screenId, workerId: 'w', tagId: systemTagId(store.state, 'add')!, description: '개편' },
   };
   fillFromScreen(store.state, drafts[fresh.key], screenId);
-  assert.deepEqual([drafts[fresh.key].code, drafts[fresh.key].categoryId], ['STB_HO_001', 'home']);
+  assert.deepEqual([drafts[fresh.key].code, drafts[fresh.key].categoryId, drafts[fresh.key].relation, drafts[fresh.key].baseScreenId], ['STB_HO_001', 'home', 'standalone', undefined]);
   // 교체를 풀면 채웠던 값을 되돌린다.
   const undone = { ...drafts[fresh.key] };
   clearFill(store.state, fresh, undone, screenId);
@@ -728,6 +728,30 @@ test('원본이 남은 화면도 교체할 수 있고, 남은 원본 프레임�
   assert.equal(commitPlan(store, plan, { fingerprints: { [fresh.key]: 'fp3' }, thumbs: { [fresh.key]: thumb(screenId, 2) } }).ok, true);
   assert.equal(store.state.screens.get(screenId)!.source?.nodeId, '3:1');
   assert.ok([...store.state.exclusions.values()].some(x => x.nodeId === '1:1' && x.active));
+});
+
+test('화면 바꾸기의 새 버전은 화면 관계를 고칠 수 있고, 배포하면 교체한 화면의 관계가 된다', () => {
+  const { store, screenId, frame } = seeded();
+  store.put(keys.screen('other'), {
+    id: 'other', rev: 1, code: 'STB_HO_002', name: '다른 화면', categoryId: 'home', baseScreenId: null,
+    status: 'active', source: { nodeId: '2:1', pageId: '0:1' }, guiVersion: 1, guiTag: null, createdAt: 1000,
+  });
+  store.reload();
+  const entries = classify(store.state, [frame('1:1', '[STB_HO_001] 홈', 'fp1'), frame('2:1', '[STB_HO_002] 다른 화면', 'fp2', 'other'), frame('3:1', '다른 화면 개편', 'fp3', null)]);
+  const old = entries.find(e => e.screenId === 'other')!, fresh = entries.find(e => !e.screenId)!;
+  const draft: Draft = { ...defaultDraft('GUI', store.state, fresh), included: true, link: 'replace', workerId: 'w', tagId: systemTagId(store.state, 'add')! };
+  fillFromScreen(store.state, draft, 'other');
+  assert.deepEqual([draft.relation, draft.baseScreenId], ['standalone', undefined], '처음 값은 교체할 화면의 관계');
+  Object.assign(draft, { replaceScreenId: 'other', relation: 'case', baseScreenId: screenId });
+  const drafts: Record<string, Draft> = { [fresh.key]: draft, [old.key]: { ...defaultDraft('GUI', store.state, old), included: true, replacedBy: fresh.key, retire: 'replace' } };
+  assert.equal(validateDraft('GUI', store.state, fresh, draft, drafts, entries).status, 'ready');
+  // 교체할 화면 자신을 기본 화면으로 고르면 막는다.
+  assert.equal(validateDraft('GUI', store.state, fresh, { ...draft, baseScreenId: 'other' }, drafts, entries).status, 'invalid');
+  const plan = buildPlan('GUI', store.state, entries, drafts, actor, 'replace-relation');
+  assert.deepEqual(plan.blockers, []);
+  assert.deepEqual(plan.items.map(i => [i.screenId, i.baseScreenId, i.metadataChanged]), [['other', screenId, true]]);
+  assert.equal(commitPlan(store, plan, { fingerprints: { [fresh.key]: 'fp3' }, thumbs: { [fresh.key]: thumb('other', 2) } }).ok, true);
+  assert.equal(store.state.screens.get('other')!.baseScreenId, screenId);
 });
 
 test('이미 배포한 화면을 화면이 아님으로 배포하면 프레임을 제외하고 화면과 그 화면만 쓰던 플립북을 사용 안 함으로 바꾼다', () => {

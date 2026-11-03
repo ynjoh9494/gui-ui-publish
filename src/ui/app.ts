@@ -470,7 +470,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const relation = (target: GuiPlace) => draft.relation === 'case' ? draft.baseScreenId ?? null : draft.relation === 'standalone' ? null : target.baseScreenId;
     if (registersNew('GUI', entry)) return { categoryId: draft.categoryId ?? null, baseScreenId: relation(savedGuiPlace(state!, null)) };
     // 기존 화면 교체는 이전 화면의 카테고리를 기준으로 하고 화면 관계는 그대로 둔다. 배포 화면으로 교체할 때도 같다.
-    if (!entry.screenId || mergesInto(entry, draft)) { const target = savedGuiPlace(state!, draft.replaceScreenId ?? entry.screenId); return { categoryId: draft.categoryId ?? target.categoryId, baseScreenId: target.baseScreenId }; }
+    // 화면 관계는 입력한 값을 따른다(2026-11-03 사용자 요청: 새 버전의 관계도 고칠 수 있게).
+    if (!entry.screenId || mergesInto(entry, draft)) { const target = savedGuiPlace(state!, draft.replaceScreenId ?? entry.screenId); return { categoryId: draft.categoryId ?? target.categoryId, baseScreenId: relation(target) }; }
     return { categoryId: draft.categoryId ?? saved.categoryId, baseScreenId: relation(saved) };
   }
 
@@ -1172,6 +1173,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     return t === 'GUI' && needsLink(entry) && draft.link !== 'replace' && !draft.notScreen;
   }
 
+  // 화면 관계를 입력받는 항목: 신규 등록, 화면 바꾸기의 새 버전(신규 후보·배포 화면), 원본이 있는 배포 화면
+  function relationEditable(t: Team, entry: Entry): boolean {
+    if (registersNew(t, entry)) return true;
+    const d = draftOf(t, entry);
+    if (needsLink(entry)) return t === 'GUI' && d.link === 'replace' && !d.notScreen;
+    return !!entry.screenId && entry.estimate !== 'missing';
+  }
+
   // 화면 선택 드롭다운: 회색 ID 태그 + 이름, ID 순(2026-10-20 사용자 결정)
   // 「화면 없음」(값 '')은 맨 위에 두고, 케이스 기본 화면은 선택한 카테고리를 먼저 보여 준다.
   // 펼치면 머리 자리에 검색 입력이 겹쳐 나오고, Screen ID·이름으로 목록을 거른다(2026-10-27 사용자 요청).
@@ -1372,15 +1381,15 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         html += `<label class="wide">Screen ID<input data-field="code" data-required-field="code" value="${esc(codeMixed ? '' : codes[0])}"${codeMixed ? ' placeholder="-"' : ''} required></label>`;
       }
 
-      // 교체는 화면 관계를 입력받지 않는다(교체할 화면의 관계를 그대로 둔다).
-      if (t === 'GUI' && chosen.every(e => registersNew(t, e) || (!!e.screenId && e.estimate !== 'missing' && !mergesInto(e, draftOf(t, e))))) {
+      // 화면 바꾸기의 새 버전도 화면 관계를 입력받는다(2026-11-03 사용자 요청). 처음 값은 교체할 화면의 관계다.
+      if (t === 'GUI' && chosen.every(e => relationEditable(t, e))) {
         const relation = common(d => d.relation);
         const allCase = relation === 'case';
         const baseMixed = allCase && mixed(d => d.baseScreenId);
         html += `<fieldset class="wide"><legend>${COPY.uiApp057}${mixedMark(mixed(d => d.relation))}</legend>
         <label class="check"><input type="radio" name="relation" value="standalone" data-field="relation" ${relation === 'standalone' ? 'checked' : ''}> ${COPY.uiApp058}</label>
         <label class="check"><input type="radio" name="relation" value="case" data-field="relation" ${allCase ? 'checked' : ''}> ${COPY.uiApp059}</label>
-        ${screenPicker('baseScreenId', [...registeredItems(id => !state!.screens.get(id)?.baseScreenId), ...pendingScreens(state!, entriesFor('GUI'), drafts.GUI).filter(s => drafts.GUI[s.id]?.relation !== 'case' && s.id !== entry.key).map(s => ({ value: s.id, code: s.code, name: s.name, categoryId: s.categoryId ?? undefined }))], allCase ? common(d => d.baseScreenId) || undefined : undefined, COPY.uiApp061, { disabled: !allCase, mixed: baseMixed, preferredCategoryId: common(d => d.categoryId) })}</fieldset>`;
+        ${screenPicker('baseScreenId', [...registeredItems(id => !state!.screens.get(id)?.baseScreenId && id !== entry.screenId && id !== replaceTarget(entry, draft)), ...pendingScreens(state!, entriesFor('GUI'), drafts.GUI).filter(s => drafts.GUI[s.id]?.relation !== 'case' && s.id !== entry.key).map(s => ({ value: s.id, code: s.code, name: s.name, categoryId: s.categoryId ?? undefined }))], allCase ? common(d => d.baseScreenId) || undefined : undefined, COPY.uiApp061, { disabled: !allCase, mixed: baseMixed, preferredCategoryId: common(d => d.categoryId) })}</fieldset>`;
       }
       html += tagField(t, draft, multi, common(d => d.tagId), mixed(d => d.tagId));
       html += workerField(draft, common(d => d.workerId), mixed(d => d.workerId));
@@ -2615,7 +2624,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (field === 'replaceScreenId') pair(entry.key, value);
     else if (field === 'replaceWith') pair(value, entry.key);
     else if (field === 'baseScreenId') {
-      for (const e of selectedEntries(t)) if (registersNew(t, e) || !!e.screenId && e.estimate !== 'missing') {
+      for (const e of selectedEntries(t)) if (relationEditable(t, e)) {
         const draft = draftOf(t, e);
         if (draft.relation !== 'case') continue;
         if (draft.baseScreenId === value && (draft.code || !registersNew(t, e))) continue;
@@ -3675,7 +3684,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         touchField(t, field);
         break;
       }
-      case 'relation': for (const e of selectedEntries(t)) if (registersNew(t, e) || !!e.screenId && e.estimate !== 'missing') {
+      case 'relation': for (const e of selectedEntries(t)) if (relationEditable(t, e)) {
         draftOf(t, e).relation = el.value as Draft['relation'];
       } break;
       default: return;

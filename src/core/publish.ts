@@ -211,9 +211,9 @@ function guiItem(state: State, entry: Entry, draft: Draft, batchId: string, comm
   const screenId = target ?? entry.screenId!;
   const screen = state.screens.get(screenId)!;
   const categoryId = draft.categoryId ?? screen.categoryId;
-  // 교체는 화면 관계를 입력받지 않으므로 이전 화면의 관계를 그대로 둔다. 신규 등록으로 골랐다가 남은 값은 쓰지 않는다.
-  const baseScreenId = target ? screen.baseScreenId
-    : draft.relation === 'case' ? draft.baseScreenId ?? null : draft.relation === 'standalone' ? null : screen.baseScreenId;
+  // 화면 바꾸기도 새 버전의 화면 관계를 입력받는다(2026-11-03 사용자 요청). 짝을 정할 때 이전 화면의 관계로 채우므로
+  // 신규 등록으로 골랐다가 남은 값은 쓰이지 않는다. 입력이 없으면 저장된 관계를 둔다.
+  const baseScreenId = draft.relation === 'case' ? draft.baseScreenId ?? null : draft.relation === 'standalone' ? null : screen.baseScreenId;
   const merged = mergesInto(entry, draft) ? state.screens.get(entry.screenId!)! : null;
   return {
     ...common, screenId, isNew: false, expectedRev: screen.rev, fromVersion: screen.guiVersion, toVersion: screen.guiVersion + 1,
