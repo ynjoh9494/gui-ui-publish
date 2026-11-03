@@ -1121,9 +1121,11 @@ try {
   const fold = app.locator('.detail .detail-foot details.history-fold');
   await fold.waitFor({ state: 'attached' });
   assert.equal(await fold.evaluate(node => node.open), false, 'history starts folded');
-  assert.equal(await app.locator('.detail .detail-foot').evaluate(node => getComputedStyle(node).position), 'sticky', 'thumbnail and history stick to the bottom');
+  // 상세는 위(입력)·아래(History) 두 영역으로 나뉘어 각자 스크롤한다(2026-11-03 사용자 요청).
+  assert.equal(await app.locator('.detail .detail-foot').evaluate(node => node.previousElementSibling?.classList.contains('detail-main') && getComputedStyle(node.previousElementSibling).overflowY === 'auto' && getComputedStyle(node.parentElement).overflowY === 'hidden'), true, 'History is a separate pane below the scrolling form');
   await fold.locator('summary').click();
   assert.equal(await fold.locator('table').isVisible(), true, 'opening the fold shows the history');
+  assert.equal(await fold.locator('summary').evaluate(node => getComputedStyle(node).position), 'sticky', 'the History row stays on top while its content scrolls');
   // 지난 배포 썸네일은 제목 없이 History 맨 위에 있고, 버전·시각을 캡션으로 단다.
   assert.match(await fold.locator('.history-thumb figcaption').innerText(), /^v\d+ · /);
   assert.equal(await fold.evaluate(node => node.querySelector('.history-thumb').compareDocumentPosition(node.querySelector('table')) & Node.DOCUMENT_POSITION_FOLLOWING), 4, 'the thumbnail sits above the history list');

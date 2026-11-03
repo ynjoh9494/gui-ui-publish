@@ -1401,8 +1401,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       html += '</div></section>';
     }
     // History(지난 배포 썸네일 + 히스토리)는 접어서 아래쪽에 고정한다(2026-11-03 사용자 요청: 위의 제목처럼 스크롤해도 남게).
-    if (!multi) html += '<div class="detail-foot"><div class="history"></div></div>';
-    $('.detail').innerHTML = html;
+    // 상세는 위(입력)·아래(History) 두 영역으로 나눠 각자 스크롤한다(2026-11-03 사용자 요청: 스크롤이 두 겹이 되지 않게).
+    // 다시 그려도 두 영역의 스크롤 위치를 유지한다.
+    const detailBox = $('.detail');
+    const scrolled = { main: detailBox.querySelector('.detail-main')?.scrollTop ?? 0, foot: detailBox.querySelector('.detail-foot')?.scrollTop ?? 0 };
+    detailBox.innerHTML = `<div class="detail-main">${html}</div>${multi ? '' : '<div class="detail-foot"><div class="history"></div></div>'}`;
+    const main = detailBox.querySelector<HTMLElement>('.detail-main')!;
+    main.scrollTop = scrolled.main;
     if (detailLocked(t)) {
       for (const control of root.querySelectorAll<HTMLInputElement>('.detail input, .detail select, .detail textarea, .detail button')) control.disabled = true;
       for (const summary of root.querySelectorAll<HTMLElement>('.detail summary')) { summary.tabIndex = -1; summary.setAttribute('aria-disabled', 'true'); }
@@ -1411,6 +1416,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (include) include.indeterminate = chosen.some(e => draftOf(t, e).included) && !allIncluded;
     renderValidation();
     renderHistory();
+    const foot = detailBox.querySelector<HTMLElement>('.detail-foot');
+    if (foot) foot.scrollTop = scrolled.foot;
   }
 
   // ── 썸네일 ──
