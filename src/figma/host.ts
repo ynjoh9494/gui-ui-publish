@@ -232,22 +232,19 @@ export function figmaHost(mode: Host['mode']): Host {
       if (page && !samePage) await figma.setCurrentPageAsync(page);
       // 페이지 로드가 늦게 끝나도 이전 행으로 화면을 되돌리지 않는다.
       if (!isLatest()) return false;
+      // 확대·축소는 그대로 두고 레이어 가운데로 이동만 한다(2026-11-03 사용자 요청).
       const box = node.absoluteBoundingBox;
-      if (!samePage || !box || !box.width || !box.height) {
-        figma.viewport.scrollAndZoomIntoView([node]);
+      const viewport = figma.viewport;
+      const targetCenter = box ? { x: box.x + box.width / 2, y: box.y + box.height / 2 } : { x: node.absoluteTransform[0][2], y: node.absoluteTransform[1][2] };
+      if (!samePage) {
+        viewport.center = targetCenter;
         return true;
       }
-      const viewport = figma.viewport;
       const startCenter = viewport.center;
-      const startZoom = viewport.zoom;
-      const bounds = viewport.bounds;
-      const targetCenter = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-      const targetZoom = Math.max(0.02, Math.min(16, startZoom * Math.min(bounds.width / box.width, bounds.height / box.height) * 0.82));
       const start = Date.now();
       while (isLatest()) {
         const progress = Math.min(1, (Date.now() - start) / 240);
         const eased = 1 - (1 - progress) ** 3;
-        viewport.zoom = startZoom + (targetZoom - startZoom) * eased;
         viewport.center = { x: startCenter.x + (targetCenter.x - startCenter.x) * eased, y: startCenter.y + (targetCenter.y - startCenter.y) * eased };
         if (progress === 1) return true;
         await new Promise(resolve => setTimeout(resolve, 16));
