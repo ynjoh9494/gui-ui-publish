@@ -558,7 +558,8 @@ details.history-fold[open] > summary .dropdown-caret { transform: none; }
 details.history-fold table { margin-top: 6px; }
 /* History 맨 위의 지난 배포 썸네일: 제목 없이 버전·시각을 캡션으로 단다(2026-11-03 사용자 요청). */
 .history-thumb { margin: 6px 0 0; }
-.history-thumb .thumbs :is(img, .thumb-empty) { display: block; width: 100%; max-width: 720px; height: auto; aspect-ratio: 16 / 9; }
+/* 크기·검정 배경·「불러오는 중」 가운데 정렬은 공통 .thumbs 규칙을 쓰고 최대 폭만 둔다. */
+.history-thumb .thumbs :is(img, .thumb-empty) { max-width: 720px; }
 .history-thumb figcaption { margin-top: 3px; color: var(--muted); font-size: 11px; }
 /* History: 상세 아래쪽에 고정하고 위에 구분선(2026-11-03 사용자 요청). 펼쳐도 입력란을 다 가리지 않게 높이를 제한한다.
    입력란이 길어도 눌려 사라지지 않게 줄어들지 않는다. */
