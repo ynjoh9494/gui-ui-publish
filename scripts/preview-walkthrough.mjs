@@ -1113,6 +1113,14 @@ try {
   assert.equal(await app.locator('[data-action=replace-side][data-side=old]').getAttribute('aria-pressed'), 'true', 'the old screen shows the old-version side');
   assert.equal(await app.locator('.detail [data-field=code]').count(), 0, 'the old screen has no inputs');
   await shot('11b1-replace-old-side');
+  // 이전 배포 썸네일·배포 히스토리는 접혀 있고 상세 아래쪽에 고정된다(2026-11-03 사용자 요청).
+  const fold = app.locator('.detail .detail-foot details.history-fold');
+  await fold.waitFor({ state: 'attached' });
+  assert.equal(await fold.evaluate(node => node.open), false, 'history starts folded');
+  assert.equal(await app.locator('.detail .detail-foot').evaluate(node => getComputedStyle(node).position), 'sticky', 'thumbnail and history stick to the bottom');
+  await fold.locator('summary').click();
+  assert.equal(await fold.locator('table').isVisible(), true, 'opening the fold shows the history');
+  await fold.locator('summary').click();
   await wrong.click();
   // 교체는 신규 후보의 교체처럼 태그를 고른다.
   await app.locator('.tag-picker summary[aria-label="태그 선택"]').click();

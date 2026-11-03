@@ -177,7 +177,10 @@ const GUI_STEPS: Step[] = [
       await d.until(() => {
         const details = d.q<HTMLDetailsElement>('.detail details.prev-thumb');
         if (details && !details.open) details.open = true;
-        return d.q('.detail details.prev-thumb[open] img') && d.q('.detail .history table');
+        // 배포 히스토리도 접혀 있으므로 함께 펼친다(2026-11-03).
+        const history = d.q<HTMLDetailsElement>('.detail details.history-fold');
+        if (history && !history.open) history.open = true;
+        return d.q('.detail details.prev-thumb[open] img') && d.q('.detail details.history-fold[open] table');
       });
     },
     spots: d => [[d.q('.detail details.prev-thumb'), d.q('.detail .history')]],

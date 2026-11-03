@@ -270,6 +270,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let textTabSent = false;
   // GUI 화면정보의 이전 배포 썸네일을 펼쳐 두었는가
   let prevThumbOpen = false;
+  let historyOpen = false;
   // 「변경 사항」에서 펼쳐 보인, 보이는 값이 같은 변경의 줄 수. 지금 고른 화면에만 두고 기억하지 않는다:
   // 다른 화면을 고르거나 변경사항 확인을 다시 하면 접힌 상태로 돌아간다.
   let reasonShown: { key: string; count: number } | null = null;
@@ -1400,7 +1401,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       html += workerField(draft, common(d => d.workerId), mixed(d => d.workerId));
       html += '</div></section>';
     }
-    if (!multi) html += previousThumb(entry) + '<div class="history"></div>';
+    // 이전 배포 썸네일과 배포 히스토리는 접어서 아래쪽에 고정한다(2026-11-03 사용자 요청: 위의 제목처럼 스크롤해도 남게).
+    if (!multi) html += `<div class="detail-foot">${previousThumb(entry)}<div class="history"></div></div>`;
     $('.detail').innerHTML = html;
     if (detailLocked(t)) {
       for (const control of root.querySelectorAll<HTMLInputElement>('.detail input, .detail select, .detail textarea, .detail button')) control.disabled = true;
@@ -1612,10 +1614,15 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const id = team() === 'GUI' ? entry?.screenId : entry?.flipbookId;
     if (!box || !id) return;
     if (history?.id !== id) { box.innerHTML = ''; return; }
-    box.innerHTML = history.rows.length ? `<h3>${COPY.uiApp071}</h3><table><tbody>${history.rows.slice(0, 8).map(r => `
+    if (!history.rows.length) { box.innerHTML = ''; return; }
+    const table = `<table><tbody>${history.rows.slice(0, 8).map(r => `
       <tr><td><span class="team ${r.team}">${r.team}</span></td><td>${esc(r.at)}</td>
       <td><span class="chip" style="--c:${esc(r.tag.color)}">${esc(r.tag.name)}</span></td><td>${esc(r.description)}${r.corrected ? ` <i>${COPY.uiApp072}</i>` : ''}</td><td>${esc(r.worker)}</td></tr>`).join('')}
-      </tbody></table>` : '';
+      </tbody></table>`;
+    // GUI 화면의 배포 히스토리는 이전 배포 썸네일처럼 접는다(2026-11-03 사용자 요청). 펼친 상태는 플러그인을 닫을 때까지 유지한다.
+    box.innerHTML = team() === 'GUI'
+      ? `<details class="history-fold"${historyOpen ? ' open' : ''}><summary><span>${COPY.uiApp071}</span><span class="dropdown-caret" aria-hidden="true"></span></summary>${table}</details>`
+      : `<h3>${COPY.uiApp071}</h3>${table}`;
   }
 
   function renderConfirm() {
@@ -3356,6 +3363,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   // 설정 아코디언: 하나를 열면 나머지를 접는다. toggle 이벤트는 버블링되지 않아 캡처로 받는다.
   on('toggle', ev => {
     const details = ev.target as HTMLDetailsElement;
+    if (details.classList?.contains('history-fold')) { historyOpen = details.open; return; }
     if (details.classList?.contains('prev-thumb')) {
       if (prevThumbOpen === details.open) return;
       prevThumbOpen = details.open;
