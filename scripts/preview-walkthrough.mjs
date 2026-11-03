@@ -2,7 +2,8 @@
 // 사용: npm run walkthrough (CHROME_PATH로 브라우저 경로 지정 가능)
 import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const previewPath = process.argv[2] ?? 'tmp/build/preview.html';
@@ -94,6 +95,35 @@ const tutorial = async name => {
   await page.locator('.tutorial-bubble').click();
   await page.waitForFunction(() => !document.querySelector('.tutorial'));
   assert.deepEqual(await real(), before, '튜토리얼은 실제 창을 바꾸지 않는다');
+};
+
+// 새기능 튜토리얼: 플러그인 창(iframe)에서 처음 실행할 때만 열린다(app.ts openNewFeatures). 미리보기를 iframe에 넣고
+// new-tutorial(「본 적 없음」)로 열어 단계마다 설명할 영역을 찾고 말풍선이 창 안에 있는지 본다.
+const newTutorial = async mode => {
+  const host = resolve(outDir, `new-tutorial-${mode}.html`);
+  writeFileSync(host, `<!doctype html><meta charset="utf-8"><style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%}</style><iframe src="${pathToFileURL(resolve(previewPath)).href}?new-tutorial${mode === 'UI' ? '&mode=ui' : ''}"></iframe>`);
+  await page.goto(pathToFileURL(host).href);
+  // file:// 페이지끼리는 출처가 달라 바깥에서 iframe 문서를 읽지 못하므로 iframe 프레임 안에서 기다린다.
+  const frame = await (await page.waitForSelector('iframe')).contentFrame();
+  await frame.waitForFunction(() => document.querySelector('.tutorial-layer'), null, { timeout: 30000 });
+  for (let step = 1; ; step++) {
+    await frame.waitForFunction(n => document.querySelector('.tutorial-layer')?.dataset.step === String(n), step, { timeout: 15000 });
+    const info = await frame.evaluate(() => {
+      const box = document.querySelector('.tutorial').getBoundingClientRect();
+      const bubble = document.querySelector('.tutorial-bubble');
+      const b = bubble.getBoundingClientRect();
+      return { missing: document.querySelector('.tutorial-layer').dataset.missing, tail: bubble.dataset.tail, progress: bubble.querySelector('.tutorial-progress').textContent,
+        inside: b.left >= box.left && b.right <= box.right && b.top >= box.top && b.bottom <= box.bottom };
+    });
+    assert.equal(info.missing, '0', `새기능 ${mode} ${step}단계 영역`);
+    assert.ok(info.tail && info.inside, `새기능 ${mode} ${step}단계 말풍선 위치 ${JSON.stringify(info)}`);
+    const [, total] = info.progress.split('/').map(Number);
+    if (step === total) break;
+    await frame.locator('.tutorial-bubble').click();
+  }
+  await shot(`15-new-tutorial-${mode.toLowerCase()}-last`);
+  await frame.locator('.tutorial-bubble').click();
+  await frame.waitForFunction(() => !document.querySelector('.tutorial'));
 };
 
 try {
@@ -1425,6 +1455,8 @@ try {
   await app.locator('[data-action=changed-only]').uncheck();
   for (const head of await app.locator('.group-head').all()) if (await head.getAttribute('aria-expanded') === 'false') await head.click();
   await page.waitForFunction(code => [...document.querySelectorAll('#app .row .id-tag')].some(x => x.textContent === code), `${pendingBaseCode}-01`);
+  await newTutorial('GUI');
+  await newTutorial('UI');
   assert.deepEqual(errors, []);
   console.log('walkthrough passed');
 } catch (error) {

@@ -88,6 +88,10 @@ renderTools();
 kv.set('project', JSON.stringify({ schema: 1, scopePageIds: [DEMO_PAGE.id], scopeSectionIds: [], templateNodeId: 'tpl', templateName: 'Flipbook-Template', previousTemplates: [{ nodeId: 'tpl-old', name: 'Flipbook-Template (old)' }], policyTemplateNodeId: null, policyTemplateName: null, dataPageId: null, flipbookPageIds: ['0:2'], flipbookPageId: '0:2', utcOffsetMinutes: 540 }));
 
 startApp({
-  send: (m: ToMain) => { void controller.handle(m); },
+  // 새기능 튜토리얼 확인용: new-tutorial이면 「본 적 없음」으로 답한다. 창이 iframe 안일 때만 연다(app.ts openNewFeatures).
+  send: (m: ToMain) => {
+    if (m.type === 'tutorialSeenGet') { host.post({ type: 'tutorialSeenResult', mode: m.mode, seen: !params.has('new-tutorial') }); return; }
+    void controller.handle(m);
+  },
   listen: handler => demo.listen(m => setTimeout(() => handler(m), 0)),
 }, document.getElementById('app')!);

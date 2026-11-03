@@ -88,7 +88,19 @@ class Driver {
 // ── 단계 ──────────────────────────────────────────────
 
 const section = (d: Driver, from: number, to?: number) => d.all('.detail .section-body > *').slice(from, to);
+// GUI 상세 제목 줄의 배포 스위치
+const publishSwitch = (d: Driver) => d.q('.detail [data-action="include-selected"]')?.closest('label') ?? d.q('.detail [data-action="include-selected"]');
 const scrollTop = (el: Element | null) => { if (el) el.scrollTop = 0; };
+// UI 플립북 상세의 「히스토리」 창: 히스토리·상태·코멘트·확인 완료
+async function openHistory(d: Driver): Promise<void> {
+  await d.click('.detail [data-action="fb-history-open"]');
+  await d.until(() => d.q('.history-overlay:not([hidden]) .history-dialog'));
+}
+async function closeHistory(d: Driver): Promise<void> {
+  if (!d.q('.history-overlay:not([hidden])')) return;
+  await d.click('.history-overlay [data-action="fb-history-close"]');
+  await d.until(() => !d.q('.history-overlay:not([hidden])'));
+}
 
 const GUI_STEPS: Step[] = [
   {
@@ -126,7 +138,7 @@ const GUI_STEPS: Step[] = [
       await d.click('.detail [data-action="include-selected"]');
       await d.until(() => d.q('.detail input[name="disposition"][value="new"]:checked'));
     },
-    spots: d => [d.q('.detail .detail-section')],
+    spots: d => [[publishSwitch(d), d.q('.detail .detail-section')]],
   },
   {
     title: COPY.uiTutorial016, body: COPY.uiTutorial017,
@@ -136,11 +148,11 @@ const GUI_STEPS: Step[] = [
       if (option) d.set(select, option.value, 'change');
       await d.until(() => d.q<HTMLInputElement>('.detail [data-field="code"]')?.value);
     },
-    spots: d => [section(d, 0, -2)],
+    spots: d => [section(d, 0, -1)],
   },
   {
     title: COPY.uiTutorial018, body: COPY.uiTutorial019,
-    spots: d => [section(d, -2)],
+    spots: d => [section(d, -1)],
   },
   {
     title: COPY.uiTutorial020, body: COPY.uiTutorial021,
@@ -295,9 +307,9 @@ const UI_STEPS: Step[] = [
     title: COPY.uiTutorial056, body: COPY.uiTutorial057,
     async prepare(d) {
       await d.click(() => d.all('.list .row').find(r => r.querySelector('.review-dot')));
-      await d.until(() => d.q('.detail .fb-top .thumbs img') && d.q('.detail .fb-top .history table'));
+      await d.until(() => d.q('.detail .fb-identity'));
     },
-    spots: d => [d.q('.detail .fb-top')],
+    spots: d => [[d.q('.detail .title-head'), d.q('.detail .fb-identity')]],
   },
   {
     title: COPY.uiTutorial075, body: COPY.uiTutorial076,
@@ -305,11 +317,16 @@ const UI_STEPS: Step[] = [
   },
   {
     title: COPY.uiTutorial058, body: COPY.uiTutorial059,
-    spots: d => [d.q('.detail .fb-bottom')],
+    async prepare(d) { await openHistory(d); },
+    spots: d => [d.q('.history-overlay .history-dialog')],
   },
   {
     title: COPY.uiTutorial081, body: COPY.uiTutorial082,
-    async prepare(d) { await d.click('.tabs [data-action="paste-open"]'); await d.until(() => d.q('.paste-view .paste-screen')); },
+    async prepare(d) {
+      await closeHistory(d);
+      await d.click('.tabs [data-action="paste-open"]');
+      await d.until(() => d.q('.paste-view .paste-screen'));
+    },
     spots: d => [d.q('.paste-view')],
   },
   {
@@ -341,83 +358,100 @@ const UI_STEPS: Step[] = [
   },
 ];
 
-// 이번 버전 안내도 전체 튜토리얼과 같은 예시 화면을 사용한다. 단계마다 실제 탭과 버튼을 열어 보여 준다.
+// 이번 버전 새기능 튜토리얼(v1.1.5 이후 추가된 기능). 전체 튜토리얼과 같은 예시 화면에서 실제 탭과 버튼을 열어 보여 준다.
 const NEW_GUI_STEPS: Step[] = [
   {
-    title: COPY.uiNew010, body: COPY.uiNew011,
+    title: COPY.uiNew033, body: COPY.uiNew034,
+    async prepare(d) { await d.until(() => d.q('.toolbar [data-action="scan"]') && !d.app.classList.contains('is-busy')); },
+    spots: d => [d.q('[data-action="switch-mode"]')],
+  },
+  {
+    title: COPY.uiNew035, body: COPY.uiNew036,
     async prepare(d) {
       await d.click('.toolbar [data-action="scan"]');
       await d.until(() => d.q('.toolbar .progress')?.textContent?.includes(COPY.uiApp014) && d.q('.list .group'));
       await d.expandGroups();
       await d.click(() => d.row(COPY.uiPreview009));
       await d.click('.detail [data-action="include-selected"]');
+      await d.until(() => d.q('.detail input[name="disposition"][value="new"]:checked'));
+    },
+    spots: d => [d.q('.detail .detail-section')],
+  },
+  {
+    title: COPY.uiNew037, body: COPY.uiNew038,
+    async prepare(d) {
+      const worker = await d.until(() => d.q<HTMLInputElement>('.footer [data-input="worker"]'));
+      if (!worker.value.trim()) d.set(worker, COPY.uiTutorial064, 'input');
+    },
+    spots: d => [d.q('.footer .worker-field')],
+  },
+  {
+    title: COPY.uiNew039, body: COPY.uiNew040,
+    // 원본이 그대로인 배포 화면의 카테고리만 바꿔 배포하면 최종 확인에 「화면 반영 건너뛰기」가 나온다. 새 화면은 배포에서 뺀다.
+    async prepare(d) {
+      await d.click('.detail [data-action="include-selected"]');
+      await d.until(() => !d.q<HTMLInputElement>('.detail [data-action="include-selected"]')?.checked);
+      // 원본이 그대로인 화면은 「변경된 화면만 보기」에서 빠지므로 끄고 묶음을 펼친다.
+      const changedOnly = d.q<HTMLInputElement>('.list [data-action="changed-only"]');
+      if (changedOnly?.checked) { await d.click(() => changedOnly); await d.until(() => !d.q<HTMLInputElement>('.list [data-action="changed-only"]')?.checked); }
+      // 목록은 다음 프레임에 다시 그리므로 홈 화면이나 접힌 묶음이 나올 때까지 기다린 뒤 펼친다.
+      await d.until(() => d.row(COPY.uiPreview002) || d.q('.list .group-head[aria-expanded="false"]'));
+      await d.expandGroups();
+      await d.click(() => d.row(COPY.uiPreview002));
+      await d.click('.detail [data-action="include-selected"]');
       const select = await d.until(() => d.q<HTMLSelectElement>('.detail [data-field="categoryId"]'));
       const option = [...select.options].find(o => o.textContent === COPY.uiTutorial063);
       if (option) d.set(select, option.value, 'change');
+      await d.click('.detail .tag-options [data-action="select-tag"]:not([data-id=""])');
       await d.click('.footer [data-action="prepare"]');
-      await d.until(() => d.q('.overlay:not([hidden]) [data-action="quiet-publish"]'));
+      await d.until(() => d.q('.overlay:not([hidden]) .skip-layers'));
     },
-    spots: d => [d.q('.overlay .quiet-publish')],
+    spots: d => [d.q('.overlay .skip-layers')],
   },
 ];
 
 const NEW_UI_STEPS: Step[] = [
   {
-    title: COPY.uiNew013, body: COPY.uiNew014,
+    title: COPY.uiNew041, body: COPY.uiNew042,
+    async prepare(d) { await d.until(() => d.q('.list .group') && !d.app.classList.contains('is-busy')); },
+    spots: d => [d.q('[data-action="switch-mode"]')],
+  },
+  {
+    title: COPY.uiNew043, body: COPY.uiNew044,
+    // 관리를 연 뒤 페이지 목록을 받아 다시 그리면 펼친 칸이 돌아갈 수 있어 왼쪽 메뉴로 연다.
     async prepare(d) {
       await d.click('.tabs [data-action="settings"]');
-      await d.until(() => { const el = d.q<HTMLDetailsElement>('details[data-form="template"]'); if (el && !el.open) el.open = true; return el?.open; });
+      // 메뉴 항목은 칸의 제목(data-key)으로 찾는다.
+      await d.click(() => { const key = d.q('details[data-form="template"]')?.dataset.key; return key ? d.all('.admin-nav-item').find(b => b.dataset.key === key) : null; });
+      await d.until(() => d.q('details[data-form="template"][open] .template-list') && !d.q('details[data-form="flipbook"][open]'));
     },
-    spots: d => [d.q('details[data-form="template"]')],
+    spots: d => [[d.q('details[data-form="template"] .template-list'), d.q('details[data-form="template"] [data-action="admin-template-default"]')?.parentElement]],
   },
   {
-    title: COPY.uiNew025, body: COPY.uiNew026,
-    async prepare(d) {
-      await d.until(() => { const el = d.q<HTMLDetailsElement>('details[data-form="gui-width"]'); if (el && !el.open) el.open = true; return el?.open; });
-    },
-    spots: d => [d.q('details[data-form="gui-width"]')],
-  },
-  {
-    title: COPY.uiNew016, body: COPY.uiNew017,
+    title: COPY.uiNew045, body: COPY.uiNew046,
     async prepare(d) {
       await d.click('.tabs [data-action="settings"]');
-      await d.click('.list [data-action="new-add"]');
-      await d.until(() => d.q('.detail .create-selected-box'));
-      await d.click(() => d.all('.create-screen-list .create-screen-option').find(o => o.querySelector('.name')?.textContent === COPY.uiPreview007)?.querySelector<HTMLInputElement>('[data-action="create-screen-toggle"]'));
-      await d.until(() => d.q('.detail .create-selected-list select'));
+      await d.until(() => d.q('.list [data-action="new-add"]:not(:disabled)'));
+      await d.expandGroups();
+      await d.click(() => d.all('.list .row').find(r => r.querySelector('.review-dot')));
+      await d.until(() => d.q('.detail .fb-identity'));
     },
-    spots: d => [d.q('.detail .create-selected-box')],
+    spots: d => [[d.q('.detail .title-head'), d.q('.detail .fb-identity')]],
   },
   {
-    title: COPY.uiNew019, body: COPY.uiNew020,
-    async prepare(d) { await d.click('.tabs [data-action="paste-open"]'); await d.until(() => d.q('.paste-view .paste-screen')); },
-    spots: d => [d.q('.tabs [data-action="paste-open"]'), d.q('.paste-view .paste-screens')],
+    title: COPY.uiNew047, body: COPY.uiNew048,
+    async prepare(d) { await openHistory(d); },
+    spots: d => [d.q('.history-overlay .history-dialog')],
   },
   {
-    title: COPY.uiNew027, body: COPY.uiNew028,
-    async prepare(d) { await d.click('.paste-view [data-action="paste-layout"][data-layout="grid"]'); await d.until(() => d.q('.paste-view .paste-card')); },
-    spots: d => [d.q('.paste-view .paste-toggle'), d.q('.paste-view .paste-screens')],
-  },
-  {
-    title: COPY.uiNew029, body: COPY.uiNew030,
+    title: COPY.uiNew049, body: COPY.uiNew050,
     async prepare(d) {
-      await d.click('.paste-view .paste-card');
-      await d.until(() => d.q('.paste-view .paste-track:not(:disabled)'));
-      await d.click('.paste-view .paste-track:not(:disabled)');
-      await d.until(() => d.q('.track-list-overlay:not([hidden])'));
+      await closeHistory(d);
+      await d.click('.tabs [data-action="text-open"]');
+      await d.click('.text-view [data-action="text-import"]');
+      await d.until(() => d.q('.text-view .rich-editor')?.textContent);
     },
-    spots: d => [d.q('.track-list-overlay')],
-  },
-  {
-    title: COPY.uiNew031, body: COPY.uiNew032,
-    async prepare(d) {
-      await d.click('.track-list-overlay [data-action="track-list-close"]');
-      await d.click('.tabs [data-action="flow-open"]');
-      await d.until(() => d.q('.flow-view .flow-screen'));
-      await d.click('.flow-view [data-action="flow-layout"][data-layout="grid"]');
-      await d.until(() => d.q('.flow-view .flow-screen.paste-card'));
-    },
-    spots: d => [d.q('.flow-view .paste-toggle'), d.q('.flow-view .flow-screens')],
+    spots: d => [d.q('.text-view [data-rt="red"]')],
   },
 ];
 
