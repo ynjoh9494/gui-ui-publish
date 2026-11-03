@@ -41,7 +41,9 @@ export class TrackController {
   // GUI 배포를 확정한 뒤(플립북 반영 전): 배포한 화면의 추적 GUI를 모두 새 버전으로 바꾸고, 그때 새 템플릿 플립북 안에 있는 화면을
   // 그 플립북의 화면으로 맞춘다(2026-10-29 사용자 결정: 배포 순간의 캔버스 기준). 이어지는 플립북 반영이 그 플립북에 이력을 쌓는다.
   // 플립북에 새로 들어온 화면은 붙인 뒤의 배포를 받는다(이번 배포 포함). 이번에 처음 찾은 복제본은 이번 배포부터 받는다.
-  async publish(uids: Set<string>): Promise<string | null> {
+  // keepLayers: 화면 반영 건너뛰기로 확정한 화면(2026-11-03 사용자 요청). 같은 화면의 지난 버전 복사본은 레이어를 두고 표식만 바꾼다.
+  // 교체로 이어받은 옛 화면의 복사본은 내용이 다르므로 그대로 새로 복사한다.
+  async publish(uids: Set<string>, keepLayers: Set<string> = new Set()): Promise<string | null> {
     if (!uids.size || !this.host.updateCopies) return null;
     const s = this.store;
     s.reload();
@@ -51,27 +53,36 @@ export class TrackController {
     const read = await this.read(wanted, (_, before) => before?.createdAt ?? 0);
     if (!read) return null;
     const items: CopyUpdate[] = [];
+    const retags: CopyUpdate[] = [];
+    const canRetag = !!this.host.retagCopies;
     for (const uid of uids) {
       const screen = s.state.screens.get(uid);
       if (!screen || screen.status !== 'active' || !screen.source) continue;
       const key = guiKey(uid, screen.guiVersion);
+      const tracked = (c: { nodeId: string }) => ({ nodeId: c.nodeId, trackId: read.records.get(c.nodeId)?.id ?? '' });
       // 옛 버전이거나, 교체로 이어받은 옛 화면의 복사본(표식의 화면이 다름)이면 바꾼다.
-      const copies = read.found.filter(c => c.uid === uid && (c.version !== screen.guiVersion || read.original.get(c.nodeId) !== uid))
-        .map(c => ({ nodeId: c.nodeId, trackId: read.records.get(c.nodeId)?.id ?? '' })).filter(c => c.trackId);
+      const stale = read.found.filter(c => c.uid === uid && (c.version !== screen.guiVersion || read.original.get(c.nodeId) !== uid));
+      const keep = canRetag && keepLayers.has(uid) ? stale.filter(c => read.original.get(c.nodeId) === uid) : [];
+      const copies = stale.filter(c => !keep.includes(c)).map(tracked).filter(c => c.trackId);
+      const kept = keep.map(tracked).filter(c => c.trackId);
       if (copies.length) items.push({ uid, code: screen.code, key, sourceNodeId: screen.source.nodeId, copies });
+      if (kept.length) retags.push({ uid, code: screen.code, key, sourceNodeId: screen.source.nodeId, copies: kept });
     }
-    if (!items.length) return null;
-    const { updated, notes } = await this.host.updateCopies(items);
+    if (!items.length && !retags.length) return null;
+    const copied = items.length ? await this.host.updateCopies(items) : { updated: [], notes: [] };
+    const retagged = retags.length ? await this.host.retagCopies!(retags) : { updated: [], notes: [] };
+    const updated = [...copied.updated, ...retagged.updated];
+    const notes = [...copied.notes, ...retagged.notes];
     s.reload();
-    const uidOf = new Map(items.flatMap(item => item.copies.map(c => [c.trackId, item.uid] as const)));
+    const uidOf = new Map([...items, ...retags].flatMap(item => item.copies.map(c => [c.trackId, item.uid] as const)));
     for (const { trackId, nodeId } of updated) {
       const track = s.state.tracks.get(trackId);
       if (track) s.put(keys.track(trackId), { ...track, nodeId, uid: uidOf.get(trackId) ?? track.uid });
     }
     const applied = new Set(updated.map(item => item.trackId));
-    if (items.some(item => item.copies.some(copy => !applied.has(copy.trackId))))
+    if ([...items, ...retags].some(item => item.copies.some(copy => !applied.has(copy.trackId))))
       throw new Error([COPY.recoveryCopiesIncomplete, ...notes].join(' '));
-    return [updated.length ? `${COPY.track001} ${updated.length}${COPY.track002}` : '', ...notes].filter(Boolean).join(' ') || null;
+    return [copied.updated.length ? `${COPY.track001} ${copied.updated.length}${COPY.track002}` : '', ...notes].filter(Boolean).join(' ') || null;
   }
 
   // 목록 새로고침(UI Flipbook): 캔버스에서 새 템플릿 플립북의 화면 목록을 읽어 맞춘다. 화면을 넣고 빼는 것은 이력을 남기지 않으므로

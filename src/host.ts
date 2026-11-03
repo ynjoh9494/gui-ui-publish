@@ -75,6 +75,8 @@ export interface Host extends FingerprintReader {
   // 추적 GUI(2026-10-29): 페이지들의 GUI 복사본 찾기(uids가 있으면 그 화면만), 새 버전으로 바꾸기, 추적 기록 ID 적기
   scanCopies?(pageIds: string[], uids?: string[]): Promise<FoundCopy[]>;
   updateCopies?(items: CopyUpdate[]): Promise<{ updated: { trackId: string; nodeId: string }[]; notes: string[] }>;
+  // 화면 반영 건너뛰기: 레이어는 두고 복사본 표식의 버전만 item.key로 바꾼다.
+  retagCopies?(items: CopyUpdate[]): Promise<{ updated: { trackId: string; nodeId: string }[]; notes: string[] }>;
   markTracked?(items: { nodeId: string; trackId: string }[]): Promise<void>;
   // GUI 붙이기: at(없으면 보고 있는 화면 가운데) 아래의 노드에 붙이고 고른다. flipbookId: 붙인 자리의 새 템플릿 플립북(밖이면 null)
   pasteGui?(item: PasteItem, at: PasteSpot | null): Promise<{ nodeId: string; pageId: string; flipbookId: string | null; notes: string[] }>;

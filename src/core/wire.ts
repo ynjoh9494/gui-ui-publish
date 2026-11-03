@@ -153,7 +153,7 @@ export type ToMain =
   | { type: 'prepare'; team: Team; drafts: Record<string, Draft>; comment?: BatchComment }
   // 썸네일 이미지 바이트 요청(플립북 목록·화면 선택 미리보기)
   | { type: 'thumbnails'; hashes: string[] }
-  | { type: 'commit'; batchId: string; quiet?: boolean }
+  | { type: 'commit'; batchId: string; quiet?: boolean; skipLayers?: boolean }
   | { type: 'cancelPlan'; batchId: string }
   | { type: 'retry'; batchId?: string; reconcile?: boolean }
   | { type: 'refreshData' }

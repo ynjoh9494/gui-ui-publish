@@ -52,6 +52,10 @@ export interface Plan {
   batchId: string;
   team: Team;
   quiet?: boolean;
+  // 이번 GUI 배포의 모든 화면이 원본 변경 없이 이름·Screen ID·카테고리·화면 관계만 바꾼다. 「화면 반영 건너뛰기」를 보여 준다.
+  layersUnchanged?: boolean;
+  // 「화면 반영 건너뛰기」를 켜고 확정한다. 원본이 지난 버전과 같은 화면만 기록에 남긴다.
+  skipLayers?: boolean;
   actor: Actor;
   items: PlanItem[];
   // replacedBy: 다른 프레임으로 교체되는 이전 화면의 ID. 그 화면의 원본 프레임을 제외 목록에 넣는다.
@@ -108,6 +112,8 @@ export function buildPlan(
   };
   const targets = new Map<string, string>();
   const codes = new Map<string, string>();
+  // 원본 변경이 없는 배포: 모든 화면이 비교에서 차이가 없는 등록 화면이고 신규·삭제·교체가 없다(2026-11-03 사용자 요청).
+  let sourceChanged = false;
 
   for (const entry of entries) {
     const draft = drafts[entry.key];
@@ -155,6 +161,7 @@ export function buildPlan(
     }
     targets.set(item.screenId, entry.key);
     plan.items.push(item);
+    if (item.isNew || item.workType !== 'changed' || item.mergeFrom || entry.estimate !== 'unchanged') sourceChanged = true;
     if (team === 'UI') {
       if (item.workType === 'deleted') plan.counts.deleted++;
       else plan.counts.ui++;
@@ -162,6 +169,7 @@ export function buildPlan(
     else plan.counts[item.workType!]++;
     if (item.metadataChanged) plan.counts.metadata++;
   }
+  if (team === 'GUI' && plan.items.length && !sourceChanged) plan.layersUnchanged = true;
   if (team === 'GUI') {
     const pending = new Map(plan.items.filter(item => item.isNew).map(item => [item.entryKey, item.screenId]));
     for (const item of plan.items) if (item.baseScreenId && pending.has(item.baseScreenId)) item.baseScreenId = pending.get(item.baseScreenId)!;
@@ -475,12 +483,17 @@ function writeGui(store: Store, plan: Plan, item: PlanItem, input: CommitInput, 
   const captured = item.needsThumb && !!item.frame;
   const category = categoryId ? state.categories.get(categoryId) ?? null : null;
   const base = item.baseScreenId ? state.screens.get(item.baseScreenId) ?? null : null;
+  const fingerprint = captured ? item.frame!.fingerprint : previous?.fingerprint ?? null;
+  const fpVersion = captured ? FINGERPRINT_VERSION : previous?.fpVersion ?? 1;
+  // 확정 직전 지문이 지난 버전과 같은 화면만 레이어 복사를 건너뛴다.
+  const sameSource = !!previous && !!fingerprint && previous.fingerprint === fingerprint && (previous.fpVersion ?? 1) === fpVersion;
 
   const record: GuiRecord = {
     screenId: item.screenId, version: item.toVersion, batchId: plan.batchId, workType: item.workType!,
     ...(plan.quiet ? { quiet: true } : {}),
-    fingerprint: captured ? item.frame!.fingerprint : previous?.fingerprint ?? null,
-    fpVersion: captured ? FINGERPRINT_VERSION : previous?.fpVersion ?? 1,
+    ...(plan.skipLayers && sameSource ? { skipLayers: true } : {}),
+    fingerprint,
+    fpVersion,
     thumb,
     width: captured ? item.frame!.width : previous?.width ?? 0,
     height: captured ? item.frame!.height : previous?.height ?? 0,

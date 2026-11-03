@@ -18,7 +18,7 @@ import { readRichText, selectedTextNode, writeRichText } from './richText.ts';
 import { connectTemplateItem, describeTemplate, disconnectTemplateItem, templateItemNodes } from './template.ts';
 import { convertLegacyFlipbooks } from './legacyConvert.ts';
 import { createDefaultTemplate } from './templateDefault.ts';
-import { createdCopies, markTracked, nodePlaces, pasteCopy, scanCopies, updateCopies } from './tracked.ts';
+import { createdCopies, markTracked, nodePlaces, pasteCopy, retagCopies, scanCopies, updateCopies } from './tracked.ts';
 import { makeThumbnail, placeThumbnails, renameThumbnails, thumbnailBytes } from './thumbs.ts';
 
 // 사용자별 플러그인 창 크기(figma.clientStorage)
@@ -207,6 +207,7 @@ export function figmaHost(mode: Host['mode']): Host {
     convertLegacyFlipbooks: input => convertLegacyFlipbooks(input, NS),
     scanCopies: (pageIds, uids) => scanCopies(NS, pageIds, uids),
     updateCopies: items => updateCopies(NS, items),
+    retagCopies: items => retagCopies(NS, items),
     markTracked: items => markTracked(NS, items),
     pasteGui: (item, at) => pasteCopy(NS, item, at),
     nodePlaces: items => nodePlaces(NS, items),

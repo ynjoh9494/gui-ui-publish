@@ -277,6 +277,18 @@ export async function markTracked(ns: string, items: { nodeId: string; trackId: 
   }
 }
 
+// 화면 반영 건너뛰기(2026-11-03 사용자 요청): 원본이 지난 버전과 같으므로 레이어는 그대로 두고 복사본 표식(화면@버전)만 새 버전으로 바꾼다.
+// 표식은 찾기(scanCopies)가 돌려준 복사본 맨 위 노드에 있다(감싼 배치도 같다).
+export async function retagCopies(ns: string, items: CopyUpdate[]): Promise<{ updated: { trackId: string; nodeId: string }[]; notes: string[] }> {
+  const updated: { trackId: string; nodeId: string }[] = [];
+  for (const item of items) for (const target of item.copies) {
+    const node = await figma.getNodeByIdAsync(target.nodeId) as SceneNode | null;
+    if (!node || node.removed || !node.getSharedPluginData(ns, COPY_KEY)) continue;
+    node.setSharedPluginData(ns, COPY_KEY, item.key);
+    updated.push({ trackId: target.trackId, nodeId: node.id });
+  }
+  return { updated, notes: [] };
+}
 
 // 추적 GUI를 새 버전으로 바꾼다(2026-10-29 사용자 결정). 자리·레이어 순서·이름·잠금과 지금 폭(사용자가 K로 바꾼 크기)을 지킨다.
 // 원본은 화면마다 한 번만 복사하고, 폭이 같은 자리는 한 번 맞춘 복사본을 복제해 쓴다. 원본을 찾지 못한 화면은 이전 복사본을 둔다.

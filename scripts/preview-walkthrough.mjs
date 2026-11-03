@@ -203,6 +203,7 @@ try {
   await shot('01-gui-ready');
 
   await app.locator('[data-action=prepare]').click();
+  assert.equal(await app.locator('[data-action=skip-layers]').count(), 0, '신규 화면 배포에는 화면 반영 건너뛰기가 없다');
   const quietPublish = app.locator('[data-action=quiet-publish]');
   assert.equal(await quietPublish.isChecked(), false, '조용한 배포는 기본으로 꺼진다');
   assert.equal(await quietPublish.locator('..').getAttribute('title'), '플립북의 히스토리에 배포 내역이 남지 않습니다.');
@@ -867,11 +868,42 @@ try {
   await app.locator('.tag-picker summary[aria-label="태그 선택"]').click();
   await app.locator('.tag-options [data-action=select-tag]').filter({ hasText: '검토' }).click();
   await app.locator('[data-action=prepare]').click();
+  assert.equal(await app.locator('[data-action=skip-layers]').count(), 0, '원본을 고친 화면의 배포에는 화면 반영 건너뛰기가 없다');
   await app.locator('[data-action=commit]').click();
   // 같은 파일이므로 GUI Publish 직후 그 화면을 쓰는 플립북에 바로 반영한다.
   await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('GUI 갱신'));
   await shot('05-gui-updated');
   assert.match(await app.locator('.toast').innerText(), /플로우 1개의 썸네일을 바꿨습니다/, '다시 배포한 화면이 든 플로우의 썸네일을 바꾼다');
+  {
+    // 원본 변경 없이 이름만 고친 배포에는 화면 반영 건너뛰기가 켜진 채로 나온다(2026-11-03 사용자 요청). 확인만 하고 되돌린다.
+    await scan();
+    for (const head of await app.locator('.group-head').all())
+      if (await head.getAttribute('aria-expanded') === 'false') await head.click();
+    const changedOnly = app.locator('[data-action=changed-only]');
+    const filtered = await changedOnly.isChecked();
+    if (filtered) await changedOnly.uncheck();
+    const key = await app.locator('.row:has(.id-tag)').filter({ hasText: initialName }).first().getAttribute('data-key');
+    const row = app.locator(`.row[data-key="${key}"]`);
+    await row.click();
+    await row.locator('[data-action=include]').check();
+    await app.locator('[data-field=name]').fill('이름만 바꾼 화면');
+    await app.locator('.tag-picker summary[aria-label="태그 선택"]').click();
+    await app.locator('.tag-options [data-action=select-tag]').filter({ hasText: '검토' }).click();
+    await app.locator('[data-action=prepare]').click();
+    const skip = app.locator('[data-action=skip-layers]');
+    await skip.waitFor();
+    assert.equal(await skip.isChecked(), true, '화면 반영 건너뛰기는 처음에 켜져 있다');
+    assert.equal(await skip.locator('..').innerText(), '화면 반영 건너뛰기');
+    assert.ok(await app.locator('.dialog-actions').evaluate(el => {
+      const [quiet, skipBox] = [el.querySelector('.quiet-publish'), el.querySelector('.skip-layers')].map(n => n.getBoundingClientRect());
+      return Math.abs(quiet.top - skipBox.top) < 4 && skipBox.left > quiet.right;
+    }), '조용히 배포하기 오른쪽 같은 줄에 둔다');
+    await shot('05a-skip-layers');
+    await app.locator('[data-action=cancel-plan]').click();
+    await app.locator('[data-field=name]').fill(initialName);
+    await row.locator('[data-action=include]').uncheck();
+    if (filtered) await changedOnly.check();
+  }
 
   await mode('UI');
   // 플립북에 「화면이 수정되었습니다」 빨간 점과 목록 위에 확인이 필요한 개수를 표시한다. 변경사항 확인을 누르지 않아도 보인다.

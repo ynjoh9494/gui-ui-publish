@@ -178,6 +178,7 @@ export const COPY = {
   uiApp096: "배포 확정", // 410
   quietPublish: '조용히 배포하기',
   quietPublishHint: '플립북의 히스토리에 배포 내역이 남지 않습니다.',
+  skipLayers: '화면 반영 건너뛰기',
   // 관리 — src/ui/app.ts
   uiApp097: "GUI 원본 범위", // 423
   uiApp098: "추가할 GUI 원본 페이지", // 424

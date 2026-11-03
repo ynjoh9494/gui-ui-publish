@@ -6,6 +6,7 @@ import { COPY } from '../src/core/copy.ts';
 import { defaultDraft } from '../src/core/drafts.ts';
 import { pendingRows, queueGuiDelivery, restoreGuiWrite, retryableDeliveries } from '../src/core/guiDelivery.ts';
 import { buildPlan, commitPlan } from '../src/core/publish.ts';
+import { FINGERPRINT_VERSION } from '../src/core/fingerprint.ts';
 import { keys, memoryKV, Store } from '../src/core/store.ts';
 import type { Delivery, Flipbook, GuiRecord, Screen } from '../src/core/types.ts';
 import { toUiWire, type ToUi } from '../src/core/wire.ts';
@@ -282,4 +283,40 @@ test('미완료 목록은 같은 대상의 기록을 한 줄로 묶고 최근 �
     { key: 'flipbook:fb', kind: 'flipbook', name: 'Home', reason: COPY.recoveryStoppedBefore, count: 1 },
     { key: 'gui:s1', kind: 'gui', name: 'STB_HO_001 Home', reason: 'boom', count: 2 },
   ]);
+});
+
+test('화면 반영 건너뛰기로 확정한 화면은 붙인 화면의 레이어를 복사하지 않고 표식만 바꾸며 플립북은 반영한다', async () => {
+  const f = fixture(false);
+  const record = { ...f.record, skipLayers: true };
+  queueGuiDelivery(f.store, 'b2', f.before, f.after, record);
+  f.store.put(keys.gui('s1', 2), record);
+  f.store.put(keys.screen('s1'), f.after);
+  const retagged: CopyUpdate[] = [];
+  (f.host as { retagCopies?: Host['retagCopies'] }).retagCopies = async items => {
+    retagged.push(...items);
+    return { updated: items.flatMap(item => item.copies.map(copy => ({ trackId: copy.trackId, nodeId: copy.nodeId }))), notes: [] };
+  };
+  await new Controller(f.host).handle({ type: 'retry' });
+  f.store.reload();
+  assert.equal(f.store.state.deliveries.get(keys.guiDelivery('b2', 's1'))?.state, 'done');
+  assert.deepEqual(retagged.map(item => [item.key, item.copies.map(c => c.nodeId)]), [['s1@2', ['copy']]]);
+  assert.deepEqual(f.counts(), { copies: 0, syncs: 1 });
+  assert.equal(f.store.state.flipbooks.get('fb')?.screens[0].version, 2);
+  assert.equal(f.store.state.imported.get('fb')?.length, 1, '히스토리는 남긴다');
+});
+
+test('원본 변경이 없는 배포에서만 화면 반영 건너뛰기를 고를 수 있고 지난 버전과 지문이 같은 화면만 기록한다', () => {
+  for (const [fingerprint, unchanged] of [['fp1', true], ['fp-new', false]] as const) {
+    const f = fixture(false);
+    f.store.put(keys.gui('s1', 1), { ...f.record, version: 1, batchId: 'b1', fingerprint: 'fp1', fpVersion: FINGERPRINT_VERSION, committedAt: 1 });
+    const frame = { nodeId: 'source', pageId: 'gui', name: 'Home', width: 100, height: 100, screenTag: 's1', fingerprint, error: null };
+    const [entry] = classify(f.store.state, [frame]);
+    const draft = { ...defaultDraft('GUI', f.store.state, entry), included: true, workerId: 'w', tagId: 't', categoryId: 'c', name: 'Home 2' };
+    const plan = buildPlan('GUI', f.store.state, [entry], { [entry.key]: draft }, actor, 'b2');
+    assert.deepEqual(plan.blockers, []);
+    assert.equal(!!plan.layersUnchanged, unchanged);
+    plan.skipLayers = true;
+    commitPlan(f.store, plan, { fingerprints: { [entry.key]: fingerprint }, thumbs: {} });
+    assert.equal(!!f.store.state.gui.get('s1')?.find(r => r.version === 2)?.skipLayers, unchanged);
+  }
 });

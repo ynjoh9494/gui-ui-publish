@@ -272,6 +272,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   const changedOnly: Record<Team, boolean> = { GUI: true, UI: false };
   let plan: Plan | null = null;
   let quietPublish = false;
+  // 화면 반영 건너뛰기: 원본 변경이 없는 GUI 배포에서만 보이고 처음에는 켜져 있다(2026-11-03 사용자 요청).
+  let skipLayers = true;
   let toast: { kind: 'info' | 'error'; text: string } | null = null;
   // 상단 미완료 반영 배너의 목록을 펼쳤는지.
   let recoveryOpen = false;
@@ -1793,7 +1795,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       ${plan.unpublished.map(e => `<tr><td>${esc(e.name)}</td><td>${COPY.uiApp355}</td><td>—</td><td>—</td><td>—</td></tr>`).join('')}
       </tbody></table>
       <div class="dialog-actions">
-        ${plan.team === 'GUI' ? `<label class="switch quiet-publish" title="${COPY.quietPublishHint}"><span>${COPY.quietPublish}</span><input type="checkbox" role="switch" data-action="quiet-publish" aria-label="${COPY.quietPublish}" aria-description="${COPY.quietPublishHint}" ${quietPublish ? 'checked' : ''}></label>` : ''}
+        ${plan.team === 'GUI' ? `<label class="switch publish-option quiet-publish" title="${COPY.quietPublishHint}"><span>${COPY.quietPublish}</span><input type="checkbox" role="switch" data-action="quiet-publish" aria-label="${COPY.quietPublish}" aria-description="${COPY.quietPublishHint}" ${quietPublish ? 'checked' : ''}></label>` : ''}
+        ${plan.team === 'GUI' && plan.layersUnchanged ? `<label class="switch publish-option skip-layers"><span>${COPY.skipLayers}</span><input type="checkbox" role="switch" data-action="skip-layers" aria-label="${COPY.skipLayers}" ${skipLayers ? 'checked' : ''}></label>` : ''}
         <button data-action="cancel-plan">${COPY.uiApp095}</button>
         <button class="primary" data-action="commit" ${plan.blockers.length ? 'disabled' : ''}>${COPY.uiApp096}</button>
       </div></div>`;
@@ -3111,9 +3114,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         bridge.send({ type: 'prepare', team: t, drafts: sendable, ...(t === 'GUI' ? { comment: { ...comment, worker: workerName.trim() } } : {}) });
         break;
       }
-      case 'cancel-plan': if (plan) bridge.send({ type: 'cancelPlan', batchId: plan.batchId }); plan = null; quietPublish = false; renderConfirm(); break;
+      case 'cancel-plan': if (plan) bridge.send({ type: 'cancelPlan', batchId: plan.batchId }); plan = null; quietPublish = false; skipLayers = true; renderConfirm(); break;
       case 'quiet-publish': quietPublish = (el as HTMLInputElement).checked; break;
-      case 'commit': if (plan) { bridge.send({ type: 'commit', batchId: plan.batchId, quiet: plan.team === 'GUI' && quietPublish }); el.setAttribute('disabled', ''); } break;
+      case 'skip-layers': skipLayers = (el as HTMLInputElement).checked; break;
+      case 'commit': if (plan) { bridge.send({ type: 'commit', batchId: plan.batchId, quiet: plan.team === 'GUI' && quietPublish, skipLayers: plan.team === 'GUI' && !!plan.layersUnchanged && skipLayers }); el.setAttribute('disabled', ''); } break;
       case 'goto': plan = null; renderConfirm(); if (el.dataset.key) { for (const g of listModel(t).groups) expanded[t].add(g.key); select(el.dataset.key); renderList(); } break;
       case 'retry': bridge.send({ type: 'retry', ...(el.dataset.reconcile ? { reconcile: true } : {}) }); break;
       case 'recovery-toggle': recoveryOpen = !recoveryOpen; renderRecovery(); break;
@@ -4153,7 +4157,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         renderTabs(); renderToolbar(); renderList(); renderDetail(); renderFooter();
         break;
       }
-      case 'plan': plan = msg.plan; quietPublish = false; renderConfirm(); break;
+      case 'plan': plan = msg.plan; quietPublish = false; skipLayers = true; renderConfirm(); break;
       case 'committed':
         // 배포한 작업자 이름을 다음에 기본으로 쓴다(사용자별 clientStorage).
         if (msg.ok && mode === 'GUI') { comment = emptyComment(); if (workerName.trim()) bridge.send({ type: 'workerNameSet', name: workerName.trim() }); renderFooter(); }

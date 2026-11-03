@@ -104,6 +104,8 @@ export interface GuiRecord {
   version: number;
   batchId: string;
   quiet?: boolean;
+  // 화면 반영 건너뛰기(2026-11-03 사용자 요청): 원본이 지난 버전과 같아 붙인 화면의 레이어를 다시 복사하지 않고 표식의 버전만 바꾼다.
+  skipLayers?: boolean;
   workType: WorkType;
   fingerprint: string | null;
   // 지문을 계산한 정규화 버전. 이 필드가 생기기 전의 기록은 1로 본다.

@@ -139,8 +139,11 @@ export class GuiRecovery {
       return null;
     });
     uids = new Set([...uids].filter(uid => !blocked.has(uid)));
+    // 화면 반영 건너뛰기로 확정한 화면은 붙인 화면의 레이어를 다시 복사하지 않는다. 재시도·전체 점검도 기록의 선택을 따른다.
+    const recordOf = (job: Delivery) => job.intent?.record ?? s.state.gui.get(job.targetId)?.find(r => r.version === job.version) ?? null;
+    const keepLayers = new Set([...uids].filter(uid => (byUid.get(uid) ?? []).every(job => recordOf(job)?.skipLayers)));
     if (uids.size) await step(COPY.recoveryCopies);
-    await apply(uids, targets => this.tracks.publish(targets));
+    await apply(uids, targets => this.tracks.publish(targets, keepLayers));
     uids = new Set([...uids].filter(uid => !blocked.has(uid)));
     if (uids.size && s.state.flows.size) await step(COPY.recoveryFlows);
     await apply(uids, targets => this.flows.update(targets, true));
