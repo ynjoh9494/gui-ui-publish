@@ -52,7 +52,7 @@ function carried(frame: ScannedFrame, before: ScannedFrame): ScannedFrame {
 const DATA_OPS = new Set<AdminOp['op']>(['renameCategory', 'updateCategory', 'setCategoryActive', 'setCategoryCode', 'reorderCategories', 'setScreenIdPrefix', 'renumberScreenIds', 'setScreenCategory', 'setCaseRelation', 'correctRecord', 'setDataPage']);
 // 오래 걸리는 요청. 처리하는 동안 UI에 진행 표시를 띄우고 중복 조작을 막는다.
 const BUSY_LABEL: Partial<Record<ToMain['type'], string>> = {
-  prepare: COPY.controller001, commit: COPY.controller002, resetData: COPY.controller003, retry: COPY.controller004, refreshData: COPY.controller005,
+  prepare: COPY.controller001, commit: COPY.controller002, resetData: COPY.controller003, retry: COPY.recoveryRunning, refreshData: COPY.controller005,
   registerFlipbooks: COPY.registerExisting, convertLegacyFlipbooks: COPY.legacyConverting, admin: COPY.controller006, createFlipbooks: COPY.controller038, markReviewed: COPY.controller066, removeFlipbooks: COPY.controller068,
   matchVersion: COPY.controller106, switchVersion: COPY.controller107, renameFlipbook: COPY.controller118,
   textApply: COPY.controller120, createFlow: COPY.flow006, exportPdf: COPY.pdf005, pasteGui: COPY.track004, createThumbnailPage: COPY.adminThumbCreate,
@@ -137,6 +137,7 @@ export class Controller {
     this.recovery = new GuiRecovery(this.store, host, this.tracks, this.flows, {
       pull: (batchId, targets, uids) => this.pullGui(undefined, { deferData: true, batchId, targets, onlyTargets: true, uids }),
       data: async () => { await this.progress(COPY.controller005); return this.refreshData(); },
+      progress: label => this.progress(label),
     });
   }
 
@@ -205,13 +206,26 @@ export class Controller {
         case 'commit': await this.commit(msg.batchId, msg.quiet); break;
         case 'cancelPlan': this.plans.delete(msg.batchId); break;
         case 'retry': {
-          const recovered = await this.recovery.run(undefined, true);
-          // A failed GUI stage must not be bypassed by force-delivering its
-          // downstream flipbooks from an unverified, subsequently edited source.
-          const report = recovered.failed ? emptyReport() : await this.deliverFlipbooks({}, { force: true });
+          this.store.reload();
+          // 화면 전체를 다시 맞추는 점검은 관리에서 누르고 남은 작업이 하나도 없을 때만 한다. 상단 배너의 재시도는 남은 작업만 반영한다.
+          const reconcile = !!msg.reconcile && retryableDeliveries(this.store.state).length === 0;
+          const recovered = await this.recovery.run(undefined, { verify: true, reconcile });
+          // 원본을 확인하지 못한 화면이 든 플립북은 강제 반영하지 않는다(배포 뒤 고친 원본으로 덮어쓰지 않게).
+          // 그 밖의 대기 플립북은 다른 화면의 실패와 상관없이 이어서 반영한다.
+          this.store.reload();
+          const flipbooks = this.store.state.flipbooks;
+          const waiting = [...new Set(unfinishedDeliveries(this.store.state, { kind: 'flipbook' }).map(d => d.targetId))]
+            .filter(id => flipbooks.get(id)?.status === 'active');
+          const held = waiting.filter(id => flipbooks.get(id)!.screens.some(screen => recovered.blocked.has(screen.uid)));
+          const targets = waiting.filter(id => !held.includes(id));
+          const report = targets.length ? await this.deliverFlipbooks({}, { force: true, targets, onlyTargets: true }) : emptyReport();
           if (report.screens) await this.refreshData();
           this.postState();
-          this.host.post({ type: recovered.failed || report.failed.length || report.skipped ? 'error' : 'notice', message: [recovered.message, deliveryMessage(report)].filter(Boolean).join(' ') || COPY.controller007 });
+          const heldNote = held.length ? groupIssues(held.map(id => ({ name: flipbooks.get(id)!.title, text: COPY.recoveryFlipbooksHeld }))) : '';
+          this.host.post({
+            type: recovered.failed || held.length || report.failed.length || report.skipped ? 'error' : 'notice',
+            message: [recovered.message, heldNote, deliveryMessage(report)].filter(Boolean).join(' ') || COPY.controller007,
+          });
           break;
         }
         case 'refreshData': {

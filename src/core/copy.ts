@@ -1130,6 +1130,17 @@ export const COPY = {
   recoveryCopiesIncomplete: '일부 붙인 화면을 반영하지 못했습니다.',
   recoveryRetryHint: '확정된 GUI 기록과 실제 반영 상태를 다시 확인합니다. 배포 버전이나 히스토리를 추가하지 않습니다.',
   recoveryAvailable: '미완료 반영',
+  // 미반영 재시도 진행 표시와 미완료 목록 — src/guiRecovery.ts, src/controller.ts, src/ui/app.ts
+  recoveryRunning: '미반영 재시도 중',
+  recoveryChecking: 'GUI 원본 확인 중',
+  recoveryCopies: '붙인 화면 반영 중',
+  recoveryFlows: '플로우 반영 중',
+  recoveryFlipbooksHeld: '원본이 바뀐 화면이 들어 있어 반영하지 않은 플립북',
+  recoveryKindFlipbook: '플립북',
+  recoveryKindGui: 'GUI',
+  recoveryStoppedBefore: '반영 시작 전에 중단됨',
+  recoveryStoppedDuring: '반영 도중 중단됨',
+  recoveryFailed: '반영 실패',
   // 관리의 템플릿 › 템플릿 목록(대표 지정) — src/ui/app.ts, src/core/templateList.ts
   templateList: '템플릿 목록',
   templateListHint: '새 플립북은 대표 템플릿으로 만듭니다. 이미 있는 플립북은 반영할 때 그 플립북을 만든 템플릿의 태그·히스토리 행 컴포넌트와 기본 글자를 씁니다. 만든 템플릿을 모르면 위에 있는 템플릿부터 구조가 맞는지 확인하고, 맞는 템플릿이 없으면 대표 템플릿으로 있는 칸만 반영합니다. 대표를 바꿔도 이전 대표는 목록에 남습니다.',

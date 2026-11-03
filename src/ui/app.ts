@@ -15,7 +15,7 @@ import { changeReasonNote, changeReasonSection, REASON_PAGE } from './changeReas
 import type { ChangeReason } from '../core/changeDigest.ts';
 import { esc } from './html.ts';
 import { NODE_PREVIEW, PreviewCache } from './previewCache.ts';
-import { retryableDeliveries } from '../core/guiDelivery.ts';
+import { pendingRows, retryableDeliveries } from '../core/guiDelivery.ts';
 import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScreen, isDeletion, isOldSide, isPrevious, isUnpublish, mergesInto, needsLink, OPTIONAL_FIELDS, pendingScreens, renumberAutoCodes, replaceTarget, STATUS_LABEL, validateDraft, type Draft, type DraftIndex, type InputStatus, type Validation } from '../core/drafts.ts';
 import { formatTime, type HistoryRow } from '../core/history.ts';
 import { arrangeFlipbooks, buildList, guiGroupKey, placeDrafts, savedGuiDisplay, savedGuiPlace, UNCATEGORIZED, type ArrangedGroup, type GuiDisplay, type GuiPlace, type ListModel } from '../core/list.ts';
@@ -52,7 +52,7 @@ export function sortScreenItems(items: ScreenItem[], preferredCategoryId?: strin
 type Tab = Team | 'ADMIN';
 
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
-const WHILE_BUSY = new Set(['tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel']);
+const WHILE_BUSY = new Set(['recovery-toggle', 'tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
 const BEFORE_CHECK = new Set([...WHILE_BUSY, 'switch-mode', 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'category-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'fb-identity-save', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'text-import', 'text-apply',
@@ -271,6 +271,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let plan: Plan | null = null;
   let quietPublish = false;
   let toast: { kind: 'info' | 'error'; text: string } | null = null;
+  // 상단 미완료 반영 배너의 목록을 펼쳤는지.
+  let recoveryOpen = false;
   let navSeq = 0;
   let history: { id: string; rows: HistoryRow[] } | null = null;
   // GUI Publish에서 추가한 카테고리. 상태가 돌아오면 해당 화면의 카테고리로 선택한다.
@@ -1980,7 +1982,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         <div class="inline" data-form="wrk-add"><input data-f="name" placeholder="${COPY.uiApp119}"><button class="add-button" data-action="admin-wrk-add">${ADD_LABEL}</button></div></section>
       ${gui ? `<section class="admin" data-form="exclusions"><h3>${COPY.uiApp120}</h3>
         ${exclusions.length ? exclusions.map(e => `<div class="inline" data-form="exc" data-id="${e.id}"><span>${esc(e.name)}</span><small>${esc(e.reason)}</small><button data-action="admin-unexclude">${COPY.uiApp121}</button></div>`).join('') : `<p class="note">${COPY.uiApp122}</p>`}</section>` : ''}
-      <section class="admin" data-form="pending"><h3>${COPY.adminPending}</h3><p>${pending.length}${COPY.uiApp081}</p><p class="note">${COPY.recoveryRetryHint}</p><button data-action="retry">${COPY.uiApp124}</button></section>
+      <section class="admin" data-form="pending"><h3>${COPY.adminPending}</h3><p>${pending.length}${COPY.uiApp081}</p>${pending.length ? recoveryList(s) : ''}<p class="note">${COPY.recoveryRetryHint}</p><button data-action="retry" data-reconcile="1">${COPY.uiApp124}</button></section>
       <section class="admin" data-form="audit"><h3>${COPY.uiApp125}</h3>
         ${s.audit.slice(-15).reverse().map(a => `<div class="audit"><small>${esc(new Date(a.at).toLocaleString('ko-KR'))}</small> ${esc(a.actor.name)} · ${esc(a.action)}${a.reason ? ` · ${esc(a.reason)}` : ''}</div>`).join('') || `<p class="note">${COPY.uiApp122}</p>`}</section>
       ${issues.length ? `<section class="admin" data-form="issues"><h3>${COPY.uiApp126}</h3>${issues.map(i => `<div class="bad">${esc(i)}</div>`).join('')}</section>` : ''}
@@ -2523,7 +2525,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const warning = $('.recovery-status');
     root.classList.toggle('has-recovery', count > 0);
     warning.hidden = !count;
-    warning.innerHTML = count ? `<span>${COPY.recoveryAvailable} ${count}${COPY.uiApp081}</span><button data-action="retry">${COPY.uiApp124}</button>` : '';
+    if (!count) recoveryOpen = false;
+    warning.innerHTML = count && state ? `<button class="recovery-toggle" data-action="recovery-toggle" aria-expanded="${recoveryOpen}"><span class="category-chevron" aria-hidden="true">${recoveryOpen ? '▾' : '▸'}</span>${COPY.recoveryAvailable} ${count}${COPY.uiApp081}</button><button data-action="retry">${COPY.uiApp124}</button>${recoveryOpen ? recoveryList(state) : ''}` : '';
+  }
+
+  // 미완료 반영 목록: 대상 종류·이름·이유를 한 줄로 보여 준다. 이유가 길면 줄임표로 자르고 툴팁에 전체를 둔다.
+  function recoveryList(s: State): string {
+    return `<ul class="recovery-list">${pendingRows(s).map(row => `<li class="recovery-item">
+      <span class="recovery-kind">${row.kind === 'flipbook' ? COPY.recoveryKindFlipbook : COPY.recoveryKindGui}</span>
+      <span class="recovery-name" title="${esc(row.name)}">${esc(row.name)}${row.count > 1 ? ` <span class="recovery-count">${row.count}${COPY.uiApp081}</span>` : ''}</span>
+      <span class="recovery-reason" title="${esc(row.reason)}">${esc(row.reason)}</span></li>`).join('')}</ul>`;
   }
 
   // 입력 중에는 입력란을 다시 그리지 않아 포커스를 유지한다.
@@ -3063,7 +3074,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'quiet-publish': quietPublish = (el as HTMLInputElement).checked; break;
       case 'commit': if (plan) { bridge.send({ type: 'commit', batchId: plan.batchId, quiet: plan.team === 'GUI' && quietPublish }); el.setAttribute('disabled', ''); } break;
       case 'goto': plan = null; renderConfirm(); if (el.dataset.key) { for (const g of listModel(t).groups) expanded[t].add(g.key); select(el.dataset.key); renderList(); } break;
-      case 'retry': bridge.send({ type: 'retry' }); break;
+      case 'retry': bridge.send({ type: 'retry', ...(el.dataset.reconcile ? { reconcile: true } : {}) }); break;
+      case 'recovery-toggle': recoveryOpen = !recoveryOpen; renderRecovery(); break;
       case 'managed-page-open': if (el.dataset.id) bridge.send({ type: 'revealNode', nav: ++navSeq, nodeId: el.dataset.id }); break;
       case 'thumb-page-create': bridge.send({ type: 'createThumbnailPage' }); break;
       case 'data-refresh': bridge.send({ type: 'refreshData' }); break;

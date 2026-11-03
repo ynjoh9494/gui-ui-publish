@@ -609,6 +609,16 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .recovery-status { grid-column: 1 / -1; grid-row: 2; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); background: var(--bg2); }
 .recovery-status button { flex: none; }
 .recovery-status[hidden] { display: none; }
+.recovery-status { flex-wrap: wrap; }
+.recovery-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; color: var(--text); font: inherit; text-align: left; }
+.recovery-toggle .category-chevron { width: 10px; text-align: center; color: var(--muted); }
+.recovery-list { flex: 1 0 100%; max-height: 160px; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.admin .recovery-list { max-height: 240px; margin: 4px 0; }
+.recovery-item { display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 2px 0; }
+.recovery-kind { flex: none; width: 36px; color: var(--muted); }
+.recovery-name { flex: 0 1 auto; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recovery-count { color: var(--muted); }
+.recovery-reason { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 #app.has-recovery, .tutorial-app.has-recovery { grid-template-rows: auto auto auto minmax(0, 1fr) auto; }
 .has-recovery > .tabs { grid-row: 1; }
 .has-recovery > .toolbar { grid-row: 3; }

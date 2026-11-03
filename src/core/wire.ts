@@ -155,7 +155,7 @@ export type ToMain =
   | { type: 'thumbnails'; hashes: string[] }
   | { type: 'commit'; batchId: string; quiet?: boolean }
   | { type: 'cancelPlan'; batchId: string }
-  | { type: 'retry'; batchId?: string }
+  | { type: 'retry'; batchId?: string; reconcile?: boolean }
   | { type: 'refreshData' }
   | { type: 'createThumbnailPage' }
   // 플러그인 데이터 전체 초기화(관리 탭 Danger Zone)

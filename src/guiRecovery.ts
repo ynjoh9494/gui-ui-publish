@@ -1,5 +1,5 @@
 import { COPY } from './core/copy.ts';
-import { queueGuiDelivery, restoreGuiWrite, retryableDeliveries, setGuiDeliveryState } from './core/guiDelivery.ts';
+import { queueGuiDelivery, RECONCILE_PREFIX, restoreGuiWrite, retryableDeliveries, setGuiDeliveryState } from './core/guiDelivery.ts';
 import { keys, lastGui, type Store } from './core/store.ts';
 import type { Delivery, Batch } from './core/types.ts';
 import type { Host } from './host.ts';
@@ -9,7 +9,14 @@ import type { FlowController } from './flowController.ts';
 interface RecoveryActions {
   pull(batchId: string, targets: string[], uids: Set<string>): Promise<{ message: string; failed: boolean; failedTargets?: string[] } | null>;
   data(): Promise<boolean>;
+  progress?(label: string): Promise<void>;
 }
+
+// verify: 저장된 작업을 반영하기 전에 GUI 원본이 배포 때 그대로인지 확인한다(미반영 재시도).
+// reconcile: 남은 GUI 작업이 없을 때 쓰이는 화면 전체를 다시 맞춘다(관리의 재시도에서 대기 0건일 때만).
+export interface RecoveryOptions { verify?: boolean; reconcile?: boolean }
+// blocked: 이번에 반영하지 못한 화면. 이 화면이 든 플립북은 미반영 재시도의 플립북 단계에서도 반영하지 않는다.
+export interface RecoveryResult { message: string; failed: boolean; blocked: Set<string> }
 
 // 저장된 작업은 화면별로 검증하고, 검증된 화면만 한 번에 반영한다.
 // 하나의 원본이나 플립북이 막혀도 무관한 화면의 완료 상태는 보존한다.
@@ -23,24 +30,43 @@ export class GuiRecovery {
     this.store = store; this.host = host; this.tracks = tracks; this.flows = flows; this.actions = actions;
   }
 
-  async run(batchId?: string, discover = false): Promise<{ message: string; failed: boolean }> {
+  async run(batchId?: string, options: RecoveryOptions = {}): Promise<RecoveryResult> {
     const s = this.store;
     s.reload();
+    const reader = this.host.createFingerprintReader?.() ?? this.host;
+    const step = (label: string) => this.actions.progress?.(label) ?? Promise.resolve();
+    // 원본이 배포 때와 같은지 읽는다. 읽지 못하면 오류를 던진다.
+    const sourceMatches = async (uid: string): Promise<boolean> => {
+      const screen = s.state.screens.get(uid), source = screen?.source, record = lastGui(s.state, uid);
+      if (!source || !record?.fingerprint) return false;
+      const legacy = (record.fpVersion ?? 1) === 1;
+      const fresh = await reader.fingerprint(source.nodeId, legacy);
+      return (legacy ? fresh.legacyFingerprint : fresh.fingerprint) === record.fingerprint;
+    };
     let jobs = retryableDeliveries(s.state).filter(d => d.kind === 'gui' && (!batchId || d.batchId === batchId));
-    if (!jobs.length && discover) {
-      const id = `reconcile:${s.newId()}`;
-      const referenced = new Set([
+    // 전체 점검에서 원본을 이미 확인한 화면. 아래 확인에서 다시 읽지 않는다.
+    const verified = new Set<string>();
+    if (!jobs.length && options.reconcile) {
+      const id = `${RECONCILE_PREFIX}${s.newId()}`;
+      const referenced = [...new Set([
         ...[...s.state.tracks.values()].map(t => t.uid),
         ...[...s.state.flipbooks.values()].filter(f => f.status === 'active').flatMap(f => f.screens.map(screen => screen.uid)),
         ...[...s.state.flows.values()].flatMap(f => f.uids),
-      ]);
-      for (const uid of referenced) {
+      ])];
+      for (const [i, uid] of referenced.entries()) {
         const screen = s.state.screens.get(uid), record = lastGui(s.state, uid);
-        if (screen && record) queueGuiDelivery(s, id, screen, screen, record);
+        if (!screen || !record) continue;
+        if (screen.status === 'active') {
+          // 배포 뒤 원본을 고친 화면은 다음 배포를 기다리는 정상 상태다. 맞출 대상에 넣지 않고 미완료로도 남기지 않는다.
+          await step(`${COPY.recoveryChecking} ${i + 1}/${referenced.length}`);
+          if (!await sourceMatches(uid).catch(() => false)) continue;
+          verified.add(uid);
+        }
+        queueGuiDelivery(s, id, screen, screen, record);
       }
       jobs = retryableDeliveries(s.state).filter(d => d.kind === 'gui');
     }
-    if (!jobs.length) return { message: '', failed: false };
+    if (!jobs.length) return { message: '', failed: false, blocked: new Set() };
     const byUid = new Map<string, Delivery[]>();
     for (const job of jobs) byUid.set(job.targetId, [...byUid.get(job.targetId) ?? [], job]);
     const notes: string[] = [], failures = new Set<string>(), changed = new Set<string>();
@@ -74,17 +100,13 @@ export class GuiRecovery {
       s.put(keys.batch(id), { id, team: 'GUI', actor: record.actor, committedAt: record.committedAt, items } satisfies Batch);
     }
     const ids = new Set(byUid.keys());
-    const reader = this.host.createFingerprintReader?.() ?? this.host;
-    if (discover) for (const uid of ids) {
-      if (blocked.has(uid) || s.state.screens.get(uid)?.status !== 'active') continue;
-      try {
-        const screen = s.state.screens.get(uid)!, source = screen.source, record = lastGui(s.state, uid);
-        if (!source || !record?.fingerprint) { reject(uid, COPY.recoverySourceChanged, true); continue; }
-        const legacy = (record.fpVersion ?? 1) === 1;
-        const fresh = await reader.fingerprint(source.nodeId, legacy);
-        if ((legacy ? fresh.legacyFingerprint : fresh.fingerprint) !== record.fingerprint)
-          reject(uid, COPY.recoverySourceChanged, true);
-      } catch (error) { reject(uid, error instanceof Error ? error.message : String(error)); }
+    if (options.verify) {
+      const unchecked = [...ids].filter(uid => !blocked.has(uid) && !verified.has(uid) && s.state.screens.get(uid)?.status === 'active');
+      for (const [i, uid] of unchecked.entries()) {
+        await step(`${COPY.recoveryChecking} ${i + 1}/${unchecked.length}`);
+        try { if (!await sourceMatches(uid)) reject(uid, COPY.recoverySourceChanged, true); }
+        catch (error) { reject(uid, error instanceof Error ? error.message : String(error)); }
+      }
     }
     const eligible = () => new Set([...ids].filter(uid => !blocked.has(uid)));
     let uids = new Set([...eligible()].filter(uid => s.state.screens.get(uid)?.status === 'active'));
@@ -117,8 +139,10 @@ export class GuiRecovery {
       return null;
     });
     uids = new Set([...uids].filter(uid => !blocked.has(uid)));
+    if (uids.size) await step(COPY.recoveryCopies);
     await apply(uids, targets => this.tracks.publish(targets));
     uids = new Set([...uids].filter(uid => !blocked.has(uid)));
+    if (uids.size && s.state.flows.size) await step(COPY.recoveryFlows);
     await apply(uids, targets => this.flows.update(targets, true));
     uids = new Set([...uids].filter(uid => !blocked.has(uid)));
     const safe = eligible();
@@ -139,6 +163,6 @@ export class GuiRecovery {
     }
     const reasons = [...(changed.size ? [`${COPY.recoverySourceChanged} (${[...changed].join(', ')})`] : []), ...failures];
     const pending = reasons.length ? `${COPY.recoveryPending} ${reasons.join(' ')}` : '';
-    return { message: [pending, ...new Set(notes)].filter(Boolean).join(' '), failed };
+    return { message: [pending, ...new Set(notes)].filter(Boolean).join(' '), failed, blocked };
   }
 }

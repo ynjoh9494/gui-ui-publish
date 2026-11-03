@@ -4,7 +4,7 @@ import { Controller } from '../src/controller.ts';
 import { classify } from '../src/core/compare.ts';
 import { COPY } from '../src/core/copy.ts';
 import { defaultDraft } from '../src/core/drafts.ts';
-import { queueGuiDelivery, restoreGuiWrite, retryableDeliveries } from '../src/core/guiDelivery.ts';
+import { pendingRows, queueGuiDelivery, restoreGuiWrite, retryableDeliveries } from '../src/core/guiDelivery.ts';
 import { buildPlan, commitPlan } from '../src/core/publish.ts';
 import { keys, memoryKV, Store } from '../src/core/store.ts';
 import type { Delivery, Flipbook, GuiRecord, Screen } from '../src/core/types.ts';
@@ -194,4 +194,92 @@ test('같은 화면의 과거 복구 기록 여럿은 원본·복사본·플립�
   assert.equal(retryableDeliveries(f.store.state).length, 0);
   assert.equal(fingerprints, 1);
   assert.deepEqual(f.counts(), { copies: 1, syncs: 1 });
+});
+
+test('상단 배너의 재시도는 남은 작업이 없으면 화면 전체를 다시 맞추지 않는다', async () => {
+  const f = fixture(false);
+  let fingerprints = 0;
+  f.host.fingerprint = async () => { fingerprints++; return { fingerprint: 'fp1', error: null }; };
+  await new Controller(f.host).handle({ type: 'retry' });
+  f.store.reload();
+  assert.equal(fingerprints, 0);
+  assert.equal(f.store.state.deliveries.size, 0);
+  assert.deepEqual(f.counts(), { copies: 0, syncs: 0 });
+  assert.equal((f.posted.filter(m => m.type === 'notice').pop() as { message: string }).message, COPY.controller007);
+});
+
+test('관리의 전체 점검은 배포 뒤 원본을 고친 화면을 미완료로 남기지 않는다', async () => {
+  const f = fixture(false);
+  const other: Screen = { ...f.before, id: 's2', code: 'STB_HO_002', source: { nodeId: 'source2', pageId: 'gui' } };
+  f.store.put(keys.screen('s2'), other);
+  f.store.put(keys.gui('s2', 1), { ...f.record, screenId: 's2', version: 1, batchId: 'b1', code: other.code, fingerprint: 'fp-s2' });
+  f.store.put(keys.track('t2'), { id: 't2', uid: 's2', nodeId: 'copy2', pageId: 'ui', createdAt: 10, actor });
+  // s1은 배포(fp1) 뒤 원본을 고쳤고 s2는 배포 때 그대로다.
+  f.host.fingerprint = async id => ({ fingerprint: id === 'source2' ? 'fp-s2' : 'next version', error: null });
+  await new Controller(f.host).handle({ type: 'retry', reconcile: true });
+  f.store.reload();
+  const gui = [...f.store.state.deliveries.values()].filter(d => d.kind === 'gui');
+  assert.deepEqual(gui.map(d => [d.targetId, d.state]), [['s2', 'done']]);
+  assert.equal(retryableDeliveries(f.store.state).length, 0);
+  assert.ok(!(f.posted.filter(m => m.type === 'error').pop() as { message: string } | undefined)?.message.includes(COPY.recoverySourceChanged));
+});
+
+test('남은 작업이 있으면 관리에서 눌러도 전체 점검 없이 그 작업만 반영한다', async () => {
+  const f = fixture();
+  const other: Screen = { ...f.before, id: 's2', code: 'STB_HO_002', source: { nodeId: 'source2', pageId: 'gui' } };
+  f.store.put(keys.screen('s2'), other);
+  f.store.put(keys.gui('s2', 1), { ...f.record, screenId: 's2', version: 1, batchId: 'b1', code: other.code, fingerprint: 'fp-s2' });
+  f.store.put(keys.track('t2'), { id: 't2', uid: 's2', nodeId: 'copy2', pageId: 'ui', createdAt: 10, actor });
+  const fingerprinted: string[] = [];
+  f.host.fingerprint = async id => { fingerprinted.push(id); return { fingerprint: 'fp2', error: null }; };
+  await new Controller(f.host).handle({ type: 'retry', reconcile: true });
+  f.store.reload();
+  assert.deepEqual(fingerprinted, ['source']);
+  assert.ok(![...f.store.state.deliveries.keys()].some(key => key.includes('reconcile:')));
+});
+
+test('이전 전체 점검이 남긴 원본 변경 실패는 건수·재시도 대상에서 빼고 원기록은 보존한다', () => {
+  const f = fixture(false);
+  f.store.put(keys.guiDelivery('reconcile:old', 's1'), { batchId: 'reconcile:old', kind: 'gui', targetId: 's1', team: 'GUI', version: 1, state: 'failed', error: COPY.recoverySourceChanged, updatedAt: 0 } satisfies Delivery);
+  f.store.put(keys.guiDelivery('reconcile:old', 's9'), { batchId: 'reconcile:old', kind: 'gui', targetId: 's9', team: 'GUI', version: 1, state: 'failed', error: 'copy failed', updatedAt: 0 } satisfies Delivery);
+  f.store.put(keys.guiDelivery('b2', 's1'), { batchId: 'b2', kind: 'gui', targetId: 's1', team: 'GUI', version: 2, state: 'failed', error: COPY.recoverySourceChanged, updatedAt: 0 } satisfies Delivery);
+  assert.deepEqual(retryableDeliveries(f.store.state).map(d => `${d.batchId}:${d.targetId}`).sort(), ['b2:s1', 'reconcile:old:s9']);
+  assert.equal(f.store.state.deliveries.size, 3);
+});
+
+test('원본이 바뀐 화면이 없는 대기 플립북은 다른 화면의 실패와 상관없이 반영한다', async () => {
+  const f = fixture(); f.changeSource();
+  const fb = f.store.state.flipbooks.get('fb')!;
+  const other: Screen = { ...f.before, id: 's2', code: 'STB_HO_002', source: { nodeId: 'source2', pageId: 'gui' } };
+  f.store.put(keys.screen('s2'), other);
+  f.store.put(keys.flipbook('other'), { ...fb, id: 'other', title: 'Other', screens: [{ uid: 's2', code: other.code, name: 'Other', version: 1 }] });
+  for (const id of ['fb', 'other']) f.store.put(keys.delivery('old', id), { batchId: 'old', kind: 'flipbook', targetId: id, team: 'UI', version: 1, state: 'failed', error: null, updatedAt: 0 } satisfies Delivery);
+  const synced: string[] = [];
+  f.host.syncFlipbook = async (_settings, view) => { synced.push(view.flipbookId); return { nodeId: 'frame', notes: [], tracked: true }; };
+  await new Controller(f.host).handle({ type: 'retry' });
+  f.store.reload();
+  assert.deepEqual(synced, ['other']);
+  assert.equal(f.store.state.deliveries.get(keys.delivery('old', 'other'))?.state, 'done');
+  assert.equal(f.store.state.deliveries.get(keys.delivery('old', 'fb'))?.state, 'failed');
+  const message = (f.posted.filter(m => m.type === 'error').pop() as { message: string }).message;
+  assert.ok(message.includes(`${COPY.recoveryFlipbooksHeld} (Home)`));
+});
+
+test('미반영 재시도는 원본 확인 개수와 단계를 진행 표시로 알린다', async () => {
+  const f = fixture();
+  await new Controller(f.host).handle({ type: 'retry' });
+  const labels = f.posted.filter(m => m.type === 'busy').map(m => (m as { label: string | null }).label);
+  assert.equal(labels[0], COPY.recoveryRunning);
+  for (const label of [`${COPY.recoveryChecking} 1/1`, COPY.recoveryCopies, COPY.recoveryFlows, COPY.controller005]) assert.ok(labels.includes(label), label);
+});
+
+test('미완료 목록은 같은 대상의 기록을 한 줄로 묶고 최근 상태를 이유로 쓴다', () => {
+  const f = fixture(false);
+  f.store.put(keys.guiDelivery('a', 's1'), { batchId: 'a', kind: 'gui', targetId: 's1', team: 'GUI', version: 1, state: 'applying', error: null, updatedAt: 1 } satisfies Delivery);
+  f.store.put(keys.guiDelivery('b', 's1'), { batchId: 'b', kind: 'gui', targetId: 's1', team: 'GUI', version: 1, state: 'failed', error: 'boom', updatedAt: 2 } satisfies Delivery);
+  f.store.put(keys.delivery('c', 'fb'), { batchId: 'c', kind: 'flipbook', targetId: 'fb', team: 'GUI', version: 1, state: 'pending', error: null, updatedAt: 0 } satisfies Delivery);
+  assert.deepEqual(pendingRows(f.store.state), [
+    { key: 'flipbook:fb', kind: 'flipbook', name: 'Home', reason: COPY.recoveryStoppedBefore, count: 1 },
+    { key: 'gui:s1', kind: 'gui', name: 'STB_HO_001 Home', reason: 'boom', count: 2 },
+  ]);
 });
