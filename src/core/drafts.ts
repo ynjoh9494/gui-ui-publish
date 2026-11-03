@@ -17,7 +17,8 @@ export interface Draft {
   // GUI 신규 후보: 새 화면으로 등록할지 기존 화면을 교체할지. 원본이 있는 배포 화면도 'replace'로 다른 화면을 교체할 수 있다.
   link?: 'new' | 'replace';
   replaceScreenId?: string;
-  // GUI 원본이 사라진 화면(삭제): 사용 안 함으로 기록할지 다른 프레임으로 교체할지
+  // GUI 원본이 사라진 화면(삭제): 사용 안 함으로 기록할지 다른 프레임으로 교체할지.
+  // 'replace'는 원본이 있는 배포 화면에서도 쓴다: 화면 바꾸기의 「아니요, 구 버전입니다」(2026-11-03 사용자 요청).
   retire?: 'delete' | 'replace';
   // 교체 짝의 이전 화면 쪽. 이 화면을 교체하는 신규 후보의 항목 키. 이전 화면에는 정보를 입력하지 않는다.
   replacedBy?: string;
@@ -80,6 +81,15 @@ export function isDeletion(entry: Entry, draft: Draft): boolean {
 // 교체 짝의 이전 화면인가. 이전 화면은 기록을 만들지 않고 짝인 신규 후보가 그 화면의 새 버전이 된다.
 export function isPrevious(entry: Entry, draft: Draft): boolean {
   return entry.screenId !== null && !!draft.replacedBy && (entry.estimate !== 'missing' || draft.retire === 'replace');
+}
+
+// 화면 바꾸기의 구 버전 쪽을 골랐는가: 원본이 없는 화면의 교체와 원본이 있는 배포 화면의 「아니요, 구 버전입니다」.
+// 새 화면을 아직 고르지 않았어도 참이다. 고르면 isPrevious도 참이 된다.
+export function isOldSide(entry: Entry, draft: Draft): boolean {
+  if (entry.screenId === null) return false;
+  if (entry.estimate === 'missing') return draft.retire === 'replace';
+  if (!entry.frame || entry.estimate === 'retired' || draft.notScreen || draft.unpublish || draft.link === 'replace') return false;
+  return draft.retire === 'replace' || !!draft.replacedBy;
 }
 
 // 원본이 있는 배포 화면으로 다른 화면을 교체하는가(2026-10-27 사용자 요청: 잘못 신규로 배포한 화면 바로잡기).
@@ -213,7 +223,7 @@ export function autoCode(state: State, entry: Entry, draft: Draft, reserved: Ite
 // 자동으로 채울 ID인가: 비어 있거나 자동으로 채운 값. 신규 등록은 입력 전(undefined)도 빈 값이고, 배포 화면·교체는 입력 전이면
 // 저장된 ID·교체할 화면의 ID를 쓰므로 사용자가 비웠을 때('')부터 채운다. 직접 입력한 ID·프레임 이름의 대괄호 ID는 유지한다.
 export function codeIsAuto(entry: Entry, draft: Draft): boolean {
-  if (draft.notScreen || draft.unpublish || isDeletion(entry, draft) || isPrevious(entry, draft) || entry.estimate === 'retired') return false;
+  if (draft.notScreen || draft.unpublish || isDeletion(entry, draft) || isOldSide(entry, draft) || entry.estimate === 'retired') return false;
   if (!isNewRegistration('GUI', entry, draft) && draft.code === undefined) return false;
   return !draft.code?.trim() || draft.code === draft.autoCode;
 }
@@ -323,7 +333,7 @@ export function validateDraft(team: Team, state: State, entry: Entry, draft: Dra
     const ok = partner?.included && partner.link === 'replace' && partner.replaceScreenId === entry.key;
     return ok ? { status: 'ready', missing: [], errors: [] } : { status: 'invalid', missing: [], errors: [COPY.coreDrafts032] };
   }
-  if (team === 'GUI' && entry.estimate === 'missing' && draft.retire === 'replace')
+  if (team === 'GUI' && isOldSide(entry, draft))
     return { status: 'invalid', missing: [COPY.coreDrafts031], errors: [] };
   const missing: string[] = [];
   const errors: string[] = [];

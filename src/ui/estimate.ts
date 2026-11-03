@@ -1,6 +1,6 @@
 import { COPY, GUI_STATE_HINT, GUI_STATE_LABEL, UI_STATE_HINT, UI_STATE_LABEL, type GuiState, type UiListState } from '../core/copy.ts';
 import { changeDetected, ignoreBlock, UI_ESTIMATE_LABEL, type Entry, type Estimate } from '../core/compare.ts';
-import { isNotScreen, isPrevious, isUnpublish, mergesInto, type Draft } from '../core/drafts.ts';
+import { isNotScreen, isOldSide, isPrevious, isUnpublish, mergesInto, type Draft } from '../core/drafts.ts';
 import type { State } from '../core/store.ts';
 import { esc } from './html.ts';
 
@@ -40,8 +40,8 @@ export function guiState(entry: Entry, draft: Draft | undefined): GuiState {
     if (isNotScreen(entry, draft)) return 'not-screen';
     if (isUnpublish(entry, draft)) return 'unpublished';
     if (mergesInto(entry, draft)) return 'replaced';
-    if (isPrevious(entry, draft)) return 'previous';
-    if (entry.estimate === 'missing') return draft.retire === 'replace' ? 'previous' : 'deleted';
+    if (isPrevious(entry, draft) || isOldSide(entry, draft)) return 'previous';
+    if (entry.estimate === 'missing') return 'deleted';
     return 'modified';
   }
   if (!entry.screenId) return 'detected-new';

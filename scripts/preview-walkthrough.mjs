@@ -974,8 +974,14 @@ try {
   const rowByKey = async (text, registered) => app.locator(`.row[data-key="${await app.locator(registered ? '.row:has(.id-tag)' : '.row:not(:has(.id-tag))').filter({ hasText: text }).first().getAttribute('data-key')}"]`);
   const candidate = await rowByKey('홈 메인', false);
   const target = await rowByKey(initialName, true);
-  const targetKey = await target.getAttribute('data-key');
-  const rowGone = key => page.waitForFunction(k => !document.querySelector(`#app .row[data-key="${k}"]`), key);
+  // 교체 짝의 이전 화면은 숨기지 않고 새 버전 바로 아래에 「이전 버전」으로 남는다(2026-11-03 사용자 요청).
+  const previousUnder = async (lead, prev) => {
+    const keys = [await lead.getAttribute('data-key'), await prev.getAttribute('data-key')];
+    await page.waitForFunction(([l, p]) => {
+      const next = document.querySelector(`#app .row[data-key="${l}"]`)?.nextElementSibling;
+      return next?.getAttribute('data-key') === p && next.classList.contains('previous') && !!next.querySelector('.estimate-icon')?.getAttribute('title')?.startsWith('이전 버전');
+    }, keys);
+  };
   await candidate.click();
   await candidate.locator('[data-action=include]').check();
   assert.equal(await app.locator('[data-field=code]').inputValue(), '', 'new Screen ID starts empty');
@@ -1009,8 +1015,11 @@ try {
     await page.waitForFunction(([k, l]) => document.querySelector(`#app .row[data-key="${k}"] .estimate-icon`)?.getAttribute('title')?.startsWith(l), [key, label]);
   };
   await stateIs(candidate, '화면 교체됨');
-  // 교체 짝이 정해진 이전 화면은 목록에서 빠지고, 그 자리에 교체하는 화면이 이전 화면의 Screen ID로 보인다(2026-11-02 사용자 요청).
-  await rowGone(targetKey);
+  // 교체하는 화면은 이전 화면의 Screen ID로 보이고, 이전 화면은 그 바로 아래에 취소선으로 남는다.
+  await previousUnder(candidate, target);
+  // 신규 후보는 이어받을 히스토리가 없으므로 「아니요, 구 버전입니다」를 고를 수 없다(2026-11-03 사용자 결정).
+  assert.equal(await app.locator('[data-action=replace-side][data-side=new]').getAttribute('aria-pressed'), 'true', 'a new frame is the new version');
+  assert.equal(await app.locator('[data-action=replace-side][data-side=old]').isDisabled(), true, 'a new frame cannot be the old version');
   assert.equal(await candidate.locator('.id-tag').innerText(), 'STB_HO_001', 'the replacing frame takes the replaced screen ID');
   await shot('09-replace-pair');
   await candidate.locator('[data-action=include]').uncheck();
@@ -1071,7 +1080,6 @@ try {
     if (await head.getAttribute('aria-expanded') === 'false') await head.click();
   const rowOf = async code => app.locator(`.row[data-key="${await app.locator('.row:has(.id-tag)').filter({ hasText: code }).first().getAttribute('data-key')}"]`);
   const keep = await rowOf('STB_HO_002');
-  const keepRowKey = await keep.getAttribute('data-key');
   const wrong = await rowOf('STB_HO_003');
   await wrong.click();
   await wrong.locator('[data-action=include]').check();
@@ -1081,16 +1089,27 @@ try {
   assert.equal(await app.locator('.screen-picker [data-action=pick]').filter({ hasText: 'STB_HO_003' }).count(), 0, 'a screen cannot replace itself');
   await app.locator('.screen-picker [data-action=pick]').filter({ hasText: 'STB_HO_002' }).click();
   await stateIs(wrong, '화면 교체됨');
-  await rowGone(keepRowKey);
+  await previousUnder(wrong, keep);
   assert.equal(await wrong.locator('.id-tag').innerText(), 'STB_HO_002', 'the list shows the replacing screen in the replaced place');
   assert.equal(await app.locator('[data-field=code]').inputValue(), 'STB_HO_002', 'the replaced screen ID is filled');
   assert.equal(await app.locator('.detail [data-field=relation]').count(), 0, 'a replacement keeps the relation');
   await shot('11b-replace-with-published');
-  // 배포를 끄면 짝이 함께 풀리고, 다시 켜면 고른 화면과 다시 짝이 된다.
+  // 배포를 끄면 짝이 함께 풀린다. 같은 짝을 이전 화면 쪽에서 「아니요, 구 버전입니다」로 다시 맺는다(2026-11-03 사용자 요청).
   await wrong.locator('[data-action=include]').uncheck();
   await stateIs(keep, '변경사항 없음');
-  await wrong.locator('[data-action=include]').check();
-  await rowGone(keepRowKey);
+  await keep.click();
+  await keep.locator('[data-action=include]').check();
+  await app.locator('[data-field=disposition][value=replace]').check();
+  assert.equal(await app.locator('[data-action=replace-side][data-side=new]').getAttribute('aria-pressed'), 'true', '화면 바꾸기 starts on the new-version side');
+  await app.locator('[data-action=replace-side][data-side=old]').click();
+  await app.locator('.screen-picker summary').click();
+  await app.locator('.screen-picker [data-action=pick]').filter({ hasText: 'STB_HO_003' }).click();
+  await stateIs(wrong, '화면 교체됨');
+  await previousUnder(wrong, keep);
+  assert.equal(await app.locator('[data-action=replace-side][data-side=old]').getAttribute('aria-pressed'), 'true', 'the old screen shows the old-version side');
+  assert.equal(await app.locator('.detail [data-field=code]').count(), 0, 'the old screen has no inputs');
+  await shot('11b1-replace-old-side');
+  await wrong.click();
   // 교체는 신규 후보의 교체처럼 태그를 고른다.
   await app.locator('.tag-picker summary[aria-label="태그 선택"]').click();
   await app.locator('.tag-options [data-action=select-tag]').filter({ hasText: '검토' }).click();
@@ -1106,10 +1125,9 @@ try {
   await stateIs(replaced, '변경사항 없음');
 
   // 다른 파일에서 붙여 넣은 프레임(표식 없음)이 배포 화면과 같으면 그 화면의 교체를 기본값으로 고르고,
-  // 드롭다운 맨 위에 노란 「제안」 태그를 붙인다. 짝이 정해지면 그 화면 자리에 붙여 넣은 프레임이 보이고,
+  // 드롭다운 맨 위에 「제안」 태그를 붙인다(안내 문구는 없다). 짝이 정해지면 그 화면 자리에 붙여 넣은 프레임이 보이고,
   // 변경 사항은 교체할 화면의 지난 배포와 비교한다(2026-11-02 사용자 요청).
   {
-    const replacedKey = await replaced.getAttribute('data-key');
     await page.locator(`#tools [data-paste="${wrongKey.replace(/^node:/, '')}"]`).click();
     await scan();
     for (const head of await app.locator('.group-head').all())
@@ -1117,14 +1135,14 @@ try {
     const pastedKey = await app.locator('.row:not(:has(.id-tag))').filter({ hasText: '붙여 넣은 화면 1' }).first().getAttribute('data-key');
     const pasted = app.locator(`.row[data-key="${pastedKey}"]`);
     await pasted.click();
-    assert.ok((await app.locator('.detail .note').allInnerTexts()).some(text => text.includes('STB_HO_002')), 'the suggestion is explained');
+    assert.ok(!(await app.locator('.detail .note').allInnerTexts()).some(text => text.includes('STB_HO_002')), 'the suggestion is shown by the 제안 tag only, not a note');
     await page.waitForFunction(() => document.querySelector('#app .detail .change-reason')?.textContent?.includes('교체할 화면의 지난 배포와 같습니다'));
     await pasted.locator('[data-action=include]').check();
-    assert.equal(await app.locator('[data-field=disposition][value=replace]').isChecked(), true, 'a pasted copy of a published screen defaults to 기존 화면 교체');
+    assert.equal(await app.locator('[data-field=disposition][value=replace]').isChecked(), true, 'a pasted copy of a published screen defaults to 화면 바꾸기');
     assert.equal(await app.locator('[data-field=code]').inputValue(), 'STB_HO_002', 'the replaced screen ID is filled');
     assert.equal(await app.locator('.screen-picker summary .suggest-tag').count(), 1, 'the suggested screen carries the 제안 tag');
     await stateIs(pasted, '화면 교체됨');
-    await rowGone(replacedKey);
+    await previousUnder(pasted, replaced);
     assert.equal(await pasted.locator('.id-tag').innerText(), 'STB_HO_002', 'the pasted frame sits in the replaced place');
     await app.locator('.screen-picker summary').click();
     const suggestedOption = app.locator('.screen-picker [data-action=pick]').first();

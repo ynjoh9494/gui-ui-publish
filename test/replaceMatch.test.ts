@@ -61,11 +61,11 @@ test('붙여 넣은 프레임이 지난 배포와 같거나 남아 있는 원본
   }));
   const pasted = entries.get('node:9:1')!, edited = entries.get('node:9:2')!, fresh = entries.get('node:9:3')!;
   assert.deepEqual([pasted.pairKey, edited.pairKey, fresh.pairKey], ['a', 'b', null]);
-  // 원본을 찾지 못한 화면은 서로 짝을 가리키고, 원본이 남아 있는 화면은 등록 방식을 바꾸지 않아 안내만 붙인다.
+  // 원본을 찾지 못한 화면은 서로 짝을 가리키고, 원본이 남아 있는 화면은 등록 방식을 바꾸지 않는다.
+  // 제안은 드롭다운의 「제안」 태그로만 알리고 안내 문구를 붙이지 않는다(2026-11-03 사용자 요청).
   assert.equal(entries.get('a')!.pairKey, 'node:9:1');
   assert.equal(entries.get('b')!.pairKey, null);
-  assert.ok(entries.get('b')!.notes.some(n => n.includes('Frame 9:2') && n.includes('%')));
-  assert.ok(pasted.notes.some(n => n.includes('STB_HO_001') && !n.includes('%')));
+  assert.deepEqual([entries.get('b')!.notes, pasted.notes, edited.notes], [[], [], []]);
 
   const draft = defaultDraft('GUI', store.state, edited);
   assert.deepEqual([draft.link, draft.replaceScreenId, draft.code], ['replace', 'b', 'STB_HO_002']);

@@ -156,24 +156,20 @@ export function suggestReplacements(state: State, entries: Entry[], tokens: Map<
 }
 
 // 찾은 짝을 목록 항목에 넣는다. 교체하는 항목의 pairKey는 교체될 화면 ID, 원본을 찾지 못한 화면의 pairKey는 교체하는 항목 키다
-// (잘라내 붙인 프레임의 짝과 같은 뜻). 원본이 남아 있는 화면은 그 화면의 등록 방식을 바꾸지 않으므로 안내만 붙인다.
+// (잘라내 붙인 프레임의 짝과 같은 뜻). 원본이 남아 있는 화면은 pairKey를 두지 않고, 그 화면의 새 화면 드롭다운이 교체하는 항목을 제안으로 보여 준다.
+// 제안은 드롭다운의 「제안」 태그로만 알리고 안내 문구는 붙이지 않는다(2026-11-03 사용자 요청).
 // 제안을 만든 뒤 배포 확정·다시 확인으로 항목이 바뀌었으면 맞지 않는 제안은 버린다.
 export function applyReplaceSuggestions(state: State, entries: Entry[], suggestions: ReplaceSuggestion[]): void {
   if (!suggestions.length) return;
   const byKey = new Map(entries.map(e => [e.key, e]));
   const byScreen = new Map(entries.filter(e => e.screenId).map(e => [e.screenId!, e]));
   const active = (e: Entry) => !!e.screenId && state.screens.get(e.screenId)?.status === 'active';
-  const percent = (s: ReplaceSuggestion) => (s.same ? '' : ` (${COPY.uiApp254} ${Math.round(s.score * 100)}%)`);
   for (const s of suggestions) {
     const from = byKey.get(s.key), to = byScreen.get(s.screenId);
     if (!from?.frame || !to || from === to || from.pairKey || !active(to)) continue;
     if (from.screenId && (!active(from) || from.estimate === 'missing')) continue;
     if (to.estimate === 'missing' ? to.pairKey : from.screenId) continue;
-    const screen = state.screens.get(s.screenId)!;
     from.pairKey = s.screenId;
-    from.notes.push(`${s.same ? COPY.coreCompare004 : COPY.coreCompare005} ${screen.code} ${screen.name}${percent(s)}`);
     if (to.estimate === 'missing') to.pairKey = from.key;
-    const partner = from.screenId ? state.screens.get(from.screenId)! : null;
-    to.notes.push(`${COPY.coreCompare006} ${partner ? `${partner.code} ${partner.name}` : from.frame.name}${percent(s)}`);
   }
 }

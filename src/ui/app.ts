@@ -15,7 +15,7 @@ import type { ChangeReason } from '../core/changeDigest.ts';
 import { esc } from './html.ts';
 import { NODE_PREVIEW, PreviewCache } from './previewCache.ts';
 import { retryableDeliveries } from '../core/guiDelivery.ts';
-import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScreen, isDeletion, isPrevious, isUnpublish, mergesInto, needsLink, OPTIONAL_FIELDS, pendingScreens, renumberAutoCodes, replaceTarget, STATUS_LABEL, validateDraft, type Draft, type DraftIndex, type InputStatus, type Validation } from '../core/drafts.ts';
+import { clearFill, defaultDraft, draftCode, draftIndex, draftName, fillFromScreen, isDeletion, isOldSide, isPrevious, isUnpublish, mergesInto, needsLink, OPTIONAL_FIELDS, pendingScreens, renumberAutoCodes, replaceTarget, STATUS_LABEL, validateDraft, type Draft, type DraftIndex, type InputStatus, type Validation } from '../core/drafts.ts';
 import { formatTime, type HistoryRow } from '../core/history.ts';
 import { arrangeFlipbooks, buildList, guiGroupKey, placeDrafts, savedGuiDisplay, savedGuiPlace, UNCATEGORIZED, type ArrangedGroup, type GuiPlace, type ListModel } from '../core/list.ts';
 import { emptyComment, type BatchComment, type Plan } from '../core/publish.ts';
@@ -444,7 +444,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   // 왼쪽 목록에 반영할 입력값. 배포를 켠 화면만 쓴다(배포를 끄면 입력 영역이 숨고 배포에도 쓰이지 않는다).
   function shownDraft(entry: Entry): Draft | null {
     const draft = drafts.GUI[entry.key];
-    return draft?.included && !draft.notScreen && !isUnpublish(entry, draft) && !isDeletion(entry, draft) && !isPrevious(entry, draft) ? draft : null;
+    return draft?.included && !draft.notScreen && !isUnpublish(entry, draft) && !isDeletion(entry, draft) && !isOldSide(entry, draft) ? draft : null;
   }
 
   // GUI 목록에 보이는 이름·Screen ID. 배포 전이라도 배포할 값(draftName·draftCode)을 쓴다. 화면 선택 드롭다운도 같은 값을 쓴다.
@@ -455,10 +455,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     return { name: draftName(state!, entry, draft) || saved.name, code: entry.screenId || replaceTarget(entry, draft) ? draftCode(state!, entry, draft) : '' };
   }
 
-  // 교체 짝이 정해진 이전 화면은 목록에서 뺀다. 교체하는 화면의 배포를 끄면 다시 보인다.
-  function hiddenPrevious(entry: Entry): boolean {
+  // 교체 짝이 정해진 이전 화면은 숨기지 않고 새 버전 바로 아래에 둔다(2026-11-03 사용자 요청). 새 버전이 이 화면을 가리킬 때만 따라간다.
+  function previousOf(entry: Entry): string | null {
     const draft = drafts.GUI[entry.key];
-    return !!draft?.included && isPrevious(entry, draft);
+    if (!draft?.included || !isPrevious(entry, draft)) return null;
+    const lead = drafts.GUI[draft.replacedBy!];
+    return lead?.included && lead.replaceScreenId === entry.key ? draft.replacedBy! : null;
   }
 
   // GUI 목록의 카테고리 그룹·케이스 위치. 배포할 값과 같은 규칙(publish.ts guiItem)으로 입력 중인 값을 쓴다(2026-10-21 사용자 요청).
@@ -500,7 +502,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       collapsed, query: query[t], changedOnly: changedOnly[t] && !locked(t), pages,
       changed: t === 'UI' ? e => !!e.flipbookId && needsReview(state!, e.flipbookId) : undefined,
       spots: t === 'UI' ? id => uiScans.get(id)?.spot : undefined,
-      guiDisplay, guiPlace, hidden: t === 'GUI' ? hiddenPrevious : undefined,
+      guiDisplay, guiPlace, follows: t === 'GUI' ? previousOf : undefined,
     });
   }
 
@@ -967,7 +969,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         ${g.rows.map(r => {
           const draft = drafts[t][r.entry.key];
           const sel = selection[t].has(r.entry.key);
-          return `<div class="row${sel ? ' selected' : ''}${r.depth ? ' case' : ''}" data-action="select" data-key="${esc(r.entry.key)}" tabindex="0" aria-selected="${sel}">
+          return `<div class="row${sel ? ' selected' : ''}${r.depth ? ' case' : ''}${r.previous ? ' previous' : ''}" data-action="select" data-key="${esc(r.entry.key)}" tabindex="0" aria-selected="${sel}">
             ${dot(r.status)}
             <input type="checkbox" data-action="include" data-key="${esc(r.entry.key)}" ${draft?.included ? 'checked' : ''} ${entryLocked(t, r.entry) ? 'disabled' : ''} aria-label="${esc(r.name)} ${COPY.uiApp034}">
             ${r.depth ? '<span class="case-indent" aria-hidden="true">└</span>' : ''}
@@ -1214,6 +1216,29 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     return { value: e.key, code: parsed.code ?? '', name: guiDisplay(e).name };
   });
 
+  // 등록 방식: 왼쪽에 선택 체크가 있는 아코디언(2026-11-03 사용자 요청). 이름 옆에 설명을 두고, 고른 항목만 펼쳐 그 메뉴를 보여 준다.
+  interface Choice { value: string; label: string; hint: string; checked: boolean; body?: () => string }
+  function choiceField(field: string, choices: Choice[], mixed: boolean): string {
+    return `<fieldset class="choices"><legend>${COPY.uiApp047}${mixedMark(mixed)}</legend>${choices.map(c => {
+      const body = c.checked && c.body ? c.body() : '';
+      return `<div class="choice${c.checked ? ' open' : ''}"><label class="choice-head"><input type="radio" name="${field}" value="${c.value}" data-field="${field}" ${c.checked ? 'checked' : ''}><span class="choice-label">${esc(c.label)}</span><span class="choice-hint">${esc(c.hint)}</span></label>${body ? `<div class="choice-body">${body}</div>` : ''}</div>`;
+    }).join('')}</fieldset>`;
+  }
+  // 화면 바꾸기: 이 화면이 새 버전인지 두 버튼으로 고르고, 그 아래에서 짝이 될 화면을 고른다.
+  // only: 고를 수 있는 한쪽(신규 후보는 새 버전, 원본이 없는 화면은 구 버전). 다른 쪽 버튼은 비활성화한다.
+  function replaceSides(side: 'new' | 'old' | null, only: 'new' | 'old' | null, picker: string): string {
+    const button = (value: 'new' | 'old', title: string, hint: string, blocked: string) => {
+      const off = !!only && only !== value;
+      return `<button type="button" class="side-button" data-action="replace-side" data-side="${value}" aria-pressed="${side === value}"${off ? ` disabled title="${esc(blocked)}"` : ''}><b>${esc(title)}</b><small>${esc(hint)}</small></button>`;
+    };
+    return `<p class="choice-question">${COPY.replaceSideQuestion}</p><div class="side-buttons">${button('new', COPY.replaceSideNew, COPY.replaceSideNewHint, COPY.replaceSideNewBlocked)}${button('old', COPY.replaceSideOld, COPY.replaceSideOldHint, COPY.replaceSideOldBlocked)}</div>${picker}`;
+  }
+  // 구 버전 쪽에서 새 화면 드롭다운에 「제안」으로 둘 항목: 원본이 없는 화면은 교체 제안, 원본이 있으면 이 화면을 교체하도록 제안된 프레임
+  function newVersionSuggestion(entry: Entry): string | null {
+    if (entry.estimate === 'missing') return entry.pairKey;
+    return entries.find(e => e.key !== entry.key && e.pairKey === entry.screenId)?.key ?? null;
+  }
+
   // 처음 보이는 교체는 본체에 비교를 요청하고, 받으면 상세 패널을 다시 그린다.
   function replaceReasonSection(entry: Entry, screenId: string): string {
     const key = replaceReasonKey(entry, screenId);
@@ -1230,11 +1255,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     return target ? replaceReasons.get(replaceReasonKey(entry, target))?.reason ?? undefined : entry.frame?.reason;
   }
 
-  // 교체 짝 반대쪽 화면의 이름
-  function partnerName(key: string | undefined): string {
-    const other = key ? entries.find(e => e.key === key) : null;
-    return other && state ? entryName(state, other) : '';
-  }
 
   function renderDetail() {
     $('.detail').classList.toggle('locked', tab !== 'ADMIN' && detailLocked(team()));
@@ -1287,51 +1307,54 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       // 여러 개일 때는 화면마다 고른 화면이나 교체 제안을 쓴다. 정해지지 않은 화면은 아래에 이름을 알린다.
       const unpaired = (pick: (e: Entry, d: Draft) => boolean) => multi ? chosen.filter(e => pick(e, draftOf(t, e))).map(e => entryName(state!, e)) : [];
       const unpairedNote = (names: string[]) => names.length ? `<p class="note">${COPY.uiApp420} ${names.map(esc).join(', ')}</p>` : '';
+      // 화면 바꾸기의 두 쪽. 새 버전은 이 화면이 이전 화면을 이어받고, 구 버전은 고른 새 화면이 이 화면을 이어받는다.
+      const newSide = () => (!multi ? screenPicker('replaceScreenId', registeredItems(id => id !== entry.screenId), draft.replaceScreenId, COPY.uiApp052, { suggested: entry.pairKey }) : '')
+        + unpairedNote(unpaired((_, d) => !d.replaceScreenId));
+      const oldSide = () => (!multi ? screenPicker('replaceWith', candidateItems(entry.key), draft.replacedBy, COPY.uiApp187, { suggested: newVersionSuggestion(entry) }) : '')
+        + unpairedNote(unpaired((_, d) => !d.replacedBy)) + (!multi && isPrevious(entry, draft) ? `<p class="note">${COPY.uiApp189}</p>` : '');
       if (chosen.every(e => needsLink(e))) {
         const allNew = chosen.every(e => { const d = draftOf(t, e); return d.link === 'new' && !d.notScreen; });
         const allReplace = chosen.every(e => { const d = draftOf(t, e); return d.link === 'replace' && !d.notScreen; });
         const allNotScreen = chosen.every(e => draftOf(t, e).notScreen);
-        html += `<fieldset><legend>${COPY.uiApp047}${mixedMark(multi && !allNew && !allReplace && !allNotScreen)}</legend>
-          <label class="check"><input type="radio" name="disposition" value="new" data-field="disposition" ${allNew ? 'checked' : ''}> ${COPY.uiApp048}</label>
-          <label class="check"><input type="radio" name="disposition" value="replace" data-field="disposition" ${allReplace ? 'checked' : ''}> ${COPY.uiApp049}</label>
-          <label class="check"><input type="radio" name="disposition" value="not-screen" data-field="disposition" ${allNotScreen ? 'checked' : ''}> ${COPY.uiApp050}</label>
-          ${!multi && allReplace ? screenPicker('replaceScreenId', registeredItems(), draft.replaceScreenId, COPY.uiApp052, { suggested: entry.pairKey }) : ''}
-          ${allNotScreen ? excludeReason : ''}</fieldset>`;
-        if (allReplace) html += unpairedNote(unpaired((_, d) => !d.replaceScreenId));
+        // 아직 배포하지 않은 화면은 이어받을 히스토리가 없으므로 구 버전 쪽은 비활성화한다(2026-11-03 사용자 결정).
+        html += choiceField('disposition', [
+          { value: 'new', label: COPY.uiApp048, hint: COPY.dispositionNewHint, checked: allNew },
+          { value: 'replace', label: COPY.uiApp049, hint: COPY.dispositionReplaceHint, checked: allReplace, body: () => replaceSides('new', 'new', newSide()) },
+          { value: 'not-screen', label: COPY.uiApp050, hint: COPY.dispositionNotScreenHint, checked: allNotScreen, body: () => excludeReason },
+        ], multi && !allNew && !allReplace && !allNotScreen);
       } else if (chosen.every(e => e.estimate === 'missing')) {
         const allDelete = chosen.every(e => draftOf(t, e).retire !== 'replace');
         const allReplace = chosen.every(e => draftOf(t, e).retire === 'replace');
-        html += `<fieldset><legend>${COPY.uiApp047}${mixedMark(multi && !allDelete && !allReplace)}</legend>
-          <label class="check"><input type="radio" name="retire" value="delete" data-field="retire" ${allDelete ? 'checked' : ''}> ${COPY.uiApp185}</label>
-          <label class="check"><input type="radio" name="retire" value="replace" data-field="retire" ${allReplace ? 'checked' : ''}> ${COPY.uiApp186}</label>
-          ${!multi && allReplace ? screenPicker('replaceWith', candidateItems(entry.key), draft.replacedBy, COPY.uiApp187, { suggested: entry.pairKey }) : ''}</fieldset>`;
-        if (allReplace) html += unpairedNote(unpaired((_, d) => !d.replacedBy));
-      } else if (chosen.every(e => !!e.screenId && !!e.frame && !isPrevious(e, draftOf(t, e)))) {
+        // 원본 프레임이 없으므로 새 버전 쪽은 비활성화한다.
+        html += choiceField('retire', [
+          { value: 'delete', label: COPY.uiApp185, hint: COPY.dispositionDeleteHint, checked: allDelete },
+          { value: 'replace', label: COPY.uiApp049, hint: COPY.dispositionReplaceHint, checked: allReplace, body: () => replaceSides('old', 'old', oldSide()) },
+        ], multi && !allDelete && !allReplace);
+      } else if (chosen.every(e => !!e.screenId && !!e.frame)) {
         // 이미 배포한 화면도 화면이 아님으로 고를 수 있다. 프레임은 제외 목록에 넣고 화면은 사용 안 함으로 바꾼다.
-        // 그 원본으로 다른 화면을 교체할 수도 있다(2026-10-27 사용자 요청: 잘못 신규로 배포한 화면 바로잡기).
+        // 화면 바꾸기: 새 버전이면 그 원본으로 다른 화면을 교체하고(2026-10-27 사용자 요청: 잘못 신규로 배포한 화면 바로잡기),
+        // 구 버전이면 고른 새 화면이 이 화면을 이어받는다(2026-11-03 사용자 요청).
         // 배포 취소는 화면을 사용 안 함으로 바꾸고 프레임을 신규 후보로 돌린다(2026-10-27 사용자 요청).
         const allNotScreen = chosen.every(e => draftOf(t, e).notScreen);
         const allMerge = chosen.every(e => mergesInto(e, draftOf(t, e)));
+        const allOld = chosen.every(e => isOldSide(e, draftOf(t, e)));
+        const allReplace = chosen.every(e => { const d = draftOf(t, e); return mergesInto(e, d) || isOldSide(e, d); });
         const allUnpublish = chosen.every(e => isUnpublish(e, draftOf(t, e)));
-        const allModify = chosen.every(e => { const d = draftOf(t, e); return !d.notScreen && !d.unpublish && !mergesInto(e, d); });
-        html += `<fieldset><legend>${COPY.uiApp047}${mixedMark(multi && !allModify && !allNotScreen && !allMerge && !allUnpublish)}</legend>
-          <label class="check"><input type="radio" name="disposition" value="modify" data-field="disposition" ${allModify ? 'checked' : ''}> ${COPY.uiApp243}</label>
-          <label class="check"><input type="radio" name="disposition" value="replace" data-field="disposition" ${allMerge ? 'checked' : ''}> ${COPY.uiApp049}</label>
-          <label class="check"><input type="radio" name="disposition" value="not-screen" data-field="disposition" ${allNotScreen ? 'checked' : ''}> ${COPY.uiApp050}</label>
-          <label class="check"><input type="radio" name="disposition" value="unpublish" data-field="disposition" ${allUnpublish ? 'checked' : ''}> ${COPY.uiApp355}</label>
-          ${!multi && allMerge ? screenPicker('replaceScreenId', registeredItems(id => id !== entry.screenId), draft.replaceScreenId, COPY.uiApp052, { suggested: entry.pairKey }) : ''}
-          ${allNotScreen ? excludeReason : ''}</fieldset>`;
-        if (allMerge) html += unpairedNote(unpaired((_, d) => !d.replaceScreenId));
-        if (allMerge) html += `<p class="note">${COPY.uiApp353}</p>`;
-        if (allUnpublish) html += `<p class="note">${COPY.uiApp357}</p>`;
+        const allModify = chosen.every(e => { const d = draftOf(t, e); return !d.notScreen && !d.unpublish && !mergesInto(e, d) && !isOldSide(e, d); });
+        const side = allMerge ? 'new' : allOld ? 'old' : null;
+        html += choiceField('disposition', [
+          { value: 'modify', label: COPY.uiApp243, hint: COPY.dispositionModifyHint, checked: allModify },
+          { value: 'replace', label: COPY.uiApp049, hint: COPY.dispositionReplaceHint, checked: allReplace, body: () => replaceSides(side, null, side === 'new' ? newSide() + `<p class="note">${COPY.uiApp353}</p>` : side === 'old' ? oldSide() : '') },
+          { value: 'not-screen', label: COPY.uiApp050, hint: COPY.dispositionNotScreenHint, checked: allNotScreen, body: () => excludeReason },
+          { value: 'unpublish', label: COPY.uiApp355, hint: COPY.dispositionUnpublishHint, checked: allUnpublish, body: () => `<p class="note">${COPY.uiApp357}</p>` },
+        ], multi && !allModify && !allNotScreen && !allReplace && !allUnpublish);
       }
-      if (!multi && isPrevious(entry, draft)) html += `<p class="note">${COPY.uiApp188} ${esc(partnerName(draft.replacedBy))}. ${COPY.uiApp189}</p>`;
     }
     html += '</section>';
     // 화면이 아님·교체 짝의 이전 화면은 정보를 입력하지 않는다.
     const inputs = showInputs && chosen.every(e => {
       const d = draftOf(t, e);
-      return !d.notScreen && !d.unpublish && !isPrevious(e, d) && !(t === 'GUI' && e.estimate === 'missing' && d.retire === 'replace');
+      return !d.notScreen && !d.unpublish && !isPrevious(e, d) && !(t === 'GUI' && isOldSide(e, d));
     });
     if (inputs) {
       const deleting = t === 'GUI' && chosen.every(e => isDeletion(e, draftOf(t, e)));
@@ -1530,7 +1553,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   function missingRequired(t: Team, entry: Entry, field: string): boolean {
     const draft = draftOf(t, entry);
     if (!draft.included || draft.notScreen || draft.unpublish || isPrevious(entry, draft)) return false;
-    if (t === 'GUI' && entry.estimate === 'missing' && draft.retire === 'replace') return field === 'replaceWith' && !draft.replacedBy;
+    if (t === 'GUI' && isOldSide(entry, draft)) return field === 'replaceWith' && !draft.replacedBy;
     if (field === 'workerId') return !draft.workerId;
     if (field === 'tagId') return !draft.tagId;
     if (t !== 'GUI' || isDeletion(entry, draft)) return false;
@@ -2479,6 +2502,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     d.replacedBy = undefined;
     d.included = false;
     if (isMissing(screenKey)) { d.retire = 'delete'; defaultTag(d, 'delete'); }
+    else d.retire = undefined;
   }
   function unpairNew(newKey: string) {
     const n = guiDraft(newKey);
@@ -2507,15 +2531,34 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (d.replacedBy !== newKey) unpairScreen(screenKey);
     if (n.replacedBy) unpairScreen(newKey);
     if (d.link === 'replace') { unpairNew(screenKey); d.link = undefined; }
-    Object.assign(n, { included: true, notScreen: false, unpublish: false, link: 'replace', replaceScreenId: screenKey });
+    Object.assign(n, { included: true, notScreen: false, unpublish: false, link: 'replace', replaceScreenId: screenKey, retire: undefined });
     // 이전 화면의 Screen ID·카테고리를 채운다.
     if (state) fillFromScreen(state, n, screenKey);
     defaultTag(n, null);
-    Object.assign(d, { included: true, notScreen: false, unpublish: false, replacedBy: newKey });
-    if (isMissing(screenKey)) d.retire = 'replace';
-    if (selection.GUI.delete(screenKey)) selection.GUI.add(newKey);
-    if (selected.GUI === screenKey) selected.GUI = newKey;
-    if (anchor.GUI === screenKey) anchor.GUI = newKey;
+    // 이전 화면은 화면 바꾸기의 구 버전 쪽이 된다. 목록에서 새 버전 아래에 남으므로 고르고 있던 행의 선택은 그대로 둔다(2026-11-03 사용자 요청).
+    Object.assign(d, { included: true, notScreen: false, unpublish: false, replacedBy: newKey, retire: 'replace' });
+  }
+  // 원본이 있는 배포 화면의 화면 바꾸기 쪽을 고른다(2026-11-03 사용자 요청).
+  // 새 버전: 이 원본으로 고른 이전 화면을 교체한다(교체 제안이 있으면 그 화면). 구 버전: 고른 새 화면이 이 화면을 이어받는다(이 화면을 교체하도록 제안된 프레임이 있으면 그 프레임).
+  function setReplaceSide(entry: Entry, side: 'new' | 'old') {
+    const d = guiDraft(entry.key);
+    if (!d) return;
+    d.notScreen = false;
+    d.unpublish = false;
+    defaultTag(d, null);
+    if (side === 'new') {
+      unpairScreen(entry.key);
+      d.retire = undefined;
+      d.link = 'replace';
+      d.replaceScreenId ??= entry.pairKey ?? undefined;
+      if (d.replaceScreenId) pair(entry.key, d.replaceScreenId);
+      return;
+    }
+    unpairNew(entry.key);
+    d.link = undefined;
+    d.retire = 'replace';
+    d.replacedBy ??= newVersionSuggestion(entry) ?? undefined;
+    if (d.replacedBy) pair(d.replacedBy, entry.key);
   }
   // 포함을 켜고 끈다. 짝이 있으면 두 항목을 함께 바꾼다. 자동으로 찾은 짝(잘라내 붙인 프레임)은 꺼도 기본값으로 남긴다.
   function setIncluded(t: Team, entry: Entry, checked: boolean) {
@@ -2816,6 +2859,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         break;
       }
       case 'ignore-changes': bridge.send({ type: 'ignoreChanges', entryKeys: selectedKeys('GUI') }); break;
+      case 'replace-side': {
+        if (team() !== 'GUI' || detailLocked('GUI')) break;
+        const side = el.dataset.side === 'old' ? 'old' : 'new';
+        for (const e of selectedEntries('GUI')) if (e.screenId && e.frame && e.estimate !== 'missing' && e.estimate !== 'retired') setReplaceSide(e, side);
+        renumberCodes(); renderDetail(); renderList(); renderFooter();
+        break;
+      }
       case 'select': if (target.closest('input')) return; select(el.dataset.key!, ev); break;
       case 'nav': navigate(el.dataset.target as NavTarget); break;
       case 'nav-suggested': {
@@ -3568,19 +3618,17 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'disposition': {
         for (const selectedEntry of selectedEntries(t)) {
           const target = draftOf(t, selectedEntry);
-          // 배포한 화면: 화면 수정, 기존 화면 교체(하나만 골랐을 때), 화면이 아님 또는 배포 취소
+          // 배포한 화면: 화면 수정, 화면 바꾸기(처음에는 새 버전 쪽), 화면이 아님 또는 배포 취소
           if (!needsLink(selectedEntry)) {
             if (!selectedEntry.frame) continue;
             if (el.value === 'replace') {
-              target.link = 'replace';
-              target.notScreen = false;
-              target.unpublish = false;
-              defaultTag(target, null);
-              target.replaceScreenId ??= selectedEntry.pairKey ?? undefined;
-              if (target.replaceScreenId) pair(selectedEntry.key, target.replaceScreenId);
+              if (mergesInto(selectedEntry, target) || isOldSide(selectedEntry, target)) continue;
+              setReplaceSide(selectedEntry, 'new');
               continue;
             }
             unpairNew(selectedEntry.key);
+            unpairScreen(selectedEntry.key);
+            target.retire = undefined;
             target.link = undefined;
             target.notScreen = el.value === 'not-screen';
             target.unpublish = el.value === 'unpublish';

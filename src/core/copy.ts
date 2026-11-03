@@ -39,7 +39,7 @@ export const UI_STATE_HINT: Record<UiListState, string> = {
 export const GUI_STATE_HINT: Record<GuiState, string> = {
   'detected-new': '아직 등록되지 않은 프레임입니다. 배포를 켜고 등록 방식을 고르세요.',
   'detected-change': '이전 배포와 다릅니다. 실제로 바뀌었으면 배포하고, 아니면 변경 무시를 누르세요.',
-  'detected-delete': '등록된 원본 프레임을 GUI 범위에서 찾지 못했습니다. 배포를 켜고 삭제 또는 다른 화면으로 교체를 고르세요.',
+  'detected-delete': '등록된 원본 프레임을 GUI 범위에서 찾지 못했습니다. 배포를 켜고 삭제 또는 화면 바꾸기를 고르세요.',
   unchanged: '비교에서 차이를 찾지 못했습니다. 필요하면 배포에 포함할 수 있습니다.',
   pending: '변경사항 확인을 누르면 이전 배포와 비교합니다.',
   failed: 'GUI 원본을 읽거나 비교하지 못했습니다. 다시 확인하세요.',
@@ -125,15 +125,15 @@ export const COPY = {
   uiApp039: "최종 확인", // 276
   uiApp040: '태그 선택', // 281
   uiApp041: '작업자 선택', // 286
-  // 선택 화면의 입력·이력 — src/ui/app.ts
+  // 선택 화면의 입력·히스토리 — src/ui/app.ts
   uiApp042: '화면을 선택하세요. Ctrl로 개별 선택, Shift로 범위를 선택할 수 있습니다.', // 300
   uiApp043: '화면 목적·설명 (선택)', // 306
   uiApp044: '변경 내용·이유 (선택)', // 306
   uiApp045: '변경 내용·이유', // 306
   uiApp046: "외", // 312
   uiApp047: "등록 방식", // 316
-  uiApp048: "신규 화면 등록", // 317
-  uiApp049: "기존 화면 교체", // 318
+  uiApp048: "화면 추가", // 317
+  uiApp049: "화면 바꾸기", // 318
   uiApp050: "화면이 아님", // 319
   uiApp051: "교체할 이전 화면", // 320
   uiApp052: '이전 화면 선택', // 320
@@ -151,7 +151,7 @@ export const COPY = {
   uiApp064: "추가 설명", // 346
   uiApp065: '입력하면 선택한 화면 전체에 적용', // 347
   uiApp069: "· 배포", // 365
-  uiApp071: "배포 이력", // 379
+  uiApp071: "배포 히스토리", // 379
   uiApp072: '(정정)', // 381
   // 최종 확인 — src/ui/app.ts
   uiApp073: "신규", // 390
@@ -195,7 +195,7 @@ export const COPY = {
   uiApp210: '추가할 UI 페이지',
   uiApp109: '선택', // 433
   uiApp110: "저장", // 434
-  uiApp114: "대표 템플릿 프레임을 복제해 플립북을 만듭니다. 연결한 칸에만 화면 이름·Chapter·상태·Screen ID·GUI·이력을 넣고, Description 내용과 콜아웃은 건드리지 않습니다. 목록에서 템플릿을 누르면 아래에 그 템플릿의 연결 항목이 나옵니다. 캔버스에서 레이어를 고른 뒤 그 항목의 「연결」이나 「재연결」을 누르세요. 연결된 항목을 누르면 그 레이어를 캔버스에서 보여 줍니다.", // 437
+  uiApp114: "대표 템플릿 프레임을 복제해 플립북을 만듭니다. 연결한 칸에만 화면 이름·Chapter·상태·Screen ID·GUI·히스토리를 넣고, Description 내용과 콜아웃은 건드리지 않습니다. 목록에서 템플릿을 누르면 아래에 그 템플릿의 연결 항목이 나옵니다. 캔버스에서 레이어를 고른 뒤 그 항목의 「연결」이나 「재연결」을 누르세요. 연결된 항목을 누르면 그 레이어를 캔버스에서 보여 줍니다.", // 437
   uiApp116: "변경", // 440
   uiApp117: '비활성화', // 440
   uiApp118: '활성화', // 440
@@ -255,13 +255,11 @@ export const COPY = {
   uiApp179: '선택한 화면만 비교합니다. 원본 목록은 다시 읽어 신규·복제·원본 없음도 함께 표시합니다',
   uiApp180: '선택 화면 확인',
   uiApp182: '변경 무시',
-  uiApp183: '지금 화면을 비교 기준으로 저장하고 변경사항 없음으로 바꿉니다. 버전·플립북·이력은 바꾸지 않습니다.',
+  uiApp183: '지금 화면을 비교 기준으로 저장하고 변경사항 없음으로 바꿉니다. 버전·플립북·히스토리는 바꾸지 않습니다.',
   uiApp184: '· 삭제',
   uiApp185: '삭제',
   uiApp212: '플립북 프레임이 없습니다. 배포하면 이 플립북을 삭제로 기록하고 목록에서 제외합니다.',
-  uiApp186: '다른 화면으로 교체',
-  uiApp187: '교체할 화면 선택',
-  uiApp188: '이 화면은 다른 프레임으로 교체됩니다:',
+  uiApp187: '새 화면 선택',
   uiApp189: '이 화면에는 정보를 입력하지 않습니다.',
   uiApp190: '목록에 없음',
   uiApp191: '플립북 만들기',
@@ -282,7 +280,7 @@ export const COPY = {
   uiApp216: '수정된 화면',
   uiApp217: '플립북을 선택하세요. Ctrl로 개별 선택, Shift로 범위를 선택할 수 있습니다.',
   uiApp218: '만든 플립북이 없습니다.',
-  uiApp219: '플립북 이력',
+  uiApp219: '플립북 히스토리',
   uiApp220: '선택한 플립북 중 확인이 필요한 플립북',
   uiApp221: '화면이 없는 플립북입니다.',
   uiApp222: '확인이 필요한 플립북이 없습니다.',
@@ -412,11 +410,11 @@ export const COPY = {
   uiApp344: '동기화',
   uiApp345: '플립북을 동기화하고 있습니다',
   uiApp349: '드래그하거나 Alt+↑↓로 순서를 바꿉니다.',
-  uiApp353: '배포하면 이전 화면이 이 원본으로 새 버전이 되고, 이 화면은 사용 안 함이 됩니다. 이 화면이 든 플립북·플로우와 케이스는 이전 화면으로 옮기고, 지난 이력은 이 화면에 남습니다.',
+  uiApp353: '배포하면 이전 화면이 이 원본으로 새 버전이 되고, 이 화면은 사용 안 함이 됩니다. 이 화면이 든 플립북·플로우와 케이스는 이전 화면으로 옮기고, 지난 히스토리는 이 화면에 남습니다.',
   uiApp354: '사용 안 함으로 바꿀 화면:',
   uiApp355: '배포 취소',
   uiApp356: '· 배포 취소',
-  uiApp357: '지난 이력은 이 화면에 남고, 이 화면만 쓰던 플립북은 사용 안 함이 됩니다. 프레임은 신규 후보로 다시 등록할 수 있습니다.',
+  uiApp357: '지난 히스토리는 이 화면에 남고, 이 화면만 쓰던 플립북은 사용 안 함이 됩니다. 프레임은 신규 후보로 다시 등록할 수 있습니다.',
   uiApp358: '화면 검색',
   uiApp359: '선택된 화면',
   // GUI 상세 패널의 변경사항(변경 감지 이유) — src/ui/changeReason.ts
@@ -494,7 +492,7 @@ export const COPY = {
   uiTutorial016: '화면 정보',
   uiTutorial017: '이름과 카테고리를 정하면 Screen ID가 자동으로 채워져요. 필요하면 고칠 수 있어요.',
   uiTutorial018: '태그·작업자',
-  uiTutorial019: '배포 이력에 남길 태그와 작업자를 고르세요.',
+  uiTutorial019: '배포 히스토리에 남길 태그와 작업자를 고르세요.',
   uiTutorial020: '추가 설명',
   uiTutorial021: '이번에 바뀐 내용을 짧게 적어 주세요. 생략해도 돼요.',
   uiTutorial022: '최종 확인',
@@ -503,7 +501,7 @@ export const COPY = {
   uiTutorial025: '배포할 내용을 확인하고 확정하세요. 관련 플립북에도 반영돼요.',
   uiTutorial026: '변경 감지',
   uiTutorial027: '원본이 바뀌면 여기서 알려 줘요. 반영할 필요가 없으면 ‘변경 무시’를 누르세요.',
-  uiTutorial028: '배포 이력',
+  uiTutorial028: '배포 히스토리',
   uiTutorial029: '이전 화면과 배포 기록을 확인할 수 있어요.',
   uiTutorial030: '새 버전 페이지',
   uiTutorial031: '새 GUI 페이지를 가져왔다면 기존 화면과 연결한 뒤 전환하세요.',
@@ -532,7 +530,7 @@ export const COPY = {
   uiTutorial054: '확인이 필요한 플립북',
   uiTutorial055: 'GUI가 바뀐 플립북만 모아 보세요.',
   uiTutorial056: '플립북 상세',
-  uiTutorial057: 'GUI 화면과 배포 이력을 여기서 확인해요.',
+  uiTutorial057: 'GUI 화면과 배포 히스토리를 여기서 확인해요.',
   uiTutorial058: '확인 완료',
   uiTutorial059: '바뀐 화면을 확인하고 ‘확인 완료’를 눌러 주세요.',
   // 튜토리얼 예시 화면의 데이터(카테고리, 작업자, 태그, 배포 설명)
@@ -579,7 +577,7 @@ export const COPY = {
   uiNew032: '플로우에서도 ‘그리드 보기’로 썸네일을 보고 화면을 고를 수 있어요.',
   // 변경 상태의 설명·툴팁 — src/ui/estimate.ts
   uiEstimate001: '플립북 UI 작성 영역', // 26
-  uiEstimate003: '아직 등록되지 않은 프레임입니다. 신규 등록 또는 기존 화면 교체를 선택하세요.', // 28
+  uiEstimate003: '아직 등록되지 않은 프레임입니다. 화면 추가 또는 화면 바꾸기를 선택하세요.', // 28
   uiEstimate004: "이 이 화면의 이전 확정 기준과 다릅니다. 실제 변경 내용을 확인하세요.", // 29
   uiEstimate005: '비교에서 차이를 찾지 못했습니다. 변경이 없음을 보증하지 않으며 필요하면 배포에 포함할 수 있습니다.', // 30
   uiEstimate006: '변경사항 확인을 누르면 화면별 이전 확정 기준과 비교합니다.', // 31
@@ -590,12 +588,9 @@ export const COPY = {
   uiEstimate013: '삭제로 배포하여 사용 종료로 기록한 화면입니다.', // 37
   // 비교 결과 안내 — src/core/compare.ts
   coreCompare001: '(이름 없음)', // 75
-  coreCompare002: '기존 화면을 잘라내 붙인 프레임으로 보입니다. 배포하면 기존 화면 교체로 연결합니다.', // 144
+  coreCompare002: '기존 화면을 잘라내 붙인 프레임으로 보입니다. 배포하면 화면 바꾸기로 연결합니다.', // 144
   coreCompare003: "복제된 프레임일 수 있습니다:", // 158
   // 교체 제안 — src/core/replaceMatch.ts
-  coreCompare004: '지난 배포와 같은 기존 화면이 있어 기존 화면 교체로 제안합니다. 배포하면 다음 화면을 교체합니다:',
-  coreCompare005: '내용이 비슷한 기존 화면이 있어 기존 화면 교체로 제안합니다. 배포하면 다음 화면을 교체합니다:',
-  coreCompare006: '이 화면을 교체할 프레임으로 제안했습니다:',
   // 필수 입력·유효성 검사 — src/core/drafts.ts
   coreDrafts003: '작업자', // 98
   coreDrafts004: '비활성화된 작업자입니다.', // 99
@@ -625,7 +620,7 @@ export const COPY = {
   coreDrafts028: '화면을 찾을 수 없습니다.', // 161
   coreDrafts029: 'Screen ID',
   coreDrafts030: '다른 화면이 같은 Screen ID를 씁니다:',
-  coreDrafts031: '교체할 화면',
+  coreDrafts031: '새 화면',
   coreDrafts032: '교체 짝이 맞지 않습니다. 교체할 화면을 다시 고르세요.',
   coreDrafts034: '카테고리가 삭제되어 새 카테고리를 지정해야 합니다.',
   coreDrafts035: '지문을 계산하지 못해 변경을 무시할 수 없습니다.',
@@ -676,7 +671,7 @@ export const COPY = {
   coreRegistry023: '제외 설정을 찾을 수 없습니다.', // 177
   coreRegistry024: '정정 설명', // 192
   coreRegistry025: '정정 사유를 입력하세요.', // 193
-  coreRegistry026: '이력을 찾을 수 없습니다.', // 196
+  coreRegistry026: '히스토리를 찾을 수 없습니다.', // 196
   coreRegistry027: '기본 태그는 이름·색을 바꾸거나 사용 중지할 수 없습니다.',
   coreRegistry028: '추가',
   coreRegistry029: '삭제',
@@ -722,22 +717,22 @@ export const COPY = {
   coreTemplate010: '인스턴스 밖 프레임 · 필수. GUI 화면 복사본을 이 영역 안에 넣습니다. 넘치는 화면에 맞춰 영역이 늘어납니다.',
   coreTemplate011: 'Description 본문',
   coreTemplate012: '슬롯이나 인스턴스 밖 프레임. 텍스트 편집 탭이 이 칸에 넣습니다.',
-  coreTemplate013: '이력 목록',
-  coreTemplate014: '슬롯이나 인스턴스 밖 프레임. 최신 이력 행을 넣습니다.',
-  coreTemplate015: '이전 이력 칸',
-  coreTemplate016: '슬롯이나 인스턴스 밖 프레임. 두 번째 이력부터 넣습니다. 연결하지 않으면 모든 이력을 이력 목록에 넣습니다.',
+  coreTemplate013: '히스토리 목록',
+  coreTemplate014: '슬롯이나 인스턴스 밖 프레임. 최신 히스토리 행을 넣습니다.',
+  coreTemplate015: '이전 히스토리 칸',
+  coreTemplate016: '슬롯이나 인스턴스 밖 프레임. 두 번째 히스토리부터 넣습니다. 연결하지 않으면 모든 히스토리를 히스토리 목록에 넣습니다.',
   coreTemplate017: 'PDF에서 숨김',
   coreTemplate018: '레이어 · 여러 개 가능. PDF로 저장하는 동안 숨깁니다.',
   coreTemplate019: 'Screen ID 태그',
   coreTemplate020: '컴포넌트. Screen ID 칸에 화면마다 하나씩 넣고 안의 첫 텍스트에 Screen ID를 씁니다.',
-  coreTemplate021: '이력 행',
-  coreTemplate022: '컴포넌트. 이력 한 줄마다 인스턴스를 만들어 이력 목록에 넣습니다.',
+  coreTemplate021: '히스토리 행',
+  coreTemplate022: '컴포넌트. 히스토리 한 줄마다 인스턴스를 만들어 히스토리 목록에 넣습니다.',
   coreTemplate023: '상태 태그',
   coreTemplate024: '컴포넌트 · 선택. 연결하면 상태 칸의 인스턴스를 이 컴포넌트로 바꿉니다.',
-  coreTemplate025: '이력 상태 태그',
-  coreTemplate026: '컴포넌트 · 선택. 연결하면 이력 행의 상태 인스턴스를 이 컴포넌트로 바꿉니다.',
+  coreTemplate025: '히스토리 상태 태그',
+  coreTemplate026: '컴포넌트 · 선택. 연결하면 히스토리 행의 상태 인스턴스를 이 컴포넌트로 바꿉니다.',
   coreTemplate027: '상태',
-  coreTemplate028: '태그 인스턴스나 텍스트. 그 이력의 상태를 넣습니다.',
+  coreTemplate028: '태그 인스턴스나 텍스트. 그 히스토리의 상태를 넣습니다.',
   coreTemplate029: '코멘트',
   coreTemplate030: '텍스트. 배포·확인 때 남긴 코멘트를 넣습니다.',
   coreTemplate031: '작업자',
@@ -748,7 +743,7 @@ export const COPY = {
   coreTemplate036: '텍스트면 GUI·UI를 쓰고, 인스턴스면 값이 GUI·UI인 변형을 고릅니다.',
   coreTemplate037: '플립북 칸',
   coreTemplate038: '컴포넌트',
-  coreTemplate039: '이력 행 안의 칸',
+  coreTemplate039: '히스토리 행 안의 칸',
   coreTemplate040: '마커',
   coreTemplate041: '템플릿에 둔 마커 인스턴스 또는 컴포넌트를 연결합니다. 같은 컴포넌트의 마커가 GUI 복사본 안에 있으면 업데이트 전에 화면 밖으로 옮겨 보존합니다.',
   // 플립북 만들기 — src/core/flipbooks.ts
@@ -987,20 +982,20 @@ export const COPY = {
   figmaTemplate006: '인스턴스나 텍스트를 연결하세요.',
   figmaTemplate007: '연결해야 플립북을 만들 수 있습니다.',
   figmaTemplate008: '「Screen ID 칸」을 연결했으면 이 컴포넌트도 연결해야 합니다.',
-  figmaTemplate009: '「이력 목록」을 연결했으면 이 컴포넌트도 연결해야 합니다.',
-  figmaTemplate010: '「이력 목록」도 연결해야 이 칸에 이력을 넣습니다.',
+  figmaTemplate009: '「히스토리 목록」을 연결했으면 이 컴포넌트도 연결해야 합니다.',
+  figmaTemplate010: '「히스토리 목록」도 연결해야 이 칸에 히스토리를 넣습니다.',
   figmaTemplate011: '컴포넌트 안에 글자를 넣을 텍스트 레이어가 없습니다.',
   figmaTemplate013: '캔버스에서 연결할 레이어를 선택하세요.',
   figmaTemplate014: '이 항목에는 레이어를 하나만 연결합니다. 하나만 선택하세요.',
   figmaTemplate015: '템플릿 프레임 안의 레이어를 선택하세요.',
   figmaTemplate016: 'GUI 영역·Description 본문·Screen ID 칸 안의 레이어는 연결할 수 없습니다.',
-  figmaTemplate017: '먼저 「이력 행」 컴포넌트를 연결하세요.',
-  figmaTemplate018: '이력 행 컴포넌트 안의 레이어를 선택하세요. 템플릿에 놓인 이력 행 인스턴스 안에서 골라도 됩니다.',
-  figmaTemplate019: '라이브러리 컴포넌트는 이력 행으로 연결할 수 없습니다. 이 파일의 컴포넌트를 선택하세요.',
+  figmaTemplate017: '먼저 「히스토리 행」 컴포넌트를 연결하세요.',
+  figmaTemplate018: '히스토리 행 컴포넌트 안의 레이어를 선택하세요. 템플릿에 놓인 히스토리 행 인스턴스 안에서 골라도 됩니다.',
+  figmaTemplate019: '라이브러리 컴포넌트는 히스토리 행으로 연결할 수 없습니다. 이 파일의 컴포넌트를 선택하세요.',
   figmaTemplate020: '컴포넌트나 인스턴스를 선택하세요.',
   figmaTemplate021: 'GUI 영역은 필수라 연결을 풀 수 없습니다.',
-  figmaTemplate022: '이력 행 안의 레이어는 「이력 행 안의 칸」 항목에 연결하세요.',
-  figmaTemplate023: '이력 행 컴포넌트가 연결되지 않아 이력을 넣지 않았습니다. 관리의 템플릿에서 「이력 행」을 연결하세요.',
+  figmaTemplate022: '히스토리 행 안의 레이어는 「히스토리 행 안의 칸」 항목에 연결하세요.',
+  figmaTemplate023: '히스토리 행 컴포넌트가 연결되지 않아 히스토리를 넣지 않았습니다. 관리의 템플릿에서 「히스토리 행」을 연결하세요.',
   // 기본 템플릿 — src/figma/templateDefault.ts (페이지·레이어 이름과 템플릿에 적힌 글자)
   figmaTemplate024: '기본 템플릿 글꼴(Inter Regular·Medium·Bold)을 불러오지 못했습니다. 글꼴을 확인한 뒤 다시 시도하세요.',
   figmaTemplate025: 'Flipbook Template',
@@ -1045,7 +1040,7 @@ export const COPY = {
   figmaData020: '화면 현황', // 213
   figmaData021: "파일 내부 기록에서 자동 생성 · 마지막 갱신", // 213
   figmaData022: ". 이 표를 직접 고쳐도 기록은 바뀌지 않습니다.", // 213
-  figmaData023: '배포 이력', // 224
+  figmaData023: '배포 히스토리', // 224
   figmaData024: 'GUI·UI 기록을 합치거나 대응시키지 않고 각각 별도 행으로 최신순 표시합니다. 정렬 순서는 GUI 변경의 UI 반영 여부를 뜻하지 않습니다.', // 224
   figmaData025: "(정정됨 · 원문:", // 228
   figmaData026: 'DATA 페이지를 찾을 수 없습니다.', // 236
@@ -1075,7 +1070,7 @@ export const COPY = {
   uiPreview018: "개 지움", // 65
   uiPreview019: 'DATA 페이지 생성', // 70
   uiPreview020: "DATA 페이지 갱신: 화면", // 74
-  uiPreview021: "개 · 이력", // 74
+  uiPreview021: "개 · 히스토리", // 74
   uiPreview022: "행 · 보존 이미지", // 74
   uiPreview023: "개", // 74
   uiPreview024: "플립북 Section 이름 변경 →", // 88
@@ -1123,11 +1118,11 @@ export const COPY = {
   recoveryPending: 'GUI 배포 기록은 저장되었습니다. 화면 반영이 끝나지 않아 관리에서 미반영 재시도가 필요합니다.',
   recoverySourceChanged: '배포 후 GUI 원본이 변경되어 이전 배포로 덮어쓰지 않았습니다. 변경사항을 확인한 뒤 다시 배포하세요.',
   recoveryCopiesIncomplete: '일부 붙인 화면을 반영하지 못했습니다.',
-  recoveryRetryHint: '확정된 GUI 기록과 실제 반영 상태를 다시 확인합니다. 배포 버전이나 이력을 추가하지 않습니다.',
+  recoveryRetryHint: '확정된 GUI 기록과 실제 반영 상태를 다시 확인합니다. 배포 버전이나 히스토리를 추가하지 않습니다.',
   recoveryAvailable: '미완료 반영',
   // 관리의 템플릿 › 템플릿 목록(대표 지정) — src/ui/app.ts, src/core/templateList.ts
   templateList: '템플릿 목록',
-  templateListHint: '새 플립북은 대표 템플릿으로 만듭니다. 이미 있는 플립북은 반영할 때 그 플립북을 만든 템플릿의 태그·이력 행 컴포넌트와 기본 글자를 씁니다. 만든 템플릿을 모르면 위에 있는 템플릿부터 구조가 맞는지 확인하고, 맞는 템플릿이 없으면 대표 템플릿으로 있는 칸만 반영합니다. 대표를 바꿔도 이전 대표는 목록에 남습니다.',
+  templateListHint: '새 플립북은 대표 템플릿으로 만듭니다. 이미 있는 플립북은 반영할 때 그 플립북을 만든 템플릿의 태그·히스토리 행 컴포넌트와 기본 글자를 씁니다. 만든 템플릿을 모르면 위에 있는 템플릿부터 구조가 맞는지 확인하고, 맞는 템플릿이 없으면 대표 템플릿으로 있는 칸만 반영합니다. 대표를 바꿔도 이전 대표는 목록에 남습니다.',
   templateListEmpty: '등록한 템플릿이 없습니다.',
   templateAdd: '선택한 프레임을 템플릿으로 추가',
   templatePickHint: '이 템플릿의 연결 항목을 아래에 보여 줍니다.',
@@ -1156,6 +1151,20 @@ export const COPY = {
   flipbookRemoveHint: '목록에서 뺍니다. 캔버스의 프레임은 지우지 않고 기록도 남기며, 그 안의 GUI는 더 바뀌지 않습니다. 되살리려면 그 프레임을 골라 「기존 플립북 등록」을 누르세요.',
   flipbookRemoveRestore: '캔버스의 프레임은 그대로 두었습니다. 되살리려면 그 프레임을 골라 「기존 플립북 등록」을 누르세요.',
   flipbookTitleConflict: '제목 변경 준비 중 플립북이 수정되었습니다. 다시 시도하세요.',
+  // GUI 등록 방식 아코디언의 설명과 화면 바꾸기의 새 버전·구 버전 버튼(2026-11-03 사용자 요청) — src/ui/app.ts
+  dispositionNewHint: '기존에 없던 화면을 추가합니다',
+  dispositionReplaceHint: '기존 화면을 새 화면으로 교체합니다',
+  dispositionNotScreenHint: '목록에서 삭제되며 앞으로 표시되지 않습니다',
+  dispositionModifyHint: '수정된 화면으로 다시 배포합니다',
+  dispositionUnpublishHint: '배포가 취소되고 신규 화면으로 목록에 표시됩니다',
+  dispositionDeleteHint: '목록에서 삭제되며 히스토리만 남습니다',
+  replaceSideQuestion: '이 화면이 새 버전인가요?',
+  replaceSideNew: '네, 새 버전입니다',
+  replaceSideNewHint: '이 화면으로 교체합니다',
+  replaceSideOld: '아니요, 구 버전입니다',
+  replaceSideOldHint: '목록에서 제외되며 선택한 화면으로 교체됩니다',
+  replaceSideNewBlocked: '원본 프레임이 없는 화면은 새 버전이 될 수 없습니다.',
+  replaceSideOldBlocked: '아직 배포하지 않은 화면은 이어받을 히스토리가 없어 구 버전으로 고를 수 없습니다.',
 } as const;
 
 // 화면·안내·오류 문구. 원본 파일과 행은 추출 당시 위치다.

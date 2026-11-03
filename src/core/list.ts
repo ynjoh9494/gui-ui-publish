@@ -18,6 +18,8 @@ export interface ListRow {
   // 0: 독립·기본 화면, 1: 케이스
   depth: 0 | 1;
   status: InputStatus;
+  // 교체 짝의 이전 화면. 새 버전 바로 아래에 이름에 취소선을 긋고 흐리게 보인다.
+  previous?: boolean;
 }
 
 export interface ListGroup {
@@ -45,8 +47,8 @@ export interface ListView {
   guiPlace?: (entry: Entry, saved: GuiPlace) => GuiPlace;
   // 「변경된 화면만 보기」(UI 목록은 「업데이트된 화면만 보기」)에 남길 항목. UI 목록은 화면이 수정된(확인이 필요한) 플립북이다.
   changed?: (entry: Entry) => boolean;
-  // GUI 목록에서 뺄 항목: 교체 짝이 정해진 이전 화면. 그 자리에는 교체하는 화면이 이전 화면의 Screen ID로 보인다(2026-11-02 사용자 요청).
-  hidden?: (entry: Entry) => boolean;
+  // GUI 목록: 교체 짝이 정해진 이전 화면이 따라갈 새 버전의 항목 키. 이전 화면은 숨기지 않고 새 버전 바로 아래에 둔다(2026-11-03 사용자 요청).
+  follows?: (entry: Entry) => string | null;
 }
 
 // GUI 목록에서 화면이 놓이는 카테고리와 기본 화면(케이스일 때)
@@ -193,7 +195,17 @@ export function savedGuiDisplay(state: State, entry: Entry): { name: string; cod
 // GUI 목록은 원본 화면, UI 목록은 플립북이다.
 // 사용 안 함(삭제로 배포한 화면·플립북)은 목록에서 뺀다. 배포를 켠 항목은 「변경 추정만」에서도 보인다.
 export function buildList(team: Team, state: State, entries: Entry[], statusOf: (entry: Entry) => InputStatus, view: ListView): ListModel {
-  const visible = entries.filter(e => e.estimate !== 'retired' && (team !== 'UI' || !!e.flipbookId) && !view.hidden?.(e));
+  const shown = entries.filter(e => e.estimate !== 'retired' && (team !== 'UI' || !!e.flipbookId));
+  // 이전 화면은 새 버전이 목록에 있으면 새 버전의 묶음·자리로 옮긴다. 새 버전이 없으면 제자리에 둔다.
+  const shownKeys = new Set(shown.map(e => e.key));
+  const followers = new Map<string, Entry[]>();
+  for (const entry of shown) {
+    const lead = view.follows?.(entry);
+    if (!lead || lead === entry.key || !shownKeys.has(lead)) continue;
+    followers.set(lead, [...followers.get(lead) ?? [], entry]);
+  }
+  const following = new Set([...followers.values()].flat());
+  const visible = shown.filter(e => !following.has(e));
   const guiDisplayCache = new Map<string, { name: string; code: string }>();
   const guiDisplay = (entry: Entry) => {
     const cached = guiDisplayCache.get(entry.key);
@@ -235,7 +247,8 @@ export function buildList(team: Team, state: State, entries: Entry[], statusOf: 
     const sortedRows = team === 'UI' ? [...bucket].sort((a, b) => (rank.get(a.flipbookId!) ?? Infinity) - (rank.get(b.flipbookId!) ?? Infinity)).map(entry => ({ entry, depth: 0 as const })) : ordered(bucket, guiDisplay, guiPlace);
     // UI 목록의 code는 검색용으로 플립북에 든 화면의 Screen ID를 모은다.
     const flipbookCodes = (entry: Entry) => (entry.flipbookId ? state.flipbooks.get(entry.flipbookId)?.screens.map(x => x.code).join(' ') : '') ?? '';
-    const rows = sortedRows.map(({ entry, depth }) => ({ entry, depth, name: team === 'GUI' ? guiDisplay(entry).name : entryName(state, entry), code: team === 'GUI' ? guiDisplay(entry).code : flipbookCodes(entry), status: statusOf(entry) }));
+    const placed: { entry: Entry; depth: 0 | 1; previous?: boolean }[] = sortedRows.flatMap(row => [row, ...(followers.get(row.entry.key) ?? []).map(entry => ({ entry, depth: row.depth, previous: true }))]);
+    const rows: ListRow[] = placed.map(({ entry, depth, previous }) => ({ entry, depth, name: team === 'GUI' ? guiDisplay(entry).name : entryName(state, entry), code: team === 'GUI' ? guiDisplay(entry).code : flipbookCodes(entry), status: statusOf(entry), ...(previous ? { previous } : {}) }));
     const included = rows.filter(r => r.status !== 'excluded').length;
     model.included += included;
     model.invalid += rows.filter(r => r.status === 'invalid').length;
