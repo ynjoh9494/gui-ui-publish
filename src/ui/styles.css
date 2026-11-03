@@ -39,7 +39,8 @@ legend { color: var(--muted); padding: 0 4px; }
 /* 등록 방식(2026-11-03 사용자 요청): Figma UI3 목록처럼 테두리 상자 없이 32px 행으로 두고, 왼쪽 체크·이름 옆 설명, 고른 항목만 펼친다.
    색은 Figma 테마 토큰을 그대로 쓴다. */
 .choices { margin: 6px 0 2px; }
-.choices-title { color: var(--muted); margin-bottom: 2px; }
+/* 등록 방식 제목은 「화면 정보」와 같은 위계(.detail-section h3)로 둔다(2026-11-03 사용자 요청). */
+.choices-title { margin-bottom: 2px; }
 .choice-head { display: flex; align-items: center; gap: 8px; min-height: 32px; margin: 0; padding: 0 8px; border-radius: 5px; color: var(--text); cursor: default; }
 .choice-head:hover { background: var(--figma-color-bg-hover, var(--bg2)); }
 .choice-head input { flex: none; appearance: none; width: 12px; height: 12px; margin: 0 2px; padding: 0; border: 1px solid var(--figma-color-border-strong, #757575); border-radius: 2px; background: var(--bg); }
@@ -165,6 +166,14 @@ legend { color: var(--muted); padding: 0 4px; }
 .detail { grid-column: 3; grid-row: 3; overflow: auto; min-height: 0; padding: 0 10px 8px; }
 .detail-head { position: sticky; top: 0; z-index: 3; background: var(--bg); border-bottom: 1px solid var(--border); padding: 8px 0; }
 .detail-head .validation { margin: 4px 0 0; }
+/* 제목 줄: 화면 이름 왼쪽, 배포 스위치 오른쪽(2026-11-03 사용자 요청) */
+.detail-title { display: flex; align-items: center; gap: 8px; }
+.detail-title h2 { flex: 1; min-width: 0; margin: 0; }
+.detail-title .include-switch { flex: none; margin: 0; }
+/* 여러 화면 중 일부만 배포를 켰을 때: 스위치 손잡이를 가운데에 둔다. */
+.switch input:indeterminate { background: color-mix(in srgb, var(--brand) 45%, var(--border)); }
+.switch input:indeterminate::after { transform: translateX(6px); }
+.disposition-section:empty { display: none; }
 .detail-section { padding: 6px 0; border-bottom: 1px solid var(--border); }
 .detail-section:last-of-type { border-bottom: 0; }
 .detail-section h3 { margin: 0 0 4px; color: var(--text); }

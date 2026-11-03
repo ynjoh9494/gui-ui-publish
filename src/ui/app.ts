@@ -1236,7 +1236,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   // 등록 방식: 왼쪽에 선택 체크가 있는 아코디언(2026-11-03 사용자 요청). 이름 옆에 설명을 두고, 고른 항목만 펼쳐 그 메뉴를 보여 준다.
   interface Choice { value: string; label: string; hint: string; checked: boolean; body?: () => string }
   function choiceField(field: string, choices: Choice[], mixed: boolean): string {
-    return `<div class="choices" role="radiogroup" aria-label="${esc(COPY.uiApp047)}"><div class="choices-title">${COPY.uiApp047}${mixedMark(mixed)}</div>${choices.map(c => {
+    return `<div class="choices" role="radiogroup" aria-label="${esc(COPY.uiApp047)}"><h3 class="choices-title">${COPY.uiApp047}${mixedMark(mixed)}</h3>${choices.map(c => {
       const body = c.checked && c.body ? c.body() : '';
       return `<div class="choice${c.checked ? ' open' : ''}"><label class="choice-head"><input type="radio" name="${field}" value="${c.value}" data-field="${field}" ${c.checked ? 'checked' : ''}><span class="choice-label">${esc(c.label)}</span><span class="choice-hint" title="${esc(c.hint)}">${esc(c.hint)}</span></label>${body ? `<div class="choice-body">${body}</div>` : ''}</div>`;
     }).join('')}</div>`;
@@ -1303,7 +1303,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       return values.some(v => v !== values[0]);
     };
     const allIncluded = chosen.every(e => draftOf(t, e).included);
-    let html = `<div class="detail-head"><h2>${esc(name)}${multi ? ` ${COPY.uiApp046} ${chosen.length - 1}${COPY.uiApp015}` : ''}</h2><div class="validation" aria-live="polite"></div></div>`;
+    // 배포 스위치는 위쪽 고정 제목 줄 오른쪽에 둔다(2026-11-03 사용자 요청). 「변경된 화면만 보기」와 같은 스위치다.
+    const includeSwitch = `<label class="switch include-switch"><span>${COPY.uiApp034}</span><input type="checkbox" role="switch" data-action="include-selected" aria-label="${COPY.uiApp034}" ${allIncluded ? 'checked' : ''}></label>`;
+    let html = `<div class="detail-head"><div class="detail-title"><h2>${esc(name)}${multi ? ` ${COPY.uiApp046} ${chosen.length - 1}${COPY.uiApp015}` : ''}</h2>${includeSwitch}</div><div class="validation" aria-live="polite"></div></div>`;
     if (detailLocked(t)) html += `<p class="note">${locked(t) ? COPY.uiApp176 : COPY.uiApp181}</p>`;
     if (!multi) html += entry.notes.map(n => `<p class="note">${esc(n)}</p>`).join('');
     // 변경사항(변경 감지 이유)은 「변경 무시」를 고르기 전에 본다. 한 화면을 골랐을 때만 보여 준다.
@@ -1319,7 +1321,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       const resolved = chosen.some(e => draftOf(t, e).included);
       html += `<div class="ignore-row"><button data-action="ignore-changes" title="${esc(COPY.uiApp183)}" ${blocked.length || resolved ? 'disabled' : ''}>${COPY.uiApp182}</button>${blocked.map(([e, why]) => `<p class="note">${multi ? `${esc(entryName(state!, e))}: ` : ''}${esc(why!)}</p>`).join('')}</div>`;
     }
-    html += `<section class="detail-section"><h3><label class="check include"><input type="checkbox" data-action="include-selected" ${allIncluded ? 'checked' : ''}> ${COPY.uiApp034}</label></h3>`;
+    html += `<section class="detail-section disposition-section">`;
     // GUI는 배포를 켠 뒤에만 등록 방식과 입력 영역을 보여 준다(2026-10-20 사용자 결정).
     const showInputs = allIncluded;
     if (t === 'GUI' && allIncluded) {
