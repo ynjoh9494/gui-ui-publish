@@ -35,9 +35,11 @@ try {
   const row = page.locator('.list .row').first();
   for (const head of await page.locator('[data-action=page-group]').all()) if (await head.getAttribute('aria-expanded') === 'false') await head.click();
   await row.waitFor();
+  assert.equal(await row.locator('.name').innerText(), 'ST_LI_POLICY · Policy');
   await row.click();
   await page.locator('[data-input=fb-page-title]').waitFor();
   assert.equal(await page.locator('[data-identity-chapter]').inputValue(), 'Live');
+  assert.equal(await page.locator('[data-identity-chapter]').isDisabled(), true);
   assert.equal(await page.locator('[data-input=fb-screen-id]').inputValue(), 'ST_LI_POLICY');
   await page.locator('[data-input=fb-page-title]').fill('A title without a dash');
   await page.locator('[data-input=fb-screen-id]').fill('ST_LI_POLICY_05');
@@ -46,6 +48,7 @@ try {
   await page.waitForFunction(() => window.requests.at(-1)?.type === 'updateFlipbookIdentity');
   assert.deepEqual(await page.evaluate(() => window.requests.at(-1)), { type: 'updateFlipbookIdentity', id: 'fb', title: 'A title without a dash', screenId: 'ST_LI_POLICY_05', rev: 1 });
   await row.locator('.name').dblclick();
+  assert.equal(await page.locator('.list [data-input=fb-title]').inputValue(), 'Policy', 'inline editor contains Page title only');
   await page.locator('.list [data-input=fb-title]').fill('Only Page title');
   await page.locator('.list [data-input=fb-title]').press('Enter');
   await page.waitForFunction(() => window.requests.at(-1)?.type === 'renameFlipbook');
@@ -54,6 +57,7 @@ try {
   store.put(keys.flipbook(fb.id), { ...fb, rev: 3, title: 'Only Page title', screenId: 'ST_LI_POLICY_05' });
   await page.evaluate(state => window.postMessage({ pluginMessage: { type: 'state', state, pages: [{ id: 'p', name: 'Pages' }] } }, '*'), toUiWire(store.state));
   await page.waitForFunction(() => document.querySelector('[data-input=fb-page-title]')?.value === 'Only Page title');
+  await page.waitForFunction(() => document.querySelector('.list .row .name')?.textContent === 'ST_LI_POLICY_05 · Only Page title');
   await page.locator('#app').screenshot({ path: 'release/screens/ui-identity.png' });
   console.log('Identity UI: automatic Chapter/policy ID, editable ID/title, frame preview and title-only double click passed');
 } finally { await browser.close(); }

@@ -14,7 +14,7 @@ import { guiRecordInfos, guiScreens } from './core/guiScreens.ts';
 import { acknowledgeChange, addDelivery, upgradeBaseline, buildPlan, commitPlan, setDeliveryState, type BatchComment, unfinishedDeliveries, type CommitInput, type Plan } from './core/publish.ts';
 import {
   addCategory, addExclusion, addTag, addWorker, correctRecord, ensureScreenIdRules, ensureSystemTags, removeExclusion, renameCategory, renameWorker, setCaseRelation,
-  relinkSource, renumberScreenIds, reorderCategories, setCategoryActive, setCategoryCode, setScreenCategory, setScreenIdPrefix, setWorkerActive, updateTag,
+  relinkSource, renumberScreenIds, reorderCategories, updateCategory, setCategoryActive, setCategoryCode, setScreenCategory, setScreenIdPrefix, setWorkerActive, updateTag,
 } from './core/registry.ts';
 import type { CodeRename } from './core/screenCode.ts';
 import { formatFrameName } from './core/screenName.ts';
@@ -49,7 +49,7 @@ function yielder(): () => Promise<void> {
 function carried(frame: ScannedFrame, before: ScannedFrame): ScannedFrame {
   return { ...frame, fingerprint: before.fingerprint, legacyFingerprint: before.legacyFingerprint, reason: before.reason, error: before.error };
 }
-const DATA_OPS = new Set<AdminOp['op']>(['renameCategory', 'setCategoryActive', 'setCategoryCode', 'reorderCategories', 'setScreenIdPrefix', 'renumberScreenIds', 'setScreenCategory', 'setCaseRelation', 'correctRecord', 'setDataPage']);
+const DATA_OPS = new Set<AdminOp['op']>(['renameCategory', 'updateCategory', 'setCategoryActive', 'setCategoryCode', 'reorderCategories', 'setScreenIdPrefix', 'renumberScreenIds', 'setScreenCategory', 'setCaseRelation', 'correctRecord', 'setDataPage']);
 // 오래 걸리는 요청. 처리하는 동안 UI에 진행 표시를 띄우고 중복 조작을 막는다.
 const BUSY_LABEL: Partial<Record<ToMain['type'], string>> = {
   prepare: COPY.controller001, commit: COPY.controller002, resetData: COPY.controller003, retry: COPY.controller004, refreshData: COPY.controller005,
@@ -1664,10 +1664,13 @@ export class Controller {
 
   private async admin(action: AdminOp): Promise<void> {
     const s = this.store, a = this.host.actor;
+    s.reload();
     let renames: CodeRename[] = [];
+    let chapterCategoryId: string | undefined;
     switch (action.op) {
-      case 'addCategory': addCategory(s, action.name, a); break;
-      case 'renameCategory': renameCategory(s, action.id, action.name, a); break;
+      case 'addCategory': chapterCategoryId = addCategory(s, action.name, a, action.code).id; break;
+      case 'renameCategory': renameCategory(s, action.id, action.name, a); chapterCategoryId = action.id; break;
+      case 'updateCategory': renames = updateCategory(s, action.id, action.name, action.code, a); chapterCategoryId = action.id; break;
       case 'setCategoryActive': setCategoryActive(s, action.id, action.active, a); break;
       case 'setCategoryCode': renames = setCategoryCode(s, action.id, action.code, a); break;
       case 'reorderCategories': reorderCategories(s, action.ids, a); break;
@@ -1794,6 +1797,15 @@ export class Controller {
     if (action.op === 'correctRecord' && action.team === 'GUI') {
       const pulled = await this.pullGui();
       if (pulled?.failed) this.host.post({ type: 'error', message: pulled.message });
+    }
+    if (chapterCategoryId) {
+      const code = s.state.categories.get(chapterCategoryId)?.code?.toUpperCase();
+      const ids = code ? [...s.state.flipbooks.values()]
+        .filter(fb => fb.status === 'active' && flipbookIdentity(s.state, fb).screenId.split('_')[1]?.toUpperCase() === code).map(fb => fb.id) : [];
+      if (ids.length) {
+        try { await this.syncChapters(ids); }
+        catch (error) { this.postState(); throw error; }
+      }
     }
     // 현재 분류·관계·설명이 바뀌는 조작은 DATA 페이지가 있을 때 표시를 다시 그린다.
     if (DATA_OPS.has(action.op) && s.state.project.dataPageId) await this.refreshData();

@@ -192,7 +192,7 @@ footer { color: var(--muted); font-size: 13px; text-align: center; margin-top: 2
   <h3>GUI Publish → 관리</h3>
   <ol class="steps">
     <li><b>GUI 원본 범위</b>변경사항을 확인할 GUI 원본 페이지를 추가합니다. 여러 페이지를 지정할 수 있습니다. 화면 프레임은 페이지 최상위나 Section 안(중첩 Section 포함)에 있어야 찾을 수 있습니다.</li>
-    <li><b>Screen ID 규칙</b>플랫폼 Prefix와 카테고리 코드를 정합니다. 자동으로 만드는 Screen ID는 <code>{Prefix}_{카테고리 코드}_{번호 3자리}</code> 형식입니다(예: <code>STB_HO_001</code>). 카테고리 코드는 카테고리를 만들 때 이름에서 두 글자로 자동 생성되며 바꿀 수 있습니다.</li>
+    <li><b>카테고리</b>카테고리 이름·코드를 추가·수정·삭제하고 플랫폼 Prefix를 정합니다. 화면정보에서는 카테고리를 선택하거나 「관리」 링크로 이동합니다. 자동으로 만드는 Screen ID는 <code>{Prefix}_{카테고리 코드}_{번호 3자리}</code> 형식입니다(예: <code>STB_HO_001</code>). 코드를 비우고 추가하면 이름에서 두 글자로 자동 생성됩니다. 카테고리 이름은 플립북 Chapter에도 사용하며, Chapter 입력란은 비활성화됩니다.</li>
     <li><b>작업자</b>배포 이력에 남길 작업자 이름을 등록합니다. 배포할 때 입력란에서 바로 추가할 수도 있습니다.</li>
   </ol>
   <figure class="narrow">
@@ -313,6 +313,7 @@ footer { color: var(--muted); font-size: 13px; text-align: center; margin-top: 2
   </ul>
 
   <h3>플립북 관리 형식</h3>
+  <p>목록에는 <code>Screen ID · Page title</code> 형식의 프레임 이름을 표시합니다. 더블클릭 편집란에서는 Page title만 수정합니다.</p>
   <p>목록에서 플립북 하나를 고르면 우측에 <b>Chapter · Page title · Screen ID</b>가 표시됩니다. Chapter는 ID의 두 번째 코드에 대응하는 GUI 카테고리 이름으로 자동 결정됩니다. Page title과 Screen ID를 입력한 뒤 <span class="ui">적용</span>을 누르면 프레임 이름을 <code>ID · Page title</code>로 맞추고 헤더에도 반영합니다. 제목의 <code>기능 - 상태</code> 형식은 검사하지 않습니다.</p>
   <p>화면이 있으면 첫 화면 ID 하나가 기본값입니다. 화면이 없으면 해당 기기·Chapter의 <code>_POLICY</code>, <code>_POLICY_02</code> 순서로 ID를 제안합니다. 카테고리를 알 수 없는 Section에서는 ID를 직접 입력합니다. 목록 이름을 더블클릭하면 Page title만 수정합니다.</p>
   <figure><img src="screens/ui-identity.png" alt="플립북 목록 우측의 Chapter, Page title, Screen ID와 프레임 이름 미리보기"><figcaption>Chapter는 GUI에서 자동 결정하고, Page title·Screen ID는 우측에서 입력합니다.</figcaption></figure>

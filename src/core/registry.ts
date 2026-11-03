@@ -24,11 +24,14 @@ export function findCategoryByName(state: State, name: string): Category | null 
   return null;
 }
 
-export function addCategory(store: Store, name: string, actor: Actor): Category {
+export function addCategory(store: Store, name: string, actor: Actor, code?: string): Category {
   const value = clean(name, COPY.coreRegistry002);
   if (findCategoryByName(store.state, value)) throw new RegistryError(`${COPY.coreRegistry003} ${value}`);
+  const explicit = code?.trim();
+  if (explicit && !CATEGORY_CODE_PATTERN.test(explicit)) throw new RegistryError(COPY.coreRegistry031);
+  if (explicit && activeCategoryCodes(store.state).some(other => other.toUpperCase() === explicit.toUpperCase())) throw new RegistryError(`${COPY.coreRegistry032} ${explicit}`);
   const order = Math.max(0, ...[...store.state.categories.values()].map(c => c.order + 1));
-  const category: Category = { id: store.newId(), name: value, order, active: true, code: generateCategoryCode(value, activeCategoryCodes(store.state)) };
+  const category: Category = { id: store.newId(), name: value, order, active: true, code: explicit || generateCategoryCode(value, activeCategoryCodes(store.state)) };
   store.put(keys.category(category.id), category);
   store.audit(actor, 'category.add', category.id, null, category);
   return category;
@@ -342,4 +345,17 @@ export function correctRecord(store: Store, team: Team, screenId: string, versio
   const after = { ...before, corrections: [...before.corrections, { at: store.now(), actor, description: text, reason: reason.trim() }] };
   store.put(key, after);
   store.audit(actor, 'record.correct', key, before.corrections, after.corrections, reason);
+}
+
+
+// Validate the name before changing the code, so a rejected field leaves both intact.
+export function updateCategory(store: Store, id: string, name: string, code: string, actor: Actor): CodeRename[] {
+  const before = store.state.categories.get(id);
+  if (!before) throw new RegistryError(COPY.coreRegistry004);
+  const value = clean(name, COPY.coreRegistry002);
+  const same = findCategoryByName(store.state, value);
+  if (same && same.id !== id) throw new RegistryError(`${COPY.coreRegistry003} ${value}`);
+  const renames = setCategoryCode(store, id, code, actor);
+  if (value !== before.name) renameCategory(store, id, value, actor);
+  return renames;
 }

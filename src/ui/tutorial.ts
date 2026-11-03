@@ -68,7 +68,7 @@ class Driver {
     (await this.until(() => { const el = get(); return !this.app.classList.contains('is-busy') && el?.matches(':not(:disabled)') && el; })).click();
   }
   // 목록 행: 화면·플립북 이름으로 찾는다.
-  row(name: string): HTMLElement | undefined { return this.all('.list .row').find(r => r.querySelector('.name')?.textContent === name); }
+  row(name: string): HTMLElement | undefined { return this.all('.list .row').find(r => r.querySelector('.name')?.textContent?.replace(/^[A-Za-z0-9_-]+ \u00b7 /, '') === name); }
   // 값을 바꾸고 입력 이벤트를 보낸다.
   set(el: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement, value: string, event: 'change' | 'input') {
     el.value = value;

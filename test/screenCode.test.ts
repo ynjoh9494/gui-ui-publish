@@ -4,7 +4,7 @@ import { classify, type ScannedFrame } from '../src/core/compare.ts';
 import { defaultDraft, draftCode, fillAutoCode, renumberAutoCodes } from '../src/core/drafts.ts';
 import { importGuiUpdates, planFlipbooks } from '../src/core/flipbooks.ts';
 import { guiRecordInfos, guiScreens } from '../src/core/guiScreens.ts';
-import { addCategory, ensureCategoryCodes, ensureScreenIdPrefix, ensureScreenIdRules, renumberScreenIds, setCategoryCode, setScreenIdPrefix } from '../src/core/registry.ts';
+import { updateCategory, addCategory, ensureCategoryCodes, ensureScreenIdPrefix, ensureScreenIdRules, renumberScreenIds, setCategoryCode, setScreenIdPrefix } from '../src/core/registry.ts';
 import { canvasOrder, codeLetters, generateCategoryCode, nextScreenCode } from '../src/core/screenCode.ts';
 import { keys, memoryKV, Store } from '../src/core/store.ts';
 import type { Category, Screen } from '../src/core/types.ts';
@@ -347,4 +347,26 @@ test('설정의 번호 다시 매기기는 썸네일 이름도 맞추고 원본 
   assert.ok(posted.some(m => m.type === 'notice' && m.message.startsWith('2개 화면의 Screen ID')));
   await controller.handle({ type: 'admin', action: { op: 'renumberScreenIds' } });
   assert.ok(posted.some(m => m.type === 'notice' && m.message.startsWith('다시 매길 Screen ID가 없습니다')));
+});
+
+
+test('category management accepts explicit codes and rejects invalid edits before mutation', () => {
+  const store = new Store(memoryKV());
+  const home = addCategory(store, 'Home', actor, 'HO');
+  const live = addCategory(store, 'Live', actor, 'LI');
+  assert.equal(home.code, 'HO');
+  assert.throws(() => addCategory(store, 'Duplicate code', actor, 'ho'));
+  assert.equal(store.state.categories.size, 2);
+  assert.throws(() => updateCategory(store, home.id, 'Live', 'HM', actor));
+  assert.deepEqual(store.state.categories.get(home.id), home);
+  assert.throws(() => updateCategory(store, home.id, 'Home English', 'LI', actor));
+  assert.deepEqual(store.state.categories.get(home.id), home);
+  const source = screen(store, 's1', 'ST_HO_001', home.id);
+  store.saveProject({ ...store.state.project, screenIdPrefix: 'ST' });
+  const renames = updateCategory(store, home.id, 'Home English', 'HM', actor);
+  assert.equal(store.state.categories.get(home.id)?.name, 'Home English');
+  assert.equal(store.state.categories.get(home.id)?.code, 'HM');
+  assert.equal(store.state.screens.get(source.id)?.code, 'ST_HM_001');
+  assert.equal(renames.length, 1);
+  assert.equal(store.state.categories.get(live.id)?.code, 'LI');
 });

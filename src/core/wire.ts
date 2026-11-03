@@ -94,7 +94,8 @@ export function pasteDrop(meta: unknown): { uid: string; scale: FlipbookScale } 
 }
 
 export type AdminOp =
-  | { op: 'addCategory'; name: string }
+  | { op: 'addCategory'; name: string; code?: string }
+  | { op: 'updateCategory'; id: string; name: string; code: string }
   | { op: 'renameCategory'; id: string; name: string }
   | { op: 'setCategoryActive'; id: string; active: boolean }
   | { op: 'setCategoryCode'; id: string; code: string }

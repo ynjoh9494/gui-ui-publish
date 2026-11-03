@@ -54,7 +54,7 @@ type Tab = Team | 'ADMIN';
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
 const WHILE_BUSY = new Set(['tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
-const BEFORE_CHECK = new Set([...WHILE_BUSY, 'switch-mode', 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'fb-identity-save', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
+const BEFORE_CHECK = new Set([...WHILE_BUSY, 'switch-mode', 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'category-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'fb-identity-save', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'text-import', 'text-apply',
   'version-open', 'version-close', 'version-match', 'version-select', 'version-review-only', 'version-reveal', 'version-switch', 'version-cancel']);
 
@@ -190,9 +190,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const frame = root.querySelector('.new-place [data-identity-frame]');
     if (chapter) chapter.value = info.chapter;
     if (frame) frame.textContent = info.frameName;
+    const row = root.querySelector<HTMLElement>(`.list-box .new-row[data-key="${CSS.escape(n.key)}"] .name`);
+    if (row) row.textContent = info.frameName;
   }
 
-  function newIdentity(n: NewFlipbook) {
+  function newIdentities() {
+    const identities = new Map<string, ReturnType<typeof flipbookIdentity>>();
+    if (!newFlipbooks.length) return identities;
     const preview = { ...state!, flipbooks: new Map(state!.flipbooks) };
     for (const row of newFlipbooks) {
       const screens = newScreens(row);
@@ -200,9 +204,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         category: newSection(row), screens, pageId: row.pageId, status: 'active', createdAt: 0, actor: { id: '', name: '' } };
       const next = withFlipbookId(preview, fb, row.screenId);
       preview.flipbooks.set(next.id, next);
-      if (row === n) return flipbookIdentity(preview, next);
+      identities.set(row.key, flipbookIdentity(preview, next));
     }
-    return { screenId: '', chapter: '-', frameName: newTitle(n) };
+    return identities;
+  }
+
+  function newIdentity(n: NewFlipbook) {
+    return newIdentities().get(n.key) ?? { screenId: '', chapter: '-', frameName: newTitle(n) };
   }
 
   // 「선택된 화면」에서 드래그 중인 화면
@@ -267,6 +275,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let history: { id: string; rows: HistoryRow[] } | null = null;
   // GUI Publish에서 추가한 카테고리. 상태가 돌아오면 해당 화면의 카테고리로 선택한다.
   let pendingCategory: { name: string; keys: string[] } | null = null;
+  let categoryManageKeys: string[] = [];
   // 태그 입력란: 추가 후 선택할 태그와 사용 안 함을 한 번 누른 태그
   let pendingTag: { name: string; team: Team; keys: string[] } | null = null;
   let pendingWorker: { name: string; team: Team; keys: string[] } | null = null;
@@ -1062,6 +1071,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       return;
     }
     const byKey = new Map(newFlipbooks.map(n => [n.key, n]));
+    const identities = newIdentities();
     // 목록에서 제목을 고치는 중이면 다시 그려도 입력 중인 값과 커서를 유지한다.
     const typing = box.querySelector<HTMLInputElement>('.title-input');
     const typed = typing ? { id: typing.dataset.key ?? typing.dataset.id, value: typing.value, focused: document.activeElement === typing, start: typing.selectionStart, end: typing.selectionEnd } : null;
@@ -1099,7 +1109,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
           const n = byKey.get(item);
           if (n) {
             const sel = selectedNew === n.key;
-            const title = newTitle(n);
+            const title = identities.get(n.key)!.frameName;
             const editing = editingAt(n.key, 'list');
             const name = editing
               ? `<input class="title-input" data-input="new-title" data-key="${esc(n.key)}" value="${esc(n.title)}" placeholder="${esc(defaultTitle(newKind(n), newScreens(n)))}" aria-label="${COPY.uiApp203}">`
@@ -1117,10 +1127,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
           // 들어 있던 화면이 사용 안 함이 된 새 템플릿 플립북도 알림 뱃지를 붙인다(상세의 경고에서 확인하면 지운다).
           const alerted = !!r.entry.flipbookId && !!state!.flipbooks.get(r.entry.flipbookId)?.deletedAlert;
           // 연결이 끊긴 플립북은 프레임이 없어 반영할 수 없으므로 제목을 고치지 않는다(오른쪽 영역의 연필과 같다).
-          const fb = r.entry.flipbookId && r.entry.estimate !== 'missing' ? state!.flipbooks.get(r.entry.flipbookId) : undefined;
+          const record = r.entry.flipbookId ? state!.flipbooks.get(r.entry.flipbookId) : undefined;
+          const fb = r.entry.estimate !== 'missing' ? record : undefined;
+          const frameName = record ? flipbookIdentity(state!, record).frameName : r.name;
           const name = fb && editingAt(fb.id, 'list')
             ? `<input class="title-input" data-input="fb-title" data-id="${esc(fb.id)}" value="${esc(fb.title)}" placeholder="${esc(defaultTitle(fb.kind, fb.screens))}" aria-label="${COPY.uiApp203}">`
-            : `<span class="name"${fb ? ` data-edit-title="${esc(fb.id)}" title="${COPY.uiApp314}"` : ''}>${esc(r.name)}</span>`;
+            : `<span class="name"${fb ? ` data-edit-title="${esc(fb.id)}" title="${COPY.uiApp314}"` : ''}>${esc(frameName)}</span>`;
           // 기존 플립북도 드래그하거나 Alt+↑↓로 자리를 옮긴다(2026-10-22 사용자 요청). 연결이 끊긴 플립북은 캔버스에 프레임이 없어 옮기지 않는다.
           const movable = !!fb && movablePage && !editingAt(fb.id, 'list') && !newSubmitting;
           return `<div class="row${sel ? ' selected' : ''}" data-action="select" data-key="${esc(r.entry.key)}" data-group="${esc(g.key)}" draggable="${movable}" tabindex="0" aria-selected="${sel}">
@@ -1564,7 +1576,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       }
       const info = flipbookIdentity(state, { ...fb, title: draft.title, screenId: draft.screenId });
       top += `<div class="fb-identity new-place" data-id="${esc(fb.id)}">
-        <label>${COPY.fbChapter}<input data-identity-chapter value="${esc(info.chapter)}" readonly title="${esc(COPY.fbChapterAuto)}"></label>
+        <label>${COPY.fbChapter}<input data-identity-chapter value="${esc(info.chapter)}" disabled title="${esc(COPY.fbChapterAuto)}"></label>
         <label>${COPY.fbPageTitle}<input data-input="fb-page-title" value="${esc(draft.title)}" aria-label="${COPY.fbPageTitle}"></label>
         <label>${COPY.fbScreenId}<input data-input="fb-screen-id" value="${esc(draft.screenId)}" placeholder="${esc(COPY.fbIdPlaceholder)}" aria-label="${COPY.fbScreenId}"></label>
         <p class="note">${COPY.fbFrameName}: <span data-identity-frame>${esc(info.frameName)}</span></p>
@@ -1821,7 +1833,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       <div class="new-place">
         <div class="field"><div class="field-head"><span>${COPY.uiApp204}</span><button class="link" data-action="create-page-manage" aria-label="페이지 관리">관리${CHEVRON_RIGHT_ICON}</button></div><select data-input="new-page" aria-label="페이지 선택" ${pageOptions.length ? '' : 'disabled'}>${pageOptions.length ? pageOptions.map(pg => option(pg.id, pg.name, pg.id === n.pageId)).join('') : option('', COPY.uiApp106, true)}</select></div>
         <label>${COPY.uiApp338}${sectionField}</label>
-        <label>${COPY.fbChapter}<input data-identity-chapter value="${esc(identity.chapter)}" readonly title="${esc(COPY.fbChapterAuto)}"></label>
+        <label>${COPY.fbChapter}<input data-identity-chapter value="${esc(identity.chapter)}" disabled title="${esc(COPY.fbChapterAuto)}"></label>
         <label>${COPY.fbPageTitle}<input class="title-input" data-input="new-title" data-key="${esc(n.key)}" value="${esc(title)}" placeholder="${esc(auto)}" aria-label="${COPY.fbPageTitle}"></label>
         <label>${COPY.fbScreenId}<input data-input="new-screen-id" data-key="${esc(n.key)}" value="${esc(identity.screenId)}" placeholder="${esc(COPY.fbIdPlaceholder)}" aria-label="${COPY.fbScreenId}"></label>
         <p class="note">${COPY.fbFrameName}: <span data-identity-frame>${esc(identity.frameName)}</span></p>
@@ -2386,11 +2398,19 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const cats = [...s.categories.values()].filter(c => c.active).sort((a, b) => a.order - b.order);
     const prefix = s.project.screenIdPrefix;
     const sample = `${prefix ? `${prefix}_` : ''}${cats.find(c => c.code)?.code ?? 'HO'}_001`;
-    return `<section class="admin" data-form="screen-id-prefix"><h3>Screen ID</h3>
+    return `<section class="admin" data-form="screen-id-prefix"><h3>${COPY.uiApp162}</h3><p class="note">${COPY.categoryManageHint}</p>
       <label>${COPY.uiApp229}</label>
       <div class="inline"><input data-f="prefix" value="${esc(prefix)}" placeholder="STB" aria-label="${COPY.uiApp229}"><button data-action="admin-screen-prefix">${COPY.uiApp110}</button></div>
-      <label>${COPY.uiApp230}</label>
-      ${cats.length ? cats.map(c => `<div class="inline category-code" data-form="cat-code" data-id="${esc(c.id)}"><span title="${esc(c.name)}">${esc(c.name)}</span><input data-f="code" value="${esc(c.code ?? '')}" aria-label="${esc(c.name)} ${COPY.uiApp230}"><button data-action="admin-cat-code">${COPY.uiApp110}</button></div>`).join('') : `<p class="note">${COPY.uiApp234}</p>`}
+      ${cats.length ? cats.map(c => `<div class="admin-category" data-form="cat-code" data-id="${esc(c.id)}">
+        <label>${COPY.categoryNameLabel}<input data-f="name" value="${esc(c.name)}" aria-label="${esc(c.name)} ${COPY.categoryNameLabel}"></label>
+        <label>${COPY.uiApp230}<input data-f="code" value="${esc(c.code ?? '')}" aria-label="${esc(c.name)} ${COPY.uiApp230}"></label>
+        <div class="category-actions"><button data-action="admin-cat-save">${COPY.uiApp110}</button><button class="category-delete" data-action="admin-cat-delete">${COPY.uiApp169}</button></div>
+        ${deleteArmed === c.id ? `<p class="bad" role="status">${COPY.uiApp211}</p>` : ''}</div>`).join('') : `<p class="note">${COPY.uiApp234}</p>`}
+      <div class="admin-category" data-form="cat-add">
+        <label>${COPY.categoryNameLabel}<input data-f="name" placeholder="${COPY.uiApp163}" aria-label="${COPY.uiApp163}"></label>
+        <label>${COPY.uiApp230}<input data-f="code" placeholder="${COPY.categoryCodeAuto}" aria-label="${COPY.uiApp230}"></label>
+        <div class="category-actions"><button class="add-button" data-action="admin-cat-add">${ADD_LABEL}</button></div>
+      </div>
       <p class="note">${COPY.uiApp231} ${esc(sample)}</p>
       <p class="note">${COPY.uiApp232} ${COPY.uiApp233}</p>
       <label>${COPY.uiApp245}</label>
@@ -2441,19 +2461,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   }
 
 
-  // GUI Publish의 카테고리: 선택하고, 이름을 입력해 추가하거나 선택한 카테고리 이름을 바꾸고, 삭제한다.
-  function categoryField(entry: Entry, draft: Draft, multi = false, selectedId = draft.categoryId ?? '', isMixed = false): string {
+  // GUI category selection; all edits are centralized in its management panel.
+  function categoryField(entry: Entry, draft: Draft, _multi = false, selectedId = draft.categoryId ?? '', isMixed = false): string {
     const cats = [...state!.categories.values()].filter(c => c.active).sort((a, b) => a.order - b.order);
     const chosen = selectedId && state!.categories.get(selectedId)?.active ? selectedId : '';
-    const selectedCategory = chosen ? state!.categories.get(chosen)! : null;
-    const inUse = chosen ? [...state!.screens.values()].filter(s => s.categoryId === chosen && s.status === 'active').length : 0;
-    const armed = chosen && deleteArmed === chosen;
-    return `
-      <div class="wide">${entry.categoryMissing ? `<p class="bad">${COPY.uiApp161}</p>` : ''}
-      <label>${COPY.uiApp162}</label>${addMode === 'category' ? `<div class="addable"><input data-field="newCategory" data-required-field="categoryId" placeholder="${COPY.uiApp163}" aria-label="${COPY.uiApp163}"><button data-action="add-category">${COPY.uiApp148}</button><button data-action="cancel-add">${COPY.uiApp149}</button></div>`
-        : editMode === 'category' && selectedCategory
-          ? `<div class="addable" data-form="category-edit"><input data-field="editCategoryName" value="${esc(selectedCategory.name)}" aria-label="${COPY.uiApp162}"><button data-action="rename-category">${COPY.uiApp148}</button><button data-action="cancel-add">${COPY.uiApp149}</button><button class="category-delete" data-action="delete-category">${COPY.uiApp169}</button></div>${armed ? `<p class="bad" role="status">${COPY.uiApp211}${inUse ? ` ${COPY.uiApp167} ${inUse}${COPY.uiApp168}.` : ''}</p>` : ''}`
-          : `<div class="addable"><select data-field="categoryId" data-required-field="categoryId">${isMixed ? mixedOption() : ''}${option('', COPY.uiApp164, !chosen && !isMixed)}${cats.map(c => option(c.id, c.name, c.id === chosen)).join('')}</select>${chosen && !multi ? `<button data-action="begin-edit" data-kind="category" aria-label="${COPY.uiApp174}">${COPY.uiApp173}</button>` : ''}<button class="add-button" data-action="begin-add" data-kind="category">${ADD_LABEL}</button></div>`}</div>`;
+    return `<div class="wide category-field">${entry.categoryMissing ? `<p class="bad">${COPY.uiApp161}</p>` : ''}
+      <div class="field-head"><span>${COPY.uiApp162}</span><button class="link" data-action="category-manage">${COPY.categoryManage}${CHEVRON_RIGHT_ICON}</button></div>
+      <select data-field="categoryId" data-required-field="categoryId" aria-label="${COPY.uiApp164}">${isMixed ? mixedOption() : ''}${option('', COPY.uiApp164, !chosen && !isMixed)}${cats.map(c => option(c.id, c.name, c.id === chosen)).join('')}</select></div>`;
   }
 
   // 삭제된 카테고리도 이름을 보여 준다.
@@ -2752,6 +2766,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         renderAll();
         break;
       case 'settings':
+        categoryManageKeys = [];
         closeVersion(false);
         tab = tab === 'ADMIN' ? mode : 'ADMIN';
         addMode = null; editMode = null;
@@ -2763,6 +2778,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         }
         break;
       // 만들기 전 새 플립북은 설정을 다녀와도 남는다.
+      case 'category-manage':
+        categoryManageKeys = selectedKeys('GUI');
+        tab = 'ADMIN'; adminOpen = COPY.uiApp162; addMode = null; editMode = null; renderAll();
+        break;
       case 'create-page-manage': tab = 'ADMIN'; adminOpen = COPY.uiApp107; renderAll(); bridge.send({ type: 'templateInfo', templateId: templatePick ?? undefined }); break;
       case 'register-existing': bridge.send({ type: 'registerFlipbooks' }); break;
       case 'fb-identity-save': {
@@ -2973,33 +2992,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         if (s) navigate('source', s);
         break;
       }
-      case 'rename-category': {
-        const entry = current();
-        const name = (root.querySelector('[data-field="editCategoryName"]') as HTMLInputElement).value.trim();
-        const id = entry ? draftOf('GUI', entry).categoryId : undefined;
-        if (id && name) { editMode = null; admin({ op: 'renameCategory', id, name }); }
-        break;
-      }
-      case 'delete-category': {
-        const entry = current();
-        const id = entry ? draftOf('GUI', entry).categoryId : undefined;
-        if (!id) break;
-        if (deleteArmed !== id) { deleteArmed = id; renderDetail(); break; }
-        deleteArmed = null;
-        admin({ op: 'setCategoryActive', id, active: false });
-        break;
-      }
-      case 'add-category': {
-        const entry = current();
-        const name = (root.querySelector('[data-field="newCategory"]') as HTMLInputElement).value.trim();
-        if (!entry || !name || !state) break;
-        // 이미 있으면 새로 만들지 않고 고른다.
-        const found = findCategoryByName(state, name);
-        if (found?.active) { for (const e of selectedEntries('GUI')) { const d = draftOf('GUI', e); d.categoryId = found.id; d.newCategoryName = undefined; } renumberCodes(); addMode = null; renderDetail(); refreshAfterInput(); break; }
-        pendingCategory = { name, keys: selectedKeys('GUI') };
-        admin({ op: 'addCategory', name });
-        break;
-      }
       case 'begin-add': addMode = el.dataset.kind as typeof addMode; editMode = null; renderDetail(); (root.querySelector('.detail .addable input') as HTMLInputElement | null)?.focus(); break;
       case 'begin-edit': editMode = el.dataset.kind as typeof editMode; addMode = null; renderDetail(); (root.querySelector('.detail .addable input') as HTMLInputElement | null)?.focus(); break;
       case 'cancel-add': addMode = null; editMode = null; renderDetail(); break;
@@ -3172,6 +3164,26 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'admin-screen-prefix': {
         const prefix = formValue(el, 'prefix').trim();
         if (prefix !== state?.project.screenIdPrefix) admin({ op: 'setScreenIdPrefix', prefix });
+        break;
+      }
+      case 'admin-cat-add': {
+        const name = formValue(el, 'name').trim();
+        const code = formValue(el, 'code').trim();
+        if (!name) break;
+        pendingCategory = { name, keys: [...categoryManageKeys] };
+        admin({ op: 'addCategory', name, code: code || undefined });
+        break;
+      }
+      case 'admin-cat-save': {
+        const id = el.closest<HTMLElement>('[data-form]')!.dataset.id!;
+        admin({ op: 'updateCategory', id, name: formValue(el, 'name').trim(), code: formValue(el, 'code').trim() });
+        break;
+      }
+      case 'admin-cat-delete': {
+        const id = el.closest<HTMLElement>('[data-form]')!.dataset.id!;
+        if (deleteArmed !== id) { deleteArmed = id; renderAdmin(); break; }
+        deleteArmed = null;
+        admin({ op: 'setCategoryActive', id, active: false });
         break;
       }
       case 'admin-cat-code': {
@@ -3515,6 +3527,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       requestAnimationFrame(() => requestAnimationFrame(() => root.querySelector<HTMLElement>(`.list-box .row[data-key="${CSS.escape(key)}"]`)?.focus()));
       return;
     }
+    if (tab === 'ADMIN' && ev.key === 'Enter' && !ev.isComposing && ev.keyCode !== 229) {
+      const form = el.closest<HTMLElement>('[data-form="cat-add"], [data-form="cat-code"]');
+      if (form && el instanceof HTMLInputElement) {
+        ev.preventDefault();
+        form.querySelector<HTMLButtonElement>('[data-action="admin-cat-add"], [data-action="admin-cat-save"]')?.click();
+        return;
+      }
+    }
     // 제목 입력: Enter로 확정, Esc로 취소한다. 한글 조합 중의 Enter는 무시한다.
     if ((el.dataset.input === 'new-title' || el.dataset.input === 'fb-title') && !ev.isComposing && ev.keyCode !== 229) {
       if (ev.key === 'Enter' || ev.key === 'Escape') {
@@ -3612,7 +3632,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
           if (field) field.value = newTitle(n);
         } else {
           const row = [...root.querySelectorAll<HTMLElement>('.list-box .new-row')].find(item => item.dataset.key === n.key);
-          const title = newTitle(n);
+          const title = newIdentity(n).frameName;
           const name = row?.querySelector<HTMLElement>('.name');
           if (name) name.textContent = title;
           row?.querySelector('[data-action="new-edit-title"]')?.setAttribute('aria-label', `${title} ${COPY.uiApp335}`);
@@ -3825,6 +3845,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if ('managedPages' in msg && msg.managedPages) managedPages = msg.managedPages;
     switch (msg.type) {
       case 'init':
+        categoryManageKeys = [];
         identityDrafts.clear();
         previewCache.clear();
         state = fromWire(msg.state); actor = msg.actor; pages = msg.pages; issues = msg.issues;

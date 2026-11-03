@@ -814,5 +814,12 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .tabs .mode-switch svg { flex: none; }
 
 .fb-identity .review-actions { display: flex; justify-content: flex-end; }
-.fb-identity [readonly], .new-place [readonly] { background: var(--bg); color: var(--muted); }
+.fb-identity [data-identity-chapter], .new-place [data-identity-chapter] { background: var(--bg); color: var(--muted); }
 .fb-identity [data-identity-frame], .new-place [data-identity-frame] { overflow-wrap: anywhere; }
+
+.category-field .field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.category-field .field-head .link { display: inline-flex; align-items: center; gap: 2px; }
+.category-field > select { margin-top: 2px; }
+.admin-category { display: grid; grid-template-columns: minmax(0, 1fr) minmax(90px, .6fr); gap: 6px 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.admin-category .category-actions, .admin-category > p { grid-column: 1 / -1; }
+.category-actions { display: flex; gap: 6px; justify-content: flex-end; }

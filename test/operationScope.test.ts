@@ -126,3 +126,16 @@ test('stale identity drafts and font failures preserve saved identity', async ()
   assert.deepEqual(controller.store.state.flipbooks.get('fb1'), before);
   assert.equal(posted.filter(m => m.type === 'error').length, 2);
 });
+
+
+test('category names update matching Chapters without a full flipbook delivery', async () => {
+  const { controller, host, store, calls } = setup();
+  store.put(keys.category('live'), { id: 'live', name: 'Live', code: 'LI', order: 0, active: true });
+  store.put(keys.flipbook('fb1'), { ...store.state.flipbooks.get('fb1')!, screenId: 'ST_LI_POLICY' });
+  const chapters: { flipbookId: string; name: string }[] = [];
+  host.syncChapters = async items => { chapters.push(...items); };
+  await controller.handle({ type: 'admin', action: { op: 'updateCategory', id: 'live', name: 'Live English', code: 'LI' } });
+  assert.deepEqual(chapters.map(c => [c.flipbookId, c.name]), [['fb1', 'Live English']]);
+  assert.deepEqual(calls, []);
+  assert.equal(controller.store.state.categories.get('live')?.name, 'Live English');
+});
