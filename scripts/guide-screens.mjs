@@ -36,6 +36,20 @@ try {
   // 작업 결과 토스트가 화면 아래를 가리지 않게 숨긴다.
   await page.addStyleTag({ content: '#app .toast { display: none !important; }' });
 
+  if (process.argv.includes('--text-only')) {
+    await mode('UI');
+    await app.locator('[data-action=text-open]').click();
+    await app.locator('[data-action=text-import]').click();
+    await page.waitForFunction(() => document.querySelector('#app .rich-editor')?.textContent);
+    await app.locator('.rich-editor').click();
+    await page.keyboard.press('Control+End');
+    await app.locator('.rich-editor').evaluate(el => {
+      const data = new DataTransfer();
+      data.setData('text/plain', '\n- <red>Confirm behavior (confirmation needed)</red>');
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+    });
+    await shot('ui-text');
+  } else {
   // GUI Publish: 관리 → 변경사항 확인 → 화면 정보 입력 → 배포 확인
   await app.locator('[data-action=settings]').click();
   await shot('gui-settings');
@@ -161,6 +175,7 @@ try {
   await app.locator('[data-action=tutorial]').click();
   await page.waitForFunction(() => document.querySelector('.tutorial-layer')?.dataset.step === '1', null, { timeout: 15000 });
   await shot('tutorial', page.locator('.tutorial'));
+  }
 } finally {
   await browser.close();
 }

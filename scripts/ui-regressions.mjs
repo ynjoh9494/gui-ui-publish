@@ -60,6 +60,48 @@ try {
   assert.equal(await editor.innerText(), 'base한', 'redo restores the committed composition');
   console.log('UI regressions: tutorial disposal and IME undo/redo passed');
 
+  await page.keyboard.press('Control+a');
+  await page.locator('[data-rt=red]').click();
+  assert.equal(await editor.locator('span').first().evaluate(el => getComputedStyle(el).color), 'rgb(255, 0, 0)');
+  await page.locator('[data-rt=bold]').click();
+  assert.ok(await editor.locator('b').count(), 'bold and red overlap');
+  await page.keyboard.press('Control+z');
+  assert.equal(await editor.locator('span').first().evaluate(el => getComputedStyle(el).color), 'rgb(255, 0, 0)', 'undo bold preserves red');
+  await page.locator('[data-rt=red]').click();
+  assert.equal(await editor.locator('span').count(), 0, 'red can be removed');
+  await page.keyboard.press('Control+z');
+  assert.equal(await editor.locator('span').first().evaluate(el => getComputedStyle(el).color), 'rgb(255, 0, 0)', 'undo restores red');
+
+  await page.keyboard.press('Control+a');
+  await editor.evaluate(el => {
+    const data = new DataTransfer();
+    data.setData('text/plain', '- <red>red **bold**</red>');
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  });
+  assert.equal(await editor.innerText(), 'red bold');
+  await page.keyboard.press('Control+a');
+  const copied = await editor.evaluate(el => {
+    const data = new DataTransfer();
+    el.dispatchEvent(new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true }));
+    return data.getData('text/plain');
+  });
+  assert.equal(copied, '- <red>red **bold**</red>', 'copy retains red, bold and list');
+  await editor.evaluate(el => {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let last;
+    while (walker.nextNode()) last = walker.currentNode;
+    document.getSelection().setBaseAndExtent(last, last.textContent.length, last, last.textContent.length);
+  });
+  await page.locator('[data-rt=red]').click();
+  await page.keyboard.type(' normal');
+  assert.equal(await editor.evaluate(el => {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let last;
+    while (walker.nextNode()) last = walker.currentNode;
+    return getComputedStyle(last.parentElement).color;
+  }), 'rgb(51, 51, 51)', 'caret toggle controls new text');
+  console.log('UI regressions: red toggle, bold overlap, undo, clipboard and typing passed');
+
   const init = { type: 'init', mode: 'UI', actor: { id: 'r', name: 'Review' }, pages: [], issues: [], state: toUiWire(new Store(memoryKV()).state) };
   await page.goto(pathToFileURL('tmp/build/ui.html').href);
   await page.evaluate(m => {

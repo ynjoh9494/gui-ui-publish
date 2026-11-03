@@ -1,4 +1,5 @@
 import { COPY } from '../core/copy.ts';
+import { isRed } from '../core/richText.ts';
 import type { RichParagraph } from '../core/richText.ts';
 
 // 텍스트 편집 탭: 캔버스에서 고른 텍스트 레이어 하나를 읽고 쓴다. 글꼴·크기·행간·색은 레이어 것을 그대로 두고
@@ -16,7 +17,7 @@ export function selectedTextNode(): TextNode {
 
 export function readRichText(node: TextNode): RichParagraph[] {
   const chars = node.characters;
-  const segments = chars.length ? node.getStyledTextSegments(['fontName']) : [];
+  const segments = chars.length ? node.getStyledTextSegments(['fontName', 'fills']) : [];
   let offset = 0;
   return chars.split('\n').map(line => {
     const start = offset, end = offset + line.length;
@@ -33,7 +34,9 @@ export function readRichText(node: TextNode): RichParagraph[] {
         depth = typeof indentation === 'number' ? Math.max(0, indentation - 1) : 0;
       }
     }
-    return { text: line, depth, bold };
+    const red = segments.filter(s => s.fills?.some(p => p.type === 'SOLID' && p.visible !== false && (p.opacity ?? 1) > 0 && isRed(p.color)) && s.end > start && s.start < end)
+      .map(s => ({ start: Math.max(start, s.start) - start, end: Math.min(end, s.end) - start }));
+    return { text: line, depth, bold, ...(red.length ? { red } : {}) };
   });
 }
 
@@ -76,8 +79,12 @@ export async function writeRichText(node: TextNode, paragraphs: RichParagraph[])
 // textFonts로 글꼴을 불러온 레이어에 쓴다. 여러 레이어를 바꿀 때 모든 글꼴을 먼저 불러온 뒤 차례로 쓴다.
 export function applyRichText(node: TextNode, paragraphs: RichParagraph[], { regular, bold }: TextFonts): void {
   const text = paragraphs.map(p => p.text).join('\n');
+  const segments = node.characters.length ? node.getStyledTextSegments(['fills']) : [];
+  const base = segments.find(s => s.fills?.length && !s.fills.some(p => p.type === 'SOLID' && isRed(p.color)))?.fills ?? (node.fills !== figma.mixed && node.fills?.length && !node.fills.some(p => p.type === 'SOLID' && isRed(p.color)) ? node.fills : undefined);
+  const hadRed = segments.some(s => s.fills?.some(p => p.type === 'SOLID' && isRed(p.color)));
   node.characters = text;
   if (!text.length) return;
+  if (hadRed || paragraphs.some(p => p.red?.length)) node.setRangeFills(0, text.length, base ? [...base] : [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }]);
   node.setRangeFontName(0, text.length, regular);
   node.setRangeListOptions(0, text.length, { type: 'NONE' });
   node.setRangeIndentation(0, text.length, 0);
@@ -89,6 +96,7 @@ export function applyRichText(node: TextNode, paragraphs: RichParagraph[], { reg
         node.setRangeListOptions(offset, end, { type: 'UNORDERED' });
         node.setRangeIndentation(offset, end, p.depth + 1);
       }
+      for (const range of p.red ?? []) if (range.end > range.start) node.setRangeFills(offset + range.start, offset + range.end, [{ type: 'SOLID', color: { r: 1, g: 0, b: 0 } }]);
       for (const range of p.bold) if (range.end > range.start) node.setRangeFontName(offset + range.start, offset + range.end, bold);
     }
     offset = end + 1;

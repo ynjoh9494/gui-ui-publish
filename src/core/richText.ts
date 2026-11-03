@@ -5,24 +5,32 @@
 
 export interface BoldRange { start: number; end: number }
 // depth: 목록 단계(0이 최상위), 목록이 아니면 null. bold: text 안의 굵은 글씨 범위
-export interface RichParagraph { text: string; depth: number | null; bold: BoldRange[] }
+export interface RichParagraph { text: string; depth: number | null; bold: BoldRange[]; red?: BoldRange[] }
 
 // 다른 곳에서 붙여 넣은 Markdown도 읽도록 공백 2칸도 한 단계로 본다.
 const BULLET = /^( *)[-*+][ \t]+(.*\S.*)$/;
 
-function inlineBold(source: string): { text: string; bold: BoldRange[] } {
-  const bold: BoldRange[] = [];
-  const pattern = /\*\*(.+?)\*\*/g;
+// Explicit markers keep color on the plain-text clipboard alongside bold.
+function inlineBold(source: string): { text: string; bold: BoldRange[]; red?: BoldRange[] } {
   let text = '', cursor = 0;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(source))) {
+  let boldStart: number | null = null, redStart: number | null = null;
+  const bold: BoldRange[] = [], red: BoldRange[] = [];
+  for (const match of source.matchAll(/\*\*|<red>|<\/red>/g)) {
     text += source.slice(cursor, match.index);
-    const start = text.length;
-    text += match[1];
-    bold.push({ start, end: text.length });
-    cursor = pattern.lastIndex;
+    const token = match[0], after = match.index! + token.length;
+    if (token === '**' && boldStart !== null) {
+      if (text.length > boldStart) bold.push({ start: boldStart, end: text.length });
+      boldStart = null;
+    } else if (token === '**' && source.indexOf('**', after) > after) boldStart = text.length;
+    else if (token === '<red>' && redStart === null && source.indexOf('</red>', after) >= after) redStart = text.length;
+    else if (token === '</red>' && redStart !== null) {
+      if (text.length > redStart) red.push({ start: redStart, end: text.length });
+      redStart = null;
+    } else text += token;
+    cursor = after;
   }
-  return { text: text + source.slice(cursor), bold };
+  text += source.slice(cursor);
+  return { text, bold, ...(red.length ? { red } : {}) };
 }
 
 export function parseRichText(source: string): RichParagraph[] {
@@ -68,7 +76,14 @@ function markBold(text: string, bold: BoldRange[]): string {
 
 export function serializeRichText(paragraphs: RichParagraph[]): string {
   return paragraphs.map(p => {
-    const body = markBold(p.text, p.bold);
+    const red = mergeBold(p.red ?? []);
+    const cuts = [...new Set([0, p.text.length, ...red.flatMap(r => [r.start, r.end])])].sort((a, b) => a - b);
+    let body = '';
+    for (let i = 0; i < cuts.length - 1; i++) {
+      const start = cuts[i], end = cuts[i + 1];
+      const part = markBold(p.text.slice(start, end), clipBold(p.bold, start, end));
+      body += red.some(r => r.start <= start && r.end >= end) ? `<red>${part}</red>` : part;
+    }
     return p.depth === null || !p.text.trim() ? body : `${'\t'.repeat(p.depth)}- ${body}`;
   }).join('\n');
 }
@@ -99,13 +114,14 @@ function mergeBold(bold: BoldRange[]): BoldRange[] {
 }
 
 export function sliceParagraph(p: RichParagraph, start: number, end = p.text.length): RichParagraph {
-  return { text: p.text.slice(start, end), depth: p.depth, bold: clipBold(p.bold, start, end) };
+  return { text: p.text.slice(start, end), depth: p.depth, bold: clipBold(p.bold, start, end), ...(p.red ? { red: clipBold(p.red, start, end) } : {}) };
 }
 
 // 앞 문단의 목록 단계를 따른다.
 function joinParagraphs(a: RichParagraph, b: RichParagraph): RichParagraph {
   const shift = a.text.length;
-  return { text: a.text + b.text, depth: a.depth, bold: mergeBold([...a.bold, ...b.bold.map(r => ({ start: r.start + shift, end: r.end + shift }))]) };
+  const red = a.red || b.red ? { red: mergeBold([...(a.red ?? []), ...(b.red ?? []).map(r => ({ start: r.start + shift, end: r.end + shift }))]) } : {};
+  return { text: a.text + b.text, depth: a.depth, ...red, bold: mergeBold([...a.bold, ...b.bold.map(r => ({ start: r.start + shift, end: r.end + shift }))]) };
 }
 
 // 고른 범위를 지운다. 여러 문단에 걸치면 첫 문단에 마지막 문단의 나머지를 붙인다.
@@ -189,4 +205,13 @@ export function toggleBold(doc: RichParagraph[], a: RichPos, b: RichPos): RichPa
     const kept = p.bold.flatMap(r => [{ start: r.start, end: Math.min(r.end, s.start) }, { start: Math.max(r.start, s.end), end: r.end }]);
     return { ...p, bold: mergeBold(allBold ? kept : [...kept, s]) };
   });
+}
+
+export function toggleRed(doc: RichParagraph[], a: RichPos, b: RichPos): RichParagraph[] {
+  return toggleBold(doc.map(p => ({ ...p, bold: p.red ?? [] })), a, b)
+    .map((p, i) => ({ ...doc[i], red: p.bold }));
+}
+
+export function isRed(color: { r: number; g: number; b: number }): boolean {
+  return color.r >= 0.5 && color.r > color.g * 1.5 && color.r > color.b * 1.5;
 }

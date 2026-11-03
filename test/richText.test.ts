@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { COPY } from '../src/core/copy.ts';
-import { backspaceAtStart, deleteRange, insertParagraphs, parseRichText, serializeRichText, setDepth, splitParagraph, toggleBold, toggleList, type RichParagraph } from '../src/core/richText.ts';
+import { backspaceAtStart, deleteRange, insertParagraphs, parseRichText, serializeRichText, setDepth, splitParagraph, toggleBold, toggleRed, toggleList, type RichParagraph } from '../src/core/richText.ts';
 import { readRichText, selectedTextNode, writeRichText } from '../src/figma/richText.ts';
 
 test('목록·중첩·굵게를 읽고, 그 밖의 줄은 그대로 일반 문단으로 둔다', () => {
@@ -215,4 +215,39 @@ test('전체가 굵은 레이어는 같은 계열의 Regular를 본문으로 쓴
   const node = new FakeText(loaded, '제목', { family: 'Inter', style: 'Bold' });
   await writeRichText(node as unknown as TextNode, parseRichText('본문 **굵게**'));
   assert.deepEqual(node.getStyledTextSegments().map(s => s.fontName.style), ['Regular', 'Bold']);
+});
+
+
+test('red survives nested bold, clipboard, split, join and removal', () => {
+  const doc = parseRichText('- <red>before **bold** after</red>');
+  assert.equal(doc[0].text, 'before bold after');
+  assert.deepEqual(doc[0].red, [{ start: 0, end: 17 }]);
+  assert.equal(md(parseRichText(md(doc))), md(doc));
+  const split = splitParagraph(doc, pos(0, 8), pos(0, 8));
+  assert.ok(split.doc.every(p => p.red?.length));
+  const joined = backspaceAtStart(split.doc.map(p => ({ ...p, depth: null })), 1).doc;
+  assert.deepEqual(joined[0].red, doc[0].red);
+  assert.deepEqual(toggleRed(doc, pos(0, 0), pos(0, 17))[0].red, []);
+  assert.deepEqual(toggleRed([{ text: 'plain', depth: null, bold: [] }], pos(0, 1), pos(0, 4))[0].red, [{ start: 1, end: 4 }]);
+});
+
+
+test('Figma red and bold round trip and red removal restores body color', async () => {
+  const loaded = setup(['Inter/Regular', 'Inter/Bold']);
+  const node = new FakeText(loaded, 'old', { family: 'Inter', style: 'Regular' }) as any;
+  const body = { type: 'SOLID', color: { r: 0.15, g: 0.15, b: 0.15 } };
+  let colors: any[] = Array.from(node.text, () => [body]);
+  node.getStyledTextSegments = () => node.chars.map((c: Char, i: number) => ({ start: i, end: i + 1, fontName: c.font, fills: colors[i] ?? [body] }));
+  node.setRangeFills = (start: number, end: number, fills: unknown[]) => {
+    assert.ok(start < end && end <= node.text.length);
+    for (let i = start; i < end; i++) colors[i] = fills;
+  };
+  await writeRichText(node, parseRichText('plain <red>**red**</red> end'));
+  const read = readRichText(node);
+  assert.equal(md(read), 'plain <red>**red**</red> end');
+  assert.equal(colors[0][0].color.r, 0.15);
+  assert.equal(colors[6][0].color.r, 1);
+  await writeRichText(node, parseRichText('plain **red** end'));
+  assert.ok(colors.slice(0, node.text.length).every(c => c[0].color.r === 0.15));
+  assert.equal(md(readRichText(node)), 'plain **red** end');
 });

@@ -3,7 +3,7 @@ import type { SelectionTarget } from '../core/description.ts';
 import { esc } from './html.ts';
 import {
   backspaceAtStart, deleteRange, insertParagraphs, orderPos, outdentDepth, parseRichText, serializeRichText, setDepth, sliceParagraph,
-  splitParagraph, toggleBold, toggleList, type RichParagraph, type RichPos,
+  splitParagraph, toggleBold, toggleRed, isRed, toggleList, type RichParagraph, type RichPos,
 } from '../core/richText.ts';
 
 // 텍스트 편집 탭(2026-10-22 사용자 요청: STB Description Formatter를 UI Flipbook의 탭으로 옮기고 서식을 중첩 목록·굵게로 줄인다).
@@ -34,17 +34,20 @@ const LIST_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" s
 
 
 function paragraphHtml(p: RichParagraph): string {
-  let html = '', cursor = 0;
-  for (const r of [...p.bold].sort((a, b) => a.start - b.start)) {
-    html += `${esc(p.text.slice(cursor, r.start))}<b>${esc(p.text.slice(r.start, r.end))}</b>`;
-    cursor = r.end;
+  const cuts = [...new Set([0, p.text.length, ...p.bold.flatMap(r => [r.start, r.end]), ...(p.red ?? []).flatMap(r => [r.start, r.end])])].sort((a, b) => a - b);
+  let html = '';
+  for (let i = 0; i < cuts.length - 1; i++) {
+    const start = cuts[i], end = cuts[i + 1];
+    let part = esc(p.text.slice(start, end));
+    if (p.bold.some(r => r.start <= start && r.end >= end)) part = `<b>${part}</b>`;
+    if ((p.red ?? []).some(r => r.start <= start && r.end >= end)) part = `<span style="color:#ff0000">${part}</span>`;
+    html += part;
   }
-  html += esc(p.text.slice(cursor));
   const depth = p.depth === null ? '' : ` data-depth="${p.depth}" style="--depth:${p.depth}"`;
   return `<div class="rt-p"${depth}>${html || '<br>'}</div>`;
 }
 
-const clone = (doc: RichParagraph[]) => doc.map(p => ({ ...p, bold: p.bold.map(r => ({ ...r })) }));
+const clone = (doc: RichParagraph[]) => doc.map(p => ({ ...p, bold: p.bold.map(r => ({ ...r })), ...(p.red ? { red: p.red.map(r => ({ ...r })) } : {}) }));
 const hasText = (doc: RichParagraph[]) => doc.some(p => p.text.trim());
 
 export function textEditor(root: HTMLElement): TextEditor {
@@ -78,6 +81,8 @@ export function textEditor(root: HTMLElement): TextEditor {
           const start: number = current.text.length;
           probes.forEach((p, k) => { if (p.node === child) positions[k] = { block: out.length - 1, offset: start + Math.min(p.offset, text.length) }; });
           current.text += text;
+          const rgb = getComputedStyle(child.parentElement!).color.match(/[\d.]+/g)?.map(Number);
+          if (text && rgb && isRed({ r: rgb[0] / 255, g: rgb[1] / 255, b: rgb[2] / 255 })) (current.red ??= []).push({ start, end: current.text.length });
           const weight = Number(getComputedStyle(child.parentElement!).fontWeight) || 400;
           if (text && weight >= 600) current.bold.push({ start, end: current.text.length });
         } else if (child instanceof HTMLElement) {
@@ -185,6 +190,20 @@ export function textEditor(root: HTMLElement): TextEditor {
     // 커서만 있으면 다음에 칠 글자의 굵기를 바꾼다(브라우저 입력 상태).
     if (collapsed(sel)) { document.execCommand('bold'); syncButtons(); return; }
     apply(el, sel, toggleBold(doc, sel.anchor, sel.focus), sel);
+  }
+
+  function red(el: HTMLElement) {
+    sync(el);
+    const sel = selection(el);
+    if (!sel) return;
+    if (collapsed(sel)) {
+      const rgb = String(document.queryCommandValue('foreColor')).match(/[\d.]+/g)?.map(Number);
+      const on = rgb && isRed({ r: rgb[0] / 255, g: rgb[1] / 255, b: rgb[2] / 255 });
+      document.execCommand('foreColor', false, on ? '#333333' : '#ff0000');
+      syncButtons();
+      return;
+    }
+    apply(el, sel, toggleRed(doc, sel.anchor, sel.focus), sel);
   }
 
   function list(el: HTMLElement) {
@@ -305,6 +324,8 @@ export function textEditor(root: HTMLElement): TextEditor {
     const sel = document.activeElement === el ? selection(el) : null;
     const boldOn = !!sel && document.queryCommandState('bold');
     const listOn = !!sel && (() => { const [from, to] = blocksOf(sel); return doc.slice(from, to + 1).every(p => p.depth !== null); })();
+    const rgb = sel && String(document.queryCommandValue('foreColor')).match(/[\d.]+/g)?.map(Number);
+    root.querySelector('[data-rt="red"]')?.setAttribute('aria-pressed', String(!!rgb && isRed({ r: rgb[0] / 255, g: rgb[1] / 255, b: rgb[2] / 255 })));
     root.querySelector('[data-rt="bold"]')?.setAttribute('aria-pressed', String(boldOn));
     root.querySelector('[data-rt="list"]')?.setAttribute('aria-pressed', String(listOn));
     root.querySelector('[data-action="text-apply"]')?.toggleAttribute('disabled', !hasText(doc));
@@ -329,6 +350,7 @@ export function textEditor(root: HTMLElement): TextEditor {
         <button class="primary" data-action="text-apply">${COPY.uiApp306}</button></div>
       <div class="text-tools">
         <button class="text-tool" data-rt="bold" aria-pressed="false" title="${COPY.uiApp309} (Ctrl+B)" aria-label="${COPY.uiApp309}"><b>B</b></button>
+        <button class="text-tool" data-rt="red" aria-pressed="false" title="${COPY.uiTextRed}" aria-label="${COPY.uiTextRed}"><span style="color:#ff0000">A</span></button>
         <button class="text-tool" data-rt="list" aria-pressed="false" title="${COPY.uiApp310}" aria-label="${COPY.uiApp310}">${LIST_ICON}</button>
         <span class="note">${COPY.uiApp304}</span></div>
       <div class="rich-editor" contenteditable="true" role="textbox" aria-multiline="true" spellcheck="false" aria-label="${COPY.uiApp308}"></div>`;
@@ -338,7 +360,7 @@ export function textEditor(root: HTMLElement): TextEditor {
     // 버튼을 눌러도 편집기의 선택을 잃지 않게 한다.
     for (const button of view.querySelectorAll<HTMLElement>('[data-rt]')) {
       button.addEventListener('mousedown', ev => ev.preventDefault());
-      button.addEventListener('click', () => { el.focus(); if (button.dataset.rt === 'bold') bold(el); else list(el); });
+      button.addEventListener('click', () => { el.focus(); if (button.dataset.rt === 'bold') bold(el); else if (button.dataset.rt === 'red') red(el); else list(el); });
     }
     el.addEventListener('beforeinput', ev => onBeforeInput(el, ev as InputEvent));
     el.addEventListener('input', () => onInput(el));
