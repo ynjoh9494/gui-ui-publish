@@ -1,0 +1,92 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { Controller, type Host } from '../src/controller.ts';
+import { planFlipbooks, customSection } from '../src/core/flipbooks.ts';
+import { ensureSystemTags, systemTagId } from '../src/core/registry.ts';
+import { Store, memoryKV, keys } from '../src/core/store.ts';
+import type { ToUi } from '../src/core/wire.ts';
+
+function setup() {
+  const actor = { id: 'u', name: 'Audit' };
+  const store = new Store(memoryKV());
+  store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageId: 'ui', flipbookPageIds: ['ui'] });
+  let sequence = 0;
+  for (const fb of planFlipbooks({ pageId: 'ui', rows: [
+    { uids: [], multi: false, scale: 1, title: 'A' },
+    { uids: [], multi: false, scale: 1, title: 'B' },
+  ] }, new Map(), actor, 100, () => `fb${++sequence}`)) store.put(keys.flipbook(fb.id), fb);
+  ensureSystemTags(store, actor);
+  const calls: string[] = [], posted: ToUi[] = [];
+  const host = {
+    kv: store.kv, actor, mode: 'UI', post: (m: ToUi) => posted.push(m), pages: () => [{ id: 'ui', name: 'UI' }],
+    inspectFlipbooks: async () => ({ found: new Map([['fb1', 'n1'], ['fb2', 'n2']]), spots: {} }),
+    templateIssues: async () => [],
+    syncFlipbook: async (_s: unknown, view: { flipbookId: string }) => { calls.push(`full:${view.flipbookId}`); return { nodeId: `n:${view.flipbookId}`, notes: [] }; },
+    syncChapters: async () => { calls.push('chapters'); },
+    ensureDataPage: async () => 'data', renderData: async () => { calls.push('data'); },
+    moveFlipbook: async () => true,
+    prepareFlipbookTitle: async () => { throw new Error('font unavailable'); },
+  } as unknown as Host;
+  return { controller: new Controller(host), calls, posted, store, host };
+}
+
+test('reviewing A never delivers unrelated moved or failed B', async () => {
+  const { controller, calls, store, host } = setup();
+  host.inspectFlipbooks = async () => ({ found: new Map([['fb1', 'n1'], ['fb2', 'n2']]), spots: {
+    n2: { pageId: 'ui', section: 'section:moved', sectionName: 'Moved', sectionIndex: 0, index: 0 },
+  } });
+  store.put(keys.delivery('old', 'fb2'), { batchId: 'old', kind: 'flipbook', team: 'UI', targetId: 'fb2', version: 0, state: 'failed', error: 'old failure', updatedAt: 0 });
+  await controller.handle({ type: 'markReviewed', requests: [{ flipbookId: 'fb1', tagId: systemTagId(store.state, 'latest')!, comment: '' }] });
+  assert.ok(calls.includes('full:fb1'), JSON.stringify(calls));
+  assert.ok(!calls.includes('full:fb2'), JSON.stringify(calls));
+  assert.equal(controller.store.state.flipbooks.get('fb2')?.category.key, store.state.flipbooks.get('fb2')?.category.key);
+});
+
+test('moving between Sections only updates chapters', async () => {
+  const { controller, calls } = setup();
+  await controller.handle({ type: 'createFlipbooks', request: { pageId: 'ui', rows: [], moves: [{ flipbookId: 'fb1', pageId: 'ui', section: customSection('New', 'section:new'), after: null }] } });
+  assert.ok(!calls.includes('full:fb1'), JSON.stringify(calls));
+  assert.ok(calls.includes('chapters'), JSON.stringify(calls));
+
+});
+
+test('failed title preparation preserves the record for retry', async () => {
+  const { controller, posted, host } = setup();
+  await controller.handle({ type: 'renameFlipbook', id: 'fb1', title: 'New title' });
+  assert.ok(posted.some(m => m.type === 'error' && m.message === 'font unavailable'));
+  assert.equal(controller.store.state.flipbooks.get('fb1')?.title, 'A');
+  assert.equal(controller.store.state.deliveries.size, 0);
+  let applied = false;
+  host.prepareFlipbookTitle = async () => ({ apply() { applied = true; }, rollback() {} });
+  await controller.handle({ type: 'renameFlipbook', id: 'fb1', title: 'New title' });
+  assert.equal(applied, true);
+  assert.equal(controller.store.state.flipbooks.get('fb1')?.title, 'New title');
+});
+
+test('title preparation never overwrites another user change', async () => {
+  const { controller, host, store, posted } = setup();
+  let applied = false;
+  host.prepareFlipbookTitle = async () => {
+    const current = store.state.flipbooks.get('fb1')!;
+    store.put(keys.flipbook('fb1'), { ...current, rev: current.rev + 1, title: 'Other user' });
+    return { apply() { applied = true; }, rollback() {} };
+  };
+  await controller.handle({ type: 'renameFlipbook', id: 'fb1', title: 'New title' });
+  assert.equal(applied, false);
+  controller.store.reload();
+  assert.equal(controller.store.state.flipbooks.get('fb1')?.title, 'Other user');
+  assert.ok(posted.some(m => m.type === 'error'));
+});
+
+test('explicit delivery targets exclude pending books; explicit retry still processes them', async () => {
+  const { controller, calls, store } = setup();
+  const key = keys.delivery('old', 'fb2');
+  store.put(key, { batchId: 'old', kind: 'flipbook', team: 'UI', targetId: 'fb2', version: 0, state: 'failed', error: 'old failure', updatedAt: 0 });
+  await controller.deliverFlipbooks({}, { targets: ['fb1'] });
+  assert.deepEqual(calls, ['full:fb1']);
+  assert.equal(controller.store.state.deliveries.get(key)?.state, 'failed');
+  calls.length = 0;
+  await controller.deliverFlipbooks();
+  assert.deepEqual(calls, ['full:fb2']);
+  assert.equal(controller.store.state.deliveries.get(key)?.state, 'done');
+});

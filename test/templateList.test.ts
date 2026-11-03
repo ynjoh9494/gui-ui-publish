@@ -97,7 +97,7 @@ test('관리에서 템플릿을 더하고 대표를 바꾸고 빼면 저장하�
   assert.equal(lastInfo(), 'v1', '고른 템플릿의 연결 항목');
   await controller.handle({ type: 'templateInfo', templateId: 'gone' });
   assert.equal(lastInfo(), 'v2', '목록에 없으면 대표');
-  await controller.handle({ type: 'renameFlipbook', id: 'fb1', title: '새 제목' });
+  await controller.deliverFlipbooks({}, { targets: ['fb1'], onlyTargets: true });
   assert.deepEqual(settings.map(s => [s.templateId, s.fallbackTemplateIds]), [['v2', ['v0', 'v1']]]);
   await controller.handle({ type: 'admin', action: { op: 'removeTemplate', nodeId: 'v0' } });
   assert.deepEqual(controller.store.state.project.previousTemplates.map(t => t.nodeId), ['v1']);

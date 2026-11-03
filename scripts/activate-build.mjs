@@ -3,8 +3,7 @@ import { resolve, join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-export async function activateBuild(root, pluginClosed) {
-  if (!pluginClosed) throw new Error('플러그인을 닫은 뒤 --plugin-closed를 명시해야 합니다. 검사 빌드는 dist를 변경하지 않습니다.');
+export async function activateBuild(root) {
   const repo = resolve(root);
   const staged = join(repo, 'tmp', 'build'), live = join(repo, 'dist');
   const metadata = JSON.parse(await readFile(join(staged, 'build.json'), 'utf8'));
@@ -29,6 +28,6 @@ export async function activateBuild(root, pluginClosed) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const root = fileURLToPath(new URL('..', import.meta.url));
-  const result = await activateBuild(root, process.argv.includes('--plugin-closed'));
+  const result = await activateBuild(root);
   console.log(`Activated build ${result.builtAt}. Backup: ${result.backup ?? '(first build)'}`);
 }

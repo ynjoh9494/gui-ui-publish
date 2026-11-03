@@ -5,7 +5,7 @@ import { baseline, changeDetected, classify, ignoreBlock, uiEstimate, uncheckedE
 import { FINGERPRINT_VERSION, LEGACY_FINGERPRINT_VERSION } from './core/fingerprint.ts';
 import { dataModel } from './core/data.ts';
 import { chapterName, flipbookView, guiKey, validGuiWidth } from './core/flipbook.ts';
-import { canvasSections, checkMoves, followCanvasSections, importGuiUpdates, markReviewed, moveFlipbooks, pageSections, planFlipbooks, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookMove, type FlipbookRequest, type ReviewRequest } from './core/flipbooks.ts';
+import { canvasSections, checkMoves, followCanvasSections, importGuiUpdates, markReviewed, moveFlipbooks, pageSections, planFlipbooks, plannedFlipbookTitle, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookMove, type FlipbookRequest, type ReviewRequest } from './core/flipbooks.ts';
 import type { Draft } from './core/drafts.ts';
 import type { SelectionWrite } from './core/description.ts';
 import { flipbookHistoryRows, guiHistoryRows } from './core/history.ts';
@@ -1021,30 +1021,24 @@ export class Controller {
   async syncCanvasSections(canvas?: CanvasRead): Promise<void> {
     if (this.host.mode !== 'UI' || !this.canvasSectionsPending) return;
     this.canvasSectionsPending = false;
-    let delivered = false;
     try {
       const changed = await this.followCanvas(canvas);
       if (!changed.length) return;
-      // 바뀐 것은 Section뿐이므로 Chapter만 다시 쓴다. Host가 지원하지 않으면 플립북 전체를 반영한다.
-      const s = this.store.state;
-      if (this.host.syncChapters) {
-        await this.host.syncChapters(changed.flatMap(id => {
-          const fb = s.flipbooks.get(id);
-          const pageId = fb?.pageId ?? s.project.flipbookPageId;
-          return fb && pageId ? [{ pageId, flipbookId: id, name: chapterName(fb) }] : [];
-        }));
-      } else {
-        delivered = true;
-        await this.deliverFlipbooks({}, { targets: changed, canvasFollowed: true });
-      }
+      await this.syncChapters(changed);
       this.postState();
       await this.refreshData();
     } catch (e) {
       this.host.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
-    } finally {
-      // 버튼 요청이 아니라 캔버스 선택에서 부르므로 반영 중 표시를 여기서 닫는다.
-      if (delivered) this.busy(null);
     }
+  }
+
+  private async syncChapters(ids: string[]): Promise<void> {
+    const s = this.store.state;
+    await this.host.syncChapters(ids.flatMap(id => {
+      const fb = s.flipbooks.get(id);
+      const pageId = fb?.pageId ?? s.project.flipbookPageId;
+      return fb && pageId ? [{ pageId, flipbookId: id, name: chapterName(fb) }] : [];
+    }));
   }
 
   // 기록을 캔버스의 페이지·Section으로 맞추고 바뀐 플립북 ID를 돌려준다. canvas: 같은 작업에서 이미 읽은 캔버스(다시 읽지 않는다).
@@ -1455,7 +1449,7 @@ export class Controller {
     }
     const changed = moveFlipbooks(s, done, s.state.project.flipbookPageIds, this.host.actor);
     const retitled = changed.filter(fb => sections.get(fb.id) !== fb.category.key || fromPage.get(fb.id) !== fb.pageId).map(fb => fb.id);
-    if (retitled.length) await this.deliverFlipbooks({}, { targets: retitled, canvasFollowed: true });
+    if (retitled.length) await this.syncChapters(retitled);
     if (done.length) {
       await this.refreshData();
       this.postState();
@@ -1471,12 +1465,20 @@ export class Controller {
   private async renameFlipbook(id: string, title: string): Promise<void> {
     const s = this.store;
     s.reload();
-    const fb = renameFlipbook(s, id, title, this.host.actor);
-    const report = await this.deliverFlipbooks({}, { targets: [id], retitle: new Set([id]) });
-    await this.refreshData();
-    this.postState();
-    const failed = report.failed.length || report.skipped;
-    this.host.post({ type: failed ? 'error' : 'notice', message: failed ? deliveryMessage(report) : `${COPY.controller119} ${fb.title}` });
+    const before = s.state.flipbooks.get(id);
+    const fb = plannedFlipbookTitle(s.state, id, title);
+    try {
+      if (!fb.pageId) throw new Error(COPY.controller063);
+      const prepared = await this.host.prepareFlipbookTitle({ flipbookId: id, pageId: fb.pageId, nodeId: this.uiScans.find(u => u.flipbookId === id)?.nodeId ?? undefined, title: fb.title });
+      // Preparation may yield to another user's edits. Do not commit a stale proposal.
+      const fresh = s.readFresh<Flipbook>(keys.flipbook(id));
+      if (!fresh || fresh.rev !== before?.rev) throw new Error(COPY.flipbookTitleConflict);
+      s.reload();
+      prepared.apply();
+      try { renameFlipbook(s, id, title, this.host.actor); }
+      catch (error) { prepared.rollback(); throw error; }
+    } finally { s.reload(); this.postState(); }
+    this.host.post({ type: 'notice', message: `${COPY.controller119} ${fb.title}` });
   }
 
   // 확인 완료: 상태·코멘트를 기록한 뒤 그 플립북의 Status와 이력 행을 맞춘다.
@@ -1495,13 +1497,13 @@ export class Controller {
 
   // 반영이 끝나지 않은 플립북을 현재 기록으로 맞춘다. 플립북 단위로 실패를 기록하고 나머지는 계속한다.
   // baseline: 새로 만든 플립북. 만든 직후의 UI 작성 영역을 첫 UI Publish 전 비교 기준으로 저장한다.
-  // after: 새로 만들 플립북을 Section 안에 놓을 자리. retitle: 플러그인에서 제목을 바꾼 플립북.
-  // onlyTargets: targets만 반영한다(그 플립북의 미반영 기록은 함께 반영). 없으면 다른 플립북의 미반영 기록도 이어서 반영한다.
-  async deliverFlipbooks(filter: { batchId?: string } = {}, options: { force?: boolean; targets?: string[]; onlyTargets?: boolean; baseline?: Set<string>; create?: Set<string>; after?: Map<string, string | null>; retitle?: Set<string>; canvasFollowed?: boolean; canvas?: CanvasRead } = {}): Promise<DeliveryReport> {
+  // after: 새로 만들 플립북을 Section 안에 놓을 자리.
+  // targets가 있으면 그 대상만 반영한다. 없으면 batchId로 고른 미완료 작업을 반영한다(재시도는 batchId 없이 호출).
+  async deliverFlipbooks(filter: { batchId?: string } = {}, options: { force?: boolean; targets?: string[]; onlyTargets?: boolean; baseline?: Set<string>; create?: Set<string>; after?: Map<string, string | null>; canvasFollowed?: boolean; canvas?: CanvasRead } = {}): Promise<DeliveryReport> {
     const s = this.store;
     s.reload();
     const active = (id: string) => s.state.flipbooks.get(id)?.status === 'active';
-    const unfinished = options.onlyTargets ? [] : unfinishedDeliveries(s.state, { ...filter, kind: 'flipbook' }).map(d => d.targetId);
+    const unfinished = options.targets || options.onlyTargets ? [] : unfinishedDeliveries(s.state, { ...filter, kind: 'flipbook' }).map(d => d.targetId);
     const requested = [...(options.targets ?? []), ...unfinished].filter(active);
     const report = emptyReport();
     if (!requested.length) return report;
@@ -1510,8 +1512,9 @@ export class Controller {
     // 읽지 못하면 기록대로 반영한다(2026-10-23 사용자 승인).
     // 읽은 캔버스는 반영에도 넘겨, 플립북 프레임을 찾으려고 페이지를 다시 훑지 않게 한다.
     const canvas = options.canvas ?? (options.canvasFollowed ? undefined : await this.deliveryCanvas(requested).catch(() => undefined));
-    const followed = options.canvasFollowed || !canvas ? [] : await this.followCanvas(canvas).catch(() => []);
-    const targets = [...new Set([...requested, ...followed])].filter(active);
+    // A delivery may read a whole page, but it must not adopt or deliver unrelated books on that page.
+    if (!options.canvasFollowed && canvas) await this.followCanvas({ found: new Map([...canvas.found].filter(([id]) => requested.includes(id))), spots: canvas.spots }).catch(() => []);
+    const targets = [...new Set(requested)].filter(active);
     const { templateNodeId, previousTemplates } = s.state.project;
     if (!templateNodeId) return { ...report, skipped: `${COPY.controller027} ${targets.length}${COPY.controller028}` };
     // 이전 버전 템플릿으로 만든 플립북은 그 템플릿으로 반영한다(figma/flipbook.ts deliveryKit). 이전 템플릿의 문제는 반영을 막지 않는다.
@@ -1533,7 +1536,6 @@ export class Controller {
           const view = flipbookView(s.state, flipbookId);
           if (!view.pageId) throw new Error(COPY.controller063);
           if (options.after?.has(flipbookId)) view.after = options.after.get(flipbookId);
-          if (options.retitle?.has(flipbookId)) view.retitle = true;
           if (options.create?.has(flipbookId)) view.create = true;
           const result = await this.host.syncFlipbook({ pageId: view.pageId, templateId: templateNodeId, fallbackTemplateIds, force: options.force }, view);
           // 새 템플릿 플립북은 화면 목록을 캔버스의 추적 GUI로 읽는다. 만들며 놓은 GUI 복사본은 추적 GUI로 기록한다.

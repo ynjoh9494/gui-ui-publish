@@ -253,6 +253,10 @@ export function createDemo(options: DemoOptions): Demo {
       log(COPY.uiPreview060);
       return { id: 'tpl', name: 'Flipbook-Template', pageId: '0:9' };
     },
+    async prepareFlipbookTitle(item) {
+      if (!flipbooks.has(item.flipbookId)) throw new Error(COPY.figmaFlipbook027);
+      return { apply() { log(`제목 변경: ${item.title}`); }, rollback() {} };
+    },
     async syncFlipbook(settings, view) {
       await wait(options.syncMs ?? 0);
       // GUI는 원본에서 바로 복사한다. 원본 프레임이 없으면 실패한다.
@@ -271,7 +275,6 @@ export function createDemo(options: DemoOptions): Demo {
         else placed.push(item);
         changed();
       }
-      if (view.retitle) log(`제목 변경: ${view.name}`);
       // 화면 편집으로 GUI 영역의 화면·순서·크기가 바뀌었다.
       const gui = view.gui.map(g => `${g.code}@${g.scale ?? view.scale}`).join(', ');
       if (shownGui.has(view.flipbookId) && shownGui.get(view.flipbookId) !== gui) log(`${COPY.uiPreview055} ${gui || '-'}`);

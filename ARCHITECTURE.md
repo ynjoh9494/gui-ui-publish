@@ -22,7 +22,7 @@ flowchart LR
   H["src/ui/demo.ts<br/>가상 Host"] --> C
 ```
 
-`src/ui/index.ts`는 Figma UI iframe의 시작점이다. 메시지 형식과 `Map` 직렬화는 `src/core/wire.ts`에 둔다. 브라우저 미리보기는 같은 `Controller`와 UI를 실행하고 `Host`만 가짜 Figma 데이터(`src/ui/demo.ts`)로 교체한다. 튜토리얼(`src/ui/tutorial.ts`)도 플러그인 창 안에서 같은 가짜 환경에 두 번째 `Controller`·UI를 띄워 예시 화면을 만들고 실제 창 위에 겹친다. 예시 데이터는 본체 메시지(설정·스캔·배포·플립북 만들기)로 쌓으므로 저장 형식이 바뀌어도 따라가며, 실제 `Host`와 파일 기록에는 닿지 않는다. `build.mjs`는 Figma 본체·UI·브라우저 미리보기를 `tmp/build/`에 만들고 완성된 파일 해시를 `build.json`에 기록한다. 검사·walkthrough는 이 경로만 사용한다. 명시적 `activate-build --plugin-closed`만 기존 `dist/`를 백업하고 검사 빌드로 전환한다. 파일 해시가 맞지 않는 불완전한 빌드는 전환하지 않는다.
+`src/ui/index.ts`는 Figma UI iframe의 시작점이다. 메시지 형식과 `Map` 직렬화는 `src/core/wire.ts`에 둔다. 브라우저 미리보기는 같은 `Controller`와 UI를 실행하고 `Host`만 가짜 Figma 데이터(`src/ui/demo.ts`)로 교체한다. 튜토리얼(`src/ui/tutorial.ts`)도 플러그인 창 안에서 같은 가짜 환경에 두 번째 `Controller`·UI를 띄워 예시 화면을 만들고 실제 창 위에 겹친다. 예시 데이터는 본체 메시지(설정·스캔·배포·플립북 만들기)로 쌓으므로 저장 형식이 바뀌어도 따라가며, 실제 `Host`와 파일 기록에는 닿지 않는다. `build.mjs`는 Figma 본체·UI·브라우저 미리보기를 `tmp/build/`에 만들고 완성된 파일 해시를 `build.json`에 기록한다. 검사·walkthrough는 이 경로만 사용한다. `activate-build`가 기존 `dist/`를 백업하고 검사 빌드로 전환한다. 이 과정은 플러그인을 종료하거나 리로드하지 않으며, 변경 완료 시 사전 확인 없이 실행한다. 파일 해시가 맞지 않는 불완전한 빌드는 전환하지 않는다.
 
 ## 코드 경계
 
@@ -130,3 +130,13 @@ UI Flipbook의 현재 화면 흐름은 **플립북 만들기, GUI 갱신 알림,
 `npm run check`는 타입 검사, 현재 `test/*.test.ts` 테스트, Figma·미리보기 빌드를 실행한다. `npm run walkthrough`는 브라우저 미리보기에서 주요 흐름을 조작하고, `npm run benchmark`는 Node 측 성능을 측정한다. 미리보기는 Figma API를 대체하므로 레이어 복사, 변수 모드, JPG 내보내기, 실제 큰 파일의 시간·메모리는 Figma 시험 파일에서 확인해야 한다.
 
 GUI 붙이기와 플로우 편집기의 화면 목록은 `src/ui/screenPicker.ts`에서 카테고리·검색 필터와 보기 전환 컨트롤을 공유한다. 화면 붙이기와 플로우 판 조작은 각 탭 모듈에서 처리한다.
+
+### 제목 변경 전용 경로
+
+`core/flipbooks.plannedFlipbookTitle`은 저장 없이 제목 변경을 계산한다. Controller는 `Host.prepareFlipbookTitle`로 대상·글꼴을 준비한 뒤 기록의 최신 rev를 확인한다. 준비 결과의 동기 `apply`로 제목 칸·프레임 이름을 바꾸고 이름 기록을 저장한다. 준비 실패는 기록을 바꾸지 않으며, 제목 쓰기 실패는 스냅샷으로 복원한다. 전체 `deliverFlipbooks`와 DATA 렌더는 실행하지 않는다.
+
+### 요청별 반영 범위
+
+Section 변경은 캔버스 새로고침과 목록 이동 모두 `Controller.syncChapters` → `Host.syncChapters`를 사용한다. Chapter 전용 API가 없을 때 전체 동기화로 대체하는 경로는 없다.
+
+`deliverFlipbooks`는 `targets`를 지정하면 그 대상만, 지정하지 않으면 배치로 선택한 미완료 작업만 처리한다. 캔버스 위치 기록도 그 대상에 한정해 맞추며, 같은 페이지에서 발견한 다른 플립북을 반영 대상에 추가하지 않는다. 명시적 재시도는 배치·대상 제한 없이 미완료 작업을 선택한다.

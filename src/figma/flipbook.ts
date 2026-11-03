@@ -450,6 +450,48 @@ export async function flipbookSpots(ns: string, pageIds: string[]): Promise<Reco
   return spots;
 }
 
+export async function prepareFlipbookTitle(ns: string, item: { flipbookId: string; pageId: string; nodeId?: string; title: string }): Promise<{ apply(): void; rollback(): void }> {
+  // Known IDs survive moves between pages; only fall back to a page scan when the node is missing.
+  const known = item.nodeId ? await figma.getNodeByIdAsync(item.nodeId) : null;
+  const frame = known?.type === 'FRAME' && known.getSharedPluginData(ns, FLIPBOOK_KEY) === item.flipbookId
+    ? known : await findFlipbook(ns, item.pageId, item.flipbookId);
+  if (!frame) throw new Error(COPY.figmaFlipbook027);
+  const parts = flipbookParts(frame, ns);
+  if (!parts.links) throw new Error(COPY.legacyNeedsConvert);
+  const beforeName = frame.name;
+  const before = parts.titles.map(node => ({ node, text: node.characters, written: node.getSharedPluginData(ns, 'flipbookTitle') }));
+  // Load every required font before changing any title, so preparation failures leave all fields intact.
+  const fonts = new Map<string, FontName>();
+  for (const { node, text } of before) {
+    if (text === item.title) continue;
+    for (const font of text.length ? node.getRangeAllFontNames(0, text.length) : [node.fontName as FontName]) fonts.set(JSON.stringify(font), font);
+  }
+  await Promise.all([...fonts.values()].map(font => figma.loadFontAsync(font)));
+  const touched: typeof before = [];
+  const rollback = () => {
+    for (const { node, text, written } of [...touched].reverse()) {
+      if (node.characters !== text) node.characters = text;
+      node.setSharedPluginData(ns, 'flipbookTitle', written);
+    }
+    if (frame.name !== beforeName) frame.name = beforeName;
+    touched.length = 0;
+  };
+  return {
+    apply() {
+      if (frame.removed || frame.name !== beforeName || before.some(({ node, text, written }) => node.removed || node.characters !== text || node.getSharedPluginData(ns, 'flipbookTitle') !== written)) throw new Error(COPY.flipbookTitleConflict);
+      try {
+        for (const value of before) {
+          touched.push(value);
+          if (value.node.characters !== item.title) value.node.characters = item.title;
+          value.node.setSharedPluginData(ns, 'flipbookTitle', item.title);
+        }
+        frame.name = item.title;
+      } catch (error) { rollback(); throw error; }
+    },
+    rollback,
+  };
+}
+
 export async function findFlipbook(ns: string, pageId: string, flipbookId: string): Promise<FrameNode | null> {
   return pageFlipbooks(ns, await loadedPage(pageId)).get(flipbookId) ?? null;
 }
@@ -962,9 +1004,7 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
   const before = { width: frame.width, height: frame.height };
 
   // 제목 칸마다 같은 제목을 넣는다. 템플릿의 제목·Chapter 칸에 적힌 글자도 템플릿 기본값으로 본다. 사용자가 직접 고친 제목은 바꾸지 않는다.
-  // 플러그인에서 제목을 바꾸면 캔버스에서 고친 제목도 새 제목으로 바꾸고, 프레임 이름도 맞춘다(2026-10-21 사용자 요청).
-  for (const node of p.titles) await setOwnedText(ns, node, view.name, [...view.titleNames, '-', ...kit.defaults.title], kit, 'flipbookTitle', view.retitle);
-  if (view.retitle && frame.name !== view.name) frame.name = view.name;
+  for (const node of p.titles) await setOwnedText(ns, node, view.name, [...view.titleNames, '-', ...kit.defaults.title], kit, 'flipbookTitle');
   await setOwnedText(ns, p.chapter, view.chapter, ['-', ...kit.defaults.chapter], kit, CHAPTER_KEY);
   // 상태 칸은 템플릿에서 연결한 태그 컴포넌트로만 바꾼다(연결이 없으면 놓인 태그를 그대로 쓴다).
   if (view.status && p.status) await applyTag(p.status, kit.big, kit, view.status.tag.name, view.status.colorKey, true);

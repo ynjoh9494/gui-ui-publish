@@ -54,11 +54,13 @@ npm run check
 
 ### 명령
 
+작업 완료 시 본인 변경의 검증·자동 커밋·main 통합·공유 폴더 빌드·반영까지 진행합니다. worktree 사용 여부와 내부 Git 절차는 에이전트가 판단하며 공유 폴더는 main을 유지합니다. push·팀 배포만 별도 요청이 필요합니다.
+
 | 명령 | 하는 일 |
 |---|---|
 | `npm run check` | 타입 검사, 테스트, 빌드. 커밋 전에 실행하고, GitHub에서도 main push·PR마다 실행됩니다 |
 | `npm run build` | `tmp/build/`에 검사 빌드를 만듭니다. 실행 중인 플러그인의 `dist/`는 바꾸지 않습니다 |
-| `npm run activate-build -- --plugin-closed` | 플러그인을 닫은 뒤에만 실행합니다. 검사 빌드의 파일 해시를 검증하고 기존 `dist/`를 `tmp/dist-backup-*`에 보관한 뒤 전환합니다 |
+| `npm run activate-build` | 플러그인을 닫지 않고 실행할 수 있습니다. 자동 종료·리로드는 하지 않습니다. 검사 빌드의 파일 해시를 검증하고 기존 `dist/`를 `tmp/dist-backup-*`에 보관한 뒤 전환합니다 |
 | `npm run walkthrough` | 미리보기에서 GUI 배포 → 플립북 만들기 → GUI 재배포 반영 흐름과 튜토리얼을 자동 조작합니다 |
 | `npm run benchmark` | Node 쪽 목록·저장소 계산 성능을 측정합니다 |
 | `npm run guide-screens` | 사용 안내 그림(`release/screens/`)을 미리보기 예시 데이터로 다시 찍습니다 |
@@ -66,7 +68,7 @@ npm run check
 
 ### Figma에서 개발 중인 버전 실행
 
-`npm run check`로 검사 빌드를 만든 다음 플러그인의 배포·반영이 끝났는지 확인하고 플러그인을 닫습니다. 실제 반영을 결정한 뒤 `npm run activate-build -- --plugin-closed`를 실행하고 다시 엽니다. 일반 빌드·검사·미리보기는 `tmp/build/`만 사용하므로 실사용 파일을 덮어쓰지 않습니다. Figma 데스크톱 앱에서는 이 폴더의 `manifest.json`을 불러옵니다(Import plugin from manifest). 팀원용 zip과 플러그인 ID가 같으므로 둘 중 하나만 불러옵니다.
+`npm run check`로 검사 빌드를 만든 뒤 `npm run activate-build`로 공유 main 폴더의 실행 파일에 바로 반영합니다. 종료 확인이나 별도 반영 승인을 받지 않습니다. 실행 중인 플러그인은 자동 종료·리로드되지 않으며 새 코드는 사용자가 다음에 플러그인을 열 때 실행됩니다. Figma 데스크톱 앱에서는 이 폴더의 `manifest.json`을 불러옵니다(Import plugin from manifest). 팀원용 zip과 플러그인 ID가 같으므로 둘 중 하나만 불러옵니다.
 
 미리보기와 테스트는 Figma API를 흉내 냅니다. 플러그인 메뉴의 두 명령, 템플릿 복제와 인스턴스 교체, 슬롯(List·input-cell-id) 삽입, 썸네일 JPG 출력, GUI 복사와 1/2x·1/4x 축소, 라이브러리 변수 모드 유지, 큰 화면의 복사 시간과 메모리는 **실제 Figma 시험 파일에서 확인**해야 합니다.
 

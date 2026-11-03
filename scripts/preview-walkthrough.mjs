@@ -455,6 +455,7 @@ try {
   await page.waitForFunction(size => document.querySelector('#app').offsetHeight === size.height, sizeBeforeCreate);
   // 만든 플립북은 목록의 정한 Section에 보이고, 제목을 바로 바꿀 수 있다.
   const made = app.locator('.list .row').filter({ hasText: initialName }).first();
+  const deliveriesBeforeRename = (await page.locator('#log div').allTextContents()).filter(line => line.includes('플립북 반영')).length;
   await made.click();
   await app.locator('[data-action=fb-edit-title]').click();
   await app.locator('[data-input=fb-title]').fill('홈 메인 플립북');
@@ -462,6 +463,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('플립북 제목을 바꿨습니다'));
   await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('제목 변경: 홈 메인 플립북')));
   await page.waitForFunction(() => [...document.querySelectorAll('#app .list .row .name')].some(x => x.textContent === '홈 메인 플립북'));
+  assert.equal((await page.locator('#log div').allTextContents()).filter(line => line.includes('플립북 반영')).length, deliveriesBeforeRename, '이름 변경은 전체 플립북 반영을 실행하지 않는다');
   await shot('03c-rename');
   // 제목을 비우면 첫 화면 이름으로 돌아간다.
   await app.locator('.list .row.selected .name').dblclick();

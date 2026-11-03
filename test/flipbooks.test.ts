@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import type { Flipbook } from '../src/core/types.ts';
 import { test } from 'node:test';
 import { parseFrameName, formatFrameName } from '../src/core/screenName.ts';
 import { guiRecordInfos, guiScreens, type GuiRecordInfo, type GuiScreenInfo } from '../src/core/guiScreens.ts';
@@ -1055,6 +1056,7 @@ test('플립북 만들기에서 새 행이 잘못되면 기존 플립북도 옮�
     templateIssues: async () => [],
     listFlipbooks: async () => new Map([['fb1', '1:1'], ['fb2', '1:2']]),
     syncFlipbook: async (_: unknown, view: { flipbookId: string }) => ({ nodeId: view.flipbookId === 'fb1' ? '1:1' : '1:2', notes: [] }),
+    syncChapters: async () => {},
     moveFlipbook: async (move: { flipbookId: string }) => {
       if (move.flipbookId === failOn) throw new Error('page gone');
       moved.push(move.flipbookId);
@@ -1111,9 +1113,9 @@ test('캔버스에서 다른 Section·페이지로 옮긴 플립북은 기록이
       },
     }),
     listFlipbooks: async () => new Map(),
-    syncFlipbook: async (settings: { pageId: string }, view: { flipbookId: string; category: { key: string; name: string } }) => {
-      synced.push([view.flipbookId, settings.pageId, view.category.key, view.category.name]);
-      return { nodeId: '1:0', notes: [] };
+    syncFlipbook: async () => { throw new Error('Section follow must not deliver full books'); },
+    syncChapters: async (items: { flipbookId: string; pageId: string; name: string }[]) => {
+      for (const item of items) synced.push([item.flipbookId, item.pageId, store.readFresh<Flipbook>(keys.flipbook(item.flipbookId))!.category.key, item.name]);
     },
     ensureDataPage: async () => 'data', renderData: async () => {},
   } as unknown as Host;
@@ -1123,7 +1125,7 @@ test('캔버스에서 다른 Section·페이지로 옮긴 플립북은 기록이
   const fb3 = controller.store.state.flipbooks.get('fb3')!;
   assert.deepEqual([fb2.pageId, fb2.category], ['ui', { key: 'epg', name: 'EPG', order: 2 }], 'EPG Section의 정렬 순서를 따른다');
   assert.deepEqual([fb3.pageId, fb3.category.key, fb3.category.name], ['ui2', 'section:new', '새 묶음']);
-  assert.deepEqual(synced.sort(), [['fb2', 'ui', 'epg', 'EPG'], ['fb3', 'ui2', 'section:new', '새 묶음']], 'Host에 Chapter 전용 반영이 없으면 전체 반영으로 Chapter를 맞추며, 캔버스의 페이지에서 찾는다');
+  assert.deepEqual(synced.sort(), [['fb2', 'ui', 'epg', 'EPG'], ['fb3', 'ui2', 'section:new', '새 묶음']], 'Chapter 전용 반영은 캔버스의 페이지를 사용한다');
 });
 
 test('Section 밖으로 옮긴 플립북은 「(섹션 없음)」이 되어 그 페이지 맨 위에 모이고, 새로 넣거나 옮길 자리로는 고를 수 없다', () => {
@@ -1164,7 +1166,7 @@ test('플립북을 반영할 때 플립북 페이지는 한 번만 읽고 찾은
     ensureDataPage: async () => 'data', renderData: async () => {},
   } as unknown as Host;
   const controller = new Controller(host);
-  await controller.handle({ type: 'renameFlipbook', id: 'fb1', title: '새 제목' });
+  await controller.deliverFlipbooks({}, { targets: ['fb1'], onlyTargets: true });
   assert.equal(inspected, 1, '캔버스 따라가기와 반영이 같은 읽기를 쓴다');
   assert.deepEqual([...known[0] ?? []], [['fb1', '1:1']], '찾은 프레임을 반영에 넘겨 페이지를 다시 훑지 않게 한다');
 });
@@ -1255,50 +1257,46 @@ test('GUI 확정은 플립북을 반영한 뒤 「DATA 페이지 갱신 중」�
 });
 
 test('캔버스 선택으로는 목록을 다시 읽지 않고, 새로고침으로 찾은 Section 이름 변경은 Chapter만 다시 쓰며 반영 중 표시를 닫는다', async () => {
-  for (const light of [true, false]) {
-    const posted: ToUi[] = [];
-    const store = new Store(memoryKV());
-    store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['ui'], flipbookPageId: 'ui' });
-    for (const fb of planFlipbooks({ pageId: 'ui', rows: [row([], false, '정책 A')] }, new Map(), actor, 1000, () => 'fb1')) {
-      store.put(keys.flipbook(fb.id), { ...fb, category: { key: 'home', name: '홈', order: 1 } });
-    }
-    let canvasName = '홈';
-    let inspected = 0;
-    const chapters: unknown[] = [];
-    const synced: string[] = [];
-    const host = {
-      kv: store.kv, mode: 'UI', actor,
-      post: (message: ToUi) => posted.push(message),
-      pages: () => [{ id: 'ui', name: 'UI' }],
-      selectionNodeIds: () => [],
-      templateIssues: async () => [],
-      inspectFlipbooks: async () => (inspected++, { found: new Map([['fb1', '1:1']]), spots: { '1:1': { pageId: 'ui', section: 'home', sectionName: canvasName, sectionIndex: 0, index: 0 } } }),
-      listFlipbooks: async () => new Map(),
-      syncFlipbook: async (_: unknown, view: { flipbookId: string }) => { synced.push(view.flipbookId); return { nodeId: '1:1', notes: [] }; },
-      ...(light ? { syncChapters: async (items: unknown[]) => { chapters.push(...items); } } : {}),
-      ensureDataPage: async () => 'data', renderData: async () => {},
-    } as unknown as Host;
-    const controller = new Controller(host);
-    await controller.handle({ type: 'ready' });
-    posted.length = 0;
-    canvasName = '홈 메인';
-    const before = inspected;
-    await controller.canvasSelectionChanged();
-    assert.equal(inspected, before, '캔버스 선택만으로는 플립북 페이지를 다시 읽지 않는다');
-    assert.equal(controller.store.state.flipbooks.get('fb1')?.category.name, '홈');
-    await controller.handle({ type: 'refreshList' });
-    assert.ok(posted.some(m => m.type === 'listSynced'), '새로고침한 시각을 알린다');
-    posted.length = 0;
-    await controller.handle({ type: 'refreshList' });
-    assert.ok(posted.some(m => m.type === 'listSynced'), '바뀐 것이 없어도 새로고침이 끝났다고 알린다');
-    assert.equal(controller.store.state.flipbooks.get('fb1')?.category.name, '홈 메인');
-    if (light) {
-      assert.deepEqual(chapters, [{ pageId: 'ui', flipbookId: 'fb1', name: '홈 메인' }]);
-      assert.deepEqual(synced, [], 'GUI·이력까지 다시 반영하지 않는다');
-    } else assert.deepEqual(synced, ['fb1']);
-    const busy = posted.filter((m): m is Extract<ToUi, { type: 'busy' }> => m.type === 'busy');
-    assert.equal(busy[busy.length - 1]?.label ?? null, null, '반영 중 표시가 남지 않는다');
+  const posted: ToUi[] = [];
+  const store = new Store(memoryKV());
+  store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['ui'], flipbookPageId: 'ui' });
+  for (const fb of planFlipbooks({ pageId: 'ui', rows: [row([], false, '정책 A')] }, new Map(), actor, 1000, () => 'fb1')) {
+    store.put(keys.flipbook(fb.id), { ...fb, category: { key: 'home', name: '홈', order: 1 } });
   }
+  let canvasName = '홈';
+  let inspected = 0;
+  const chapters: unknown[] = [];
+  const synced: string[] = [];
+  const host = {
+    kv: store.kv, mode: 'UI', actor,
+    post: (message: ToUi) => posted.push(message),
+    pages: () => [{ id: 'ui', name: 'UI' }],
+    selectionNodeIds: () => [],
+    templateIssues: async () => [],
+    inspectFlipbooks: async () => (inspected++, { found: new Map([['fb1', '1:1']]), spots: { '1:1': { pageId: 'ui', section: 'home', sectionName: canvasName, sectionIndex: 0, index: 0 } } }),
+    listFlipbooks: async () => new Map(),
+    syncFlipbook: async (_: unknown, view: { flipbookId: string }) => { synced.push(view.flipbookId); return { nodeId: '1:1', notes: [] }; },
+    syncChapters: async (items: unknown[]) => { chapters.push(...items); },
+    ensureDataPage: async () => 'data', renderData: async () => {},
+  } as unknown as Host;
+  const controller = new Controller(host);
+  await controller.handle({ type: 'ready' });
+  posted.length = 0;
+  canvasName = '홈 메인';
+  const before = inspected;
+  await controller.canvasSelectionChanged();
+  assert.equal(inspected, before, '캔버스 선택만으로는 플립북 페이지를 다시 읽지 않는다');
+  assert.equal(controller.store.state.flipbooks.get('fb1')?.category.name, '홈');
+  await controller.handle({ type: 'refreshList' });
+  assert.ok(posted.some(m => m.type === 'listSynced'), '새로고침한 시각을 알린다');
+  posted.length = 0;
+  await controller.handle({ type: 'refreshList' });
+  assert.ok(posted.some(m => m.type === 'listSynced'), '바뀐 것이 없어도 새로고침이 끝났다고 알린다');
+  assert.equal(controller.store.state.flipbooks.get('fb1')?.category.name, '홈 메인');
+  assert.deepEqual(chapters, [{ pageId: 'ui', flipbookId: 'fb1', name: '홈 메인' }]);
+  assert.deepEqual(synced, [], 'GUI·이력까지 다시 반영하지 않는다');
+  const busy = posted.filter((m): m is Extract<ToUi, { type: 'busy' }> => m.type === 'busy');
+  assert.equal(busy[busy.length - 1]?.label ?? null, null, '반영 중 표시가 남지 않는다');
 });
 
 test('캔버스에서 바꾼 Section 이름을 플러그인을 열 때 그 Section 플립북의 기록과 Chapter에 반영하고, 캔버스 이름은 덮어쓰지 않는다', async () => {
@@ -1321,7 +1319,8 @@ test('캔버스에서 바꾼 Section 이름을 플러그인을 열 때 그 Secti
       spots: { '1:1': { section: 'home', sectionName: canvasName, sectionIndex: 0, index: 0 }, '1:2': { section: 'epg', sectionName: 'EPG', sectionIndex: 1, index: 0 } },
     }),
     listFlipbooks: async () => new Map([['fb1', '1:1'], ['fb2', '1:2']]),
-    syncFlipbook: async (_: unknown, view: { flipbookId: string; category: { name: string } }) => { chapters.push([view.flipbookId, view.category.name]); return { nodeId: view.flipbookId === 'fb1' ? '1:1' : '1:2', notes: [] }; },
+    syncFlipbook: async () => { throw new Error('Section rename must not deliver full books'); },
+    syncChapters: async (items: { flipbookId: string; name: string }[]) => { chapters.push(...items.map(item => [item.flipbookId, item.name] as [string, string])); },
     ensureDataPage: async () => 'data',
     renderData: async () => {},
   } as unknown as Host;

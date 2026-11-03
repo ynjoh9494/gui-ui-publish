@@ -1155,6 +1155,7 @@ export const COPY = {
   // 플립북 상세 제목 줄의 「목록에서 삭제」(캔버스 프레임은 남김) — src/ui/app.ts, src/controller.ts
   flipbookRemoveHint: '목록에서 뺍니다. 캔버스의 프레임은 지우지 않고 기록도 남기며, 그 안의 GUI는 더 바뀌지 않습니다. 되살리려면 그 프레임을 골라 「기존 플립북 등록」을 누르세요.',
   flipbookRemoveRestore: '캔버스의 프레임은 그대로 두었습니다. 되살리려면 그 프레임을 골라 「기존 플립북 등록」을 누르세요.',
+  flipbookTitleConflict: '제목 변경 준비 중 플립북이 수정되었습니다. 다시 시도하세요.',
 } as const;
 
 // 화면·안내·오류 문구. 원본 파일과 행은 추출 당시 위치다.

@@ -133,9 +133,19 @@ test('항목마다 페이지·Section·자리를 정해 만들고, 같은 요청
   assert.equal(posted[posted.length - 2]?.type, 'error');
   assert.equal(controller.store.state.flipbooks.size, before);
   views.length = 0;
+  const renamed: { flipbookId: string; title: string; nodeId?: string }[] = [];
+  host.prepareFlipbookTitle = async item => ({ apply() { renamed.push(item); }, rollback() {} });
+  const unexpected = async () => { throw new Error('이름 변경에서 전체 반영·스캔·DATA 갱신을 실행함'); };
+  host.syncFlipbook = unexpected;
+  host.templateIssues = unexpected;
+  host.listFlipbooks = unexpected;
+  host.flipbookSpots = unexpected;
+  host.renderData = unexpected;
+  host.ensureDataPage = unexpected;
   await controller.handle({ type: 'renameFlipbook', id: made[0].id, title: '첫 정책' });
-  assert.ok(views.every(v => !v.create), '기존 플립북을 반영할 때는 지워진 프레임을 다시 만들지 않는다');
-  assert.deepEqual(views.map(v => [v.flipbookId, v.retitle]), [[made[0].id, true]]);
+  assert.deepEqual(views, []);
+  assert.deepEqual(renamed.map(v => [v.flipbookId, v.title, v.nodeId]), [[made[0].id, '첫 정책', `n:${made[0].id}`]]);
+  assert.equal(posted[posted.length - 2]?.type, 'notice');
   assert.equal(controller.store.state.flipbooks.get(made[0].id)?.title, '첫 정책');
 });
 
@@ -161,7 +171,8 @@ test('목록에서 옮긴 기존 플립북을 목록 순서대로 캔버스에�
       moved.push({ flipbookId: move.flipbookId, fromPageId: move.fromPageId, pageId: move.pageId, section: move.category.key, after: move.after });
       return true;
     },
-    syncFlipbook: async (_: unknown, view: { flipbookId: string }) => { synced.push(view.flipbookId); return { nodeId: `n:${view.flipbookId}`, notes: [] }; },
+    syncFlipbook: async () => { throw new Error('move must not deliver a full flipbook'); },
+    syncChapters: async (items: { flipbookId: string }[]) => { synced.push(...items.map(item => item.flipbookId)); },
     uiFingerprint: async () => ({ fingerprint: null, error: null }),
     ensureDataPage: async () => 'data', renderData: async () => {},
   } as unknown as Host;

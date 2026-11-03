@@ -5,7 +5,7 @@ import type { FoundCopy, NodePlace } from '../core/tracks.ts';
 import type { CopyUpdate, PasteItem, PasteSpot } from '../host.ts';
 import { COPY_SCALE_KEY, FLIPBOOK_KEY, loadPages, NODE_KEY } from './flipbook.ts';
 import { COPY_KEY, copyLayers, rescaleExact, SCREEN_KEY } from './layers.ts';
-import { linksOf } from './template.ts';
+import { flipbookParts, linksOf } from './template.ts';
 import { liftMarkers } from './markers.ts';
 
 // 추적 GUI(core/tracks.ts)의 캔버스 쪽: 페이지에서 GUI 복사본을 찾고, 새 버전으로 바꾸고, 추적 기록 ID를 적는다.
@@ -159,12 +159,15 @@ function frameAt(parent: ChildrenMixin, p: Vector): FrameNode | SectionNode | nu
   return null;
 }
 
-// 붙일 부모(2026-10-29 사용자 결정): 플립북 프레임 안이면 그 플립북 프레임 바로 아래(플립북과 함께 움직인다), 아니면 놓인 프레임·Section, 없으면 페이지.
+// 플립북 안에 놓으면 연결된 GUI 영역을 우선한다. 연결이 없는 이전 플립북은 프레임 바로 아래에 붙인다.
 // GUI 원본·GUI 복사본·인스턴스·컴포넌트 안에는 넣지 않고 그 바깥의 프레임·Section에 넣는다.
 function pasteParent(ns: string, hit: BaseNode | null, page: PageNode): FrameNode | SectionNode | PageNode {
   let blocked: BaseNode | null = null;
   for (let n = hit; n && n.type !== 'PAGE' && n.type !== 'DOCUMENT'; n = n.parent) {
-    if (n.type === 'FRAME' && n.getSharedPluginData(ns, FLIPBOOK_KEY)) return n;
+    if (n.type === 'FRAME' && n.getSharedPluginData(ns, FLIPBOOK_KEY)) {
+      const gui = flipbookParts(n, ns).gui;
+      return gui && !gui.locked ? gui : n;
+    }
     if (n.type === 'INSTANCE' || n.type === 'COMPONENT' || n.type === 'COMPONENT_SET' || n.getSharedPluginData(ns, COPY_KEY) || n.getSharedPluginData(ns, SCREEN_KEY)) blocked = n;
   }
   for (let n = blocked ? blocked.parent : hit; n && n.type !== 'PAGE' && n.type !== 'DOCUMENT'; n = n.parent) if ((n.type === 'FRAME' || n.type === 'SECTION') && !n.locked) return n;

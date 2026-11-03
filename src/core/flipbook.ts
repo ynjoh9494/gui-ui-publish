@@ -47,8 +47,6 @@ export interface FlipbookView {
   rows: FlipbookRow[];
   // 새로 만들 때 Section 안에서 놓을 자리: 이 플립북 바로 다음(null이면 맨 앞, 없으면 맨 뒤)
   after?: string | null;
-  // 플러그인에서 제목을 바꿨다. 캔버스에서 고친 제목도 새 제목으로 바꾼다.
-  retitle?: boolean;
   // 「만들기」로 새로 만드는 플립북이다. 이때만 프레임을 만든다. 프레임이 지워진 기존 플립북은 다시 만들지 않는다(2026-10-23 사용자 결정).
   create?: boolean;
 }

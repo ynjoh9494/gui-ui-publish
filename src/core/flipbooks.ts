@@ -196,16 +196,21 @@ export function followCanvasSections(store: Store, changes: CanvasSection[], act
 
 // 플립북 제목을 바꾼다(2026-10-21 사용자 요청). 비우면 자동 제목(첫 화면 이름, 화면이 없으면 「새 플립북」)으로 돌아간다.
 // 캔버스의 큰 제목·Page title은 반영할 때 새 제목으로 바꾼다.
-export function renameFlipbook(store: Store, flipbookId: string, title: string, actor: Actor): Flipbook {
-  const before = store.state.flipbooks.get(flipbookId);
+export function plannedFlipbookTitle(state: State, flipbookId: string, title: string): Flipbook {
+  const before = state.flipbooks.get(flipbookId);
   if (!before || before.status !== 'active') throw new Error(COPY.coreFlipbook002);
   const typed = title.trim();
   const auto = defaultTitle(before.kind, before.screens);
   const next = typed || auto;
   const autoTitle = next === auto;
-  const after: Flipbook = { ...before, rev: before.rev + 1, title: next, autoTitle, titleNames: before.titleNames.includes(next) ? before.titleNames : [...before.titleNames, next] };
+  return { ...before, rev: before.rev + 1, title: next, autoTitle, titleNames: before.titleNames.includes(next) ? before.titleNames : [...before.titleNames, next] };
+}
+
+export function renameFlipbook(store: Store, flipbookId: string, title: string, actor: Actor): Flipbook {
+  const after = plannedFlipbookTitle(store.state, flipbookId, title);
+  const before = store.state.flipbooks.get(flipbookId)!;
   store.put(keys.flipbook(flipbookId), after);
-  store.audit(actor, 'flipbook.rename', flipbookId, before.title, next);
+  store.audit(actor, 'flipbook.rename', flipbookId, before.title, after.title);
   return after;
 }
 

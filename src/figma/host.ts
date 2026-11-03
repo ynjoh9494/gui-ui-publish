@@ -9,7 +9,7 @@ import type { Host } from '../host.ts';
 import { ensureDataPage, renderDataPage } from './data.ts';
 import { createFingerprintReader } from './fingerprints.ts';
 import { selectedFlipbooks, markExistingFlipbooks } from './registerFlipbooks.ts';
-import { NS, findFlipbook, flipbookSpots, inspectFlipbooks, listFlipbooks, loadPages, moveFlipbookFrame, syncChapters, syncFlipbook, templateFromSelection, templateIssues, flipbookSession, type FlipbookSession } from './flipbook.ts';
+import { NS, prepareFlipbookTitle, findFlipbook, flipbookSpots, inspectFlipbooks, listFlipbooks, loadPages, moveFlipbookFrame, syncChapters, syncFlipbook, templateFromSelection, templateIssues, flipbookSession, type FlipbookSession } from './flipbook.ts';
 import { addTextFrame, fillDescription, readDescription, selectedDescriptionRoot, selectedFrame, selectionTarget } from './description.ts';
 import { createFlow, flowNode, updateFlow } from './flow.ts';
 import { SCREEN_KEY } from './layers.ts';
@@ -210,6 +210,7 @@ export function figmaHost(mode: Host['mode']): Host {
     pasteGui: (item, at) => pasteCopy(NS, item, at),
     nodePlaces: items => nodePlaces(NS, items),
     createdCopies: nodeIds => createdCopies(NS, nodeIds),
+    prepareFlipbookTitle: item => prepareFlipbookTitle(NS, item),
     beginDelivery: known => { deliverySession = flipbookSession(known); },
     endDelivery: () => { deliverySession = undefined; },
     syncFlipbook: (settings, view) => syncFlipbook(NS, settings, view, deliverySession),
