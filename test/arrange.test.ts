@@ -133,6 +133,7 @@ test('항목마다 페이지·Section·자리를 정해 만들고, 같은 요청
   assert.equal(posted[posted.length - 2]?.type, 'error');
   assert.equal(controller.store.state.flipbooks.size, before);
   views.length = 0;
+  controller.store.put(keys.delivery('unrelated', 'old'), { batchId: 'unrelated', kind: 'flipbook', team: 'UI', targetId: 'old', version: 0, state: 'failed', error: 'unrelated failure', updatedAt: 0 });
   const renamed: { flipbookId: string; title: string; nodeId?: string }[] = [];
   host.prepareFlipbookTitle = async item => ({ apply() { renamed.push(item); }, rollback() {} });
   const unexpected = async () => { throw new Error('이름 변경에서 전체 반영·스캔·DATA 갱신을 실행함'); };
@@ -147,6 +148,7 @@ test('항목마다 페이지·Section·자리를 정해 만들고, 같은 요청
   assert.deepEqual(renamed.map(v => [v.flipbookId, v.title, v.nodeId]), [[made[0].id, '첫 정책', `n:${made[0].id}`]]);
   assert.equal(posted[posted.length - 2]?.type, 'notice');
   assert.equal(controller.store.state.flipbooks.get(made[0].id)?.title, '첫 정책');
+  assert.equal(controller.store.state.deliveries.get(keys.delivery('unrelated', 'old'))?.state, 'failed');
 });
 
 test('목록에서 옮긴 기존 플립북을 목록 순서대로 캔버스에서 옮기고, Section이 바뀐 플립북만 다시 반영한다. 잘못된 요청은 아무것도 옮기지 않는다', async () => {

@@ -8,6 +8,7 @@
 
 - 기존 플립북 등록은 `core/registerFlipbooks.ts`가 페이지·템플릿·중복을 검증하고 기록을 계획하며, Controller가 선택 읽기 → 검증 → 표식 → 저장 → 목록 갱신을 조정한다. `figma/registerFlipbooks.ts`는 선택한 프레임에 `flipbookOf`·`flipbookNode`·`registeredFlipbook` 표식을 쓰고, 연결 기록이 없는 프레임은 이전 형식 이름으로 찾은 칸 표식과 연결 기록도 쓴다(보이는 레이어는 바꾸지 않음). 새 기록 ID는 `canvas:노드ID`로 재등록 시 중복을 막고, 실제 노드 ID와 복제된 `flipbookNode`가 다르면 별도 플립북으로 등록한다. 등록된 플립북은 추적 GUI의 소속이 될 수 있고 GUI 재배치를 하지 않는다.
 - 이전 형식(이름 규칙) 플립북 변환은 플립북 상세에서 고른 플립북만 한다. Controller(`convertLegacyFlipbooks`)가 Host 변환(`figma/legacyConvert.ts`) → 기록 `tracked` → 그 페이지 추적 GUI 다시 읽기 → 바로 반영을 조정한다. 반영(`syncFlipbook`)은 연결 기록이 없는 프레임을 반영하지 않는다(등록한 프레임은 그 자리에서 표식을 단다).
+- 기존 프레임 등록은 기록된 페이지의 원본 표식도 대조해 자기 노드 ID가 잘못 적힌 복사본을 분리한다. `GuiRecovery`는 저장 복구·원본 검증을 화면별로 수행하고 검증된 화면의 복사본·플로우를 묶어서 반영한다. 부분 실패 시에만 화면별로 재시도하며, Controller의 사용처 한정 GUI 반영 결과(`failedTargets`)로 실패한 플립북에 의존하는 화면만 대기로 남긴다. 같은 화면의 여러 배포 작업은 검증과 실제 반영을 공유한다. `deliverFlipbooks`의 `onlyTargets`는 다른 미완료 작업과 위치 변경으로 발견한 다른 플립북 모두를 추가 반영 대상에서 제외한다.
 
 Figma 파일 안에서 실행하는 단일 플러그인이다. `manifest.json`의 두 메뉴 명령 `gui`와 `ui`가 같은 `dist/code.js`를 실행하되, `src/main.ts`가 선택한 명령을 `GUI` 또는 `UI` 모드로 `Controller`에 전달한다. 외부 서버나 네트워크 호출은 없다.
 

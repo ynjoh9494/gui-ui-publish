@@ -74,7 +74,7 @@ const sameSpot = (a: FlipbookSpot | null | undefined, b: FlipbookSpot | null | u
   (a ?? null) === (b ?? null) || (!!a && !!b && a.pageId === b.pageId && a.section === b.section && a.sectionName === b.sectionName && a.sectionIndex === b.sectionIndex && a.index === b.index);
 
 // name: 플립북 제목, text: 실패 이유나 확인할 내용. 알릴 때 같은 text끼리 묶는다(deliveryMessage).
-export interface DeliveryIssue { name: string; text: string }
+export interface DeliveryIssue { name: string; text: string; targetId?: string }
 export interface DeliveryReport { screens: number; done: number; failed: DeliveryIssue[]; notes: DeliveryIssue[]; skipped: string | null }
 const emptyReport = (): DeliveryReport => ({ screens: 0, done: 0, failed: [], notes: [], skipped: null });
 
@@ -134,7 +134,7 @@ export class Controller {
     this.tracks = new TrackController(this.store, host);
     this.pdf = new PdfController(host, label => this.progress(label), label => this.busy(label));
     this.recovery = new GuiRecovery(this.store, host, this.tracks, this.flows, {
-      pull: (batchId, targets) => this.pullGui(undefined, { deferData: true, batchId, targets }),
+      pull: (batchId, targets, uids) => this.pullGui(undefined, { deferData: true, batchId, targets, onlyTargets: true, uids }),
       data: async () => { await this.progress(COPY.controller005); return this.refreshData(); },
     });
   }
@@ -662,10 +662,11 @@ export class Controller {
   // GUI 배포 기록을 그 화면을 쓰는 플립북마다 반영한다. GUI Publish 직후, UI 변경사항 확인, 관리 정정 뒤에 실행한다.
   // 이미 반영한 버전은 건너뛰므로 여러 번 실행해도 같은 결과가 된다.
   // deferData: 부른 쪽이 이어서 DATA 페이지를 갱신하고 상태를 보낸다(GUI Publish 확정). 여기서 하면 DATA를 두 번 그린다.
-  private async pullGui(isCurrent: () => boolean = () => true, { deferData = false, batchId = `gui:${randomId()}`, targets = [] as string[] } = {}): Promise<{ message: string; failed: boolean } | null> {
+  private async pullGui(isCurrent: () => boolean = () => true, { deferData = false, batchId = `gui:${randomId()}`, targets = [] as string[], onlyTargets = false, uids = undefined as Set<string> | undefined } = {}): Promise<{ message: string; failed: boolean; failedTargets: string[] } | null> {
     const s = this.store;
     s.reload();
-    const active = [...s.state.flipbooks.values()].filter(fb => fb.status === 'active' && fb.screens.length);
+    const wanted = new Set(targets);
+    const active = [...s.state.flipbooks.values()].filter(fb => fb.status === 'active' && fb.screens.length && (!onlyTargets || wanted.has(fb.id)));
     if ((!active.length && !targets.length) || !isCurrent()) return null;
     const screens = guiScreens(s.state);
     const records = guiRecordInfos(s.state, new Set(active.flatMap(fb => fb.screens.map(x => x.uid))));
@@ -677,13 +678,13 @@ export class Controller {
     let added = 0;
     const missing = new Set<string>();
     for (const fb of active) {
-      const result = importGuiUpdates(s, fb.id, screens, records, () => queue(fb.id, true));
+      const result = importGuiUpdates(s, fb.id, screens, records, () => queue(fb.id, true), uids);
       result.missing.forEach(code => missing.add(code));
       if (!result.changed) continue;
       added += result.added;
     }
     const changed = unfinishedDeliveries(s.state, { batchId, kind: 'flipbook' }).filter(d => s.state.flipbooks.get(d.targetId)?.status === 'active').length;
-    const report = changed ? await this.deliverFlipbooks({ batchId }) : emptyReport();
+    const report = changed ? await this.deliverFlipbooks({ batchId }, onlyTargets ? { targets, onlyTargets: true } : {}) : emptyReport();
     if (!deferData) {
       if (changed) await this.refreshData();
       this.postState();
@@ -694,7 +695,8 @@ export class Controller {
       missing.size ? `${COPY.controller046} ${[...missing].join(', ')}` : '',
     ].filter(Boolean);
     if (!parts.length) return null;
-    return { message: parts.join(' '), failed: report.failed.length > 0 || !!report.skipped };
+    return { message: parts.join(' '), failed: report.failed.length > 0 || !!report.skipped,
+      failedTargets: report.skipped ? targets : report.failed.flatMap(issue => issue.targetId ? [issue.targetId] : []) };
   }
 
   // 선택 화면 확인(GUI): 원본 목록은 전체를 다시 읽고(신규 후보·복제 의심·원본 없음 판단) 지문은 고른 화면만 계산한다.
@@ -1559,7 +1561,7 @@ export class Controller {
         } catch (e) {
           const message = e instanceof Error ? e.message : String(e);
           for (const d of pending) setDeliveryState(s, d.batchId, d.targetId, 'failed', message);
-          report.failed.push({ name: fb.title, text: message });
+          report.failed.push({ name: fb.title, text: message, targetId: flipbookId });
         }
       }
     } finally { this.host.endDelivery?.(); }

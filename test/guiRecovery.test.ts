@@ -136,3 +136,62 @@ test('중단 후 다른 사용자가 수정한 Screen은 저장한 이전 의도
   assert.throws(() => restoreGuiWrite(f.store, job), /덮어쓰지/);
   assert.equal(f.store.state.screens.get('s1')?.name, 'Other user');
 });
+
+test('같은 묶음의 원본 하나가 달라도 정상 화면은 완료하고 무관한 플립북은 반영하지 않는다', async () => {
+  const f = fixture();
+  const other: Screen = { ...f.after, id: 's2', code: 'STB_HO_002', source: { nodeId: 'source2', pageId: 'gui' } };
+  const record: GuiRecord = { ...f.record, screenId: 's2', code: other.code, fingerprint: 'fp-other' };
+  f.store.put(keys.screen('s2'), other);
+  f.store.put(keys.gui('s2', 2), record);
+  queueGuiDelivery(f.store, 'b2', other, other, record);
+  const fb = f.store.state.flipbooks.get('fb')!;
+  f.store.put(keys.flipbook('blocked-book'), { ...fb, id: 'blocked-book', screens: [{ uid: 's2', code: other.code, name: 'Other', version: 1 }] });
+  const fingerprinted: string[] = [];
+  f.host.fingerprint = async id => { fingerprinted.push(id); return { fingerprint: id === 'source' ? 'fp2' : 'unpublished', error: null }; };
+  const synced: string[] = [];
+  const sync = f.host.syncFlipbook;
+  f.host.syncFlipbook = async (settings, view) => { synced.push(view.flipbookId); return sync(settings, view); };
+  await new Controller(f.host).handle({ type: 'retry' });
+  f.store.reload();
+  assert.equal(f.store.state.deliveries.get(keys.guiDelivery('b2', 's1'))?.state, 'done');
+  assert.equal(f.store.state.deliveries.get(keys.guiDelivery('b2', 's2'))?.state, 'failed');
+  assert.deepEqual(synced, ['fb']);
+  assert.equal(f.store.state.flipbooks.get('blocked-book')?.screens[0].version, 1);
+  assert.deepEqual(fingerprinted.sort(), ['source', 'source2']);
+  assert.equal(retryableDeliveries(f.store.state).length, 1);
+});
+
+test('한 플립북의 이전 형식 오류는 다른 화면의 복구 완료를 막지 않는다', async () => {
+  const f = fixture();
+  const other: Screen = { ...f.after, id: 's2', code: 'STB_HO_002', source: { nodeId: 'source2', pageId: 'gui' } };
+  const record: GuiRecord = { ...f.record, screenId: 's2', code: other.code };
+  f.store.put(keys.screen('s2'), other);
+  f.store.put(keys.gui('s2', 2), record);
+  queueGuiDelivery(f.store, 'b2', other, other, record);
+  const fb = f.store.state.flipbooks.get('fb')!;
+  f.store.put(keys.flipbook('legacy'), { ...fb, id: 'legacy', screens: [{ uid: 's2', code: other.code, name: 'Other', version: 1 }] });
+  const scan = f.host.scanCopies!;
+  f.host.scanCopies = async (...args) => [...await scan(...args), { nodeId: 'legacy-copy', pageId: 'ui', uid: 's2', version: 2, trackId: 't2', flipbookId: 'legacy' }];
+  const sync = f.host.syncFlipbook;
+  f.host.syncFlipbook = async (settings, view) => {
+    if (view.flipbookId === 'legacy') throw new Error('이전 형식 플립북');
+    return sync(settings, view);
+  };
+  await new Controller(f.host).handle({ type: 'retry' });
+  f.store.reload();
+  assert.equal(f.store.state.deliveries.get(keys.guiDelivery('b2', 's1'))?.state, 'done');
+  assert.equal(f.store.state.deliveries.get(keys.guiDelivery('b2', 's2'))?.state, 'failed');
+  assert.equal(f.store.state.deliveries.get(keys.delivery('resume:pending', 'legacy'))?.state, 'failed');
+});
+
+test('같은 화면의 과거 복구 기록 여럿은 원본·복사본·플립북을 한 번만 읽어 완료한다', async () => {
+  const f = fixture();
+  for (let i = 0; i < 20; i++) queueGuiDelivery(f.store, `old-${i}`, f.before, f.after, f.record);
+  let fingerprints = 0;
+  f.host.fingerprint = async () => { fingerprints++; return { fingerprint: 'fp2', error: null }; };
+  await new Controller(f.host).handle({ type: 'retry' });
+  f.store.reload();
+  assert.equal(retryableDeliveries(f.store.state).length, 0);
+  assert.equal(fingerprints, 1);
+  assert.deepEqual(f.counts(), { copies: 1, syncs: 1 });
+});

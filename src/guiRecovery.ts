@@ -6,19 +6,13 @@ import type { Host } from './host.ts';
 import type { TrackController } from './trackController.ts';
 import type { FlowController } from './flowController.ts';
 
-// 배포 뒤 원본이 바뀐 화면이 있어 그 묶음을 반영하지 않았다. labels: 그 화면들의 Screen ID(없으면 이름)
-class SourceChanged extends Error {
-  readonly labels: string[];
-  constructor(labels: string[]) { super(COPY.recoverySourceChanged); this.labels = labels; }
-}
-
 interface RecoveryActions {
-  pull(batchId: string, targets: string[]): Promise<{ message: string; failed: boolean } | null>;
+  pull(batchId: string, targets: string[], uids: Set<string>): Promise<{ message: string; failed: boolean; failedTargets?: string[] } | null>;
   data(): Promise<boolean>;
 }
 
-// GUI commit and canvas delivery are separate durable steps. Only this final
-// step acknowledges GUI work; reopening the plugin never runs it implicitly.
+// 저장된 작업은 화면별로 검증하고, 검증된 화면만 한 번에 반영한다.
+// 하나의 원본이나 플립북이 막혀도 무관한 화면의 완료 상태는 보존한다.
 export class GuiRecovery {
   private readonly store: Store;
   private readonly host: Host;
@@ -46,76 +40,105 @@ export class GuiRecovery {
       }
       jobs = retryableDeliveries(s.state).filter(d => d.kind === 'gui');
     }
-    const groups = new Map<string, Delivery[]>();
-    for (const job of jobs) groups.set(job.batchId, [...groups.get(job.batchId) ?? [], job]);
-    // Older files may have GUI history without an outbox. An explicit retry
-    // also reconciles those files; it never creates another GUI version.
-    const notes: string[] = [];
-    // 실패한 이유. 묶음이 여럿이어도 앞머리(recoveryPending)는 한 번만 쓰고 같은 이유도 한 번만 쓴다(2026-11-02 사용자 요청).
-    const failures = new Set<string>();
-    // 배포 뒤 원본이 바뀌어 덮어쓰지 않은 화면(Screen ID, 없으면 이름)
-    const changed = new Set<string>();
-    const reader = this.host.createFingerprintReader?.() ?? this.host;
-    const verified = new Set<string>();
+    if (!jobs.length) return { message: '', failed: false };
+    const byUid = new Map<string, Delivery[]>();
+    for (const job of jobs) byUid.set(job.targetId, [...byUid.get(job.targetId) ?? [], job]);
+    const notes: string[] = [], failures = new Set<string>(), changed = new Set<string>();
+    const blocked = new Set<string>();
     let failed = false;
-    for (const [id, group] of groups) {
-      try {
-        for (const job of group) { restoreGuiWrite(s, job); setGuiDeliveryState(s, job, 'applying'); }
-        s.reload();
-        const records = [...s.state.gui.values()].flatMap(rows => rows.filter(r => r.batchId === id));
-        if (records.length && !s.state.batches.has(id)) s.put(keys.batch(id), {
-          id, team: 'GUI', actor: records[0].actor, committedAt: records[0].committedAt,
-          items: records.map(r => ({ screenId: r.screenId, version: r.version })),
-        } satisfies Batch);
-        const ids = new Set(group.length ? group.map(j => j.targetId) : [...s.state.screens.keys()]);
-        const uids = new Set([...ids].filter(uid => s.state.screens.get(uid)?.status === 'active'));
-        const retired = new Set([...ids].filter(uid => s.state.screens.get(uid)?.status === 'deleted'));
-        if (discover) {
-          // 원본이 바뀐 화면을 모두 모아 Screen ID로 알린다. 그 화면을 다시 배포하면 마지막 기록이 원본과 같아져 풀린다.
-          const changedHere: string[] = [];
-          for (const uid of uids) {
-            const screen = s.state.screens.get(uid), source = screen?.source, record = lastGui(s.state, uid);
-            const label = screen?.code || screen?.name || uid;
-            if (!source || !record?.fingerprint) { changedHere.push(label); continue; }
-            const key = `${uid}|${source.nodeId}|${record.fingerprint}`;
-            if (verified.has(key)) continue;
-            const legacy = (record.fpVersion ?? 1) === 1;
-            const fresh = await reader.fingerprint(source.nodeId, legacy);
-            if ((legacy ? fresh.legacyFingerprint : fresh.fingerprint) !== record.fingerprint) { changedHere.push(label); continue; }
-            verified.add(key);
-          }
-          if (changedHere.length) throw new SourceChanged(changedHere);
-        }
-        for (const uid of uids) {
-          const source = s.state.screens.get(uid)?.source;
-          if (source) await this.host.tagSource?.(source.nodeId, uid);
-        }
-        for (const job of group) if (retired.has(job.targetId) && job.intent?.before?.source && !job.intent.after.source)
-          await this.host.tagSource?.(job.intent.before.source.nodeId, '', job.targetId);
-        const alerted = await this.tracks.retire(retired);
-        const copies = await this.tracks.publish(uids);
-        if (copies) notes.push(copies);
-        // Mark targets before importing GUI history. If the process stops after
-        // import, the already-imported version still has a retry destination.
-        const targets = [...s.state.flipbooks.values()].filter(f => f.status === 'active' && (alerted.includes(f.id) || f.screens.some(screen => ids.has(screen.uid)))).map(f => f.id);
-        const pulled = await this.actions.pull(`resume:${id}`, targets);
-        if (pulled?.failed) throw new Error(pulled.message);
-        if (pulled?.message) notes.push(pulled.message);
-        const flow = await this.flows.update(uids, true);
-        if (flow) notes.push(flow);
-        if (!await this.actions.data()) throw new Error(s.state.dataStatus?.error ?? COPY.controller022);
-        for (const job of group) setGuiDeliveryState(s, job, 'done');
-      } catch (error) {
-        failed = true;
-        const message = error instanceof Error ? error.message : String(error);
-        for (const job of group) setGuiDeliveryState(s, job, 'failed', message);
-        if (error instanceof SourceChanged) for (const label of error.labels) changed.add(label);
-        else failures.add(message);
-      }
+    const reject = (uid: string, message: string, sourceChanged = false) => {
+      failed = true;
+      blocked.add(uid);
+      for (const job of byUid.get(uid) ?? []) setGuiDeliveryState(s, job, 'failed', message);
+      if (sourceChanged) {
+        const screen = s.state.screens.get(uid);
+        changed.add(screen?.code || screen?.name || uid);
+      } else failures.add(message);
+    };
+    // 다른 화면의 충돌로 정상 화면의 저장 복구까지 멈추지 않는다.
+    for (const job of jobs) {
+      if (blocked.has(job.targetId)) continue;
+      try { restoreGuiWrite(s, job); setGuiDeliveryState(s, job, 'applying'); }
+      catch (error) { reject(job.targetId, error instanceof Error ? error.message : String(error)); }
     }
-    // 원본이 바뀐 화면은 묶음이 여럿이어도 한 문장 뒤에 Screen ID를 모은다: 「…다시 배포하세요. (A, B)」
+    s.reload();
+    const batchIds = new Set(jobs.map(j => j.batchId));
+    const recordsByBatch = new Map<string, Batch['items']>();
+    for (const rows of s.state.gui.values()) for (const r of rows) if (batchIds.has(r.batchId) && !s.state.batches.has(r.batchId)) {
+      const items = recordsByBatch.get(r.batchId) ?? [];
+      items.push({ screenId: r.screenId, version: r.version });
+      recordsByBatch.set(r.batchId, items);
+    }
+    for (const [id, items] of recordsByBatch) {
+      const record = s.state.gui.get(items[0].screenId)!.find(r => r.batchId === id)!;
+      s.put(keys.batch(id), { id, team: 'GUI', actor: record.actor, committedAt: record.committedAt, items } satisfies Batch);
+    }
+    const ids = new Set(byUid.keys());
+    const reader = this.host.createFingerprintReader?.() ?? this.host;
+    if (discover) for (const uid of ids) {
+      if (blocked.has(uid) || s.state.screens.get(uid)?.status !== 'active') continue;
+      try {
+        const screen = s.state.screens.get(uid)!, source = screen.source, record = lastGui(s.state, uid);
+        if (!source || !record?.fingerprint) { reject(uid, COPY.recoverySourceChanged, true); continue; }
+        const legacy = (record.fpVersion ?? 1) === 1;
+        const fresh = await reader.fingerprint(source.nodeId, legacy);
+        if ((legacy ? fresh.legacyFingerprint : fresh.fingerprint) !== record.fingerprint)
+          reject(uid, COPY.recoverySourceChanged, true);
+      } catch (error) { reject(uid, error instanceof Error ? error.message : String(error)); }
+    }
+    const eligible = () => new Set([...ids].filter(uid => !blocked.has(uid)));
+    let uids = new Set([...eligible()].filter(uid => s.state.screens.get(uid)?.status === 'active'));
+    const retired = new Set([...eligible()].filter(uid => s.state.screens.get(uid)?.status === 'deleted'));
+    const alerted: string[] = [];
+    for (const uid of uids) {
+      try {
+        const source = s.state.screens.get(uid)?.source;
+        if (source) await this.host.tagSource?.(source.nodeId, uid);
+      } catch (error) { reject(uid, error instanceof Error ? error.message : String(error)); }
+    }
+    for (const job of jobs) if (!blocked.has(job.targetId) && retired.has(job.targetId) && job.intent?.before?.source && !job.intent.after.source) {
+      try { await this.host.tagSource?.(job.intent.before.source.nodeId, '', job.targetId); }
+      catch (error) { reject(job.targetId, error instanceof Error ? error.message : String(error)); }
+    }
+    // 정상일 때는 묶어서 읽고, 부분 실패 때만 화면별로 재시도해 실패 대상을 분리한다.
+    const apply = async (targets: Set<string>, run: (uids: Set<string>) => Promise<string | null>) => {
+      if (!targets.size) return;
+      try { const message = await run(targets); if (message) notes.push(message); }
+      catch (error) {
+        if (targets.size === 1) { reject([...targets][0], error instanceof Error ? error.message : String(error)); return; }
+        for (const uid of targets) {
+          try { const message = await run(new Set([uid])); if (message) notes.push(message); }
+          catch (failure) { reject(uid, failure instanceof Error ? failure.message : String(failure)); }
+        }
+      }
+    };
+    await apply(new Set([...retired].filter(uid => !blocked.has(uid))), async targets => {
+      alerted.push(...await this.tracks.retire(targets));
+      return null;
+    });
+    uids = new Set([...uids].filter(uid => !blocked.has(uid)));
+    await apply(uids, targets => this.tracks.publish(targets));
+    uids = new Set([...uids].filter(uid => !blocked.has(uid)));
+    await apply(uids, targets => this.flows.update(targets, true));
+    uids = new Set([...uids].filter(uid => !blocked.has(uid)));
+    const safe = eligible();
+    const targets = [...s.state.flipbooks.values()].filter(f => f.status === 'active' &&
+      (alerted.includes(f.id) || f.screens.some(screen => safe.has(screen.uid)))).map(f => f.id);
+    try {
+      const pulled = safe.size ? await this.actions.pull(`resume:${batchId ?? 'pending'}`, targets, uids) : null;
+      if (pulled?.message) notes.push(pulled.message);
+      if (pulled?.failed) {
+        const failedTargets = new Set(pulled.failedTargets ?? targets);
+        for (const uid of safe) if (targets.some(id => failedTargets.has(id) &&
+          (alerted.includes(id) || s.state.flipbooks.get(id)?.screens.some(screen => screen.uid === uid)))) reject(uid, pulled.message);
+      }
+      if (eligible().size && !await this.actions.data()) throw new Error(s.state.dataStatus?.error ?? COPY.controller022);
+      for (const job of jobs) if (!blocked.has(job.targetId)) setGuiDeliveryState(s, job, 'done');
+    } catch (error) {
+      for (const uid of eligible()) reject(uid, error instanceof Error ? error.message : String(error));
+    }
     const reasons = [...(changed.size ? [`${COPY.recoverySourceChanged} (${[...changed].join(', ')})`] : []), ...failures];
     const pending = reasons.length ? `${COPY.recoveryPending} ${reasons.join(' ')}` : '';
-    return { message: [pending, ...notes].filter(Boolean).join(' '), failed };
+    return { message: [pending, ...new Set(notes)].filter(Boolean).join(' '), failed };
   }
 }

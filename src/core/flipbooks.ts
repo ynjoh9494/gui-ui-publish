@@ -278,7 +278,7 @@ export interface ImportResult {
 
 // GUI 배포 상태를 플립북 기록에 반영한다. 새 버전의 기록은 이 플립북에 쌓고,
 // 이미 가진 버전은 정정된 설명만 맞춘다. 화면 ID·이름이 바뀌면 함께 바꾼다.
-export function importGuiUpdates(store: Store, flipbookId: string, screens: Map<string, GuiScreenInfo>, records: GuiRecordInfo[], beforeChange?: () => void): ImportResult {
+export function importGuiUpdates(store: Store, flipbookId: string, screens: Map<string, GuiScreenInfo>, records: GuiRecordInfo[], beforeChange?: () => void, onlyUids?: Set<string>): ImportResult {
   const before = store.state.flipbooks.get(flipbookId);
   if (!before) throw new Error(COPY.coreFlipbook002);
   const result: ImportResult = { changed: false, added: 0, missing: [] };
@@ -286,6 +286,7 @@ export function importGuiUpdates(store: Store, flipbookId: string, screens: Map<
   const queue = () => { if (!queued) { beforeChange?.(); queued = true; } };
   const held = store.state.imported.get(flipbookId) ?? [];
   const next = before.screens.map(fs => {
+    if (onlyUids && !onlyUids.has(fs.uid)) return fs;
     const s = screens.get(fs.uid);
     // 삭제로 배포한 화면은 마지막 GUI를 그대로 두고 알리지 않는다. 화면이 모두 삭제된 플립북은 retireFlipbooks가 사용 안 함으로 바꾼다.
     if (!s || s.status !== 'active') { if (s?.status !== 'deleted') result.missing.push(fs.code); return fs; }
