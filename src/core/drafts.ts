@@ -160,7 +160,14 @@ export function pendingCaseState(state: State, entries: Entry[], drafts: Record<
 }
 
 // 같은 배포에서 기존 ID를 비우는 화면은 충돌로 보지 않는다. 최종 ID 중복은 buildPlan에서 다시 검사한다.
-export interface DraftIndex { ownersByCode: Map<string, string[]>; entriesByKey: Map<string, Entry> }
+// 입력 검사 한 번(목록을 한 번 그리는 동안, 입력값이 바뀌지 않는 동안)만 쓴다. caseState는 그동안 같으므로 처음 쓸 때 한 번 만든다.
+export interface DraftIndex { ownersByCode: Map<string, string[]>; entriesByKey: Map<string, Entry>; caseState?: State }
+
+// 입력 중인 값을 반영한 화면 관계(pendingCaseState). 케이스 행마다 화면 목록 전체를 복사하지 않게 index에 한 번 만든다.
+function plannedCases(state: State, entries: Entry[], drafts: Record<string, Draft>, index?: DraftIndex): State {
+  if (!index) return pendingCaseState(state, entries, drafts);
+  return index.caseState ??= pendingCaseState(state, entries, drafts);
+}
 
 export function draftIndex(state: State, entries: Entry[]): DraftIndex {
   const ownersByCode = new Map<string, string[]>();
@@ -200,12 +207,15 @@ export function suggestedCaseCode(state: State, baseScreenId: string | undefined
   const base = baseScreenId ? state.screens.get(baseScreenId) : null;
   if (!base?.code) return '';
   const prefix = `${base.code}-`;
+  // 자동 입력이 케이스마다 부르므로 ID 배열을 새로 만들지 않는다.
   let max = 0;
-  for (const code of [...[...state.screens.values()].map(screen => screen.code), ...reserved]) {
-    if (!code.startsWith(prefix)) continue;
+  const check = (code: string) => {
+    if (!code.startsWith(prefix)) return;
     const suffix = code.slice(prefix.length);
     if (/^\d+$/.test(suffix)) max = Math.max(max, Number(suffix));
-  }
+  };
+  for (const screen of state.screens.values()) check(screen.code);
+  for (const code of reserved) check(code);
   return `${prefix}${String(max + 1).padStart(2, '0')}`;
 }
 
@@ -264,9 +274,12 @@ export function renumberAutoCodes(state: State, items: { entry: Entry; draft: Dr
   const reserved = items.filter(({ draft }) => draft.included && !targets.has(draft) && draft.code?.trim()).map(({ draft }) => draft.code!.trim());
   const order = [...auto.filter(item => item.draft.included), ...auto.filter(item => !item.draft.included)].sort((a, b) => Number(a.draft.relation === 'case') - Number(b.draft.relation === 'case'));
   const drafts = Object.fromEntries(items.map(item => [item.entry.key, item.draft]));
+  // 케이스는 앞에서 번호를 정한 기본 화면(같은 배포의 신규 기본 화면 포함)을 본다. 케이스는 order의 뒤에 모여 있고 케이스의 입력은
+  // 그 상태(basesOnly)에 들어가지 않으므로 처음 케이스에서 한 번만 만든다.
+  let caseState: State | null = null;
   for (const { entry, draft } of order) {
     draft.code = blankCode(entry, draft);
-    fillAutoCode(draft.relation === 'case' ? pendingCaseState(state, items.map(item => item.entry), drafts, true) : state, entry, draft, reserved);
+    fillAutoCode(draft.relation === 'case' ? caseState ??= pendingCaseState(state, items.map(item => item.entry), drafts, true) : state, entry, draft, reserved);
     if (draft.included && draft.code) reserved.push(draft.code);
   }
 }
@@ -427,7 +440,7 @@ function validateGui(state: State, entry: Entry, draft: Draft, drafts: Record<st
       // 새 버전의 화면 관계는 배포 뒤 교체할 화면의 관계가 된다(2026-11-03 사용자 요청).
       if (draft.relation === 'case') {
         if (!draft.baseScreenId) missing.push(COPY.coreDrafts024);
-        else { const e = caseRelationError(pendingCaseState(state, entries, drafts), target.id, draft.baseScreenId); if (e) errors.push(e); }
+        else { const e = caseRelationError(plannedCases(state, entries, drafts, index), target.id, draft.baseScreenId); if (e) errors.push(e); }
       }
       if (entry.frame?.error) errors.push(`${COPY.coreDrafts027} ${entry.frame.error}`);
       return;
@@ -438,7 +451,7 @@ function validateGui(state: State, entry: Entry, draft: Draft, drafts: Record<st
     if (!draft.relation) missing.push(COPY.coreDrafts023);
     else if (draft.relation === 'case') {
       if (!draft.baseScreenId) missing.push(COPY.coreDrafts024);
-      else { const e = caseRelationError(pendingCaseState(state, entries, drafts), entry.key, draft.baseScreenId); if (e) errors.push(e); }
+      else { const e = caseRelationError(plannedCases(state, entries, drafts, index), entry.key, draft.baseScreenId); if (e) errors.push(e); }
     }
     return;
   }
@@ -447,7 +460,7 @@ function validateGui(state: State, entry: Entry, draft: Draft, drafts: Record<st
   else if (draft.categoryId && !state.categories.get(draft.categoryId)?.active) errors.push(COPY.coreDrafts021);
   if (draft.relation === 'case') {
     if (!draft.baseScreenId) missing.push(COPY.coreDrafts024);
-    else { const e = caseRelationError(pendingCaseState(state, entries, drafts), entry.screenId ?? entry.key, draft.baseScreenId); if (e) errors.push(e); }
+    else { const e = caseRelationError(plannedCases(state, entries, drafts, index), entry.screenId ?? entry.key, draft.baseScreenId); if (e) errors.push(e); }
   }
   if (entry.frame?.error) errors.push(`${COPY.coreDrafts027} ${entry.frame.error}`);
   if (!screen) errors.push(COPY.coreDrafts028);

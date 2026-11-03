@@ -164,13 +164,11 @@ export class Controller {
           this.host.normalizeManagedPageNames?.();
           // 기록 저장 뒤 원본 표식을 지우기 전에 플러그인이 닫혔다면, 다시 열 때 마저 지운다.
           // 이미 다른 화면으로 재배포한 프레임의 표식은 Host가 expectedScreenId로 보호한다.
-          for (const batch of this.store.state.batches.values()) {
-            for (const item of batch.unpublished ?? []) {
-              const screen = this.store.state.screens.get(item.screenId);
-              if (screen?.status === 'deleted' && !screen.source)
-                await this.host.tagSource(item.nodeId, '', item.screenId);
-            }
-          }
+          // 표식 쓰기는 서로 상관없으므로 노드 조회를 함께 기다린다.
+          await Promise.all([...this.store.state.batches.values()].flatMap(batch => (batch.unpublished ?? []).flatMap(item => {
+            const screen = this.store.state.screens.get(item.screenId);
+            return screen?.status === 'deleted' && !screen.source ? [this.host.tagSource(item.nodeId, '', item.screenId)] : [];
+          })));
           // 기본 태그(추가·삭제)가 없으면 만든다.
           if (ensureSystemTags(this.store, this.host.actor)) this.store.reload();
           // Screen ID 자동 입력 전에 만든 프로젝트는 기존 화면 ID에서 Prefix·카테고리 코드를 읽고, 없으면 카테고리 이름으로 코드를 만든다.
@@ -902,11 +900,9 @@ export class Controller {
     s.audit(a, 'project.scope', 'project', before.scopePageIds, [pageId], COPY.coreVersion004);
     this.version = null;
     // 프레임 이름은 바꾸지 않는다. 화면 이름·Screen ID는 기록에만 둔다(2026-10-21 사용자 결정).
-    const failed: string[] = [];
-    for (const link of links) {
-      try { await this.host.tagSource(link.nodeId, link.screenId); }
-      catch { failed.push(s.state.screens.get(link.screenId)!.code); }
-    }
+    // 화면마다 표식만 쓰므로 노드 조회를 함께 기다린다. 실패는 링크 순서대로 모은다.
+    const tagged = await Promise.all(links.map(link => this.host.tagSource(link.nodeId, link.screenId).then(() => true, () => false)));
+    const failed = links.filter((_, i) => !tagged[i]).map(link => s.state.screens.get(link.screenId)!.code);
     const tags = new Map(links.map(link => [link.nodeId, link.screenId]));
     this.scanSeq++;
     // 전환에서 연결하지 않은 프레임·화면은 사용자가 고른 결과이므로 교체를 다시 제안하지 않는다.
@@ -1001,7 +997,12 @@ export class Controller {
     const lastId = ids.find(id => !previousIds.has(id)) ?? ids[ids.length - 1];
     this.previousCanvasIds = ids;
     // 처음 확인하기 전의 신규 프레임도 캔버스 선택으로 목록에 올려 선택 확인을 할 수 있게 한다.
-    if (this.host.mode === 'GUI' && !this.scanningGui && nodes.some(node => !node.flipbookId && !entryByNode.has(node.nodeId))) {
+    // 화면 안의 레이어나 GUI 페이지 밖의 노드를 고를 때는 다시 읽지 않는다(GUI 화면을 고치며 레이어를 누를 때마다 원본 목록 전체를 읽고
+    // 플러그인 목록을 다시 그리지 않게). 다시 읽은 목록이 그대로면 목록도 다시 보내지 않는다.
+    const scope = new Set(this.store.state.project.scopePageIds);
+    const candidate = (node: { nodeId: string; flipbookId: string | null; screenRoot?: boolean; pageId?: string }) =>
+      node.screenRoot !== false && (!node.pageId || scope.has(node.pageId)) && !node.flipbookId && !entryByNode.has(node.nodeId);
+    if (this.host.mode === 'GUI' && !this.scanningGui && nodes.some(candidate)) {
       const scanSeq = this.scanSeq;
       this.store.reload();
       const { scopePageIds, scopeSectionIds } = this.store.state.project;
@@ -1009,13 +1010,20 @@ export class Controller {
         const frames = await this.host.listFrames(scopePageIds, scopeSectionIds, () => scanSeq === this.scanSeq && canvasSeq === this.canvasSelectionSeq);
         if (scanSeq !== this.scanSeq || canvasSeq !== this.canvasSelectionSeq) return;
         const known = new Map(this.frames.map(frame => [frame.nodeId, frame]));
-        this.frames = frames.map(frame => {
-          const before = known.get(frame.nodeId);
-          return before ? carried(frame, before) : frame;
+        const same = this.framesLoaded && frames.length === this.frames.length && frames.every((frame, i) => {
+          const before = this.frames[i];
+          return before.nodeId === frame.nodeId && before.pageId === frame.pageId && before.name === frame.name && before.screenTag === frame.screenTag
+            && before.width === frame.width && before.height === frame.height;
         });
-        this.framesLoaded = true;
-        this.postEntries();
-        entryByNode = new Map(this.entries.filter(entry => entry.frame).map(entry => [entry.frame!.nodeId, entry]));
+        if (!same) {
+          this.frames = frames.map(frame => {
+            const before = known.get(frame.nodeId);
+            return before ? carried(frame, before) : frame;
+          });
+          this.framesLoaded = true;
+          this.postEntries();
+          entryByNode = new Map(this.entries.filter(entry => entry.frame).map(entry => [entry.frame!.nodeId, entry]));
+        }
       } catch (error) {
         if (canvasSeq === this.canvasSelectionSeq) this.host.post({ type: 'error', message: error instanceof Error ? error.message : String(error) });
       }
@@ -1249,12 +1257,10 @@ export class Controller {
     }
     if (result.ok) {
       // 원본 프레임에는 화면 표식만 남기고 이름은 그대로 둔다. 화면 이름·Screen ID는 기록에만 둔다(2026-10-21 사용자 결정).
-      for (const item of items) {
-        if (item.team !== 'GUI' || !item.frame) continue;
-        await this.host.tagSource(item.frame.nodeId, item.screenId);
-      }
+      // 화면마다 표식만 쓰므로 노드 조회를 함께 기다린다(배포한 화면 수만큼 차례로 기다리지 않는다).
+      await Promise.all(items.flatMap(item => item.team === 'GUI' && item.frame ? [this.host.tagSource(item.frame.nodeId, item.screenId)] : []));
       // 배포를 취소한 원본은 표식을 지워 다음 비교에서 복제 의심 없이 신규 후보로 나오게 한다. 프레임이 지워졌으면 건너뛴다.
-      for (const item of unpublished) await this.host.tagSource(item.nodeId, '', item.screenId);
+      await Promise.all(unpublished.map(item => this.host.tagSource(item.nodeId, '', item.screenId)));
       this.plans.delete(batchId);
     }
     // 확정 뒤의 플립북·DATA 실패는 확정 기록과 구분해 알린다. GUI는 그 화면을 쓰는 플립북에 바로 반영한다.

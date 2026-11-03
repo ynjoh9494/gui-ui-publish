@@ -1,6 +1,6 @@
 import { COPY } from './copy.ts';
 import { baseline, entryName, UI_FINGERPRINT_VERSION, type Entry } from './compare.ts';
-import { draftCode, draftName, isNotScreen, isPrevious, isUnpublish, mergesInto, needsLink, OPTIONAL_FIELDS, replaceTarget, validateDraft, workTypeOf, type Draft } from './drafts.ts';
+import { draftCode, draftIndex, draftName, isNotScreen, isPrevious, isUnpublish, mergesInto, needsLink, OPTIONAL_FIELDS, replaceTarget, validateDraft, workTypeOf, type Draft } from './drafts.ts';
 import { FINGERPRINT_VERSION, LEGACY_FINGERPRINT_VERSION } from './fingerprint.ts';
 import { followMergedFlipbooks } from './flipbooks.ts';
 import { followMergedFlows } from './flow.ts';
@@ -114,6 +114,8 @@ export function buildPlan(
   const codes = new Map<string, string>();
   // 원본 변경이 없는 배포: 모든 화면이 비교에서 차이가 없는 등록 화면이고 신규·삭제·교체가 없다(2026-11-03 사용자 요청).
   let sourceChanged = false;
+  // 계획 한 번 동안 입력은 바뀌지 않으므로 ID 소유자·입력 중인 화면 관계를 한 번만 만든다(화면마다 다시 만들지 않는다).
+  const index = team === 'GUI' ? draftIndex(state, entries) : undefined;
 
   for (const entry of entries) {
     const draft = drafts[entry.key];
@@ -135,7 +137,7 @@ export function buildPlan(
       continue;
     }
     const name = entryName(state, entry);
-    const v = validateDraft(team, state, entry, draft, drafts, entries);
+    const v = validateDraft(team, state, entry, draft, drafts, entries, index);
     if (v.status === 'invalid') {
       plan.blockers.push({ entryKey: entry.key, name, messages: [...v.missing.map(m => `${m} ${COPY.corePublish001}`), ...v.errors] });
       continue;

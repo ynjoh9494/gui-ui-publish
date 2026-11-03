@@ -1400,3 +1400,33 @@ test('첫 플립북 동기화가 실패해도 대기 화면을 닫고 오류를 
   assert.ok(error >= 0 && ready > error, '오류를 알린 뒤 대기 화면을 닫는다');
   assert.ok(posted.slice(error, ready).some(m => m.type === 'busy' && m.label === null));
 });
+
+test('GUI 모드에서 화면 안 레이어나 GUI 페이지 밖 노드를 고르면 원본 목록을 다시 읽지 않고, 다시 읽은 목록이 같으면 목록을 다시 보내지 않는다', async () => {
+  const posted: ToUi[] = [];
+  let listed = 0;
+  let selection: { nodeId: string; flipbookId: string | null; screenRoot?: boolean; pageId?: string }[] = [];
+  const frames = [{ nodeId: 'a', pageId: 'page', name: 'A', width: 100, height: 100, screenTag: null, fingerprint: null, error: null }];
+  const host = {
+    kv: memoryKV({ project: JSON.stringify({ scopePageIds: ['page'], exclusions: [] }) }), mode: 'GUI', actor,
+    post: (message: ToUi) => posted.push(message), pages: () => [{ id: 'page', name: '원본' }, { id: 'other', name: '다른 페이지' }],
+    selectionNodeIds: () => selection,
+    listFrames: async () => { listed++; return frames; },
+  } as unknown as Host;
+  const controller = new Controller(host);
+  await controller.handle({ type: 'ready' });
+  selection = [{ nodeId: 'inner', flipbookId: null, screenRoot: false, pageId: 'page' }];
+  await controller.canvasSelectionChanged();
+  selection = [{ nodeId: 'elsewhere', flipbookId: null, screenRoot: true, pageId: 'other' }];
+  await controller.canvasSelectionChanged();
+  assert.equal(listed, 0);
+  selection = [{ nodeId: 'a', flipbookId: null, screenRoot: true, pageId: 'page' }];
+  await controller.canvasSelectionChanged();
+  assert.equal(listed, 1);
+  const entriesPosts = () => posted.filter(message => message.type === 'entries').length;
+  const before = entriesPosts();
+  // 목록에 오르지 않는 후보(예: 제외한 프레임)를 다시 골라도 같은 목록이면 다시 보내지 않는다.
+  selection = [{ nodeId: 'b', flipbookId: null, screenRoot: true, pageId: 'page' }];
+  await controller.canvasSelectionChanged();
+  assert.equal(listed, 2);
+  assert.equal(entriesPosts(), before);
+});

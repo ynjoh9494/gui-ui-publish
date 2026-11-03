@@ -40,7 +40,9 @@ export interface Host extends FingerprintReader {
   ensureThumbnailPage?(): Promise<string>;
   listFrames(pageIds: string[], sectionIds: string[], isCurrent?: () => boolean): Promise<ScannedFrame[]>;
   selectNodes(nodeIds: string[], lastNodeId: string, isLatest: () => boolean): Promise<void>;
-  selectionNodeIds(): { nodeId: string; flipbookId: string | null }[] | null;
+  // screenRoot: GUI 화면 후보(페이지나 Section 바로 아래의 프레임·컴포넌트·인스턴스)인가, pageId: 고른 노드의 페이지.
+  // 둘 다 없으면 후보로 본다. GUI 모드에서 목록에 없는 후보를 고를 때만 원본 목록을 다시 읽는다.
+  selectionNodeIds(): { nodeId: string; flipbookId: string | null; screenRoot?: boolean; pageId?: string }[] | null;
   createFingerprintReader?(): FingerprintReader;
   makeThumbnail(nodeId: string, label: string): Promise<GuiThumb>;
   placeThumbnails?(updates: { screenId: string; label: string; thumb: GuiThumb }[]): Promise<void>;

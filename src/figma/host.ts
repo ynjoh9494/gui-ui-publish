@@ -128,7 +128,14 @@ export function figmaHost(mode: Host['mode']): Host {
       if (programmedSelection && Date.now() <= programmedUntil &&
           (!ids.length || ids.length === programmedSelection.length && ids.every(id => programmedSelection!.includes(id)))) return null;
       programmedSelection = null;
-      return figma.currentPage.selection.map(node => ({ nodeId: node.id, flipbookId: node.getSharedPluginData(NS, 'flipbookOf') || null }));
+      const pageId = figma.currentPage.id;
+      // screenRoots와 같은 규칙: 위로 Section만 있는 프레임·컴포넌트·인스턴스
+      const screenRoot = (node: SceneNode) => {
+        if (!SCREEN_TYPES.has(node.type)) return false;
+        for (let p = node.parent; p && p.type !== 'PAGE'; p = p.parent) if (p.type !== 'SECTION') return false;
+        return true;
+      };
+      return figma.currentPage.selection.map(node => ({ nodeId: node.id, flipbookId: node.getSharedPluginData(NS, 'flipbookOf') || null, screenRoot: screenRoot(node), pageId }));
     },
 
     createFingerprintReader: () => createFingerprintReader(sceneNode),

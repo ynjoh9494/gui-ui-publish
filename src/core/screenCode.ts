@@ -208,10 +208,14 @@ export function nextScreenCode(state: State, categoryId: string | undefined, res
   if (!category?.active || !category.code) return '';
   const head = stem(state.project.screenIdPrefix ?? '', category.code);
   const pattern = new RegExp(`^${escape(head)}(\\d+)(?:-\\d+)?$`);
+  // 자동 입력이 화면마다 부르므로 배열을 새로 만들지 않고, 머리가 같은 ID만 정규식으로 본다.
   let max = 0;
-  for (const code of [...[...state.screens.values()].map(screen => screen.code), ...reserved]) {
+  const check = (code: string) => {
+    if (!code.startsWith(head)) return;
     const match = pattern.exec(code);
     if (match) max = Math.max(max, Number(match[1]));
-  }
+  };
+  for (const screen of state.screens.values()) check(screen.code);
+  for (const code of reserved) check(code);
   return `${head}${String(max + 1).padStart(3, '0')}`;
 }
