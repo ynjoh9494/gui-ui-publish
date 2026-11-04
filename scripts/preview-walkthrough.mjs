@@ -384,15 +384,30 @@ try {
   await app.locator('.list .new-row').click();
   const option = app.locator('.create-screen-option').filter({ hasText: 'STB_HO_001' }).first();
   await option.waitFor();
-  assert.ok((await app.locator('.create-category-heading').first().innerText()).includes('홈'), '화면 후보를 카테고리로 나눈다');
-  await app.locator('.create-category-heading').first().click();
-  assert.equal(await app.locator('.create-screen-list .create-screen-option').count(), 0, '카테고리를 접는다');
-  await app.locator('.create-category-heading').first().click();
-  assert.equal(await app.locator('.create-screen-list .create-screen-option').count(), 1, '카테고리를 다시 펼친다');
+  // 화면 선택은 붙여 넣기·플로우 편집기와 같은 형식(카테고리 드롭다운·목록/그리드 보기·검색)이고, 「선택된 화면」은 오른쪽 열이다(2026-11-04).
+  assert.ok(await app.locator('.create-browser').evaluate(el => {
+    const [pick, chosen] = [el.querySelector('.create-available-box'), el.querySelector('.create-selected-box')].map(box => box.getBoundingClientRect());
+    return pick.right <= chosen.left && Math.abs(pick.top - chosen.top) < 1 && chosen.height >= 165;
+  }), '화면 선택은 왼쪽, 선택된 화면은 오른쪽 2열이다');
+  assert.equal(await app.locator('.create-browser [data-action=create-layout]').count(), 2, '보기 방식 아이콘은 한 벌만 둔다');
+  const createCategory = app.locator('[data-create=category]');
+  assert.equal(await createCategory.inputValue(), '__all__', '처음은 전체 카테고리다');
+  assert.ok((await createCategory.locator('option').allInnerTexts()).includes('홈'), '화면 카테고리를 드롭다운에서 고른다');
+  const otherCategory = (await createCategory.locator('option').evaluateAll(options => options.map(o => ({ value: o.value, text: o.textContent })))).find(o => o.value !== '__all__' && o.text !== '홈');
+  if (otherCategory) {
+    await createCategory.selectOption(otherCategory.value);
+    assert.equal(await app.locator('.create-screen-list .create-screen-option').filter({ hasText: 'STB_HO_001' }).count(), 0, '다른 카테고리를 고르면 그 카테고리 화면만 보인다');
+    await createCategory.selectOption('__all__');
+  }
   assert.equal(await option.locator('.create-unused-dot').getAttribute('title'), '제작된 플립북 없음');
-  await app.locator('[data-input=create-query]').fill('없는 화면');
-  assert.equal(await app.locator('.create-screen-list .create-screen-option').count(), 0, '오른쪽 화면 목록을 검색한다');
-  await app.locator('[data-input=create-query]').fill('');
+  await app.locator('[data-create=search]').fill('없는 화면');
+  assert.equal(await app.locator('.create-screen-list .create-screen-option').count(), 0, '화면 선택 목록을 검색한다');
+  await app.locator('[data-create=search]').fill('');
+  await app.locator('[data-action=create-layout][data-layout=grid]').click();
+  assert.ok(await app.locator('.create-screen-list').evaluate(el => el.classList.contains('grid')) && await app.locator('.create-selected-list').evaluate(el => el.classList.contains('grid')), '그리드 보기는 두 열에 함께 쓴다');
+  assert.ok(await app.locator('.create-screen-list .create-card .paste-thumb').count() > 0, '그리드는 썸네일 카드다');
+  await shot('03-create-grid');
+  await app.locator('[data-action=create-layout][data-layout=list]').click();
   // 화면 선택에서 마우스를 올리면 GUI 썸네일을 보여 준다.
   await option.hover();
   await page.locator('#app .thumb-hover img').waitFor();
@@ -423,8 +438,7 @@ try {
   assert.equal(await app.locator('.detail [data-input=new-title]').inputValue(), initialName, '오른쪽 제목은 첫 화면 이름이 채워진 입력란이다');
   assert.equal(await app.locator('.detail [data-action=new-edit-title]').count(), 0, '오른쪽 제목에는 연필이 없다');
   assert.ok(await app.locator('.list .new-row.selected').evaluate(row => row.querySelector('.name').getBoundingClientRect().right <= row.querySelector('[data-action=new-edit-title]').getBoundingClientRect().left), '연필은 목록 이름 오른쪽에 있다');
-  assert.ok(await app.locator('.create-selected-box').evaluate(el => el.getBoundingClientRect().height >= 165), '선택된 화면 박스 높이를 확보한다');
-  assert.equal(await app.locator('.create-selected-list .create-screen-option').count(), 1, '선택 화면은 위쪽 별도 박스로 이동한다');
+  assert.equal(await app.locator('.create-selected-list .create-screen-option').count(), 1, '선택 화면은 오른쪽 별도 박스로 이동한다');
   assert.equal(await app.locator('.create-screen-list .create-screen-option').count(), 0, '선택 화면을 후보 목록에 중복 표시하지 않는다');
   await app.locator('.create-selected-list [data-action=create-screen-toggle]').click();
   assert.equal(await app.locator('.create-screen-list .create-screen-option').count(), 1, '체크 해제한 화면은 후보 목록으로 돌아간다');

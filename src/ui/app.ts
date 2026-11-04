@@ -29,6 +29,8 @@ import { findCategoryByName, systemTagId } from '../core/registry.ts';
 import { formatFrameName, parseFrameName } from '../core/screenName.ts';
 import type { State } from '../core/store.ts';
 import type { Actor, Category, Flipbook, FlipbookScale, ImportedGuiRecord, SystemTag, Team } from '../core/types.ts';
+import { ALL_CATEGORIES, filterPickerScreens, screenCategories, screenPickerControls, screenPickerEmpty } from './screenPicker.ts';
+import { thumbnailImage, updateThumbnailImages } from './thumbnailImage.ts';
 import { SIMILAR_MIN, type VersionEvidence, type VersionLink } from '../core/versionMatch.ts';
 import { clampWindow, fromWire, PANE, pasteDropMetadata, type AdminOp, type NavTarget, type PageInfo, type ManagedPageInfo, type ScanState, type ToMain, type ToUi, type VersionMatchView } from '../core/wire.ts';
 
@@ -59,7 +61,7 @@ const ADMIN_MODE_PANELS: Record<Team, [form: string, title: string][]> = {
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
 const WHILE_BUSY = new Set(['recovery-toggle', 'tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel', 'fb-history-open', 'fb-history-close']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
-const BEFORE_CHECK = new Set([...WHILE_BUSY, 'switch-mode', 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'category-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'fb-identity-save', 'create-category-toggle', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
+const BEFORE_CHECK = new Set([...WHILE_BUSY, 'switch-mode', 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'category-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'fb-identity-save', 'create-layout', 'create-search-all', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'text-import', 'text-apply',
   'version-open', 'version-close', 'version-match', 'version-select', 'version-review-only', 'version-reveal', 'version-switch', 'version-cancel']);
 
@@ -240,7 +242,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let draggingNew: string | null = null;
   let draggingCategory: string | null = null;
   let sizeBeforeCreate: { width: number; height: number } | null = null;
-  const createCollapsedCategories = new Set<string>();
+  // 플립북 만들기의 화면 선택: 카테고리(처음은 전체)와 보기 방식. 보기 방식은 「화면 선택」·「선택된 화면」 두 열에 함께 쓴다(2026-11-04 사용자 요청).
+  let createCategory = ALL_CATEGORIES;
+  let createLayout: 'list' | 'grid' = 'list';
   let createQuery = '';
   let createUncreatedOnly = false;
   let createScreens: GuiScreenInfo[] = [];
@@ -1823,43 +1827,56 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (!row) { list.innerHTML = ''; selectedList.innerHTML = ''; return; }
     const used = new Set([...state!.flipbooks.values()].filter(fb => fb.status === 'active').flatMap(fb => fb.screens.map(screen => screen.uid)));
     const planned = new Set(newFlipbooks.flatMap(item => item.uids));
-    const queryText = createQuery.trim().toLocaleLowerCase();
     const screens = activeScreens();
     const selectedScreens = newScreens(row);
-    const shown = screens.filter(screen =>
-      !row.uids.includes(screen.uid)
-      &&
-      (!createUncreatedOnly || !used.has(screen.uid) && !planned.has(screen.uid))
-      && (!queryText || `${screen.code} ${screen.name}`.toLocaleLowerCase().includes(queryText)));
+    const available = screens.filter(screen => !row.uids.includes(screen.uid) && (!createUncreatedOnly || !used.has(screen.uid) && !planned.has(screen.uid)));
+    // 카테고리·보기 방식은 붙여 넣기·플로우 편집기의 화면 선택과 같은 형식이다(2026-11-04 사용자 요청).
+    const cats = screenCategories(screens);
+    if (createCategory !== ALL_CATEGORIES && !cats.some(([key]) => key === createCategory)) createCategory = ALL_CATEGORIES;
+    const select = root.querySelector<HTMLSelectElement>('.new-flipbook-detail [data-create="category"]');
+    if (select) {
+      select.innerHTML = [[ALL_CATEGORIES, COPY.paste009], ...cats].map(([key, name]) => option(key, name, key === createCategory)).join('');
+      select.disabled = !screens.length;
+    }
+    for (const button of root.querySelectorAll<HTMLElement>('.new-flipbook-detail [data-action="create-layout"]')) button.setAttribute('aria-pressed', String(button.dataset.layout === createLayout));
+    const grid = createLayout === 'grid';
+    list.classList.toggle('grid', grid);
+    selectedList.classList.toggle('grid', grid);
+    const shown = filterPickerScreens(available, createCategory, createQuery);
+    const hashes: string[] = [];
     // 「선택된 화면」은 드래그하거나 Alt+↑↓로 순서를 바꾼다. 이 순서가 GUI 영역·Screen ID 순서다.
     const screenOption = (screen: GuiScreenInfo) => {
       const selected = row.uids.includes(screen.uid);
       const inputId = `create-screen-${screen.uid}`;
-      return `<div class="create-screen-option" data-thumb="${esc(screen.thumb?.hash ?? '')}"${selected ? ` draggable="true" data-uid="${esc(screen.uid)}" title="${esc(COPY.uiApp349)}"` : ''}>
-        <input id="${esc(inputId)}" type="checkbox" data-action="create-screen-toggle" value="${esc(screen.uid)}" ${selected ? 'checked' : ''}>
+      const check = `<input id="${esc(inputId)}" type="checkbox" data-action="create-screen-toggle" value="${esc(screen.uid)}" ${selected ? 'checked' : ''}>`;
+      const scale = selected ? `<select data-input="create-screen-scale" data-key="${esc(row.key)}" data-uid="${esc(screen.uid)}" aria-label="${esc(screen.name)} 이미지 크기" title="이미지 크기">${scaleOptions(row.scales[screen.uid] ?? row.scale)}</select>` : '';
+      const dot = used.has(screen.uid) ? '' : planned.has(screen.uid)
+        ? '<span class="create-unused-dot planned" title="생성 목록에서 선택됨" aria-label="생성 목록에서 선택됨"></span>'
+        : '<span class="create-unused-dot" title="제작된 플립북 없음" aria-label="제작된 플립북 없음"></span>';
+      const drag = selected ? ` draggable="true" data-uid="${esc(screen.uid)}" title="${esc(COPY.uiApp349)}"` : '';
+      if (!grid) return `<div class="create-screen-option" data-thumb="${esc(screen.thumb?.hash ?? '')}"${drag}>
+        ${check}
         <label for="${esc(inputId)}" class="create-screen-label" title="${esc(screen.name)}"><span class="id-tag">${esc(screen.code)}</span><span class="name">${esc(screen.name)}</span></label>
-        ${selected ? `<select data-input="create-screen-scale" data-key="${esc(row.key)}" data-uid="${esc(screen.uid)}" aria-label="${esc(screen.name)} 이미지 크기" title="이미지 크기">${scaleOptions(row.scales[screen.uid] ?? row.scale)}</select>` : ''}
-        ${used.has(screen.uid) ? '' : planned.has(screen.uid)
-          ? '<span class="create-unused-dot planned" title="생성 목록에서 선택됨" aria-label="생성 목록에서 선택됨"></span>'
-          : '<span class="create-unused-dot" title="제작된 플립북 없음" aria-label="제작된 플립북 없음"></span>'}
+        ${scale}${dot}
+      </div>`;
+      // 그리드: 썸네일(왼쪽 위 Screen ID)을 누르면 체크박스를 바꾼다. 썸네일이 보이므로 마우스오버 미리보기는 띄우지 않는다.
+      const hash = screen.thumb?.hash;
+      if (hash) hashes.push(hash);
+      const url = hash ? thumbUrls.get(hash) ?? null : null;
+      return `<div class="create-screen-option create-card"${drag}>
+        <label for="${esc(inputId)}" class="paste-thumb">${thumbnailImage(hash, url, hash && !failedPreviews.has(hash) ? '' : COPY.flow005, 'paste-thumb-empty')}<span class="id-tag picker-thumb-id">${esc(screen.code)}</span></label>
+        <div class="paste-card-meta">${check}<label for="${esc(inputId)}" class="create-screen-label" title="${esc(screen.name)}"><span class="name">${esc(screen.name)}</span></label>${scale}${dot}</div>
       </div>`;
     };
     selectedList.innerHTML = selectedScreens.map(screenOption).join('') || '<p class="note">선택된 화면이 없습니다.</p>';
-    const grouped = new Map<string, { name: string; order: number; screens: GuiScreenInfo[] }>();
-    for (const screen of shown) {
-      const key = screen.category?.id ?? '';
-      const group = grouped.get(key) ?? { name: screen.category?.name ?? '미지정', order: screen.category?.order ?? Number.MAX_SAFE_INTEGER, screens: [] };
-      group.screens.push(screen);
-      grouped.set(key, group);
-    }
-    const groups = [...grouped.entries()].sort(([, a], [, b]) => a.order - b.order || a.name.localeCompare(b.name, 'ko'));
     const scrollTop = list.scrollTop;
-    list.innerHTML = !groups.length ? `<p class="note">${COPY.uiApp190}</p>`
-      : groups.map(([key, group]) => `<div class="create-screen-group"><button class="create-category-heading" data-action="create-category-toggle" data-key="${esc(key)}" aria-expanded="${!createCollapsedCategories.has(key)}"><span class="category-chevron" aria-hidden="true">${createCollapsedCategories.has(key) ? '▸' : '▾'}</span>${esc(group.name)}<span class="create-category-count">${group.screens.length}</span></button>${createCollapsedCategories.has(key) ? '' : group.screens.sort((a, b) => a.code.localeCompare(b.code, 'ko', { numeric: true }) || a.name.localeCompare(b.name, 'ko')).map(screenOption).join('')}</div>`).join('');
+    list.innerHTML = !available.length ? `<p class="note">${COPY.uiApp190}</p>`
+      : shown.length ? shown.map(screenOption).join('') : screenPickerEmpty('create', createCategory, createQuery);
     list.scrollTop = scrollTop;
+    if (hashes.length) requestThumbs(hashes);
   }
 
-  // 새 플립북 상세: 제목, 놓을 페이지·Section, 위쪽 「선택된 화면」과 아래쪽 화면 선택(카테고리별, 검색, 플립북 없는 화면만).
+  // 새 플립북 상세: 제목, 놓을 페이지·Section, 그 아래 왼쪽 화면 선택(카테고리, 목록/그리드, 검색, 플립북 없는 화면만)과 오른쪽 「선택된 화면」.
   // 다시 그려도 화면 목록의 스크롤을 유지한다.
   function renderNewDetail() {
     const detail = $('.detail');
@@ -1903,13 +1920,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (field && typed) { field.value = typed.value; field.focus(); field.setSelectionRange(typed.start, typed.end); }
   }
 
-  // 「선택된 화면」(화면 크기 일괄 선택)과 「화면 선택」. 목록은 renderCreateScreenList가 채운다.
+  // 왼쪽 「화면 선택」과 오른쪽 「선택된 화면」(화면 크기 일괄 선택) 2열(2026-11-04 사용자 요청). 목록은 renderCreateScreenList가 채운다.
   function screenBrowser(row: NewFlipbook): string {
     const scales = row.uids.map(uid => row.scales[uid] ?? row.scale);
     const bulkScale = scales.length && scales.every(scale => scale === scales[0]) ? scales[0] : scales.length ? null : row.scale;
     return `<div class="create-browser">
+        <section class="create-available-box"><header><strong>${COPY.uiApp205} 선택</strong></header><div class="create-picker">${screenPickerControls('create', createQuery)}</div><label class="create-filter create-switch"><input type="checkbox" role="switch" data-action="create-uncreated-only" ${createUncreatedOnly ? 'checked' : ''}><span class="switch-track" aria-hidden="true"></span><span>생성된 플립북이 없는 화면</span></label><div class="create-screen-list"></div></section>
         <section class="create-selected-box"><header><strong>${COPY.uiApp359}</strong><label class="create-bulk-scale">화면 크기 <select data-input="create-bulk-scale" data-key="${esc(row.key)}" aria-label="화면 크기 일괄 선택" ${row.uids.length ? '' : 'disabled'}>${scaleOptions(bulkScale)}</select></label></header><div class="create-selected-list"></div></section>
-        <section class="create-available-box"><header><strong>${COPY.uiApp205} 선택</strong></header><input type="search" data-input="create-query" value="${esc(createQuery)}" placeholder="화면 검색" aria-label="화면 검색"><label class="create-filter create-switch"><input type="checkbox" role="switch" data-action="create-uncreated-only" ${createUncreatedOnly ? 'checked' : ''}><span class="switch-track" aria-hidden="true"></span><span>생성된 플립북이 없는 화면</span></label><div class="create-screen-list"></div></section>
       </div>`;
   }
 
@@ -2939,12 +2956,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         editTitle(id, 'detail');
         break;
       }
-      case 'create-category-toggle': {
-        const key = el.dataset.key ?? '';
-        if (createCollapsedCategories.has(key)) createCollapsedCategories.delete(key);
-        else createCollapsedCategories.add(key);
-        renderCreateScreenList(); break;
-      }
+      case 'create-layout': createLayout = el.dataset.layout === 'grid' ? 'grid' : 'list'; renderCreateScreenList(); break;
+      case 'create-search-all': createCategory = ALL_CATEGORIES; renderCreateScreenList(); break;
       case 'create-uncreated-only': createUncreatedOnly = (el as HTMLInputElement).checked; renderCreateScreenList(); break;
       case 'create-screen-toggle': {
         const row = currentNew();
@@ -3441,7 +3454,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const node = (ev.target as HTMLElement).closest<HTMLElement>('.create-selected-list .create-screen-option[data-uid]');
     if (!node || node.dataset.uid === draggingScreen) return null;
     const rect = node.getBoundingClientRect();
-    return { node, uid: node.dataset.uid!, before: ev.clientY < rect.top + rect.height / 2 };
+    // 그리드 보기에서는 왼쪽·오른쪽 절반으로 정한다.
+    const before = node.closest('.grid') ? ev.clientX < rect.left + rect.width / 2 : ev.clientY < rect.top + rect.height / 2;
+    return { node, uid: node.dataset.uid!, before };
   };
   // GUI 목록의 카테고리 묶음 옮기기: 묶음 머리의 위쪽 절반이면 그 묶음 앞, 아래쪽 절반이나 그 묶음의 화면 행이면 뒤에 놓는다.
   const categoryDrop = (ev: DragEvent): { node: HTMLElement; id: string; before: boolean } | null => {
@@ -3779,7 +3794,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       if ((chosen?.key ?? null) !== (n.section?.key ?? null)) { relocateNew(n, n.pageId, chosen); revealSelection = true; renderList(); renderDetail(); }
       return;
     }
-    if (el.dataset.input === 'create-query') { createQuery = el.value; renderCreateScreenList(); return; }
+    if (el.dataset.create === 'search') { createQuery = el.value; renderCreateScreenList(); return; }
     if (el.dataset.input === 'version-query') { versionQuery = el.value; paintVersionList(); return; }
     if (el.dataset.input === 'admin-gui-width') {
       const sizes = el.closest('[data-form]')?.querySelector('.gui-width-sizes');
@@ -3856,6 +3871,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
 
   on('change', ev => {
     const el = ev.target as HTMLInputElement | HTMLSelectElement;
+    if (el.dataset.create === 'category') { createCategory = el.value; renderCreateScreenList(); return; }
     if (el.dataset.input === 'version-page') { versionPageId = el.value; versionArmed = false; renderVersion(); return; }
     if (el.dataset.input === 'version-link' && el.dataset.screen) {
       versionChoice.set(el.dataset.screen, el.value);
@@ -4291,9 +4307,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         for (const item of msg.items) {
           previewCache.receive(item.hash, item.bytes, 'image/jpeg');
         }
-        // 플립북 만들기·화면 편집 창은 마우스를 올린 미리보기만 쓰므로 다시 그리지 않는다(열린 화면 선택이 닫히지 않게).
+        // 플립북 만들기·화면 편집 창은 다시 그리지 않는다(열린 화면 선택이 닫히지 않게). 플립북 만들기의 그리드 썸네일은 그 자리에서 이미지만 바꾼다.
         if (versionOpen) renderVersionDetail();
-        else if (listTabOpen()) updateDetailThumbs(msg.items.map(item => item.hash));
+        else if (listTabOpen()) {
+          updateDetailThumbs(msg.items.map(item => item.hash));
+          updateThumbnailImages(root.querySelector<HTMLElement>('.new-flipbook-detail'), msg.items.map(item => item.hash), hash => thumbUrls.get(hash) ?? null);
+        }
         flows.thumbsLoaded(msg.items.map(item => item.hash));
         paste.thumbsLoaded(msg.items.map(item => item.hash));
         if (hoverThumb && msg.items.some(item => item.hash === hoverThumb?.hash)) showHoverThumb();

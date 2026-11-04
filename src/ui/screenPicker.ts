@@ -18,10 +18,12 @@ export function filterPickerScreens(screens: GuiScreenInfo[], category: string, 
 }
 const LIST_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>';
 const GRID_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>';
-export function screenPickerControls(scope: 'paste' | 'flow', query: string): string {
+// 플립북 만들기(create)도 같은 형식을 쓴다(2026-11-04 사용자 요청).
+export type PickerScope = 'paste' | 'flow' | 'create';
+export function screenPickerControls(scope: PickerScope, query: string): string {
   return `<div class="paste-bar"><select data-${scope}="category" aria-label="${COPY.paste002}" title="${COPY.paste002}"></select><div class="paste-toggle" role="group"><button class="icon-button" data-action="${scope}-layout" data-layout="list" title="${COPY.paste003}" aria-label="${COPY.paste003}">${LIST_ICON}</button><button class="icon-button" data-action="${scope}-layout" data-layout="grid" title="${COPY.paste004}" aria-label="${COPY.paste004}">${GRID_ICON}</button></div></div><input class="paste-search" type="search" data-${scope}="${scope === 'flow' ? 'query' : 'search'}" value="${esc(query)}" placeholder="${COPY.paste010}" aria-label="${COPY.paste010}">`;
 }
-export function screenPickerEmpty(scope: 'paste' | 'flow', category: string, query: string): string {
+export function screenPickerEmpty(scope: PickerScope, category: string, query: string): string {
   return `<div class="empty" role="status">${query.trim() && category !== ALL_CATEGORIES ? `<button class="link" data-action="${scope}-search-all">${COPY.paste011}</button>` : COPY.paste012}</div>`;
 }
 

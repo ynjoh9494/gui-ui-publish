@@ -519,16 +519,17 @@ button.link.danger { color: var(--danger); }
 :is(.new-place, .category-field) .field-head .link svg { width: 12px; height: 12px; }
 /* 필드 이름의 흐린 글자색을 버튼이 물려받으면 비활성처럼 보인다. */
 .new-place .addable { margin-top: 2px; color: var(--text); }
-.create-browser { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1 1 auto; }
+/* 왼쪽 「화면 선택」, 오른쪽 「선택된 화면」 2열(2026-11-04 사용자 요청). 두 열은 남은 높이를 함께 쓰고 각자 스크롤한다. */
+.create-browser { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; min-height: 0; flex: 1 1 auto; }
 .create-browser section { min-width: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 6px; }
 .create-browser header { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 34px; min-height: 34px; padding: 2px 8px; border-bottom: 1px solid var(--border); flex: none; }
-.create-browser .create-selected-box { flex: 0 0 33%; min-height: 165px; max-height: 263px; }
 .create-bulk-scale { display: flex; align-items: center; gap: 6px; margin: 0 0 0 auto; color: var(--muted); white-space: nowrap; }
 .create-bulk-scale select { width: 63px; height: 24px; padding: 1px 3px; }
-.create-selected-list { overflow: auto; min-height: 0; }
+.create-selected-list { flex: 1 1 auto; overflow: auto; min-height: 0; }
 .create-selected-list > .note { padding: 0 8px; }
 .create-available-box { flex: 1 1 auto; min-height: 0; padding-bottom: 4px; }
-.create-available-box > input { margin: 8px 8px 0; width: calc(100% - 16px); flex: none; }
+/* 카테고리·목록/그리드 보기·검색은 붙여 넣기·플로우 편집기와 같은 형식(.paste-bar)이다. 보기 방식은 두 열에 함께 쓴다. */
+.create-picker { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 8px 8px 0; }
 .create-browser .create-filter { margin: 7px 8px; flex: none; }
 .create-switch { display: flex; align-items: center; gap: 7px; cursor: pointer; color: var(--text); }
 .create-switch input { position: absolute; width: 1px; height: 1px; opacity: 0; }
@@ -538,7 +539,17 @@ button.link.danger { color: var(--danger); }
 .create-switch input:checked + .switch-track::after { transform: translateX(10px); }
 .create-switch input:focus-visible + .switch-track { outline: 2px solid var(--brand); outline-offset: 2px; }
 .create-browser.inactive > .note { margin: 10px; }
-.create-screen-list { overflow: auto; min-height: 0; border-top: 1px solid var(--border); }
+.create-screen-list { flex: 1 1 auto; overflow: auto; min-height: 0; border-top: 1px solid var(--border); }
+.create-screen-list > .empty { padding: 8px; color: var(--muted); }
+/* 그리드 보기: 붙여 넣기 그리드와 같은 칸 크기. 썸네일을 누르면 고르고, 아래 줄에 체크박스·이름·크기·점 */
+:is(.create-screen-list, .create-selected-list).grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); gap: 6px; padding: 6px; align-content: start; }
+:is(.create-screen-list, .create-selected-list).grid > :is(.note, .empty) { grid-column: 1 / -1; }
+.create-screen-option.create-card { flex-direction: column; align-items: stretch; gap: 3px; min-width: 0; padding: 3px; border-bottom: 0; border-radius: 4px; }
+.create-card .paste-thumb { margin: 0; cursor: pointer; }
+.create-card .paste-card-meta { gap: 5px; }
+.create-card .create-screen-label { gap: 4px; font-size: 11px; }
+.create-selected-list.grid .create-screen-option.drop-before { box-shadow: inset 2px 0 var(--brand); }
+.create-selected-list.grid .create-screen-option.drop-after { box-shadow: inset -2px 0 var(--brand); }
 .create-screen-list > .note { padding: 8px; }
 .create-category-heading { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 5px; width: 100%; margin: 0; padding: 5px 8px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: var(--bg2); color: var(--muted); font-size: 11px; font-weight: 600; text-align: left; }
 .create-category-heading:hover { color: var(--text); }
