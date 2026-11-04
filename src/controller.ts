@@ -1154,7 +1154,10 @@ export class Controller {
     if (removed.length) await this.refreshData(false, false);
     this.postState();
     this.applyLinks(found, spots);
-    const message = [`${removed.length}${COPY.controller069}`, kept.length ? `${COPY.controller070} ${kept.join(', ')}` : '', framed.length ? COPY.flipbookRemoveRestore : ''].filter(Boolean).join(' ');
+    // 연결 끊긴 플립북 삭제는 버튼이 두 번 눌러 삭제함을 이미 보여 주므로 삭제한 결과는 알리지 않는다(2026-11-04 사용자 요청).
+    // 삭제 직전에 프레임을 다시 찾아 지우지 않은 플립북만 알린다.
+    const message = withFrames ? [`${removed.length}${COPY.controller069}`, framed.length ? COPY.flipbookRemoveRestore : ''].filter(Boolean).join(' ')
+      : kept.length ? `${COPY.controller070} ${kept.join(', ')}` : '';
     this.host.post({ type: 'flipbooksRemoved', ids: removed, message });
   }
 
@@ -1538,7 +1541,8 @@ export class Controller {
     const name = (id: string) => this.store.state.flipbooks.get(id)?.title ?? id;
     const message = [
       applied.length ? `${COPY.flipbookEditsApplied} ${applied.length}${COPY.flipbookEditsAppliedSuffix}` : '',
-      ...[...new Set(failed.map(f => f.message))].map(reason => `${reason} (${failed.filter(f => f.message === reason).map(f => name(f.id)).join(', ')})`),
+      // 연결 끊긴 플립북에 반영하지 못한 것은 알리지 않는다(수정은 남는다). 목록에 「연결 끊김」으로 보인다(2026-11-04 사용자 요청).
+      ...[...new Set(failed.map(f => f.message))].filter(reason => reason !== COPY.figmaFlipbook027).map(reason => `${reason} (${failed.filter(f => f.message === reason).map(f => name(f.id)).join(', ')})`),
     ].filter(Boolean).join(' ');
     this.host.post({ type: 'flipbookEditsApplied', applied, failed, message, creating: !!create });
     if (create) await this.createFlipbooks(create);
@@ -1655,6 +1659,9 @@ export class Controller {
         } catch (e) {
           const message = e instanceof Error ? e.message : String(e);
           for (const d of pending) setDeliveryState(s, d.batchId, d.targetId, 'failed', message);
+          // 프레임이 지워진(연결 끊김) 플립북은 건너뛴다. 목록에 「연결 끊김」으로 보이므로 실패로 세거나 알리지 않는다(2026-11-04 사용자 요청).
+          // 반영 대기는 남겨 프레임이 돌아오면 재시도로 반영한다.
+          if (message === COPY.figmaFlipbook027) { report.screens--; continue; }
           report.failed.push({ name: fb.title, text: message, targetId: flipbookId });
         }
       }

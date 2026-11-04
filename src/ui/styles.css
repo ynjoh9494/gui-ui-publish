@@ -237,7 +237,8 @@ summary { cursor: pointer; color: var(--muted); }
 .footer .primary { margin-left: auto; }
 .footer:empty { display: none; }
 
-.toast { position: absolute; z-index: 4; left: 8px; right: 8px; bottom: 52px; padding: 8px 10px; border-radius: 6px; background: #333; color: #fff; opacity: 0; pointer-events: none; transition: opacity .2s; }
+/* bottom은 renderToast가 하단 바 높이에 맞춰 정한다. */
+.toast { position: absolute; z-index: 4; left: 8px; right: 8px; bottom: 8px; padding: 8px 10px; border-radius: 6px; background: #333; color: #fff; opacity: 0; pointer-events: none; transition: opacity .2s; }
 .toast.show { opacity: .95; }
 .toast.error { background: var(--danger); }
 

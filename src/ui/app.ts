@@ -1196,10 +1196,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const box = list.querySelector<HTMLElement>('.list-box')!;
     const made = [...state!.flipbooks.values()].some(fb => fb.status === 'active');
     // 목록 하단: 연결 끊긴 플립북 전체 삭제(두 번 눌러 삭제). 검색·필터와 관계없이 연결이 끊긴 플립북 전체가 대상이다.
+    // 한 번 누르면 버튼 글자만 「한 번 더 눌러 삭제하세요」로 바꾼다. 버튼 밖에 안내 줄을 더하지 않아 버튼 위치가 그대로다.
     const unlinkedCount = uiEntries().filter(e => e.estimate === 'missing').length;
     if (!unlinkedCount) removeAllArmed = false;
     list.querySelector<HTMLElement>('.unlinked-all')!.innerHTML = unlinkedCount
-      ? `<p class="note">${unlinkedBadge()}<span>${COPY.uiApp240} <b>${unlinkedCount}</b>${COPY.uiApp241}</span></p><button class="danger" data-action="remove-all-unlinked">${COPY.uiApp242}</button>${removeAllArmed ? `<p class="bad" role="status">${COPY.uiApp211}</p>` : ''}`
+      ? `<p class="note">${unlinkedBadge()}<span>${COPY.uiApp240} <b>${unlinkedCount}</b>${COPY.uiApp241}</span></p><button class="danger" data-action="remove-all-unlinked" aria-live="polite">${removeAllArmed ? COPY.uiApp242Armed : COPY.uiApp242}</button>`
       : '';
     const scrollTop = box.scrollTop;
     const shown = new Map(model.groups.map(g => [g.key, g]));
@@ -2727,8 +2728,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     return id ? state?.categories.get(id)?.name ?? '-' : COPY.uiApp170;
   }
 
+  // 토스트는 창 맨 아래에 띄운다. 하단 바(.footer)가 보이면 그 바로 위에 둔다. 하단 바가 비었거나 숨은 화면에서 높이를 고정값으로 비워 두면 토스트가 위로 떠 보였다.
   function renderToast() {
     const el = $('.toast');
+    if (toast) el.style.bottom = `${$('.footer').offsetHeight + 8}px`;
     el.className = `toast${toast ? ' show ' + toast.kind : ''}`;
     el.textContent = toast?.text ?? '';
   }
@@ -4441,7 +4444,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'flipbooksRemoved':
         removeAllArmed = false;
         for (const id of msg.ids) delete drafts.UI[id];
-        notify('info', msg.message);
+        if (msg.message) notify('info', msg.message);
         if (tab === 'UI') { renderList(); renderDetail(); }
         break;
       case 'flipbooksCreated':
@@ -4494,7 +4497,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
           newSubmitting = false;
           applyingAll = false;
         }
-        if (!msg.creating || msg.failed.length) notify(msg.failed.length ? 'error' : 'info', msg.message);
+        // 연결 끊긴 플립북에 반영하지 못한 것은 실패로 알리지 않는다(본체가 메시지에서도 뺀다).
+        {
+          const failures = msg.failed.filter(f => f.message !== COPY.figmaFlipbook027).length;
+          if (msg.message && (!msg.creating || failures)) notify(failures ? 'error' : 'info', msg.message);
+        }
         if (tab === 'UI') { renderList(); renderDetail(); renderFooter(); }
         break;
       }
@@ -4520,7 +4527,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         pdf.setRunning(false);
         if (bulk?.submitting) { bulk.submitting = false; bulk.error = msg.message; renderBulk(); }
         else if (newSubmitting) { newSubmitting = false; applyingAll = false; createError = msg.message; renderFooter(); }
-        notify('error', msg.message);
+        // 프레임이 지워진(연결 끊김) 플립북이라 하지 못한 일은 토스트로 알리지 않는다. 목록에 「연결 끊김」으로 보인다(2026-11-04 사용자 요청).
+        if (msg.message !== COPY.figmaFlipbook027) notify('error', msg.message);
         break;
     }
   });
