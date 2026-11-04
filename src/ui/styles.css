@@ -421,7 +421,8 @@ button.link.danger { color: var(--danger); }
 .review-dot.none { background: var(--border); }
 .review-count { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text); }
 .review-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 4px; }
-/* UI Flipbook 상세: 한 영역이 스크롤한다. 상태·코멘트·확인 완료는 히스토리 모달에 있다(2026-11-03 사용자 요청). */
+/* UI Flipbook 상세: 위(관리 정보)·아래(화면 N개) 두 영역이 각자 스크롤한다. 화면 N개는 GUI 상세의 History처럼 구분선 아래에 고정한다(2026-11-04 사용자 요청, 모양은 .detail-foot).
+   상태·코멘트·확인 완료는 히스토리 모달에 있다(2026-11-03 사용자 요청). */
 .detail.flipbook-detail { display: flex; flex-direction: column; overflow: hidden; padding: 0; }
 .fb-top { flex: 1 1 auto; min-height: 80px; overflow: auto; padding: 0 10px 8px; }
 /* 히스토리 모달: History 목록 → (수정된 화면) → 상태·코멘트 → 닫기·확인 완료 */
@@ -834,7 +835,8 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 /* 플립북 관리 정보: Screen ID와 거기서 정해지는 Chapter를 한 줄에(2026-11-03 사용자 요청) */
 .identity-pair { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 8px; }
 .identity-pair > label { min-width: 0; }
-.fb-identity { padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+/* 화면 N개와는 아래 영역의 구분선(.fb-foot)으로 나눈다(2026-11-04). */
+.fb-identity { padding-bottom: 6px; }
 /* 화면 목록 접기: 제목 줄 오른쪽에 확인이 필요한 화면의 빨간 점 */
 details.fb-fold > summary .review-dot { margin-left: 2px; }
 .fb-identity [data-identity-chapter], .new-place [data-identity-chapter] { background: var(--bg); color: var(--muted); }

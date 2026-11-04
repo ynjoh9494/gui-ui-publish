@@ -1600,15 +1600,21 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       top += `<div class="unlinked">${unlinkedBadge()}<p class="note">${multi ? `${COPY.uiApp238} <b>${unlinked.length}</b>${COPY.uiApp015}` : COPY.uiApp236}</p><button class="danger" data-action="remove-flipbooks">${COPY.uiApp237}</button></div>`;
     }
     // 들어 있는 화면 목록은 처음에 펼쳐 둔다(2026-11-03 사용자 요청). 접으면 다른 플립북을 골라도 접힌 채로 둔다.
+    // GUI 상세의 History처럼 아래쪽에 따로 고정한 영역에 두고, 위(관리 정보)와 각자 스크롤한다(2026-11-04 사용자 요청).
+    let foot = '';
     if (!multi && fb && entry.estimate !== 'missing') {
       const dot = changed.size ? `<span class="review-dot" role="img" title="${COPY.uiApp193}" aria-label="${COPY.uiApp193}"></span>` : '';
-      top += `<details class="history-fold fb-fold" data-fold="screens"${fbScreensOpen ? ' open' : ''}><summary class="fb-screens-head"><span class="dropdown-caret" aria-hidden="true"></span><span>${COPY.uiApp205} ${fb.screens.length}${COPY.uiApp015}</span>${dot}</summary>
+      foot = `<details class="history-fold fb-fold" data-fold="screens"${fbScreensOpen ? ' open' : ''}><summary class="fb-screens-head"><span class="dropdown-caret" aria-hidden="true"></span><span>${COPY.uiApp205} ${fb.screens.length}${COPY.uiApp015}</span>${dot}</summary>
         ${fb.screens.length ? flipbookScreenList(entry.flipbookId, changed) : `<p class="note">${COPY.uiApp221}</p>`}</details>`;
     }
-    // 같은 플립북을 다시 그릴 때(상태 갱신 등)는 스크롤 위치를 유지한다.
-    const prevTop = detail.querySelector<HTMLElement>(`.fb-top[data-id="${CSS.escape(entry.flipbookId)}"]`)?.scrollTop ?? 0;
-    detail.innerHTML = `<div class="fb-top" data-id="${esc(entry.flipbookId)}">${top}</div>`;
+    // 같은 플립북을 다시 그릴 때(상태 갱신 등)는 두 영역의 스크롤 위치를 유지한다.
+    const same = detail.querySelector<HTMLElement>(`.fb-top[data-id="${CSS.escape(entry.flipbookId)}"]`);
+    const prevTop = same?.scrollTop ?? 0;
+    const prevFoot = same ? detail.querySelector<HTMLElement>('.fb-foot')?.scrollTop ?? 0 : 0;
+    detail.innerHTML = `<div class="fb-top" data-id="${esc(entry.flipbookId)}">${top}</div>${foot ? `<div class="detail-foot fb-foot">${foot}</div>` : ''}`;
     detail.querySelector<HTMLElement>('.fb-top')!.scrollTop = prevTop;
+    const footBox = detail.querySelector<HTMLElement>('.fb-foot');
+    if (footBox) footBox.scrollTop = prevFoot;
     renderHistoryModal();
   }
 
