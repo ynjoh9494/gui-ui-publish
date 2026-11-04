@@ -1,14 +1,15 @@
 // 텍스트 편집 탭(2026-10-22 사용자 요청: STB Description Formatter를 대체하고 서식을 중첩 목록·굵게로 줄인다)의 문서 모델.
-// 편집기는 문단 배열(RichParagraph[])을 직접 다루고 화면에는 글머리표·굵은 글씨로 보여 준다(WYSIWYG).
+// 편집기는 문단 배열(RichParagraph[])을 직접 다루고 화면에는 목록 종류·굵은 글씨로 보여 준다(WYSIWYG).
 // 아래 텍스트 형식은 붙여 넣은 글과 미리보기 표시에만 쓴다:
-// `- `(또는 `* `·`+ `) 목록, 탭 문자 하나마다 한 단계 들여쓴 중첩 목록(공백보다 탭), `**굵게**`. 그 밖의 줄은 그대로 일반 문단이다.
+// `- `(또는 `* `·`+ `) 글머리표 목록, `1. ` 번호 목록, 탭 문자 하나마다 한 단계 들여쓴 중첩 목록(공백보다 탭), `**굵게**`.
 
 export interface BoldRange { start: number; end: number }
 // depth: 목록 단계(0이 최상위), 목록이 아니면 null. bold: text 안의 굵은 글씨 범위
-export interface RichParagraph { text: string; depth: number | null; bold: BoldRange[]; red?: BoldRange[] }
+export interface RichParagraph { text: string; depth: number | null; list?: 'ORDERED' | 'UNORDERED'; bold: BoldRange[]; red?: BoldRange[] }
 
 // 다른 곳에서 붙여 넣은 Markdown도 읽도록 공백 2칸도 한 단계로 본다.
 const BULLET = /^( *)[-*+][ \t]+(.*\S.*)$/;
+const NUMBERED = /^( *)\d+[.)][ \t]+(.*\S.*)$/;
 
 // Explicit markers keep color on the plain-text clipboard alongside bold.
 function inlineBold(source: string): { text: string; bold: BoldRange[]; red?: BoldRange[] } {
@@ -41,14 +42,24 @@ export function parseRichText(source: string): RichParagraph[] {
   // 단계를 건너뛰어 들여쓰면 바로 윗 단계의 하위로 본다(Figma 목록도 한 단계씩만 들어간다).
   let previous: number | null = null;
   for (const line of lines) {
-    const bullet = BULLET.exec(line.replace(/\t/g, '  '));
-    if (!bullet) {
+    const expanded = line.replace(/\t/g, '  ');
+    const bullet = BULLET.exec(expanded);
+    const numbered = bullet ? null : NUMBERED.exec(expanded);
+    const item = bullet ?? numbered;
+    if (!item) {
       out.push({ ...inlineBold(line), depth: null });
       if (line.trim()) previous = null;
       continue;
     }
-    const depth = Math.min(Math.floor(bullet[1].length / 2), previous === null ? 0 : previous + 1);
-    out.push({ ...inlineBold(bullet[2]), depth });
+    // Markdown에서 굵은 항목 제목과 바로 뒤 목록 사이의 빈 줄은 불러올 때 제거한다.
+    let last = out.length - 1;
+    while (last >= 0 && !out[last].text.trim()) last--;
+    if (last >= 0 && last < out.length - 1) {
+      const heading = out[last];
+      if (heading.depth === null && heading.bold.some(range => range.start === 0 && range.end === heading.text.length)) out.length = last + 1;
+    }
+    const depth = Math.min(Math.floor(item[1].length / 2), previous === null ? 0 : previous + 1);
+    out.push({ ...inlineBold(item[2]), depth, ...(numbered ? { list: 'ORDERED' as const } : {}) });
     previous = depth;
   }
   return out;
@@ -75,6 +86,7 @@ function markBold(text: string, bold: BoldRange[]): string {
 }
 
 export function serializeRichText(paragraphs: RichParagraph[]): string {
+  const numbers: number[] = [];
   return paragraphs.map(p => {
     const red = mergeBold(p.red ?? []);
     const cuts = [...new Set([0, p.text.length, ...red.flatMap(r => [r.start, r.end])])].sort((a, b) => a - b);
@@ -84,7 +96,11 @@ export function serializeRichText(paragraphs: RichParagraph[]): string {
       const part = markBold(p.text.slice(start, end), clipBold(p.bold, start, end));
       body += red.some(r => r.start <= start && r.end >= end) ? `<red>${part}</red>` : part;
     }
-    return p.depth === null || !p.text.trim() ? body : `${'\t'.repeat(p.depth)}- ${body}`;
+    if (p.depth === null || !p.text.trim()) { numbers.length = 0; return body; }
+    numbers.length = p.depth + 1;
+    if (p.list === 'ORDERED') numbers[p.depth] = (numbers[p.depth] ?? 0) + 1;
+    else numbers[p.depth] = 0;
+    return `${'\t'.repeat(p.depth)}${p.list === 'ORDERED' ? `${numbers[p.depth]}.` : '-'} ${body}`;
   }).join('\n');
 }
 
@@ -114,14 +130,14 @@ function mergeBold(bold: BoldRange[]): BoldRange[] {
 }
 
 export function sliceParagraph(p: RichParagraph, start: number, end = p.text.length): RichParagraph {
-  return { text: p.text.slice(start, end), depth: p.depth, bold: clipBold(p.bold, start, end), ...(p.red ? { red: clipBold(p.red, start, end) } : {}) };
+  return { text: p.text.slice(start, end), depth: p.depth, ...(p.list ? { list: p.list } : {}), bold: clipBold(p.bold, start, end), ...(p.red ? { red: clipBold(p.red, start, end) } : {}) };
 }
 
 // 앞 문단의 목록 단계를 따른다.
 function joinParagraphs(a: RichParagraph, b: RichParagraph): RichParagraph {
   const shift = a.text.length;
   const red = a.red || b.red ? { red: mergeBold([...(a.red ?? []), ...(b.red ?? []).map(r => ({ start: r.start + shift, end: r.end + shift }))]) } : {};
-  return { text: a.text + b.text, depth: a.depth, ...red, bold: mergeBold([...a.bold, ...b.bold.map(r => ({ start: r.start + shift, end: r.end + shift }))]) };
+  return { text: a.text + b.text, depth: a.depth, ...(a.list ? { list: a.list } : {}), ...red, bold: mergeBold([...a.bold, ...b.bold.map(r => ({ start: r.start + shift, end: r.end + shift }))]) };
 }
 
 // 고른 범위를 지운다. 여러 문단에 걸치면 첫 문단에 마지막 문단의 나머지를 붙인다.
@@ -139,7 +155,7 @@ export function insertParagraphs(doc: RichParagraph[], a: RichPos, b: RichPos, p
   if (!paragraphs.length) return removed;
   const current = removed.doc[at.block];
   const before = sliceParagraph(current, 0, at.offset), after = sliceParagraph(current, at.offset);
-  const first = joinParagraphs(before.text ? before : { ...before, depth: paragraphs[0].depth }, paragraphs[0]);
+  const first = joinParagraphs(before.text ? before : { ...before, depth: paragraphs[0].depth, list: paragraphs[0].list }, paragraphs[0]);
   const inserted = paragraphs.length === 1 ? [first] : [first, ...paragraphs.slice(1)];
   const last = inserted.length - 1;
   const caret = { block: at.block + last, offset: inserted[last].text.length };
@@ -172,6 +188,7 @@ export function setDepth(doc: RichParagraph[], from: number, to: number, next: (
   for (let i = Math.min(from, to); i <= hi; i++) {
     const wanted = next(out[i].depth);
     out[i].depth = wanted === null ? null : Math.max(0, Math.min(wanted, limit(i), MAX_DEPTH));
+    if (wanted === null) delete out[i].list;
   }
   // 앞 항목을 얕게 하거나 글머리표를 떼면 바로 뒤의 하위 항목이 단계를 건너뛰게 되므로, 이어지는 목록 항목도 같은 규칙으로 맞춘다.
   for (let i = hi + 1; i < out.length && out[i].depth !== null; i++) out[i].depth = Math.min(out[i].depth!, limit(i));

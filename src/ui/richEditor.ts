@@ -8,11 +8,11 @@ import {
 
 // 서식 편집기(2026-10-22 사용자 요청으로 텍스트 편집 탭에 만들고, 2026-11-04 플립북 상세의 Description 영역에서도 쓰도록 분리했다.
 // 텍스트 편집 탭은 나중에 없앤다(같은 날 사용자 결정). 탭과 Description 영역이 이 편집기를 각자 하나씩 붙인다).
-// 글머리표와 굵은 글씨가 그대로 보이는 편집기다. Tab·Shift+Tab으로 목록 단계, Ctrl+B로 굵게,
+// 목록 종류와 굵은 글씨가 그대로 보이는 편집기다. Tab·Shift+Tab으로 목록 단계, Ctrl+B로 굵게,
 // 줄 처음에 `- `를 치면 목록이 된다. 붙여 넣은 글은 core/richText.ts의 텍스트 형식(`- `·탭·`**`)으로 읽는다.
 // 글자 입력(한글 조합 포함)은 브라우저에 맡기고, 문단 구조를 바꾸는 동작(줄 나누기·합치기·붙여 넣기·굵게·목록 단계·되돌리기)은
 // 문서 모델로 계산해 다시 그린다. 「---」만 있는 줄은 여백(빈 프레임)으로 넣으며 편집기에서는 일반 글자 「---」 그대로 보인다.
-// 위 줄의 기본 버튼(굵게·빨간 글씨·목록·여백) 오른쪽에 서식 도구를 접어 두고, 펼치면 오른쪽으로 Gap·Padding·글자 서식 칸이 나온다.
+// 위 줄의 기본 버튼(굵게·빨간 글씨·목록·여백) 오른쪽에 서식 도구를 접어 두고, 펼치면 아래에 속성 패널이 나온다.
 
 export interface RichEditor {
   // 서식 줄과 편집기를 담은 요소. 다시 그리는 화면은 이 요소를 떼었다 붙인다(입력 중인 내용·되돌리기 유지).
@@ -41,7 +41,7 @@ const LAYOUT_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"
 const LIST_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></svg>';
 
 
-function paragraphHtml(p: RichParagraph): string {
+function paragraphHtml(p: RichParagraph, marker: string): string {
   const cuts = [...new Set([0, p.text.length, ...p.bold.flatMap(r => [r.start, r.end]), ...(p.red ?? []).flatMap(r => [r.start, r.end])])].sort((a, b) => a - b);
   let html = '';
   for (let i = 0; i < cuts.length - 1; i++) {
@@ -51,7 +51,7 @@ function paragraphHtml(p: RichParagraph): string {
     if ((p.red ?? []).some(r => r.start <= start && r.end >= end)) part = `<span style="color:#D63434">${part}</span>`;
     html += part;
   }
-  const depth = p.depth === null ? '' : ` data-depth="${p.depth}" style="--depth:${p.depth}"`;
+  const depth = p.depth === null ? '' : ` data-depth="${p.depth}" data-marker="${esc(marker)}"${p.list === 'ORDERED' ? ' data-list="ORDERED"' : ''} style="--depth:${p.depth}"`;
   return `<div class="rt-p"${depth}>${html || '<br>'}</div>`;
 }
 
@@ -59,7 +59,7 @@ const clone = (doc: RichParagraph[]) => doc.map(p => ({ ...p, bold: p.bold.map(r
 const hasText = (doc: RichParagraph[]) => doc.some(p => p.text.trim());
 
 // 서식 도구 칸: [키, 이름]. Padding은 시계 방향(위·오른쪽·아래·왼쪽) 네 칸이다.
-type LayoutKey = 'gap' | 'fontSize' | 'letterSpacing' | 'lineHeight' | 'listSpacing' | 'spacer';
+type LayoutKey = 'fontSize' | 'letterSpacing' | 'lineHeight' | 'listSpacing' | 'spacer';
 const LAYOUT_FIELDS: [LayoutKey, string, string][] = [
   ['fontSize', COPY.textFontSize, ''], ['letterSpacing', COPY.textLetterSpacing, '%'], ['lineHeight', COPY.textLineHeight, '%'],
   ['listSpacing', COPY.textListSpacing, ''], ['spacer', COPY.textSpacerHeight, ''],
@@ -106,13 +106,14 @@ export function richEditor(options: { label: string; onChange?: () => void }): R
           current.text += text;
           const rgb = getComputedStyle(child.parentElement!).color.match(/[\d.]+/g)?.map(Number);
           if (text && rgb && isRed({ r: rgb[0] / 255, g: rgb[1] / 255, b: rgb[2] / 255 })) (current.red ??= []).push({ start, end: current.text.length });
-          const weight = Number(getComputedStyle(child.parentElement!).fontWeight) || 400;
-          if (text && weight >= 600) current.bold.push({ start, end: current.text.length });
+          const weight = getComputedStyle(child.parentElement!).fontWeight;
+          const markedBold = !!child.parentElement?.closest('b, strong');
+          if (text && (markedBold || weight === 'bold' || Number(weight) >= 600)) current.bold.push({ start, end: current.text.length });
         } else if (child instanceof HTMLElement) {
           if (BLOCK_TAGS.has(child.tagName)) {
             if (!top || child.tagName !== 'DIV' || !child.classList.contains('rt-p')) canonical = false;
             const own = child.dataset.depth !== undefined ? Number(child.dataset.depth) : depth;
-            current = { text: '', depth: Number.isFinite(own) ? own : null, bold: [] };
+            current = { text: '', depth: Number.isFinite(own) ? own : null, ...(child.dataset.list === 'ORDERED' ? { list: 'ORDERED' as const } : {}), bold: [] };
             out.push(current);
             walk(child, current.depth, false);
             current = null;
@@ -166,7 +167,13 @@ export function richEditor(options: { label: string; onChange?: () => void }): R
   }
 
   function paint(el: HTMLElement) {
-    el.innerHTML = doc.map(paragraphHtml).join('');
+    const numbers: number[] = [];
+    el.innerHTML = doc.map(p => {
+      if (p.depth === null || !p.text.trim()) { numbers.length = 0; return paragraphHtml(p, ''); }
+      numbers.length = p.depth + 1;
+      numbers[p.depth] = p.list === 'ORDERED' ? (numbers[p.depth] ?? 0) + 1 : 0;
+      return paragraphHtml(p, p.list === 'ORDERED' ? `${numbers[p.depth]}.` : '•');
+    }).join('');
     syncButtons();
     changed();
   }
@@ -362,12 +369,12 @@ export function richEditor(options: { label: string; onChange?: () => void }): R
     view.querySelector('[data-rt="list"]')?.setAttribute('aria-pressed', String(listOn));
   }
 
-  const numberField = (key: string, label: string, value: number, unit = '', side?: number) =>
-    `<label class="layout-field"${side === undefined ? '' : ` title="${esc(`${COPY.textPadding} ${PADDING_SIDES[side]}`)}"`}>${side === undefined ? `<span>${esc(label)}</span>` : ''}<input type="number" step="any" data-layout="${key}"${side === undefined ? '' : ` data-side="${side}"`} value="${value}" aria-label="${esc(side === undefined ? label : `${COPY.textPadding} ${PADDING_SIDES[side]}`)}">${unit ? `<span class="unit">${unit}</span>` : ''}</label>`;
+  const numberField = (key: string, label: string, value: number, unit = 'px', side?: number) =>
+    `<label class="layout-field"><span class="layout-label">${esc(label)}</span><span class="layout-control"><input type="number" step="any" data-layout="${key}"${side === undefined ? '' : ` data-side="${side}"`} value="${value}" aria-label="${esc(side === undefined ? label : `${COPY.textPadding} ${label}`)}"><span class="unit">${unit}</span></span></label>`;
   function layoutHtml(): string {
-    return `${numberField('gap', COPY.textGap, layout.gap)}
-      <span class="layout-group"><span>${COPY.textPadding}</span>${layout.padding.map((value, side) => numberField('padding', '', value, '', side)).join('')}</span>
-      ${LAYOUT_FIELDS.map(([key, label, unit]) => numberField(key, label, layout[key], unit)).join('')}`;
+    return `<section class="layout-section"><h3>${COPY.textPadding}</h3><div class="layout-grid">${layout.padding.map((value, side) => numberField('padding', PADDING_SIDES[side], value, 'px', side)).join('')}</div></section>
+      <section class="layout-section"><h3>${COPY.textLayout}</h3><div class="layout-grid">${LAYOUT_FIELDS.filter(([key]) => key !== 'spacer').map(([key, label, unit]) => numberField(key, label, layout[key], unit || 'px')).join('')}</div></section>
+      <section class="layout-section"><h3>${COPY.textSpacerHeight}</h3><div class="layout-grid">${numberField('spacer', COPY.textSpacerHeight, layout.spacer)}</div></section>`;
   }
   function paintLayout() {
     const box = view.querySelector<HTMLElement>('.text-layout');
@@ -387,7 +394,7 @@ export function richEditor(options: { label: string; onChange?: () => void }): R
         <button class="text-tool" data-rt="spacer" title="${COPY.textSpacerHint}" aria-label="${COPY.textSpacer}">${SPACER_ICON}</button>
         <span class="text-tools-divider" aria-hidden="true"></span>
         <button class="text-tool" data-rt="layout" aria-expanded="false" aria-pressed="false" title="${COPY.textLayout}" aria-label="${COPY.textLayout}">${LAYOUT_ICON}</button>
-        <div class="text-layout" hidden></div></div>
+        </div><div class="text-layout" hidden></div>
       <div class="rich-editor" contenteditable="true" role="textbox" aria-multiline="true" spellcheck="false" aria-label="${esc(options.label)}"></div>`;
     const el = view.querySelector<HTMLElement>('.rich-editor')!;
     paint(el);

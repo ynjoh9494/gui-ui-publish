@@ -11,10 +11,12 @@ const GROUP_MARKER = 'guiUiPublishDescriptionGroup';
 const OLD_BODY_MARKER = 'guiUiPublishDescriptionBody';
 // 「---」 줄로 넣은 여백(빈 프레임) 표식. 불러오면 다시 「---」 줄이 된다.
 const SPACER_MARKER = 'guiUiPublishDescriptionSpacer';
+const SPACER_HEIGHT = 'guiUiPublishDescriptionSpacerHeight';
+const ITEM_TOP_PADDING = 15;
 // 플립북 밖에서 고른 프레임에 넣는, 묶음들을 감싼 오토 레이아웃 프레임(세로, 왼쪽 위 정렬)의 표식과 간격·여백
 const TEXT_FRAME_MARKER = 'guiUiPublishTextFrame';
 // 서식 값을 받지 않았을 때(이전 호출)만 쓰는 값이다. 편집기는 서식 도구 값을 넘긴다.
-const TEXT_FRAME = { itemSpacing: 12, paddingLeft: 12, paddingRight: 12, paddingTop: 8, paddingBottom: 16 };
+const TEXT_FRAME = { itemSpacing: 0, paddingLeft: 12, paddingRight: 12, paddingTop: 8, paddingBottom: 16 };
 
 const isDescription = (node: BaseNode): boolean =>
   node.name === 'Description' && (node.type === 'FRAME' || node.type === 'INSTANCE' || node.type === 'GROUP');
@@ -189,8 +191,7 @@ export function readDescription(root: SceneNode): RichParagraph[] {
       const texts = item.children.filter((node): node is TextNode => node.type === 'TEXT' && node.visible);
       if (!afterSpacer) result.push(blank());
       afterSpacer = false;
-      texts.forEach((node, i) => {
-        if (i) result.push(blank());
+      texts.forEach(node => {
         result.push(...readRichText(node));
       });
     }
@@ -215,14 +216,17 @@ export function readDescription(root: SceneNode): RichParagraph[] {
 function containerLayout(container: SlotNode | FrameNode): TextLayout {
   const layout = cloneLayout(DEFAULT_TEXT_LAYOUT);
   if (container.layoutMode !== 'NONE') {
-    layout.gap = container.itemSpacing;
+    layout.gap = 0;
     layout.padding = [container.paddingTop, container.paddingRight, container.paddingBottom, container.paddingLeft];
   }
   const texts = container.findAllWithCriteria({ types: ['TEXT'] }).filter(node => isShown(node, container) && node.characters.length > 0);
   const plain = texts.find(node => node.getStyledTextSegments(['fontName']).some(s => !BOLD_STYLE.test(s.fontName.style))) ?? texts[0];
   if (plain) Object.assign(layout, readTextLayout(plain));
   const spacer = container.children.find(isSpacerFrame);
-  if (spacer) layout.spacer = spacer.height;
+  if (spacer) {
+    const stored = spacer.getPluginData(SPACER_HEIGHT);
+    layout.spacer = stored && Number.isFinite(Number(stored)) ? Number(stored) : spacer.height;
+  }
   return layout;
 }
 
@@ -307,29 +311,42 @@ async function makeTemplate(width: number, style: DescriptionStyle): Promise<{ t
   }
 }
 
-function makeGroup(template: FrameNode, group: DescriptionGroup, fonts: TextFonts, layout?: TextLayout): FrameNode {
+function makeGroup(template: FrameNode, group: DescriptionGroup, fonts: TextFonts, topPadding: number, layout?: TextLayout): FrameNode {
   const frame = template.clone();
   frame.name = group.title?.text ?? COPY.figmaText008;
   frame.setPluginData(GROUP_MARKER, '1');
+  frame.paddingTop = topPadding;
   const [title, body] = frame.children as TextNode[];
   if (group.title) { title.name = group.title.text; applyRichText(title, [group.title], fonts, layout); } else title.remove();
   if (group.body.length) { body.name = COPY.figmaText008; applyRichText(body, group.body, fonts, layout); } else body.remove();
   return frame;
 }
 
-// 「---」 여백: 가로 채움, 높이 고정의 빈 프레임(선 없음)
+// 「---」 표식: 읽을 때 줄을 복원한다. 실제 여백은 다음 묶음의 Top Padding에 넣는다.
 function makeSpacer(width: number, height: number): FrameNode {
   const frame = figma.createFrame();
   frame.name = COPY.figmaText012;
   frame.setPluginData(SPACER_MARKER, '1');
-  frame.resize(width, Math.max(0.01, height));
+  frame.setPluginData(SPACER_HEIGHT, String(height));
+  frame.resize(width, 0.01);
   frame.fills = [];
   frame.clipsContent = false;
   return frame;
 }
 
 function makeItems(items: DescriptionItem[], template: FrameNode, fonts: TextFonts, width: number, layout: TextLayout | undefined, out: FrameNode[]): void {
-  for (const item of items) out.push(item.kind === 'spacer' ? makeSpacer(width, layout?.spacer ?? DEFAULT_TEXT_LAYOUT.spacer) : makeGroup(template, item.group, fonts, layout));
+  let seenGroup = false, extra = 0;
+  for (const item of items) {
+    if (item.kind === 'spacer') {
+      const height = Math.max(0, layout?.spacer ?? DEFAULT_TEXT_LAYOUT.spacer);
+      out.push(makeSpacer(width, height));
+      extra += height;
+    } else {
+      out.push(makeGroup(template, item.group, fonts, (seenGroup ? ITEM_TOP_PADDING : 0) + extra, layout));
+      seenGroup = true;
+      extra = 0;
+    }
+  }
 }
 
 // 묶음·여백을 차례로 넣고 폭을 채운다. 여백은 높이를 고정한다.
@@ -345,7 +362,7 @@ function placeItems(container: SlotNode | FrameNode, items: FrameNode[]): void {
 // 서식 도구의 간격·여백을 오토 레이아웃 칸에 쓴다.
 function applySpacing(container: SlotNode | FrameNode, layout: TextLayout): void {
   if (container.layoutMode === 'NONE') return;
-  container.itemSpacing = layout.gap;
+  container.itemSpacing = 0;
   [container.paddingTop, container.paddingRight, container.paddingBottom, container.paddingLeft] = layout.padding;
 }
 
@@ -361,13 +378,14 @@ export async function fillDescription(root: SceneNode, doc: RichParagraph[], lay
     makeItems(splitItems(doc), template, fonts, width, layout, prepared);
     const old = [...area.children];
     if (layout) applySpacing(area, layout);
+    else if (area.layoutMode !== 'NONE') area.itemSpacing = 0;
     placeItems(area, prepared);
     for (const node of old) if (!node.removed) node.remove();
     if (select) figma.currentPage.selection = [root];
     return { kind: 'description' };
   } catch (error) {
     for (const item of prepared) if (!item.removed) item.remove();
-    if (layout && area.layoutMode !== 'NONE') { area.itemSpacing = before.itemSpacing; [area.paddingTop, area.paddingRight, area.paddingBottom, area.paddingLeft] = before.padding; }
+    if (area.layoutMode !== 'NONE') { area.itemSpacing = before.itemSpacing; if (layout) [area.paddingTop, area.paddingRight, area.paddingBottom, area.paddingLeft] = before.padding; }
     throw error;
   } finally {
     template.remove();
@@ -386,7 +404,7 @@ export async function addTextFrame(frame: FrameNode, doc: RichParagraph[], layou
   const previous = frame.children.filter((node): node is FrameNode => node.type === 'FRAME' && node.getPluginData(TEXT_FRAME_MARKER) === '1').pop();
   const style = previous ? styleOf(previous) : { text: null, itemSpacing: DEFAULT_ITEM_SPACING };
   const spacing = layout
-    ? { itemSpacing: layout.gap, paddingTop: layout.padding[0], paddingRight: layout.padding[1], paddingBottom: layout.padding[2], paddingLeft: layout.padding[3] }
+    ? { itemSpacing: 0, paddingTop: layout.padding[0], paddingRight: layout.padding[1], paddingBottom: layout.padding[2], paddingLeft: layout.padding[3] }
     : TEXT_FRAME;
   const inner = Math.max(1, width - spacing.paddingLeft - spacing.paddingRight);
   const { template, fonts } = await makeTemplate(inner, style);

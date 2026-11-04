@@ -17,8 +17,8 @@ export type SelectionTarget =
   | { kind: 'error'; message: string };
 
 // 텍스트 편집기의 서식 도구(2026-11-04 사용자 요청). 접힌 도구를 펼쳐 고친다.
-// gap: 묶음·여백 사이 간격, padding: 시계 방향(위·오른쪽·아래·왼쪽), fontSize·letterSpacing(%)·lineHeight(%)·listSpacing: 본문 글자,
-// spacer: 「---」 줄에 넣는 빈 프레임 높이. 텍스트 레이어 하나에 적용할 때는 글자 서식만 쓴다.
+// gap: 이전 데이터 호환용(적용 시 0), padding: 본문 칸의 시계 방향(위·오른쪽·아래·왼쪽), fontSize·letterSpacing(%)·lineHeight(%)·listSpacing: 본문 글자,
+// spacer: 「---」 뒤 항목의 Top Padding에 더할 값. 텍스트 레이어 하나에 적용할 때는 글자 서식만 쓴다.
 export interface TextLayout {
   gap: number;
   padding: [number, number, number, number];
@@ -28,10 +28,10 @@ export interface TextLayout {
   listSpacing: number;
   spacer: number;
 }
-export const DEFAULT_TEXT_LAYOUT: TextLayout = { gap: 12, padding: [8, 12, 12, 16], fontSize: 16, letterSpacing: 0, lineHeight: 140, listSpacing: 2, spacer: 3 };
+export const DEFAULT_TEXT_LAYOUT: TextLayout = { gap: 0, padding: [8, 12, 12, 16], fontSize: 16, letterSpacing: 0, lineHeight: 140, listSpacing: 2, spacer: 15 };
 export const cloneLayout = (layout: TextLayout): TextLayout => ({ ...layout, padding: [...layout.padding] as TextLayout['padding'] });
 export const sameLayout = (a: TextLayout, b: TextLayout): boolean => JSON.stringify(a) === JSON.stringify(b);
 
-// 「---」만 있는 일반 문단은 글자가 아니라 여백(가로 채움, 높이 spacer인 빈 프레임)이다. 선은 긋지 않는다(2026-11-04 사용자 요청).
+// 「---」만 있는 일반 문단은 글자가 아니라 다음 묶음의 Top Padding에 더할 여백이다.
 export const SPACER_TEXT = '---';
 export const isSpacer = (p: { text: string; depth: number | null }): boolean => p.depth === null && p.text.trim() === SPACER_TEXT;

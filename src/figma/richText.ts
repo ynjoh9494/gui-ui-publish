@@ -4,11 +4,17 @@ import type { RichParagraph } from '../core/richText.ts';
 import type { TextLayout } from '../core/description.ts';
 
 // 텍스트 편집 탭: 캔버스에서 고른 텍스트 레이어 하나를 읽고 쓴다. 글꼴·크기는 레이어 것을 그대로 두고
-// 내용, 목록(글머리표)·들여쓰기, 굵기와 색을 적용한다. 빨간 범위 외에는 #333333으로 쓴다. 목록 기호는 글자로 쓰지 않고 Figma 목록 서식을 쓴다.
+// 내용, 목록 종류·들여쓰기, 굵기와 색을 적용한다. 빨간 범위 외에는 #333333으로 쓴다. 목록 기호는 글자로 쓰지 않고 Figma 목록 서식을 쓴다.
 
 export const BOLD_STYLE = /bold|black|heavy/i;
 // 굵은 글씨로 쓸 같은 글꼴 계열의 스타일. 앞에서부터 불러올 수 있는 것을 쓴다.
 const BOLD_STYLES = ['Bold', 'SemiBold', 'Semi Bold', 'ExtraBold', 'Extra Bold', 'Black'];
+const joinRanges = (ranges: { start: number; end: number }[]) => ranges.reduce<{ start: number; end: number }[]>((out, range) => {
+  const last = out[out.length - 1];
+  if (last && range.start <= last.end) last.end = Math.max(last.end, range.end);
+  else out.push({ ...range });
+  return out;
+}, []);
 
 export function selectedTextNode(): TextNode {
   const selection = figma.currentPage.selection;
@@ -18,18 +24,20 @@ export function selectedTextNode(): TextNode {
 
 export function readRichText(node: TextNode): RichParagraph[] {
   const chars = node.characters;
-  const segments = chars.length ? node.getStyledTextSegments(['fontName', 'fills']) : [];
+  const segments = chars.length ? node.getStyledTextSegments(['fontName', 'fontWeight', 'fills']) : [];
   let offset = 0;
   return chars.split('\n').map(line => {
     const start = offset, end = offset + line.length;
     offset = end + 1;
-    const bold = segments
-      .filter(s => BOLD_STYLE.test(s.fontName.style) && s.end > start && s.start < end)
-      .map(s => ({ start: Math.max(start, s.start) - start, end: Math.min(end, s.end) - start }));
+    const bold = joinRanges(segments
+      .filter(s => (s.fontWeight >= 600 || BOLD_STYLE.test(s.fontName.style)) && s.end > start && s.start < end)
+      .map(s => ({ start: Math.max(start, s.start) - start, end: Math.min(end, s.end) - start })));
     let depth: number | null = null;
+    let listType: 'ORDERED' | 'UNORDERED' | undefined;
     if (line.length) {
       const list = node.getRangeListOptions(start, end);
       if (list !== figma.mixed && list.type !== 'NONE') {
+        listType = list.type;
         // Figma 목록의 최상위 들여쓰기는 1이다.
         const indentation = node.getRangeIndentation(start, end);
         depth = typeof indentation === 'number' ? Math.max(0, indentation - 1) : 0;
@@ -37,7 +45,7 @@ export function readRichText(node: TextNode): RichParagraph[] {
     }
     const red = segments.filter(s => s.fills?.some(p => p.type === 'SOLID' && p.visible !== false && (p.opacity ?? 1) > 0 && isRed(p.color)) && s.end > start && s.start < end)
       .map(s => ({ start: Math.max(start, s.start) - start, end: Math.min(end, s.end) - start }));
-    return { text: line, depth, bold, ...(red.length ? { red } : {}) };
+    return { text: line, depth, ...(listType ? { list: listType } : {}), bold, ...(red.length ? { red } : {}) };
   });
 }
 
@@ -114,7 +122,7 @@ export function applyRichText(node: TextNode, paragraphs: RichParagraph[], { reg
     const end = offset + p.text.length;
     if (end > offset) {
       if (p.depth !== null) {
-        node.setRangeListOptions(offset, end, { type: 'UNORDERED' });
+        node.setRangeListOptions(offset, end, { type: p.list ?? 'UNORDERED' });
         node.setRangeIndentation(offset, end, p.depth + 1);
       }
       for (const range of p.red ?? []) if (range.end > range.start) node.setRangeFills(offset + range.start, offset + range.end, [{ type: 'SOLID', color: { r: 214 / 255, g: 52 / 255, b: 52 / 255 } }]);

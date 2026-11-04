@@ -109,6 +109,18 @@ try {
     while (walker.nextNode()) last = walker.currentNode;
     return getComputedStyle(last.parentElement).color;
   }), 'rgb(51, 51, 51)', 'caret toggle controls new text');
+  await page.keyboard.press('ControlOrMeta+a');
+  await editor.evaluate(el => {
+    const data = new DataTransfer();
+    data.setData('text/plain', '1. **첫째**\n2. 둘째');
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  });
+  assert.deepEqual(await editor.locator('.rt-p').evaluateAll(nodes => nodes.map(node => [node.dataset.list, node.dataset.marker])), [['ORDERED', '1.'], ['ORDERED', '2.']]);
+  assert.ok(await editor.locator('b').count(), 'numbered list keeps bold');
+  await page.locator('[data-rt=layout]').click();
+  assert.equal(await page.locator('.text-layout [data-layout=gap]').count(), 0, 'Gap is fixed at zero');
+  assert.equal(await page.locator('.text-layout [data-layout=spacer]').inputValue(), '15');
+  assert.equal(await page.locator('.text-layout .layout-label').filter({ hasText: '목록 간격' }).count(), 1);
   console.log('UI regressions: red toggle, bold overlap, undo, clipboard and typing passed');
 
   const init = { type: 'init', mode: 'UI', actor: { id: 'r', name: 'Review' }, pages: [], issues: [], state: toUiWire(new Store(memoryKV()).state) };

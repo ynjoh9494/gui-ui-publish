@@ -234,11 +234,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let newFlipbooks: NewFlipbook[] = [];
   const identityDrafts = new Map<string, { rev: number; title: string; screenId: string }>();
   // 기존 플립북 상세의 Description 영역(2026-11-04 사용자 요청). 고르면 캔버스의 내용을 불러오고, 고친 내용은 플립북마다 남는다.
-  // saved: 편집기 기준의 내용, sourceDoc: Figma에서 읽은 원본. 충돌 검사는 편집기에서 정규화한 savedDoc이 아니라 sourceDoc으로 한다.
-  // fresh: 불러온 뒤 편집기에 아직 넣지 않았다(편집기로 읽은 내용으로 saved를 맞춘다).
+  // 캔버스에서 다시 읽을 때는 고치지 않은 항목을 최신 값으로 갱신하고, 사용자가 바꾼 항목만 초안으로 유지한다.
   type DescDraft = { status: 'loading' } | { status: 'error'; message: string }
-    | { status: 'ready'; fresh: boolean; saved: string; savedDoc: RichParagraph[]; sourceDoc: RichParagraph[]; savedLayout: TextLayout; doc: RichParagraph[]; layout: TextLayout };
+    | { status: 'ready'; refreshing: boolean; error?: string; saved: string; savedDoc: RichParagraph[]; savedLayout: TextLayout; doc: RichParagraph[]; layout: TextLayout };
   const descDrafts = new Map<string, DescDraft>();
+  let descriptionViewed: string | null = null;
   // Description 영역 편집기에 지금 들어 있는 플립북
   let descEditorFor: string | null = null;
   const descEditor = richEditor({ label: COPY.fbDescription, onChange: descChanged });
@@ -569,6 +569,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   const shownPlace = new Map<string, string>();
   let revealSelection = false;
   function followSelection() {
+    const live = new Set(entriesFor('GUI').map(entry => entry.key));
+    for (const key of shownPlace.keys()) if (!live.has(key)) shownPlace.delete(key);
     for (const entry of selectedEntries('GUI')) {
       const place = guiPlace(entry);
       const group = guiGroupKey(state!, place.categoryId);
@@ -874,8 +876,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   }
   function descEdited(id: string): boolean {
     const d = descDrafts.get(id);
-    return d?.status === 'ready' && !d.fresh && (serializeRichText(d.doc) !== d.saved || !sameLayout(d.layout, d.savedLayout));
+    return d?.status === 'ready' && (serializeRichText(d.doc) !== d.saved || !sameLayout(d.layout, d.savedLayout));
   }
+  function descEditedText(d: Extract<DescDraft, { status: 'ready' }>): boolean { return serializeRichText(d.doc) !== d.saved; }
+  function descEditedLayout(d: Extract<DescDraft, { status: 'ready' }>): boolean { return !sameLayout(d.layout, d.savedLayout); }
   // 저장하지 않은 수정이 있는 기존 플립북(연결이 끊긴 플립북은 반영할 수 없어 뺀다)
   function editedIds(): Set<string> {
     const out = new Set<string>();
@@ -895,7 +899,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const draft = identityDrafts.get(id);
     if (draft && identityEdited(id)) edit.identity = { title: draft.title, screenId: draft.screenId };
     const d = descDrafts.get(id);
-    if (d?.status === 'ready' && descEdited(id)) edit.description = { paragraphs: d.doc, layout: d.layout, before: { paragraphs: d.sourceDoc, layout: d.savedLayout } };
+    if (d?.status === 'ready' && descEdited(id)) edit.description = { paragraphs: d.doc, layout: d.layout, before: { paragraphs: d.savedDoc, layout: d.savedLayout } };
     return edit.identity || edit.description ? edit : null;
   }
   // 수정 여부가 바뀌면 상세의 「적용하기」, 목록의 「수정 중」, 하단 줄을 맞춘다.
@@ -918,18 +922,33 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   }
   function descChanged() {
     const d = descEditorFor ? descDrafts.get(descEditorFor) : undefined;
-    if (d?.status !== 'ready' || d.fresh) return;
+    if (d?.status !== 'ready') return;
     d.doc = descEditor.paragraphs();
     d.layout = descEditor.layout();
     paintEditState();
+  }
+  function leaveDescription() {
+    if (descriptionViewed === null) return;
+    descriptionViewed = null;
+    for (const id of descDrafts.keys()) if (!descEdited(id)) descDrafts.delete(id);
+    if (descEditorFor && !descDrafts.has(descEditorFor)) {
+      descEditorFor = null;
+      descEditor.setParagraphs([], true);
+    }
   }
   // Description 영역: 처음 고르면 불러오고, 불러온 플립북은 편집기를 붙인다. 다시 그려도 편집기 요소를 옮겨 붙여 입력·되돌리기를 유지한다.
   function mountDescription(id: string) {
     const slot = root.querySelector<HTMLElement>('.detail .fb-desc-body');
     if (!slot) return;
+    // A selection change invalidates read values; retain only actual unsaved edits.
+    const selectedNow = descriptionViewed !== id;
+    descriptionViewed = id;
+    if (selectedNow) for (const [otherId, draft] of descDrafts) if (otherId !== id && (draft.status !== 'ready' || !descEdited(otherId))) descDrafts.delete(otherId);
     let d = descDrafts.get(id);
     if (!d) { d = { status: 'loading' }; descDrafts.set(id, d); bridge.send({ type: 'flipbookDescription', id }); }
-    if (d.status === 'loading') { slot.innerHTML = `<p class="note">${COPY.fbDescriptionLoading}</p>`; return; }
+    else if (selectedNow && d.status === 'ready' && !d.refreshing) { d.refreshing = true; bridge.send({ type: 'flipbookDescription', id }); }
+    else if (selectedNow && d.status === 'error') { d = { status: 'loading' }; descDrafts.set(id, d); bridge.send({ type: 'flipbookDescription', id }); }
+    if (d.status === 'loading' || d.status === 'ready' && d.refreshing) { slot.innerHTML = `<p class="note">${COPY.fbDescriptionLoading}</p>`; return; }
     if (d.status === 'error') { slot.innerHTML = `<p class="note bad">${esc(d.message)}</p>`; return; }
     const focused = descEditor.el.contains(document.activeElement);
     const range = focused ? document.getSelection()?.getRangeAt(0)?.cloneRange() : null;
@@ -939,12 +958,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       descEditor.setLayout(d.layout);
       descEditor.setParagraphs(d.doc, true);
     }
-    if (d.fresh) {
-      d.doc = descEditor.paragraphs();
-      d.savedDoc = descEditor.paragraphs();
-      d.saved = serializeRichText(d.doc);
-      d.fresh = false;
-    }
+    if (d.error) slot.innerHTML = `<p class="note bad">${esc(d.error)}</p>`;
     slot.appendChild(descEditor.el);
     if (range) { descEditor.el.querySelector<HTMLElement>('.rich-editor')?.focus(); document.getSelection()?.removeAllRanges(); document.getSelection()?.addRange(range); }
   }
@@ -961,6 +975,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   function discardEdits() {
     identityDrafts.clear();
     descDrafts.clear();
+    descriptionViewed = null;
     descEditorFor = null;
     shownEdited = '';
   }
@@ -1508,6 +1523,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
 
 
   function renderDetail() {
+    if (team() !== 'UI' || currentNew() || !listTabOpen()) {
+      leaveDescription();
+      for (const id of identityDrafts.keys()) if (!identityEdited(id)) identityDrafts.delete(id);
+    }
     $('.detail').classList.toggle('locked', tab !== 'ADMIN' && detailLocked(team()));
     $('.detail').classList.remove('flipbook-detail', 'new-flipbook-detail');
     if (tab === 'ADMIN') { renderAdmin(); return; }
@@ -1785,7 +1804,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const chosen = selectedEntries('UI').filter(e => !!e.flipbookId);
     const entry = current();
     detail.classList.toggle('flipbook-detail', !!state && !!entry?.flipbookId && !!chosen.length);
-    if (!state || !entry?.flipbookId || !chosen.length) { detail.innerHTML = `<p class="empty">${COPY.uiApp217}</p>`; renderHistoryModal(); return; }
+    if (!state || !entry?.flipbookId || !chosen.length) {
+      leaveDescription();
+      for (const id of identityDrafts.keys()) if (!identityEdited(id)) identityDrafts.delete(id);
+      detail.innerHTML = `<p class="empty">${COPY.uiApp217}</p>`; renderHistoryModal(); return;
+    }
     const multi = chosen.length > 1;
     const flagged = chosen.filter(e => needsReview(state!, e.flipbookId!));
     const changed = new Set<string>();
@@ -1793,6 +1816,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     // 연결이 끊긴 플립북은 프레임이 없어 반영할 수 없으므로 제목·ID를 바꾸지 않는다.
     const fb = state.flipbooks.get(entry.flipbookId);
     const renamable = !multi && !!fb && entry.estimate !== 'missing';
+    if (!renamable) leaveDescription();
+    for (const id of identityDrafts.keys()) if (id !== (renamable ? fb.id : null) && !identityEdited(id)) identityDrafts.delete(id);
     // 제목 오른쪽에 목록과 같은 「수정 중」 태그(2026-11-04 사용자 요청). 고치는 동안 paintEditState가 켜고 끈다.
     const headTag = multi ? '' : `<span class="row-state edit-state head-state"${changedIds().has(entry.flipbookId) ? '' : ' hidden'}>${COPY.rowStateEdited}</span>`;
     // 제목은 지금 입력한 Page title을 그대로 보여 준다(비우면 자동 제목, 2026-11-04 사용자 요청).
@@ -1855,7 +1880,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     detail.querySelector<HTMLElement>('.fb-top')!.scrollTop = prevTop;
     const footBox = detail.querySelector<HTMLElement>('.fb-foot');
     if (footBox) footBox.scrollTop = prevFoot;
-    if (renamable) mountDescription(fb.id);
+    if (renamable && listTabOpen()) mountDescription(fb.id);
     renderHistoryModal();
   }
 
@@ -4602,10 +4627,29 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'textImported': editor.setParagraphs(msg.paragraphs, msg.layout); break;
       case 'flipbookDescription': {
         // 다시 불러오기를 요청한 뒤의 응답만 받는다.
-        if (descDrafts.get(msg.id)?.status !== 'loading') break;
-        descDrafts.set(msg.id, msg.error || !msg.paragraphs || !msg.layout ? { status: 'error', message: msg.error ?? COPY.figmaText006 }
-          : { status: 'ready', fresh: true, saved: '', savedDoc: msg.paragraphs, sourceDoc: msg.paragraphs, savedLayout: msg.layout, doc: msg.paragraphs, layout: msg.layout });
-        if (descEditorFor === msg.id) descEditorFor = null;
+        const previous = descDrafts.get(msg.id);
+        if (!previous || previous.status === 'ready' && !previous.refreshing) break;
+        if (msg.error || !msg.paragraphs || !msg.layout) {
+          if (previous.status === 'ready') { previous.refreshing = false; previous.error = msg.error ?? COPY.figmaText006; }
+          else descDrafts.set(msg.id, { status: 'error', message: msg.error ?? COPY.figmaText006 });
+          if (tab === 'UI' && listTabOpen() && current()?.flipbookId === msg.id) renderDetail();
+          break;
+        }
+        const dirtyText = previous.status === 'ready' && descEditedText(previous);
+        const dirtyLayout = previous.status === 'ready' && descEditedLayout(previous);
+        const oldEditor = descEditorFor === msg.id ? descEditor.paragraphs() : null;
+        const oldLayout = descEditorFor === msg.id ? descEditor.layout() : null;
+        const nextDoc = dirtyText && previous.status === 'ready' ? previous.doc : msg.paragraphs;
+        const nextLayout = dirtyLayout && previous.status === 'ready' ? previous.layout : msg.layout;
+        descDrafts.set(msg.id, { status: 'ready', refreshing: false, saved: serializeRichText(msg.paragraphs), savedDoc: msg.paragraphs, savedLayout: msg.layout,
+          doc: nextDoc, layout: nextLayout });
+        if (descEditorFor === msg.id) {
+          descEditorFor = null;
+          // Keep unsaved DOM input while rebasing its untouched fields to the newly read canvas value.
+          const rebased = descDrafts.get(msg.id) as Extract<DescDraft, { status: 'ready' }>;
+          if (dirtyText && oldEditor) rebased.doc = oldEditor;
+          if (dirtyLayout && oldLayout) rebased.layout = oldLayout;
+        }
         if (tab === 'UI' && listTabOpen() && current()?.flipbookId === msg.id) renderDetail();
         break;
       }

@@ -569,6 +569,8 @@ export class Controller {
     catch (e) { if (seq !== this.scanSeq) return; this.scanStatus('GUI', 'failed'); throw e; }
     if (seq !== this.scanSeq) return;
     this.frames = frames;
+    const liveNodes = new Set(frames.map(frame => frame.nodeId));
+    for (const nodeId of this.reasons.keys()) if (!liveNodes.has(nodeId)) this.reasons.delete(nodeId);
     this.digests.clear();
     this.tokens.clear();
     this.oldTokens.clear();
@@ -1693,6 +1695,7 @@ export class Controller {
     for (const key of keys) this.store.kv.set(key, '');
     this.frames = [];
     this.framesLoaded = false;
+    this.reasons.clear();
     this.clearReplacements();
     this.checkedAt = null;
     this.partialAt = null;

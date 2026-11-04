@@ -17,6 +17,11 @@ test('목록·중첩·굵게를 읽고, 그 밖의 줄은 그대로 일반 문�
   ]);
 });
 
+test('Markdown 항목 제목과 목록 사이 빈 줄은 불러오지 않는다', () => {
+  assert.equal(serializeRichText(parseRichText('**1. 항목**\n\n- 설명\n\n**Navigation**\n\n1. 이동')),
+    '**1. 항목**\n- 설명\n\n**Navigation**\n1. 이동');
+});
+
 test('단계를 건너뛴 들여쓰기는 바로 윗 단계의 하위로 보고, 일반 문단 뒤의 목록은 최상위부터 시작한다', () => {
   const depths = parseRichText('    - 처음부터 깊게\n- 하나\n      - 셋을 건너뜀\n문단\n  - 문단 뒤').map(p => p.depth);
   assert.deepEqual(depths, [0, 0, 1, null, 0]);
@@ -194,6 +199,38 @@ test('레이어 글꼴은 그대로 두고 목록·들여쓰기·굵기만 적�
   assert.deepEqual(node.getStyledTextSegments().map(s => [s.start, s.end, s.fontName.style]),
     [[0, 2, 'Bold'], [2, 9, 'Medium'], [9, 11, 'Bold'], [11, 14, 'Medium']]);
   assert.equal(serializeRichText(readRichText(node as unknown as TextNode)), source);
+});
+
+test('Figma의 번호 목록과 글머리표 목록을 종류·단계대로 읽고 다시 적용한다', async () => {
+  const loaded = setup(['Pretendard/Medium', 'Pretendard/Bold']);
+  const node = new FakeText(loaded, '첫째\n둘째\n하위\n일반\n다시', { family: 'Pretendard', style: 'Medium' });
+  node.setRangeListOptions(0, 2, { type: 'ORDERED' });
+  node.setRangeIndentation(0, 2, 1);
+  node.setRangeListOptions(3, 5, { type: 'ORDERED' });
+  node.setRangeIndentation(3, 5, 2);
+  node.setRangeListOptions(6, 8, { type: 'UNORDERED' });
+  node.setRangeIndentation(6, 8, 1);
+  const imported = readRichText(node as unknown as TextNode);
+  assert.deepEqual(imported.map(p => [p.depth, p.list]), [[0, 'ORDERED'], [1, 'ORDERED'], [0, 'UNORDERED'], [null, undefined], [null, undefined]]);
+  const copy = new FakeText(loaded, 'old', { family: 'Pretendard', style: 'Medium' });
+  await writeRichText(copy as unknown as TextNode, imported);
+  assert.deepEqual(readRichText(copy as unknown as TextNode), imported);
+});
+
+test('글꼴 스타일 이름과 무관하게 실제 굵기와 이어진 굵은 범위를 읽는다', () => {
+  setup(['Inter/Regular']);
+  const node = new FakeText(new Set(), '제목', { family: 'Inter', style: 'Demi' });
+  node.getStyledTextSegments = () => [
+    { start: 0, end: 1, fontName: { family: 'Inter', style: 'Demi' }, fontWeight: 600 },
+    { start: 1, end: 2, fontName: { family: 'Inter', style: 'Demi' }, fontWeight: 600 },
+  ];
+  assert.deepEqual(readRichText(node as unknown as TextNode)[0].bold, [{ start: 0, end: 2 }]);
+});
+
+test('번호 목록의 편집·텍스트 복사도 목록 종류를 유지한다', () => {
+  const doc = parseRichText('1. 첫째\n2. 둘째\n\t1. 하위\n- 글머리');
+  assert.equal(serializeRichText(doc), '1. 첫째\n2. 둘째\n\t1. 하위\n- 글머리');
+  assert.equal(serializeRichText(splitParagraph(doc, pos(0, 1), pos(0, 1)).doc), '1. 첫\n2. 째\n3. 둘째\n\t1. 하위\n- 글머리');
 });
 
 test('Bold가 없으면 SemiBold를 쓰고, 굵은 스타일이 없거나 글꼴을 못 불러오면 레이어를 바꾸지 않는다', async () => {
