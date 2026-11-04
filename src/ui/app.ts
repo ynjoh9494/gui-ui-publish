@@ -402,7 +402,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   const flows = flowView(root, {
     track: (uid, name) => trackList.open(uid, name),
     create: request => bridge.send({ type: 'createFlow', request }),
-    thumb: hash => { requestThumbs([hash]); return thumbUrls.get(hash) || null; },
+    thumb: hash => thumbUrls.get(hash) || null,
   });
   // 추적 목록 팝업: GUI 붙이기 탭의 화면 줄에서 연다. 화면(추적 GUI)은 그 레이어를, 플로우는 그 화면의 썸네일 칸을 골라 간다.
   const trackList = trackListView(root, {
@@ -413,7 +413,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     paste: (uid, scale) => bridge.send({ type: 'pasteGui', uid, scale }),
     track: (uid, name) => trackList.open(uid, name),
     drop: (uid, scale, x, y) => bridge.drop?.(x, y, pasteDropMetadata(uid, scale)),
-    thumb: hash => { requestThumbs([hash]); return thumbUrls.get(hash) || null; },
+    thumb: hash => thumbUrls.get(hash) || null,
   });
 
   // 두 영역 구분선: 현재 창 너비에서 목록과 화면정보의 최소 너비(PANE)를 확보한다.
@@ -1679,6 +1679,54 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   function requestThumbs(hashes: (string | null)[]) {
     previewCache.request(hashes);
   }
+  // 그리드 카드의 이미지는 화면에 들어온 동안만 읽고 보관한다.
+  const visibleImages = new Set<Element>();
+  const observedImages = new Set<Element>();
+  const lazyHashes = new Set<string>();
+  let releaseTimer: ReturnType<typeof setTimeout> | null = null;
+  const releaseUnused = () => {
+    if (releaseTimer) cancelLater(releaseTimer);
+    releaseTimer = later(() => {
+      releaseTimer = null;
+      const visible = new Set([...visibleImages].map(el => (el as HTMLElement).dataset.imageHash));
+      const unused = [...lazyHashes].filter(hash => !visible.has(hash));
+      previewCache.drop(unused);
+      for (const hash of unused) lazyHashes.delete(hash);
+    }, 100);
+  };
+  const imageObserver = new IntersectionObserver(changes => {
+    for (const change of changes) {
+      if (change.isIntersecting) visibleImages.add(change.target);
+      else visibleImages.delete(change.target);
+    }
+    const visible = new Set([...visibleImages].map(el => (el as HTMLElement).dataset.imageHash).filter((hash): hash is string => !!hash));
+    for (const hash of visible) { lazyHashes.add(hash); requestThumbs([hash]); }
+    const unused = [...lazyHashes].filter(hash => !visible.has(hash));
+    for (const el of observedImages) if (el instanceof HTMLImageElement && unused.includes(el.dataset.imageHash ?? '') && !visibleImages.has(el)) {
+      const empty = document.createElement('span');
+      empty.dataset.imageHash = el.dataset.imageHash;
+      empty.className = el.closest('.flow-card') ? 'flow-card-empty' : 'paste-thumb-empty';
+      el.replaceWith(empty);
+    }
+    if (unused.length) releaseUnused();
+  });
+  const imageNodes = new MutationObserver(() => {
+    const current = new Set(root.querySelectorAll('[data-image-hash]'));
+    for (const el of observedImages) if (!current.has(el)) {
+      imageObserver.unobserve(el);
+      observedImages.delete(el);
+      visibleImages.delete(el);
+    }
+    for (const el of current) if (!observedImages.has(el)) {
+      observedImages.add(el);
+      imageObserver.observe(el);
+    }
+    const present = new Set([...visibleImages].map(el => (el as HTMLElement).dataset.imageHash));
+    const unused = [...lazyHashes].filter(hash => !present.has(hash));
+    if (unused.length) releaseUnused();
+  });
+  imageNodes.observe(root, { childList: true, subtree: true });
+  cleanups.push(() => { imageNodes.disconnect(); imageObserver.disconnect(); if (releaseTimer) cancelLater(releaseTimer); });
   function clearNodePreviews() {
     previewCache.clearNodes();
   }
@@ -2035,7 +2083,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     list.classList.toggle('grid', grid);
     selectedList.classList.toggle('grid', grid);
     const shown = filterPickerScreens(available, createCategory, createQuery);
-    const hashes: string[] = [];
     // 「선택된 화면」은 드래그하거나 Alt+↑↓로 순서를 바꾼다. 이 순서가 GUI 영역·Screen ID 순서다.
     // 체크박스 없이(2026-11-04 사용자 요청) 왼쪽 「화면 선택」은 행(카드)을 누르면 더하고, 오른쪽 「선택된 화면」은 끝의 X로 뺀다.
     // 점(플립북 없음·생성 목록에서 선택됨)은 왼쪽에만 둔다.
@@ -2053,7 +2100,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       if (!grid) return `<div class="create-screen-option" data-thumb="${esc(screen.thumb?.hash ?? '')}"${attrs}>${label(true)}${scale}${dot}${remove}</div>`;
       // 그리드: 썸네일(왼쪽 위 Screen ID)과 아래 줄의 이름. 썸네일이 보이므로 마우스오버 미리보기는 띄우지 않는다.
       const hash = screen.thumb?.hash;
-      if (hash) hashes.push(hash);
       const url = hash ? thumbUrls.get(hash) ?? null : null;
       return `<div class="create-screen-option create-card"${attrs}>
         <span class="paste-thumb">${thumbnailImage(hash, url, hash && !failedPreviews.has(hash) ? '' : COPY.flow005, 'paste-thumb-empty')}<span class="id-tag picker-thumb-id">${esc(screen.code)}</span></span>
@@ -2067,7 +2113,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     list.innerHTML = !available.length ? `<p class="note">${COPY.uiApp190}</p>`
       : shown.length ? shown.map(screenOption).join('') : screenPickerEmpty('create', createCategory, createQuery);
     list.scrollTop = scrollTop;
-    if (hashes.length) requestThumbs(hashes);
+    // 새 카드의 data-image-hash는 화면에 보일 때만 관찰자가 요청한다.
   }
 
   // 새 플립북 상세: 제목, 놓을 페이지·Section, 그 아래 왼쪽 화면 선택(카테고리, 목록/그리드, 검색, 플립북 없는 화면만)과 오른쪽 「선택된 화면」.

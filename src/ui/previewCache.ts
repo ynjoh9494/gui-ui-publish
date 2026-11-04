@@ -59,6 +59,10 @@ export class PreviewCache {
     for (const key of this.urls.keys()) if (!key.startsWith(NODE_PREVIEW) && !hashes.has(key)) this.remove(key);
   }
 
+  drop(hashes: Iterable<string>): void {
+    for (const hash of hashes) this.remove(hash);
+  }
+
   clear(): void {
     if (this.frame) cancelAnimationFrame(this.frame);
     this.frame = 0;

@@ -121,8 +121,8 @@ try {
   await page.evaluate(() => window.postMessage({ pluginMessage: { type: 'guiScreens', counts: [], screens: Array.from({ length: 100 }, (_, i) => ({ uid: 's' + i, code: 'S' + i, name: 'Screen ' + i, category: null, status: 'active', isCase: false, version: 1, thumb: { hash: 'h' + i, width: 100, height: 100 }, sourceNodeId: 'n' + i })) } }, '*'));
   await page.locator('.paste-screen').first().waitFor();
   await page.locator('[data-action=paste-layout][data-layout=grid]').click();
-  await page.waitForFunction(() => window.requests.flatMap(r => r.hashes).length === 100);
-  assert.equal(await page.evaluate(() => window.requests.length), 1, 'grid image requests are batched');
+  await page.waitForFunction(() => window.requests.flatMap(r => r.hashes).length > 0);
+  assert.ok(await page.evaluate(() => window.requests.flatMap(r => r.hashes).length < 100), 'grid requests only visible images');
   await page.evaluate(() => {
     window.card = document.querySelector('.paste-card');
     window.replacements = 0;
@@ -133,10 +133,15 @@ try {
     // Deliver one at a time as well: batching must not hide full-list rerenders.
     for (const hash of window.requests.flatMap(r => r.hashes)) window.postMessage({ pluginMessage: { type: 'thumbnails', items: [{ hash, bytes }] } }, '*');
   });
-  await page.waitForFunction(() => document.querySelectorAll('.paste-thumb img').length === 100);
+  await page.waitForFunction(() => document.querySelectorAll('.paste-thumb img').length > 0);
   assert.equal(await page.evaluate(() => window.card === document.querySelector('.paste-card')), true, 'image arrivals preserve card DOM and drag targets');
   assert.equal(await page.evaluate(() => window.replacements), 0, 'image arrivals never rebuild the list');
-  assert.equal(await page.evaluate(() => window.liveUrls.size), 100);
+  assert.ok(await page.evaluate(() => window.liveUrls.size < 100), 'grid keeps only visible images');
+  await page.locator('.paste-screens').evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await page.waitForFunction(() => window.requests.flatMap(r => r.hashes).some(hash => hash === 'h99'));
+  await page.waitForFunction(() => window.liveUrls.size === 0);
+  await page.locator('.paste-screens').evaluate(el => { el.scrollTop = 0; });
+  await page.waitForFunction(() => window.requests.flatMap(r => r.hashes).filter(hash => hash === 'h0').length > 1);
   await page.evaluate(m => window.postMessage({ pluginMessage: m }, '*'), init);
   await page.waitForFunction(() => window.liveUrls.size === 0);
   const stale = Array.from({ length: 26 }, (_, i) => [`dlv:old:gone${i}`, { batchId: 'old', kind: 'flipbook', targetId: `gone${i}`, team: 'GUI', version: 1, state: 'applying', error: null, updatedAt: 0 }]);
@@ -162,6 +167,6 @@ try {
   await page.locator('.recovery-status [data-action=recovery-toggle]').click();
   await page.locator('.recovery-list').waitFor({ state: 'detached' });
   assert.deepEqual(errors, []);
-  console.log('UI regressions: 100 images, 1 request, 0 list replacements; reset releases all Blob URLs');
+  console.log('UI regressions: visible images load on scroll, release offscreen URLs, and preserve card DOM');
   console.log('UI regressions: 26 stale destinations excluded; 1 pending GUI job shown, retry requires a click');
 } finally { await browser.close(); }
