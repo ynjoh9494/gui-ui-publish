@@ -1,6 +1,7 @@
 import { COPY } from '../core/copy.ts';
 import { isRed } from '../core/richText.ts';
 import type { RichParagraph } from '../core/richText.ts';
+import type { TextLayout } from '../core/description.ts';
 
 // 텍스트 편집 탭: 캔버스에서 고른 텍스트 레이어 하나를 읽고 쓴다. 글꼴·크기는 레이어 것을 그대로 두고
 // 내용, 목록(글머리표)·들여쓰기, 굵기와 색을 적용한다. 빨간 범위 외에는 #333333으로 쓴다. 목록 기호는 글자로 쓰지 않고 Figma 목록 서식을 쓴다.
@@ -72,16 +73,37 @@ export async function textFonts(node: TextNode): Promise<TextFonts> {
 }
 
 // 글꼴을 모두 불러온 뒤에 내용을 바꾸므로 글꼴 문제로 실패하면 레이어는 그대로다.
-export async function writeRichText(node: TextNode, paragraphs: RichParagraph[]): Promise<void> {
-  applyRichText(node, paragraphs, await textFonts(node));
+export async function writeRichText(node: TextNode, paragraphs: RichParagraph[], layout?: TextLayout): Promise<void> {
+  applyRichText(node, paragraphs, await textFonts(node), layout);
+}
+
+// 텍스트 레이어의 글자 서식을 편집기 서식 도구 값으로 읽는다. 행간·자간은 %로 바꾸고, 행간이 자동이면 null이다.
+export function readTextLayout(node: TextNode): Partial<TextLayout> {
+  const out: Partial<TextLayout> = {};
+  const has = node.characters.length > 0;
+  const size = has ? node.getRangeFontSize(0, 1) : node.fontSize;
+  if (typeof size === 'number') out.fontSize = Math.round(size * 100) / 100;
+  const line = has ? node.getRangeLineHeight(0, 1) : node.lineHeight;
+  if (line !== figma.mixed && line.unit === 'PERCENT') out.lineHeight = Math.round(line.value * 100) / 100;
+  else if (line !== figma.mixed && line.unit === 'PIXELS' && out.fontSize) out.lineHeight = Math.round(line.value / out.fontSize * 10000) / 100;
+  const spacing = has ? node.getRangeLetterSpacing(0, 1) : node.letterSpacing;
+  if (spacing !== figma.mixed && spacing.unit === 'PERCENT') out.letterSpacing = Math.round(spacing.value * 100) / 100;
+  else if (spacing !== figma.mixed && spacing.unit === 'PIXELS' && out.fontSize) out.letterSpacing = Math.round(spacing.value / out.fontSize * 10000) / 100;
+  if (typeof node.listSpacing === 'number') out.listSpacing = node.listSpacing;
+  return out;
 }
 
 // textFonts로 글꼴을 불러온 레이어에 쓴다. 여러 레이어를 바꿀 때 모든 글꼴을 먼저 불러온 뒤 차례로 쓴다.
-export function applyRichText(node: TextNode, paragraphs: RichParagraph[], { regular, bold }: TextFonts): void {
+// layout: 편집기 서식 도구의 글자 크기·자간·행간·List Spacing. 없으면 글자 크기·자간은 레이어 것을 두고 행간 140%·List Spacing 2를 쓴다.
+export function applyRichText(node: TextNode, paragraphs: RichParagraph[], { regular, bold }: TextFonts, layout?: TextLayout): void {
   const text = paragraphs.map(p => p.text).join('\n');
   node.characters = text;
-  node.lineHeight = { unit: 'PERCENT', value: 140 };
-  node.listSpacing = 2;
+  node.lineHeight = { unit: 'PERCENT', value: layout?.lineHeight ?? 140 };
+  node.listSpacing = layout?.listSpacing ?? 2;
+  if (layout) {
+    node.fontSize = layout.fontSize;
+    node.letterSpacing = { unit: 'PERCENT', value: layout.letterSpacing };
+  }
   if (!text.length) return;
   node.setRangeFills(0, text.length, [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }]);
   node.setRangeFontName(0, text.length, regular);

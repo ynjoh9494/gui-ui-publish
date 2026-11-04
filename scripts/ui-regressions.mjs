@@ -69,7 +69,7 @@ try {
   assert.equal(await editor.innerText(), 'base한', 'redo restores the committed composition');
   console.log('UI regressions: tutorial disposal and IME undo/redo passed');
 
-  await page.keyboard.press('Control+a');
+  await page.keyboard.press('ControlOrMeta+a');
   await page.locator('[data-rt=red]').click();
   assert.equal(await editor.locator('span').first().evaluate(el => getComputedStyle(el).color), 'rgb(214, 52, 52)');
   await page.locator('[data-rt=bold]').click();
@@ -81,14 +81,14 @@ try {
   await page.keyboard.press('Control+z');
   assert.equal(await editor.locator('span').first().evaluate(el => getComputedStyle(el).color), 'rgb(214, 52, 52)', 'undo restores red');
 
-  await page.keyboard.press('Control+a');
+  await page.keyboard.press('ControlOrMeta+a');
   await editor.evaluate(el => {
     const data = new DataTransfer();
     data.setData('text/plain', '- <red>red **bold**</red>');
     el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
   });
   assert.equal(await editor.innerText(), 'red bold');
-  await page.keyboard.press('Control+a');
+  await page.keyboard.press('ControlOrMeta+a');
   const copied = await editor.evaluate(el => {
     const data = new DataTransfer();
     el.dispatchEvent(new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true }));

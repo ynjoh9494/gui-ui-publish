@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { COPY } from '../src/core/copy.ts';
-import { backspaceAtStart, deleteRange, insertParagraphs, parseRichText, serializeRichText, setDepth, splitParagraph, toggleBold, toggleRed, toggleList, type RichParagraph } from '../src/core/richText.ts';
+import { backspaceAtStart, deleteRange, insertParagraphs, insertSpacer, parseRichText, serializeRichText, setDepth, splitParagraph, toggleBold, toggleRed, toggleList, type RichParagraph } from '../src/core/richText.ts';
 import { readRichText, selectedTextNode, writeRichText } from '../src/figma/richText.ts';
 
 test('목록·중첩·굵게를 읽고, 그 밖의 줄은 그대로 일반 문단으로 둔다', () => {
@@ -278,4 +278,14 @@ test('plain text always becomes black regardless of inherited fills, even withou
     await writeRichText(node, parseRichText(''));
     assert.equal(node.characters, '');
   }
+});
+
+test('여백 버튼은 커서 문단 다음에 「---」 줄을 넣고, 빈 줄이면 그 줄을 바꾼 뒤 다음 빈 줄에 커서를 둔다', () => {
+  const doc = parseRichText('가\n나');
+  const after = insertSpacer(doc, 0);
+  assert.equal(serializeRichText(after.doc), '가\n---\n나');
+  assert.deepEqual(after.at, { block: 2, offset: 0 });
+  const empty = insertSpacer([{ text: '', depth: null, bold: [] }], 0);
+  assert.deepEqual(empty.doc.map(p => p.text), ['---', '']);
+  assert.deepEqual(empty.at, { block: 1, offset: 0 });
 });

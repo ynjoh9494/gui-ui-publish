@@ -5,7 +5,7 @@ import type { Draft } from './drafts.ts';
 import { unreviewed, type FlipbookRequest, type ReviewRequest } from './flipbooks.ts';
 import { retryableDeliveries } from './guiDelivery.ts';
 import type { HistoryRow } from './history.ts';
-import type { SelectionTarget } from './description.ts';
+import type { SelectionTarget, TextLayout } from './description.ts';
 import type { FlowRequest } from './flow.ts';
 import type { PdfPage, PdfSelection } from './pdf.ts';
 import type { RichParagraph } from './richText.ts';
@@ -131,6 +131,14 @@ export type NavTarget = 'source' | 'flipbook' | 'history';
 // idle: 확인 전, loading: 원본·플립북 읽는 중, comparing: 지문 비교 중
 export type ScanState = 'idle' | 'loading' | 'comparing' | 'done' | 'cancelled' | 'failed';
 
+// 기존 플립북 하나의 수정. identity: Page title·Screen ID, description: Description 본문과 서식. rev: 고칠 때 본 기록
+export interface FlipbookEdit {
+  id: string;
+  rev: number;
+  identity?: { title: string; screenId: string };
+  description?: { paragraphs: RichParagraph[]; layout: TextLayout };
+}
+
 export type ToMain =
   | { type: 'ready' }
   | { type: 'switchMode'; mode: Team }
@@ -202,7 +210,11 @@ export type ToMain =
   // 관리의 템플릿: 목록에서 고른 템플릿(없거나 목록에 없으면 대표)의 항목별 연결 상태를 받고, 항목에 연결된 레이어를 캔버스에서 고른다.
   | { type: 'templateInfo'; templateId?: string }
   | { type: 'revealTemplateItem'; nav: number; templateId: string; key: TemplateItem }
-  | { type: 'textApply'; paragraphs: RichParagraph[] }
+  | { type: 'textApply'; paragraphs: RichParagraph[]; layout?: TextLayout }
+  // 플립북 상세의 Description 영역(2026-11-04 사용자 요청): 고른 플립북의 Description 본문과 서식을 읽는다.
+  | { type: 'flipbookDescription'; id: string }
+  // 「적용하기」·「모두 적용하기」: 기존 플립북의 제목·ID·Description 수정을 반영하고, create가 있으면 이어서 새 플립북을 만들고 옮긴다.
+  | { type: 'applyFlipbookEdits'; edits: FlipbookEdit[]; create?: FlipbookRequest }
   // 플로우: 고른 배포 화면으로 지금 보고 있는 페이지에 플로우 그룹을 만든다.
   | { type: 'createFlow'; request: FlowRequest }
   // 플로우 목록: 캔버스에서 지운 플로우는 기록에서 빼고 남은 목록을 보낸다.
@@ -269,7 +281,11 @@ export type ToUi =
   | { type: 'framePreviews'; items: { nodeId: string; bytes: Uint8Array | null }[] }
   | { type: 'pages'; pages: PageInfo[]; managedPages?: ManagedPageInfo[] }
   | { type: 'thumbnails'; items: { hash: string; bytes: Uint8Array | null }[] }
-  | { type: 'textImported'; paragraphs: RichParagraph[] }
+  | { type: 'textImported'; paragraphs: RichParagraph[]; layout?: TextLayout }
+  // 플립북 Description을 읽었다. 읽지 못하면 error
+  | { type: 'flipbookDescription'; id: string; paragraphs?: RichParagraph[]; layout?: TextLayout; error?: string }
+  // 기존 플립북 수정을 반영했다. creating: 이어서 새 플립북 만들기·옮기기를 하며 그 결과는 flipbooksCreated로 온다.
+  | { type: 'flipbookEditsApplied'; applied: string[]; failed: { id: string; message: string }[]; message: string; creating: boolean }
   // 텍스트 편집 대상. 탭이 보이는 동안 캔버스 선택이 바뀔 때와 탭을 열 때 보낸다.
   | { type: 'textTarget'; target: SelectionTarget }
   | { type: 'pdfSelection'; selection: PdfSelection }

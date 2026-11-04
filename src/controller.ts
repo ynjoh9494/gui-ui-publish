@@ -23,7 +23,7 @@ import { DIGEST_PREFIX, keys, lastUi, randomId, Store } from './core/store.ts';
 import type { DataStatus, Flipbook, ProjectConfig, Team, UiBaseline } from './core/types.ts';
 import { applyReplaceSuggestions, suggestReplacements, tokenHashes, type ReplaceSuggestion } from './core/replaceMatch.ts';
 import { explainMatch, matchVersion, versionCommon, versionLinkErrors, type VersionFrame } from './core/versionMatch.ts';
-import { toUiWire, type AdminOp, type NavTarget, type ScanState, type ToMain } from './core/wire.ts';
+import { toUiWire, type AdminOp, type FlipbookEdit, type NavTarget, type ScanState, type ToMain } from './core/wire.ts';
 import { FlowController } from './flowController.ts';
 import { dismissDeletedAlert, trackCounts } from './core/tracks.ts';
 import { TrackController } from './trackController.ts';
@@ -55,7 +55,7 @@ const BUSY_LABEL: Partial<Record<ToMain['type'], string>> = {
   prepare: COPY.controller001, commit: COPY.controller002, resetData: COPY.controller003, retry: COPY.recoveryRunning, refreshData: COPY.controller005,
   registerFlipbooks: COPY.registerExisting, convertLegacyFlipbooks: COPY.legacyConverting, admin: COPY.controller006, createFlipbooks: COPY.controller038, markReviewed: COPY.controller066, removeFlipbooks: COPY.controller068,
   matchVersion: COPY.controller106, switchVersion: COPY.controller107, renameFlipbook: COPY.controller118,
-  textApply: COPY.controller120, createFlow: COPY.flow006, exportPdf: COPY.pdf005, pasteGui: COPY.track004, createThumbnailPage: COPY.adminThumbCreate,
+  textApply: COPY.controller120, applyFlipbookEdits: COPY.flipbookApplying, createFlow: COPY.flow006, exportPdf: COPY.pdf005, pasteGui: COPY.track004, createThumbnailPage: COPY.adminThumbCreate,
 };
 
 // These requests begin without a blocking label but can start delivery while
@@ -297,11 +297,13 @@ export class Controller {
           this.textTargetSelectionIds = null;
           if (msg.open && this.host.mode === 'UI') this.postTextTarget();
           break;
-        case 'textImport': this.host.post({ type: 'textImported', paragraphs: this.host.readSelection() }); break;
+        case 'textImport': this.host.post({ type: 'textImported', ...this.host.readSelection() }); break;
         case 'textApply': {
-          this.host.post({ type: 'notice', message: writeMessage(await this.host.writeSelection(msg.paragraphs)) });
+          this.host.post({ type: 'notice', message: writeMessage(await this.host.writeSelection(msg.paragraphs, msg.layout)) });
           break;
         }
+        case 'flipbookDescription': await this.postFlipbookDescription(msg.id); break;
+        case 'applyFlipbookEdits': await this.applyFlipbookEdits(msg.edits, msg.create); break;
         case 'pdfTab':
           if (this.host.mode === 'UI') this.pdf.setTab(msg.open);
           break;
@@ -1503,7 +1505,46 @@ export class Controller {
   }
 
   // 플립북 제목 변경(2026-10-21 사용자 요청): 기록을 바꾸고 큰 제목·Page title·프레임 이름을 새 제목으로 맞춘다.
-  private async renameFlipbook(id: string, title: string, screenId?: string, rev?: number): Promise<void> {
+  // 플립북 상세의 Description 영역: 고른 플립북의 Description을 읽어 보낸다. 읽지 못하면 이유를 보낸다(오류 알림은 띄우지 않는다).
+  private async postFlipbookDescription(id: string): Promise<void> {
+    const fb = this.store.state.flipbooks.get(id);
+    try {
+      if (!fb?.pageId) throw new Error(COPY.controller063);
+      const read = await this.host.readFlipbookDescription({ flipbookId: id, pageId: fb.pageId, nodeId: this.uiScans.find(u => u.flipbookId === id)?.nodeId ?? undefined });
+      this.host.post({ type: 'flipbookDescription', id, ...read });
+    } catch (error) {
+      this.host.post({ type: 'flipbookDescription', id, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // 「적용하기」·「모두 적용하기」(2026-11-04 사용자 요청): 기존 플립북마다 제목·ID, Description 순으로 반영한다.
+  // 한 플립북이 실패해도 나머지는 계속하고, 수정을 다 반영한 뒤 새 플립북 만들기·옮기기(create)를 이어서 한다.
+  private async applyFlipbookEdits(edits: FlipbookEdit[], create?: FlipbookRequest): Promise<void> {
+    const applied: string[] = [];
+    const failed: { id: string; message: string }[] = [];
+    for (const edit of edits) {
+      try {
+        if (edit.identity) await this.renameFlipbook(edit.id, edit.identity.title, edit.identity.screenId, edit.rev, true);
+        if (edit.description) {
+          const fb = this.store.state.flipbooks.get(edit.id);
+          if (!fb?.pageId) throw new Error(COPY.controller063);
+          await this.host.writeFlipbookDescription({ flipbookId: edit.id, pageId: fb.pageId, nodeId: this.uiScans.find(u => u.flipbookId === edit.id)?.nodeId ?? undefined }, edit.description.paragraphs, edit.description.layout);
+        }
+        applied.push(edit.id);
+      } catch (error) {
+        failed.push({ id: edit.id, message: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    const name = (id: string) => this.store.state.flipbooks.get(id)?.title ?? id;
+    const message = [
+      applied.length ? `${COPY.flipbookEditsApplied} ${applied.length}${COPY.flipbookEditsAppliedSuffix}` : '',
+      ...[...new Set(failed.map(f => f.message))].map(reason => `${reason} (${failed.filter(f => f.message === reason).map(f => name(f.id)).join(', ')})`),
+    ].filter(Boolean).join(' ');
+    this.host.post({ type: 'flipbookEditsApplied', applied, failed, message, creating: !!create });
+    if (create) await this.createFlipbooks(create);
+  }
+
+  private async renameFlipbook(id: string, title: string, screenId?: string, rev?: number, quiet = false): Promise<void> {
     const s = this.store;
     s.reload();
     let before = s.state.flipbooks.get(id);
@@ -1531,7 +1572,7 @@ export class Controller {
       }
       catch (error) { prepared.rollback(); throw error; }
     } finally { s.reload(); this.postState(); }
-    this.host.post({ type: 'notice', message: `${COPY.controller119} ${fb.title}` });
+    if (!quiet) this.host.post({ type: 'notice', message: `${COPY.controller119} ${fb.title}` });
   }
 
   // 확인 완료: 상태·코멘트를 기록한 뒤 그 플립북의 Status와 이력 행을 맞춘다.

@@ -56,7 +56,7 @@ try {
   // 여러 화면을 고른 상세의 배포 스위치
   rows = await enabled();
   await rows[0].click();
-  await rows[1].click({ modifiers: ['Control'] });
+  await rows[1].click({ modifiers: ['ControlOrMeta'] });
   await rows[0].locator('[data-action=include]').check();
   const sw = '.detail [data-action=include-selected]';
   assert.equal(await state(sw, 'mixed'), 'mixed');

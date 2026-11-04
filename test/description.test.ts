@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { COPY } from '../src/core/copy.ts';
 import { parseRichText, serializeRichText } from '../src/core/richText.ts';
-import { addTextFrame, fillDescription, readDescription, selectedDescriptionRoot, selectedFrame, selectionTarget } from '../src/figma/description.ts';
+import { addTextFrame, fillDescription, readDescription, readDescriptionLayout, selectedDescriptionRoot, selectedFrame, selectionTarget } from '../src/figma/description.ts';
 
 type Font = { family: string; style: string };
 type Char = { font: Font; list: string; indent: number };
@@ -237,16 +237,31 @@ test('굵은 제목 줄마다 제목·본문 레이어를 묶고 문구는 검�
   assert.equal(serializeRichText(readDescription(root as unknown as SceneNode)), serializeRichText(second));
 });
 
-test('첫 묶음 아래와 마지막 묶음 위에 템플릿처럼 여백 15를 두고, 제목 문구는 보지 않는다', async () => {
-  const paddings = async (doc: string) => {
-    const { root, area } = fixture();
-    setup([root]);
-    await fillDescription(root as unknown as SceneNode, parseRichText(doc));
-    return area.children.map(group => [group.paddingTop, group.paddingBottom]);
-  };
-  assert.deepEqual(await paddings('**Policy**\n\n- 설명\n\n**1. 항목**\n\n- 내용\n\n**Navigation**\n\n- 이동'), [[0, 15], [0, 0], [15, 0]]);
-  assert.deepEqual(await paddings('**1. 항목**\n\n- 내용\n\n**2. 항목**\n\n- 내용'), [[0, 15], [15, 0]]);
-  assert.deepEqual(await paddings('**Policy**\n\n- 설명'), [[0, 0]]);
+test('묶음에 자동 여백을 두지 않고, 「---」 줄은 높이 3의 빈 프레임(여백)으로 넣고 다시 불러온다', async () => {
+  const { root, area } = fixture();
+  setup([root]);
+  const doc = parseRichText('**Policy**\n\n- 설명\n\n---\n\n**1. 항목**\n\n- 내용\n---\n**Navigation**\n\n- 이동');
+  await fillDescription(root as unknown as SceneNode, doc);
+  assert.deepEqual(area.children.map(node => node.name), ['Policy', COPY.figmaText012, '1. 항목', COPY.figmaText012, 'Navigation']);
+  assert.ok(area.children.every(node => node.paddingTop === 0 && node.paddingBottom === 0), 'no automatic 15 padding');
+  const spacer = area.children[1] as Node & Record<string, unknown>;
+  assert.equal(spacer.getPluginData('guiUiPublishDescriptionSpacer'), '1');
+  assert.deepEqual([spacer.height, spacer.children.length, spacer.layoutSizingHorizontal, spacer.layoutSizingVertical], [3, 0, 'FILL', 'FIXED']);
+  assert.equal(serializeRichText(readDescription(root as unknown as SceneNode)),
+    '**Policy**\n\n- 설명\n---\n**1. 항목**\n\n- 내용\n---\n**Navigation**\n\n- 이동');
+});
+
+test('서식 값을 넘기면 본문 칸의 Gap·Padding(시계 방향)과 글자 서식, 여백 높이를 쓰고 그대로 다시 읽는다', async () => {
+  const { root, area } = fixture();
+  area.layoutMode = 'VERTICAL';
+  setup([root]);
+  const layout = { gap: 10, padding: [8, 12, 12, 16] as [number, number, number, number], fontSize: 15, letterSpacing: -1, lineHeight: 150, listSpacing: 4, spacer: 6 };
+  await fillDescription(root as unknown as SceneNode, parseRichText('**A**\n\n- 가\n---\n**B**\n\n- 나'), layout, false);
+  assert.deepEqual([area.itemSpacing, area.paddingTop, area.paddingRight, area.paddingBottom, area.paddingLeft], [10, 8, 12, 12, 16]);
+  const body = area.children[0].children[1] as Text;
+  assert.deepEqual([body.fontSize, body.letterSpacing, body.lineHeight, body.listSpacing], [15, { unit: 'PERCENT', value: -1 }, { unit: 'PERCENT', value: 150 }, 4]);
+  assert.equal(area.children[1].height, 6);
+  assert.deepEqual(readDescriptionLayout(root as unknown as SceneNode), layout);
 });
 
 test('묶음이 많아도 글꼴은 묶음 수만큼 다시 불러오지 않는다', async () => {
@@ -380,7 +395,7 @@ test('프레임에는 묶음들을 오토 레이아웃 프레임으로 감싸 �
   assert.deepEqual(wrapper.fills, []);
   assert.deepEqual([wrapper.x, wrapper.y, wrapper.width], [0, 120, 440], 'below the visible content, at the frame width');
   assert.deepEqual(wrapper.children.map(group => group.name), ['Policy', '1. 항목', 'Navigation']);
-  assert.deepEqual(wrapper.children.map(group => [group.paddingTop, group.paddingBottom]), [[0, 15], [0, 0], [15, 0]]);
+  assert.deepEqual(wrapper.children.map(group => [group.paddingTop, group.paddingBottom]), [[0, 0], [0, 0], [0, 0]]);
   assert.ok(wrapper.children.every(group => group.getPluginData('guiUiPublishDescriptionGroup') === '1' && group.layoutSizingHorizontal === 'FILL'));
   const [title, body] = wrapper.children[0].children as Text[];
   assert.equal(title.chars[0].font.style, 'Bold');

@@ -331,6 +331,8 @@ try {
   await app.locator('[data-action=settings]').click();
   // 플립북 만들기 탭은 플립북 목록에 합쳤다(2026-10-21). 목록 위 「새 플립북」으로 목록에 바로 넣고, 만들기 전에는 저장하지 않는다.
   assert.equal(await app.locator('.create-tabs button').filter({ hasText: '플립북 만들기' }).count(), 0, '플립북 목록과 만들기를 한 화면에서 한다');
+  // 새 플립북을 넣어도 창 크기를 바꾸지 않으므로(2026-11-04 사용자 요청) 사용자가 창을 키워 둔 크기에서 본다.
+  await app.evaluate(root => { root.style.width = '960px'; root.style.height = '800px'; });
   const sizeBeforeCreate = await app.evaluate(root => ({ width: root.offsetWidth, height: root.offsetHeight }));
   // 플립북 없는 화면 일괄 만들기: 페이지·카테고리·화면 유형·검색으로 범위를 정하고 화면별로 뺄 수 있다.
   {
@@ -365,11 +367,15 @@ try {
     assert.equal(await app.locator('.bulk-dialog').count(), 0, 'Esc로 모달을 닫는다');
   }
   await app.locator('[data-action=new-add]').click();
-  await page.waitForFunction(() => document.querySelector('#app').offsetHeight >= 800);
   await newRows(1, '새 플립북을 목록에 바로 넣는다');
+  assert.deepEqual(await app.evaluate(root => ({ width: root.offsetWidth, height: root.offsetHeight })), sizeBeforeCreate, '새 플립북을 넣어도 창 크기를 바꾸지 않는다');
   assert.ok(await app.locator('.list .new-row').evaluate(el => el.classList.contains('selected')), '넣은 새 플립북을 고른다');
-  assert.equal(await app.locator('.detail .new-actions [data-action=create-submit]').innerText(), '플립북 1개 만들기', '플립북 편집 머리에서 한 번에 만든다');
-  assert.equal(await app.locator('.toolbar .pending-line').count(), 0, '플립북 편집이 보이면 목록 위 줄은 없다');
+  assert.equal(await app.locator('.list .new-row .row-state').innerText(), '새 플립북', '새 플립북 행에 상태 태그를 붙인다');
+  assert.equal(await app.locator('.detail .new-actions').count(), 0, '플립북 편집 머리에는 버튼이 없다');
+  assert.equal(await app.locator('.footer .pending-line [data-action=create-submit]').innerText(), '모두 적용하기', '플립북 편집 중에도 맨 아래 줄에서 한 번에 적용한다');
+  assert.match(await app.locator('.footer .pending-line .pending-counts').innerText(), /^새 플립북 1개$/);
+  assert.equal(await app.locator('.footer [data-action=create-submit]').evaluate(el => el.classList.contains('primary')), false, '모두 적용하기는 주요 버튼 색을 쓰지 않는다');
+  assert.equal(await app.locator('.toolbar .pending-line').count(), 0, '목록 위 줄은 없다');
   assert.equal(await app.locator('.detail .edit-head [data-action=new-remove]').count(), 0, '플립북 편집 머리에 X가 없다');
   assert.equal(await app.locator('[data-action=create-page-manage] svg').count(), 1, '페이지 관리 화살표는 아이콘이다');
   assert.ok(await app.locator('.new-place .field-head').evaluate(head => {
@@ -426,13 +432,17 @@ try {
   assert.equal(await app.locator('.detail .edit-head h2').innerText(), '플립북 편집', '머리에는 「플립북 편집」을 둔다');
   assert.ok(await app.locator('.new-place').evaluate(place => {
     const [pageField, section, title] = [place.querySelector('[data-input=new-page]'), place.querySelector('[data-input=new-section]'), place.querySelector('[data-input=new-title]')].map(el => el.getBoundingClientRect());
-    return pageField.bottom <= section.top && section.bottom <= title.top && Math.abs(pageField.left - section.left) < 1 && Math.abs(section.left - title.left) < 1;
-  }), '페이지 → 섹션 → 제목을 한 줄씩 위아래로 놓는다');
+    return Math.abs(pageField.top - section.top) < 2 && pageField.right <= section.left && section.bottom <= title.top && Math.abs(pageField.left - title.left) < 1;
+  }), '페이지와 섹션은 한 줄 2열, 그 아래 제목');
   assert.ok(await app.locator('.detail .edit-head').evaluate(head => {
-    const [title, hint, cancel, cta] = [head.querySelector('h2'), head.querySelector('.edit-title .note'), head.querySelector('[data-action=new-clear]'), head.querySelector('[data-action=create-submit]')];
-    const [t, h, c, b] = [title, hint, cancel, cta].map(el => el.getBoundingClientRect());
-    return hint.textContent.startsWith('만들기 전까지 저장 안 함') && cancel.textContent === '취소' && Math.abs(h.left - t.left) < 1 && h.top >= t.bottom - 1 && h.right <= c.left && c.right <= b.left;
-  }), '왼쪽에 제목과 안내, 오른쪽에 취소·만들기를 둔다');
+    const [t, h] = [head.querySelector('h2'), head.querySelector('.edit-title .note')].map(el => el.getBoundingClientRect());
+    return head.querySelector('.edit-title .note').textContent.startsWith('모두 적용하기 전까지 저장 안 함') && Math.abs(h.left - t.left) < 1 && h.top >= t.bottom - 1;
+  }), '머리에는 제목과 안내만 둔다');
+  assert.ok(await app.locator('.footer .pending-line').evaluate(line => {
+    const [counts, cancel, cta] = [line.querySelector('.pending-counts'), line.querySelector('[data-action=new-clear]'), line.querySelector('[data-action=create-submit]')];
+    const [n, c, b] = [counts, cancel, cta].map(el => el.getBoundingClientRect());
+    return cancel.textContent.trim() === '전체 취소' && n.right <= c.left && c.right <= b.left && Math.abs(b.right - line.getBoundingClientRect().right) < 2;
+  }), '맨 아래 줄 오른쪽에 개수 · 전체 취소 · 모두 적용하기');
   assert.equal(await app.locator('.list .new-row .name').innerText(), 'STB_HO_001 · ' + initialName, '목록에는 첫 화면 이름을 제목으로 보여 준다');
   assert.ok((await app.locator('.list .section-group').filter({ has: page.locator('.new-row') }).locator('.section-label').innerText()).includes('홈'), '화면 카테고리 Section에 놓는다');
   assert.equal(await app.locator('.detail [data-input=new-title]').inputValue(), initialName, '오른쪽 제목은 첫 화면 이름이 채워진 입력란이다');
@@ -510,12 +520,29 @@ try {
   const deliveriesBeforeRename = (await page.locator('#log div').allTextContents()).filter(line => line.includes('플립북 반영')).length;
   await made.click();
   await app.locator('[data-input=fb-page-title]').fill('홈 메인 플립북');
+  assert.equal(await app.locator('.list .row.selected .row-state').innerText(), '수정 중', '고친 플립북 행에 수정 중 태그를 붙인다');
+  assert.match(await app.locator('.footer .pending-line').innerText(), /수정 1개/);
   await app.locator('[data-action=fb-identity-save]').click();
-  await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('플립북 제목을 바꿨습니다'));
+  await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('수정한 플립북 1개를 반영했습니다'));
   await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('제목 변경: 홈 메인 플립북')));
   await page.waitForFunction(() => [...document.querySelectorAll('#app .list .row .name')].some(x => x.textContent.endsWith(' · 홈 메인 플립북')));
   assert.equal((await page.locator('#log div').allTextContents()).filter(line => line.includes('플립북 반영')).length, deliveriesBeforeRename, '이름 변경은 전체 플립북 반영을 실행하지 않는다');
   await shot('03c-rename');
+  // Description 영역: 고른 플립북의 Description을 불러오고, 고쳐서 적용하기를 누르면 그 플립북에 쓴다(2026-11-04).
+  {
+    const description = app.locator('.detail .fb-description .rich-editor');
+    await description.waitFor();
+    assert.equal(await app.locator('.detail [data-action=fb-identity-save]').isDisabled(), true, '불러오기만 하면 적용할 것이 없다');
+    await description.click();
+    await page.keyboard.type('Policy');
+    assert.equal(await app.locator('.detail [data-action=fb-identity-save]').isDisabled(), false, 'Description을 고치면 적용하기를 누를 수 있다');
+    assert.equal(await app.locator('.list .row.selected .row-state').innerText(), '수정 중');
+    await app.locator('[data-action=fb-identity-save]').click();
+    await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('Description:')));
+    await page.waitForFunction(() => !document.querySelector('#app .footer .pending-line'));
+    await description.waitFor();
+    assert.equal(await description.innerText(), 'Policy', '적용한 뒤 다시 불러온다');
+  }
   // 제목을 비우면 첫 화면 이름으로 돌아간다.
   await app.locator('.list .row.selected .name').dblclick();
   await app.locator('.list [data-input=fb-title]').fill('');
@@ -539,8 +566,8 @@ try {
       .dragTo(app.locator('.list .section-label').filter({ hasText: /^홈$/ }));
     await dragToHome();
     await inGroup('정책 안내', '홈');
-    assert.match(await app.locator('.toolbar .pending-line').innerText(), /옮긴 플립북 1개/, '옮긴 기존 플립북 수를 목록 위 줄에 보여 준다');
-    assert.equal(await app.locator('[data-action=create-submit]').innerText(), '배치 반영', '새 플립북이 없으면 배치 반영 버튼이다');
+    assert.match(await app.locator('.footer .pending-line').innerText(), /수정 1개/, '옮긴 기존 플립북도 수정 개수에 센다');
+    assert.equal(await app.locator('[data-action=create-submit]').innerText(), '모두 적용하기');
     await shot('03c2-pending-line');
     await app.locator('[data-action=create-submit]').click();
     await app.locator('.arrange-overlay:not([hidden]) .arrange-dialog').waitFor();
@@ -549,7 +576,7 @@ try {
     await app.locator('[data-action=arrange-skip]').click();
     await inGroup('정책 안내', '안내');
     assert.equal(await app.locator('.arrange-overlay').isHidden(), true);
-    assert.equal(await app.locator('.toolbar .pending-line').count(), 0, '옮긴 플립북이 없으면 목록 위 줄을 비운다');
+    assert.equal(await app.locator('.footer .pending-line').count(), 0, '옮긴 플립북이 없으면 맨 아래 줄을 비운다');
     // 반영하면 캔버스에서도 옮긴다.
     await dragToHome();
     await inGroup('정책 안내', '홈');
@@ -1283,7 +1310,7 @@ try {
     await app.locator('.choice.open .screen-picker .picker-search').press('Escape');
     // 여러 화면을 골라도 화면 바꾸기를 고를 수 있다. 정해지지 않은 화면을 알리는 안내 문구는 없다(2026-11-03 사용자 요청).
     const otherKey = await app.locator('.row:not(:has(.id-tag))').first().getAttribute('data-key');
-    await app.locator(`.row[data-key="${otherKey}"]`).click({ modifiers: ['Control'] });
+    await app.locator(`.row[data-key="${otherKey}"]`).click({ modifiers: ['ControlOrMeta'] });
     await app.locator('.detail [data-action=include-selected]').check();
     await app.locator('[data-field=disposition][value=replace]').check();
     assert.equal(await app.locator('[data-field=disposition][value=replace]').isChecked(), true, 'replace can be chosen for several screens');
@@ -1325,7 +1352,7 @@ try {
   const firstKey = await app.locator('.row').nth(0).getAttribute('data-key');
   const secondKey = await app.locator('.row').nth(1).getAttribute('data-key');
   await app.locator(`.row[data-key="${firstKey}"]`).click();
-  await app.locator(`.row[data-key="${secondKey}"]`).click({ modifiers: ['Control'] });
+  await app.locator(`.row[data-key="${secondKey}"]`).click({ modifiers: ['ControlOrMeta'] });
   await app.locator('.detail [data-action=include-selected]').check();
   const bulkName = app.locator('.detail [data-field=name]');
   assert.equal(await bulkName.getAttribute('placeholder'), '-', '서로 다른 화면 이름은 혼합값 표시');

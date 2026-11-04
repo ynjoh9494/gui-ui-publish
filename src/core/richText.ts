@@ -215,3 +215,14 @@ export function toggleRed(doc: RichParagraph[], a: RichPos, b: RichPos): RichPar
 export function isRed(color: { r: number; g: number; b: number }): boolean {
   return color.r >= 0.5 && color.r > color.g * 1.5 && color.r > color.b * 1.5;
 }
+
+// 「여백」 버튼: 커서가 있는 문단 다음에 「---」 문단을 넣는다. 빈 일반 문단이면 그 문단을 「---」로 바꾼다.
+// 그 뒤에 이어 쓸 빈 문단이 없으면 만들고 커서를 그곳에 둔다.
+export function insertSpacer(doc: RichParagraph[], block: number): { doc: RichParagraph[]; at: RichPos } {
+  const spacer: RichParagraph = { text: '---', depth: null, bold: [] };
+  const empty = doc[block] && !doc[block].text && doc[block].depth === null;
+  const next = empty ? [...doc.slice(0, block), spacer, ...doc.slice(block + 1)] : [...doc.slice(0, block + 1), spacer, ...doc.slice(block + 1)];
+  const at = empty ? block + 1 : block + 2;
+  if (!next[at]) next.push({ text: '', depth: null, bold: [] });
+  return { doc: next, at: { block: at, offset: 0 } };
+}

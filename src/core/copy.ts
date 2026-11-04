@@ -359,7 +359,7 @@ export const COPY = {
   // 텍스트 편집 탭(UI Flipbook) — src/ui/textEditor.ts
   uiApp302: "플립북 목록",
   uiApp303: "텍스트 편집기",
-  uiApp304: "Tab/Shift+Tab: 목록 깊이 · Ctrl+B: 굵게",
+  uiApp304: "Tab/Shift+Tab: 목록 깊이 · Ctrl+B: 굵게 · ---: 여백",
   uiApp305: "선택 영역 불러오기",
   uiApp306: "선택 영역에 적용",
   uiApp307: "플립북, 텍스트 또는 프레임 선택",
@@ -372,16 +372,43 @@ export const COPY = {
   fbPageTitle: "Page title",
   fbScreenId: "Screen ID",
   fbIdentitySave: "적용하기",
+  // 플립북 상세의 Description 영역과 맨 아래 「모두 적용하기」 줄(2026-11-04)
+  fbDescription: "Description",
+  fbDescriptionLoading: "Description을 불러오는 중…",
+  pendingNew: "새 플립북",
+  pendingEdited: "수정",
+  applyAll: "모두 적용하기",
+  applyAllCancel: "전체 취소",
+  applyAllRunning: "적용 중…",
+  rowStateNew: "새 플립북",
+  rowStateEdited: "수정 중",
+  // 「화면 선택」 머리의 우클릭 안내(2026-11-04 사용자 요청)
+  createRightClickHint: "우클릭: 그 화면 하나로 새 플립북 추가",
   fbChapterAuto: "Screen ID의 Chapter 코드에 따라 자동 결정",
   fbIdPlaceholder: "<기기>_<챕터>_POLICY",
   fbHistory: "히스토리",
   uiTextRed: "빨간 글씨",
+  // 편집기 서식 도구(2026-11-04): 기본 버튼 오른쪽에 접어 두고 펼치면 오른쪽으로 나온다.
+  textSpacer: "여백",
+  textSpacerHint: "여백 넣기 (---)",
+  textLayout: "서식",
+  textGap: "Gap",
+  textPadding: "Padding",
+  textPaddingTop: "위",
+  textPaddingRight: "오른쪽",
+  textPaddingBottom: "아래",
+  textPaddingLeft: "왼쪽",
+  textFontSize: "글자 크기",
+  textLetterSpacing: "자간",
+  textLineHeight: "행간",
+  textListSpacing: "List Spacing",
+  textSpacerHeight: "여백 높이",
   uiApp309: "굵게",
   uiApp310: "목록",
   // 새 플립북 오른쪽 영역(2026-10-22 사용자 요청)
   uiApp311: "플립북 편집",
   uiApp312: "제목",
-  uiApp313: "만들기 전까지 저장 안 함 · 드래그 / Alt+↑↓: 자리 이동",
+  uiApp313: "모두 적용하기 전까지 저장 안 함 · 드래그 / Alt+↑↓: 자리 이동",
   uiApp314: "더블클릭하거나 연필을 눌러 제목을 고칩니다.",
   // 기존 플립북 옮기기(2026-10-22 사용자 요청)
   uiApp315: "옮긴 플립북",
@@ -392,8 +419,8 @@ export const COPY = {
   uiApp320: "반영하지 않음: 기존 플립북은 원래 순서로 돌아감",
   uiApp321: "반영하지 않음",
   uiApp322: "반영함",
-  uiApp323: "만들기 취소",
-  uiApp324: "만들기 전 새 플립북을 모두 지우고, 옮긴 플립북은 원래 순서로 되돌립니다.",
+  uiApp323: "전체 취소",
+  uiApp324: "만들기 전 새 플립북을 모두 지우고, 옮긴 플립북은 원래 순서로, 고친 플립북은 고치기 전 내용으로 되돌립니다.",
   uiApp325: "계속 편집",
   uiApp326: "모두 취소",
   // 텍스트 편집 대상(2026-10-22 사용자 요청)
@@ -846,6 +873,10 @@ export const COPY = {
   controller119: '플립북 제목을 바꿨습니다:',
   controller139: '개 화면의 배포를 취소했습니다.',
   controller120: "텍스트 적용 중",
+  // 「적용하기」·「모두 적용하기」(2026-11-04): 기존 플립북 수정 반영
+  flipbookApplying: "플립북 수정 반영 중",
+  flipbookEditsApplied: "수정한 플립북",
+  flipbookEditsAppliedSuffix: "개를 반영했습니다.",
   controller135: "선택한 Description에 텍스트를 적용했습니다.",
   controller121: "선택한 텍스트 레이어에 텍스트를 적용했습니다.",
   controller140: "선택한 프레임에 텍스트를 추가했습니다.",
@@ -965,6 +996,8 @@ export const COPY = {
   figmaText010: "프레임에서는 불러올 수 없습니다. 플립북이나 텍스트를 선택하세요.",
   // 프레임에 추가할 때 묶음들을 감싸는 오토 레이아웃 프레임의 이름
   figmaText011: "텍스트",
+  // 「---」 줄로 넣는 빈 프레임의 레이어 이름(2026-11-04)
+  figmaText012: "여백",
   // 생성되는 플립북 문구 — src/figma/flipbook.ts
   figmaFlipbook001: '플립북 페이지를 찾을 수 없습니다.', // 37
   figmaFlipbook002: '플립북 템플릿 프레임을 찾을 수 없습니다. 관리에서 다시 지정하세요.', // 49

@@ -6,7 +6,7 @@ import type { CanvasPosition } from './core/screenCode.ts';
 import type { KV } from './core/store.ts';
 import type { FlowPlan, FlowThumb } from './core/flow.ts';
 import type { Actor, FlipbookScale, FlowRecord, GuiThumb, Team } from './core/types.ts';
-import type { SelectionTarget, SelectionWrite } from './core/description.ts';
+import type { SelectionTarget, SelectionWrite, TextLayout } from './core/description.ts';
 import type { RichParagraph } from './core/richText.ts';
 import type { PdfPage, PdfSelection } from './core/pdf.ts';
 import type { ManagedPageInfo, PageInfo, ToUi } from './core/wire.ts';
@@ -97,10 +97,13 @@ export interface Host extends FingerprintReader {
   endDelivery?(): void;
   reveal(nodeId: string, isLatest: () => boolean): Promise<boolean>;
   // 텍스트 편집: Description을 고르면 본문 슬롯의 텍스트 전체를 읽고 쓰며, 아니면 고른 텍스트 레이어 하나를 읽고 쓴다.
-  readSelection(): RichParagraph[];
+  readSelection(): { paragraphs: RichParagraph[]; layout?: TextLayout };
   // 지금 선택에서 불러오기·적용할 대상(플립북의 Description, 텍스트 레이어 하나, 없음, 오류)
   selectionTarget?(): SelectionTarget;
-  writeSelection(paragraphs: RichParagraph[]): Promise<SelectionWrite>;
+  writeSelection(paragraphs: RichParagraph[], layout?: TextLayout): Promise<SelectionWrite>;
+  // 플립북 상세의 Description 영역: 플립북 프레임의 Description 본문과 서식을 읽고 쓴다. 선택은 바꾸지 않는다.
+  readFlipbookDescription(item: { flipbookId: string; pageId: string; nodeId?: string }): Promise<{ paragraphs: RichParagraph[]; layout: TextLayout }>;
+  writeFlipbookDescription(item: { flipbookId: string; pageId: string; nodeId?: string }, paragraphs: RichParagraph[], layout: TextLayout): Promise<void>;
   // 플로우: 지금 보고 있는 페이지에 그룹을 만든다. notes: 썸네일을 찾지 못한 화면 등 알릴 내용
   createFlow?(plan: FlowPlan): Promise<{ nodeId: string; pageId: string; notes: string[] }>;
   // 다시 배포된 화면의 썸네일만 바꾼다. 플로우 그룹을 찾지 못하면 null

@@ -64,7 +64,8 @@ flowchart LR
 | `src/ui/pasteView.ts`, `trackListView.ts` | UI Flipbook GUI 붙이기 탭(카테고리·목록/그리드·기본/작게, 누르기는 `pasteGui`, 창 밖에 끌어 놓기는 `pluginDrop` → 본체 `figma.on('drop')`)과 화면별 추적 목록 팝업(화면·플로우 경로, 누르면 `revealTrack`·`revealFlow`) |
 | `src/ui/pdfView.ts` | UI Flipbook PDF 저장 탭(선택한 프레임 수, 저장·취소 버튼)과 받은 JPG를 pdf-lib로 한 쪽에 한 장씩 넣은 PDF로 묶어 내려받기 |
 | `src/ui/html.ts` | UI의 HTML 문자열에 넣는 값의 이스케이프(`esc`). UI 모듈이 함께 쓴다 |
-| `src/ui/textEditor.ts` | UI Flipbook 텍스트 편집 탭의 서식 편집기(contenteditable). 글자 입력은 브라우저, 구조 변경·되돌리기는 core 편집 동작으로 처리 |
+| `src/ui/richEditor.ts` | 서식 편집기(contenteditable)와 서식 도구(Gap·Padding·글자 서식·여백 높이). 글자 입력은 브라우저, 구조 변경·되돌리기는 core 편집 동작으로 처리. 텍스트 편집 탭과 플립북 상세의 Description 영역이 각자 하나씩 붙인다 |
+| `src/ui/textEditor.ts` | UI Flipbook 텍스트 편집 탭: 대상 표시와 불러오기·적용(편집기는 richEditor). 나중에 없앤다 |
 | `src/ui/demo.ts`, `tutorial.ts`, `preview.ts` | 가짜 Figma 환경(`Host`), 튜토리얼의 예시 화면 조작과 말풍선, 브라우저 미리보기 도구 |
 
 의존성의 중심은 `core`다. `Controller`는 코어 함수를 호출하고 환경 작업을 `Host`에 맡긴다. Figma API를 쓰는 새 기능은 `figma` 어댑터에, 저장 기록의 규칙은 `core`에 두는 것이 기존 경계와 맞는다.

@@ -1,16 +1,19 @@
 import { COPY } from '../core/copy.ts';
-import type { SelectionTarget, SelectionWrite } from '../core/description.ts';
+import { cloneLayout, DEFAULT_TEXT_LAYOUT, isSpacer, SPACER_TEXT, type SelectionTarget, type SelectionWrite, type TextLayout } from '../core/description.ts';
 import type { RichParagraph } from '../core/richText.ts';
 import { PART_KEY } from '../core/templateParts.ts';
 import { FLIPBOOK_KEY } from './flipbook.ts';
-import { applyRichText, BOLD_STYLE, readRichText, textFonts, type TextFonts } from './richText.ts';
+import { applyRichText, BOLD_STYLE, readRichText, readTextLayout, textFonts, type TextFonts } from './richText.ts';
 import { DESCRIPTION_AREA, GUI_AREA, NS, linksOf, markedPart } from './template.ts';
 
 // 굵은 제목 줄마다 만든 제목·본문 묶음 표식. 레이어 하나로 넣었던 본문(OLD_BODY_MARKER)도 불러오기에서 읽는다.
 const GROUP_MARKER = 'guiUiPublishDescriptionGroup';
 const OLD_BODY_MARKER = 'guiUiPublishDescriptionBody';
+// 「---」 줄로 넣은 여백(빈 프레임) 표식. 불러오면 다시 「---」 줄이 된다.
+const SPACER_MARKER = 'guiUiPublishDescriptionSpacer';
 // 플립북 밖에서 고른 프레임에 넣는, 묶음들을 감싼 오토 레이아웃 프레임(세로, 왼쪽 위 정렬)의 표식과 간격·여백
 const TEXT_FRAME_MARKER = 'guiUiPublishTextFrame';
+// 서식 값을 받지 않았을 때(이전 호출)만 쓰는 값이다. 편집기는 서식 도구 값을 넘긴다.
 const TEXT_FRAME = { itemSpacing: 12, paddingLeft: 12, paddingRight: 12, paddingTop: 8, paddingBottom: 16 };
 
 const isDescription = (node: BaseNode): boolean =>
@@ -87,6 +90,13 @@ function selectedDescription(): Found | null {
   return found[0];
 }
 
+// 목록에서 고른 플립북 프레임의 Description(편집기의 Description 영역, 2026-11-04 사용자 요청). 찾지 못하면 오류다.
+export function flipbookDescriptionRoot(frame: SceneNode): SceneNode {
+  const found = descriptionOf(frame);
+  if (!found) throw new Error(COPY.figmaText006);
+  return found.root;
+}
+
 export function selectedDescriptionRoot(): SceneNode | null {
   return selectedDescription()?.root ?? null;
 }
@@ -131,42 +141,58 @@ function isHeading(p: RichParagraph): boolean {
 }
 
 interface DescriptionGroup { title: RichParagraph | null; body: RichParagraph[] }
+type DescriptionItem = { kind: 'group'; group: DescriptionGroup } | { kind: 'spacer' };
 
 // A fully bold standalone line is an explicit grouping mark supplied by the editor.
 // Its words are never compared with Policy, Navigation, numbered items, or layer names.
-function splitGroups(doc: RichParagraph[]): DescriptionGroup[] {
-  const groups: DescriptionGroup[] = [];
+// 「---」 줄은 묶음을 끊고 그 자리에 여백을 둔다(2026-11-04 사용자 요청: 자동 여백 15 대신).
+function splitItems(doc: RichParagraph[]): DescriptionItem[] {
+  const items: DescriptionItem[] = [];
   let current: DescriptionGroup = { title: null, body: [] };
+  const flush = () => {
+    while (current.body[current.body.length - 1]?.text === '') current.body.pop();
+    while (current.body[0]?.text === '') current.body.shift();
+    if (current.title || current.body.some(p => p.text)) items.push({ kind: 'group', group: current });
+  };
   for (const paragraph of doc) {
-    if (isHeading(paragraph)) {
-      while (current.body[current.body.length - 1]?.text === '') current.body.pop();
-      if (current.title || current.body.some(p => p.text)) groups.push(current);
+    if (isSpacer(paragraph)) {
+      flush();
+      items.push({ kind: 'spacer' });
+      current = { title: null, body: [] };
+    } else if (isHeading(paragraph)) {
+      flush();
       current = { title: paragraph, body: [] };
     } else current.body.push(paragraph);
   }
-  while (current.body[current.body.length - 1]?.text === '') current.body.pop();
-  if (current.title || current.body.some(p => p.text)) groups.push(current);
-  for (const group of groups) while (group.body[0]?.text === '') group.body.shift();
-  return groups;
+  flush();
+  return items;
 }
 
+const isGroup = (node: SceneNode): node is FrameNode => node.type === 'FRAME' && node.visible && node.getPluginData(GROUP_MARKER) === '1';
+const isSpacerFrame = (node: SceneNode): node is FrameNode => node.type === 'FRAME' && node.visible && node.getPluginData(SPACER_MARKER) === '1';
+
 function managedGroups(area: SlotNode | FrameNode): FrameNode[] {
-  return area.children.filter((node): node is FrameNode =>
-    node.type === 'FRAME' && node.visible && node.getPluginData(GROUP_MARKER) === '1');
+  return area.children.filter(isGroup);
+}
+function managedItems(area: SlotNode | FrameNode): FrameNode[] {
+  return area.children.filter((node): node is FrameNode => isGroup(node) || isSpacerFrame(node));
 }
 
 export function readDescription(root: SceneNode): RichParagraph[] {
   const area = bodyArea(root);
-  const groups = managedGroups(area);
-  if (groups.length) {
+  const items = managedItems(area);
+  if (items.length) {
     const result: RichParagraph[] = [];
-    for (const group of groups) {
-      const texts = group.children.filter((node): node is TextNode => node.type === 'TEXT' && node.visible);
-      if (result.length) result.push(blank());
-      for (const node of texts) {
-        if (result.length && node !== texts[0]) result.push(blank());
+    let afterSpacer = true;
+    for (const item of items) {
+      if (item.getPluginData(SPACER_MARKER) === '1') { result.push({ text: SPACER_TEXT, depth: null, bold: [] }); afterSpacer = true; continue; }
+      const texts = item.children.filter((node): node is TextNode => node.type === 'TEXT' && node.visible);
+      if (!afterSpacer) result.push(blank());
+      afterSpacer = false;
+      texts.forEach((node, i) => {
+        if (i) result.push(blank());
         result.push(...readRichText(node));
-      }
+      });
     }
     return result;
   }
@@ -185,15 +211,36 @@ export function readDescription(root: SceneNode): RichParagraph[] {
   return result;
 }
 
+// 담는 칸(본문 칸이나 감싼 프레임)과 그 안 글자에서 편집기 서식 도구 값을 읽는다. 읽지 못한 값은 기본값이다.
+function containerLayout(container: SlotNode | FrameNode): TextLayout {
+  const layout = cloneLayout(DEFAULT_TEXT_LAYOUT);
+  if (container.layoutMode !== 'NONE') {
+    layout.gap = container.itemSpacing;
+    layout.padding = [container.paddingTop, container.paddingRight, container.paddingBottom, container.paddingLeft];
+  }
+  const texts = container.findAllWithCriteria({ types: ['TEXT'] }).filter(node => isShown(node, container) && node.characters.length > 0);
+  const plain = texts.find(node => node.getStyledTextSegments(['fontName']).some(s => !BOLD_STYLE.test(s.fontName.style))) ?? texts[0];
+  if (plain) Object.assign(layout, readTextLayout(plain));
+  const spacer = container.children.find(isSpacerFrame);
+  if (spacer) layout.spacer = spacer.height;
+  return layout;
+}
+
+export function readDescriptionLayout(root: SceneNode): TextLayout {
+  return containerLayout(bodyArea(root));
+}
+
+// 텍스트 편집 탭의 불러오기: 텍스트 레이어 하나의 글자 서식. 간격·여백은 기본값이다.
+export function readTextNodeLayout(node: TextNode): TextLayout {
+  return { ...cloneLayout(DEFAULT_TEXT_LAYOUT), ...readTextLayout(node) };
+}
+
 // 새 제목·본문 레이어의 서식. 슬롯에 있던 텍스트(템플릿의 예시 문구나 이전에 적용한 묶음)의 첫 글자 서식을 이어받는다.
 interface TextStyle { font: FontName; fontSize: number; lineHeight: LineHeight; letterSpacing: LetterSpacing | null; fills: Paint[] }
 interface DescriptionStyle { text: TextStyle | null; itemSpacing: number }
 // 슬롯에 텍스트나 이전 묶음이 없을 때만 쓰는 구현 기본값(BEHAVIOR.md 「텍스트 편집」, 확인 필요).
 const DEFAULT_TEXT = { fontSize: 16, lineHeight: { unit: 'PERCENT', value: 130 } as LineHeight, fills: [{ type: 'SOLID', color: { r: 0.12, g: 0.12, b: 0.12 } }] as Paint[] };
 const DEFAULT_ITEM_SPACING = 3;
-// 플립북 템플릿처럼 첫 묶음 아래와 마지막 묶음 위에 두는 여백(템플릿의 Policy 아래·Navigation 위, 2026-10-26 사용자 결정).
-// 제목 문구는 보지 않고 자리로만 정하며, 묶음이 하나면 두지 않는다.
-const EDGE_GROUP_PADDING = 15;
 
 function isShown(node: BaseNode, area: BaseNode): boolean {
   for (let current: BaseNode | null = node; current && current.id !== area.id; current = current.parent) {
@@ -260,43 +307,67 @@ async function makeTemplate(width: number, style: DescriptionStyle): Promise<{ t
   }
 }
 
-function makeGroup(template: FrameNode, group: DescriptionGroup, fonts: TextFonts): FrameNode {
+function makeGroup(template: FrameNode, group: DescriptionGroup, fonts: TextFonts, layout?: TextLayout): FrameNode {
   const frame = template.clone();
   frame.name = group.title?.text ?? COPY.figmaText008;
   frame.setPluginData(GROUP_MARKER, '1');
   const [title, body] = frame.children as TextNode[];
-  if (group.title) { title.name = group.title.text; applyRichText(title, [group.title], fonts); } else title.remove();
-  if (group.body.length) { body.name = COPY.figmaText008; applyRichText(body, group.body, fonts); } else body.remove();
+  if (group.title) { title.name = group.title.text; applyRichText(title, [group.title], fonts, layout); } else title.remove();
+  if (group.body.length) { body.name = COPY.figmaText008; applyRichText(body, group.body, fonts, layout); } else body.remove();
   return frame;
 }
 
-// 묶음을 차례로 넣고 폭을 채운다. 묶음이 둘 이상이면 첫 묶음 아래와 마지막 묶음 위에 여백을 둔다.
-function placeGroups(container: SlotNode | FrameNode, groups: FrameNode[]): void {
-  if (groups.length > 1) {
-    groups[0].paddingBottom = EDGE_GROUP_PADDING;
-    groups[groups.length - 1].paddingTop = EDGE_GROUP_PADDING;
-  }
-  for (const group of groups) {
-    container.appendChild(group);
-    group.layoutSizingHorizontal = 'FILL';
-    for (const node of group.children) if (node.type === 'TEXT') node.layoutSizingHorizontal = 'FILL';
+// 「---」 여백: 가로 채움, 높이 고정의 빈 프레임(선 없음)
+function makeSpacer(width: number, height: number): FrameNode {
+  const frame = figma.createFrame();
+  frame.name = COPY.figmaText012;
+  frame.setPluginData(SPACER_MARKER, '1');
+  frame.resize(width, Math.max(0.01, height));
+  frame.fills = [];
+  frame.clipsContent = false;
+  return frame;
+}
+
+function makeItems(items: DescriptionItem[], template: FrameNode, fonts: TextFonts, width: number, layout: TextLayout | undefined, out: FrameNode[]): void {
+  for (const item of items) out.push(item.kind === 'spacer' ? makeSpacer(width, layout?.spacer ?? DEFAULT_TEXT_LAYOUT.spacer) : makeGroup(template, item.group, fonts, layout));
+}
+
+// 묶음·여백을 차례로 넣고 폭을 채운다. 여백은 높이를 고정한다.
+function placeItems(container: SlotNode | FrameNode, items: FrameNode[]): void {
+  for (const item of items) {
+    container.appendChild(item);
+    item.layoutSizingHorizontal = 'FILL';
+    if (item.getPluginData(SPACER_MARKER) === '1') item.layoutSizingVertical = 'FIXED';
+    for (const node of item.children) if (node.type === 'TEXT') node.layoutSizingHorizontal = 'FILL';
   }
 }
 
-export async function fillDescription(root: SceneNode, doc: RichParagraph[]): Promise<SelectionWrite> {
+// 서식 도구의 간격·여백을 오토 레이아웃 칸에 쓴다.
+function applySpacing(container: SlotNode | FrameNode, layout: TextLayout): void {
+  if (container.layoutMode === 'NONE') return;
+  container.itemSpacing = layout.gap;
+  [container.paddingTop, container.paddingRight, container.paddingBottom, container.paddingLeft] = layout.padding;
+}
+
+// select: 텍스트 편집 탭에서 적용하면 적용한 Description을 고른다. 플립북 목록의 Description 영역에서는 선택을 바꾸지 않는다.
+export async function fillDescription(root: SceneNode, doc: RichParagraph[], layout?: TextLayout, select = true): Promise<SelectionWrite> {
   const area = bodyArea(root);
-  const width = Math.max(1, area.width - area.paddingLeft - area.paddingRight);
+  const before = { itemSpacing: area.itemSpacing, padding: [area.paddingTop, area.paddingRight, area.paddingBottom, area.paddingLeft] as TextLayout['padding'] };
+  const padding = layout && area.layoutMode !== 'NONE' ? layout.padding : before.padding;
+  const width = Math.max(1, area.width - padding[1] - padding[3]);
   const { template, fonts } = await makeTemplate(width, styleOf(area));
   const prepared: FrameNode[] = [];
   try {
-    for (const group of splitGroups(doc)) prepared.push(makeGroup(template, group, fonts));
+    makeItems(splitItems(doc), template, fonts, width, layout, prepared);
     const old = [...area.children];
-    placeGroups(area, prepared);
+    if (layout) applySpacing(area, layout);
+    placeItems(area, prepared);
     for (const node of old) if (!node.removed) node.remove();
-    figma.currentPage.selection = [root];
+    if (select) figma.currentPage.selection = [root];
     return { kind: 'description' };
   } catch (error) {
-    for (const group of prepared) if (!group.removed) group.remove();
+    for (const item of prepared) if (!item.removed) item.remove();
+    if (layout && area.layoutMode !== 'NONE') { area.itemSpacing = before.itemSpacing; [area.paddingTop, area.paddingRight, area.paddingBottom, area.paddingLeft] = before.padding; }
     throw error;
   } finally {
     template.remove();
@@ -306,14 +377,19 @@ export async function fillDescription(root: SceneNode, doc: RichParagraph[]): Pr
 // 플립북 밖에서 고른 프레임에 Description과 같은 제목·본문 묶음을 오토 레이아웃 프레임 하나로 감싸 넣는다.
 // 적용할 때마다 새로 추가하고 이미 넣은 것은 그대로 둔다. 감싸는 프레임은 고른 프레임 폭에 맞춰 맨 아래에 놓고
 // 고른 프레임 크기는 바꾸지 않는다. 서식은 그 프레임에 이전에 넣은 묶음이 있으면 마지막 것을, 없으면 Description 기본값을 쓴다.
-export async function addTextFrame(frame: FrameNode, doc: RichParagraph[]): Promise<SelectionWrite> {
+// layout이 있으면 감싼 프레임의 간격·여백과 글자 서식은 그 값이다.
+export async function addTextFrame(frame: FrameNode, doc: RichParagraph[], layout?: TextLayout): Promise<SelectionWrite> {
   const auto = frame.layoutMode !== 'NONE';
   // 폭을 내용에 맞추는(Hug) 오토 레이아웃 프레임에서는 Fill로 두면 그 프레임이 고정 폭으로 바뀌므로 지금 안쪽 폭으로 고정한다.
   const fill = auto && frame.layoutSizingHorizontal !== 'HUG';
   const width = Math.max(1, auto ? frame.width - frame.paddingLeft - frame.paddingRight : frame.width);
   const previous = frame.children.filter((node): node is FrameNode => node.type === 'FRAME' && node.getPluginData(TEXT_FRAME_MARKER) === '1').pop();
   const style = previous ? styleOf(previous) : { text: null, itemSpacing: DEFAULT_ITEM_SPACING };
-  const { template, fonts } = await makeTemplate(Math.max(1, width - TEXT_FRAME.paddingLeft - TEXT_FRAME.paddingRight), style);
+  const spacing = layout
+    ? { itemSpacing: layout.gap, paddingTop: layout.padding[0], paddingRight: layout.padding[1], paddingBottom: layout.padding[2], paddingLeft: layout.padding[3] }
+    : TEXT_FRAME;
+  const inner = Math.max(1, width - spacing.paddingLeft - spacing.paddingRight);
+  const { template, fonts } = await makeTemplate(inner, style);
   const wrapper = figma.createFrame();
   const prepared: FrameNode[] = [];
   try {
@@ -325,15 +401,15 @@ export async function addTextFrame(frame: FrameNode, doc: RichParagraph[]): Prom
     wrapper.counterAxisSizingMode = 'FIXED';
     wrapper.primaryAxisAlignItems = 'MIN';
     wrapper.counterAxisAlignItems = 'MIN';
-    wrapper.itemSpacing = TEXT_FRAME.itemSpacing;
-    wrapper.paddingLeft = TEXT_FRAME.paddingLeft;
-    wrapper.paddingRight = TEXT_FRAME.paddingRight;
-    wrapper.paddingTop = TEXT_FRAME.paddingTop;
-    wrapper.paddingBottom = TEXT_FRAME.paddingBottom;
+    wrapper.itemSpacing = spacing.itemSpacing;
+    wrapper.paddingLeft = spacing.paddingLeft;
+    wrapper.paddingRight = spacing.paddingRight;
+    wrapper.paddingTop = spacing.paddingTop;
+    wrapper.paddingBottom = spacing.paddingBottom;
     wrapper.fills = [];
     wrapper.clipsContent = false;
-    for (const group of splitGroups(doc)) prepared.push(makeGroup(template, group, fonts));
-    placeGroups(wrapper, prepared);
+    makeItems(splitItems(doc), template, fonts, inner, layout, prepared);
+    placeItems(wrapper, prepared);
     // 오토 레이아웃이 아니면 보이는 내용 아래(빈 프레임이면 왼쪽 위)에 놓는다.
     const bottom = Math.max(0, ...frame.children.filter(node => node.visible).map(node => node.y + node.height));
     frame.appendChild(wrapper);
@@ -341,7 +417,7 @@ export async function addTextFrame(frame: FrameNode, doc: RichParagraph[]): Prom
     else if (!auto) { wrapper.x = 0; wrapper.y = bottom; }
     return { kind: 'frame' };
   } catch (error) {
-    for (const group of prepared) if (!group.removed) group.remove();
+    for (const item of prepared) if (!item.removed) item.remove();
     if (!wrapper.removed) wrapper.remove();
     throw error;
   } finally {

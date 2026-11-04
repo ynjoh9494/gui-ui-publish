@@ -9,8 +9,8 @@ import type { Host } from '../host.ts';
 import { ensureDataPage, renderDataPage } from './data.ts';
 import { createFingerprintReader } from './fingerprints.ts';
 import { selectedFlipbooks, markExistingFlipbooks } from './registerFlipbooks.ts';
-import { NS, prepareFlipbookTitle, findFlipbook, flipbookSpots, inspectFlipbooks, listFlipbooks, loadPages, moveFlipbookFrame, syncChapters, syncFlipbook, templateFromSelection, templateIssues, flipbookSession, type FlipbookSession } from './flipbook.ts';
-import { addTextFrame, fillDescription, readDescription, selectedDescriptionRoot, selectedFrame, selectionTarget } from './description.ts';
+import { FLIPBOOK_KEY, NS, prepareFlipbookTitle, findFlipbook, flipbookSpots, inspectFlipbooks, listFlipbooks, loadPages, moveFlipbookFrame, syncChapters, syncFlipbook, templateFromSelection, templateIssues, flipbookSession, type FlipbookSession } from './flipbook.ts';
+import { addTextFrame, fillDescription, flipbookDescriptionRoot, readDescription, readDescriptionLayout, readTextNodeLayout, selectedDescriptionRoot, selectedFrame, selectionTarget } from './description.ts';
 import { createFlow, flowNode, updateFlow } from './flow.ts';
 import { SCREEN_KEY } from './layers.ts';
 import { exportPdfPages, pdfSelection } from './pdf.ts';
@@ -263,19 +263,27 @@ export function figmaHost(mode: Host['mode']): Host {
     selectionTarget,
     readSelection() {
       const root = selectedDescriptionRoot();
-      if (root) return readDescription(root);
+      if (root) return { paragraphs: readDescription(root), layout: readDescriptionLayout(root) };
       // 프레임에는 적용할 때마다 새로 추가하므로 불러올 내용이 정해지지 않는다(BEHAVIOR.md 「확인 필요」).
       if (selectedFrame()) throw new Error(COPY.figmaText010);
-      return readRichText(selectedTextNode());
-    },
-    async writeSelection(paragraphs) {
-      const root = selectedDescriptionRoot();
-      if (root) return fillDescription(root, paragraphs);
-      const frame = selectedFrame();
-      if (frame) return addTextFrame(frame, paragraphs);
       const node = selectedTextNode();
-      await writeRichText(node, paragraphs);
+      return { paragraphs: readRichText(node), layout: readTextNodeLayout(node) };
+    },
+    async writeSelection(paragraphs, layout) {
+      const root = selectedDescriptionRoot();
+      if (root) return fillDescription(root, paragraphs, layout);
+      const frame = selectedFrame();
+      if (frame) return addTextFrame(frame, paragraphs, layout);
+      const node = selectedTextNode();
+      await writeRichText(node, paragraphs, layout);
       return { kind: 'text' };
+    },
+    async readFlipbookDescription(item) {
+      const root = flipbookDescriptionRoot(await flipbookFrame(item));
+      return { paragraphs: readDescription(root), layout: readDescriptionLayout(root) };
+    },
+    async writeFlipbookDescription(item, paragraphs, layout) {
+      await fillDescription(flipbookDescriptionRoot(await flipbookFrame(item)), paragraphs, layout, false);
     },
     createFlow: plan => createFlow(NS, plan),
     updateFlow: (flow, thumbs) => updateFlow(NS, flow, thumbs),
@@ -286,4 +294,12 @@ export function figmaHost(mode: Host['mode']): Host {
       return { pageName, pages: await exportPdfPages(progress) };
     },
   };
+}
+
+// 플립북 프레임: 알려진 노드 ID를 먼저 보고, 없으면 기록된 페이지에서 찾는다.
+async function flipbookFrame(item: { flipbookId: string; pageId: string; nodeId?: string }): Promise<FrameNode> {
+  const known = item.nodeId ? await figma.getNodeByIdAsync(item.nodeId) : null;
+  const frame = known?.type === 'FRAME' && known.getSharedPluginData(NS, FLIPBOOK_KEY) === item.flipbookId ? known : await findFlipbook(NS, item.pageId, item.flipbookId);
+  if (!frame) throw new Error(COPY.figmaFlipbook027);
+  return frame;
 }

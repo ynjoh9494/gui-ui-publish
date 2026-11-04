@@ -281,7 +281,7 @@ const UI_STEPS: Step[] = [
   },
   {
     title: COPY.uiTutorial048, body: COPY.uiTutorial049,
-    spots: d => [d.q('.detail .new-actions')],
+    spots: d => [d.q('.footer .pending-line .new-actions')],
   },
   {
     title: COPY.uiTutorial050, body: COPY.uiTutorial051,

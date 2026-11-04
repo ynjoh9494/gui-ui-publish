@@ -21,7 +21,7 @@ try {
     window.requests = [];
     window.addEventListener('message', e => {
       const m = e.data?.pluginMessage;
-      if (m?.type === 'updateFlipbookIdentity' || m?.type === 'renameFlipbook') { window.requests.push(m); e.stopImmediatePropagation(); }
+      if (m?.type === 'updateFlipbookIdentity' || m?.type === 'renameFlipbook' || m?.type === 'applyFlipbookEdits' || (m?.type === 'flipbookDescription' && !('paragraphs' in m) && !('error' in m))) { window.requests.push(m); e.stopImmediatePropagation(); }
       else if ((m?.type === 'history' && !('rows' in m)) || (m?.type === 'guiScreens' && !('screens' in m))) e.stopImmediatePropagation();
     }, true);
   });
@@ -52,9 +52,33 @@ try {
   await page.locator('[data-input=fb-page-title]').fill('A title without a dash');
   await page.locator('[data-input=fb-screen-id]').fill('ST_LI_POLICY_05');
   assert.equal(await page.locator('[data-identity-frame]').count(), 0, 'no frame-name preview row');
+  // 고르면 Description을 불러온다. 불러온 내용을 고치면 「수정 중」 태그와 맨 아래 줄이 생기고 적용하기에 함께 실린다(2026-11-04).
+  assert.ok(await page.evaluate(() => window.requests.some(r => r.type === 'flipbookDescription' && r.id === 'fb')), 'selecting loads the Description');
+  const layout = { gap: 12, padding: [8, 12, 12, 16], fontSize: 16, letterSpacing: 0, lineHeight: 140, listSpacing: 2, spacer: 3 };
+  await page.evaluate(layout => window.postMessage({ pluginMessage: { type: 'flipbookDescription', id: 'fb', paragraphs: [{ text: 'Policy', depth: null, bold: [{ start: 0, end: 6 }] }, { text: '설명', depth: 0, bold: [] }], layout } }, '*'), layout);
+  const description = page.locator('.detail .fb-description .rich-editor');
+  await description.waitFor();
+  assert.equal(await description.innerText(), 'Policy\n설명');
+  assert.equal(await page.locator('.list .row-state').count(), 1, 'title change already marks the row');
+  await description.click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' 추가');
+  await page.locator('.detail .fb-description [data-rt=layout]').click();
+  assert.equal(await page.locator('.detail .text-layout input').count(), 10, 'Gap, Padding x4, font size, letter spacing, line height, list spacing, spacer');
+  assert.equal(await page.locator('.list .row .row-state.edit-state').innerText(), '수정 중');
+  assert.match(await page.locator('.footer .pending-line').innerText(), /수정 1개/);
+  assert.equal(await page.locator('.footer [data-action=create-submit]').innerText(), '모두 적용하기');
+  mkdirSync('tmp/walkthrough', { recursive: true });
+  await page.locator('#app').screenshot({ path: 'tmp/walkthrough/ui-description-edit.png' });
   await page.locator('[data-action=fb-identity-save]').click();
-  await page.waitForFunction(() => window.requests.at(-1)?.type === 'updateFlipbookIdentity');
-  assert.deepEqual(await page.evaluate(() => window.requests.at(-1)), { type: 'updateFlipbookIdentity', id: 'fb', title: 'A title without a dash', screenId: 'ST_LI_POLICY_05', rev: 1 });
+  await page.waitForFunction(() => window.requests.at(-1)?.type === 'applyFlipbookEdits');
+  const applied = await page.evaluate(() => window.requests.at(-1));
+  assert.deepEqual(applied.edits.map(e => [e.id, e.rev, e.identity]), [['fb', 1, { title: 'A title without a dash', screenId: 'ST_LI_POLICY_05' }]]);
+  assert.equal(applied.edits[0].description.paragraphs.map(p => p.text).join('|'), 'Policy|설명 추가');
+  assert.deepEqual(applied.edits[0].description.layout, layout);
+  assert.equal(applied.create, undefined, 'detail 적용하기 does not create or move flipbooks');
+  await page.evaluate(() => window.postMessage({ pluginMessage: { type: 'flipbookEditsApplied', applied: ['fb'], failed: [], message: 'ok', creating: false } }, '*'));
+  await page.waitForFunction(() => !document.querySelector('.footer .pending-line'));
   await row.locator('.name').dblclick();
   assert.equal(await page.locator('.list [data-input=fb-title]').inputValue(), 'Policy', 'inline editor contains Page title only');
   await page.locator('.list [data-input=fb-title]').fill('Only Page title');

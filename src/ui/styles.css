@@ -413,9 +413,12 @@ button.link.danger { color: var(--danger); }
 .footer-line .primary { margin-left: 0; }
 /* 「플립북 편집」이 없을 때의 하단: 개수와 취소·만들기 */
 .footer-line .footer-actions { display: flex; gap: 8px; margin-left: auto; }
-/* UI Flipbook: 「플립북 편집」이 보이지 않을 때 목록 위 줄에 만들 플립북 수와 버튼(오른쪽) */
-.pending-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; width: 100%; }
-.pending-line .new-actions { display: flex; gap: 6px; margin-left: auto; }
+/* UI Flipbook 맨 아래 줄(2026-11-04): 왼쪽은 비우고 오른쪽에 「새 플립북 N개 · 수정 N개」와 전체 취소·모두 적용하기 */
+.pending-line { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; width: 100%; }
+.pending-line .bad { margin-right: auto; }
+.pending-line .new-actions { display: flex; gap: 6px; }
+/* 모두 적용하기: 주요(파란 배경) 버튼이 아니라 일반 버튼에 파란 글자 */
+button.apply-all { color: var(--brand); }
 /* 플립북: 화면이 수정되었습니다 */
 .review-dot { display: inline-block; flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--danger); }
 .review-dot.none { background: var(--border); }
@@ -483,6 +486,12 @@ button.link.danger { color: var(--danger); }
 .row.new-row .icon-button:hover { color: var(--danger); background: none; }
 /* 새 플립북 행: 이름 바로 오른쪽에 연필(그 행에서 제목 고치기), 행 끝에 X */
 .row.new-row .name { flex: 0 1 auto; }
+/* 새로 만드는·고친 플립북 행의 상태 태그(.chip처럼 연한 배경 + 색 글씨) */
+.row-state { --c: var(--brand); flex: none; font-size: 10px; font-weight: 600; line-height: 1; padding: 2px 4px; border-radius: 4px; color: color-mix(in srgb, var(--c) 88%, #1e1e1e); background: color-mix(in srgb, var(--c) 12%, var(--bg)); white-space: nowrap; }
+.row-state.edit-state { --c: var(--warning); }
+.row:not(.new-row) .row-state { margin-left: auto; }
+/* 「새 플립북」 버튼의 + 아이콘은 파랑 */
+.list-actions [data-action="new-add"] .add-icon { color: var(--brand); }
 .row.new-row [data-action="new-remove"] { margin-left: auto; }
 .row.new-row [data-action="new-edit-title"]:hover, .row.new-row [data-action="new-edit-title"][aria-pressed="true"] { color: var(--text); }
 .row.dragging { opacity: .45; }
@@ -519,10 +528,18 @@ button.link.danger { color: var(--danger); }
 :is(.new-place, .category-field) .field-head .link svg { width: 12px; height: 12px; }
 /* 필드 이름의 흐린 글자색을 버튼이 물려받으면 비활성처럼 보인다. */
 .new-place .addable { margin-top: 2px; color: var(--text); }
+/* 새 플립북: 페이지와 섹션을 한 줄 2열로 둔다(2026-11-04 사용자 요청) */
+.place-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: start; margin: 4px 0; }
+.place-pair > *, .new-place .place-pair .field { min-width: 0; margin: 0; }
+/* 두 열의 이름 줄 높이를 같게 해 입력란 위치를 맞춘다(페이지 쪽에는 관리 링크가 있다) */
+.place-pair .field-head, .place-pair > label { line-height: 18px; }
+.place-pair > label > .addable, .place-pair .field > select { margin-top: 2px; }
+.place-pair .field-head { height: 18px; }
 /* 왼쪽 「화면 선택」, 오른쪽 「선택된 화면」 2열(2026-11-04 사용자 요청). 두 열은 남은 높이를 함께 쓰고 각자 스크롤한다. */
 .create-browser { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; min-height: 0; flex: 1 1 auto; }
 .create-browser section { min-width: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 6px; }
 .create-browser header { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 34px; min-height: 34px; padding: 2px 8px; border-bottom: 1px solid var(--border); flex: none; }
+.create-hint { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .create-bulk-scale { display: flex; align-items: center; gap: 6px; margin: 0 0 0 auto; color: var(--muted); white-space: nowrap; }
 .create-bulk-scale select { width: 63px; height: 24px; padding: 1px 3px; }
 .create-selected-list { flex: 1 1 auto; overflow: auto; min-height: 0; }
@@ -695,9 +712,22 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .texting-mode :is(.toolbar, .list, .pane-divider, .detail, .footer) { display: none; }
 .text-view { grid-column: 1 / -1; grid-row: 2 / 5; min-height: 0; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .text-view > .note { flex: none; margin: 0; }
-.text-tools { flex: none; display: flex; align-items: center; gap: 4px; }
-.text-tools .note { flex: 1; min-width: 0; margin: 0 0 0 6px; }
+.rich-block { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.text-view .rich-block { flex: 1; }
+/* 기본 버튼(굵게·빨간 글씨·목록·여백) 오른쪽에 서식 도구 버튼, 펼치면 그 오른쪽으로 칸이 나온다 */
+.text-tools { flex: none; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.text-tools-divider { width: 1px; height: 16px; background: var(--border); margin: 0 2px; }
+.text-layout { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: 4px; }
+.text-layout[hidden] { display: none; }
+.layout-field, .layout-group { display: inline-flex; align-items: center; gap: 3px; margin: 0; color: var(--muted); white-space: nowrap; }
+.layout-group .layout-field { gap: 0; }
+.layout-field input { width: 44px; padding: 2px 4px; text-align: right; appearance: textfield; -moz-appearance: textfield; }
+.layout-field input::-webkit-inner-spin-button, .layout-field input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.layout-group .layout-field input { width: 34px; }
+.layout-field .unit { color: var(--muted); }
+.rt-p.rt-spacer { color: var(--muted); font-size: 11px; letter-spacing: 2px; background: linear-gradient(var(--bg2), var(--bg2)) no-repeat center / 100% 60%; }
 .text-tool { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 26px; padding: 0; }
+.text-view .text-hint { flex: none; margin: 0; }
 .text-tool[aria-pressed="true"] { background: var(--selected); border-color: var(--brand); color: var(--brand); }
 /* 편집기: 문단마다 div 하나. 목록 문단은 단계마다 20px 들여 글머리표를 그린다(Figma 목록처럼 모든 단계가 •). */
 .rich-editor { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); font-size: 13px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; outline: none; cursor: text; }
@@ -848,6 +878,11 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .identity-pair > label { min-width: 0; }
 /* 화면 N개와는 아래 영역의 구분선(.fb-foot)으로 나눈다(2026-11-04). */
 .fb-identity { padding-bottom: 6px; }
+/* 기존 플립북 상세의 Description 영역(2026-11-04): ID·Chapter 아래, 고르면 캔버스 내용을 불러온 편집기 */
+.fb-description { display: flex; flex-direction: column; gap: 4px; padding-bottom: 8px; }
+.fb-description-head { color: var(--muted); }
+.fb-description .rich-editor { min-height: 160px; max-height: 420px; resize: vertical; }
+.fb-desc-body > .note { margin: 0; }
 /* 화면 목록 접기: 제목 줄 오른쪽에 확인이 필요한 화면의 빨간 점 */
 details.fb-fold > summary .review-dot { margin-left: 2px; }
 .fb-identity [data-identity-chapter], .new-place [data-identity-chapter] { background: var(--bg); color: var(--muted); }
