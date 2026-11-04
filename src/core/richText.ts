@@ -5,11 +5,11 @@
 
 export interface BoldRange { start: number; end: number }
 // depth: 목록 단계(0이 최상위), 목록이 아니면 null. bold: text 안의 굵은 글씨 범위
-export interface RichParagraph { text: string; depth: number | null; list?: 'ORDERED' | 'UNORDERED'; bold: BoldRange[]; red?: BoldRange[] }
+export interface RichParagraph { text: string; depth: number | null; list?: 'ORDERED' | 'UNORDERED'; number?: number; bold: BoldRange[]; red?: BoldRange[] }
 
 // 다른 곳에서 붙여 넣은 Markdown도 읽도록 공백 2칸도 한 단계로 본다.
 const BULLET = /^( *)[-*+][ \t]+(.*\S.*)$/;
-const NUMBERED = /^( *)\d+[.)][ \t]+(.*\S.*)$/;
+const NUMBERED = /^( *)(\d+)[.)][ \t]+(.*\S.*)$/;
 
 // Explicit markers keep color on the plain-text clipboard alongside bold.
 function inlineBold(source: string): { text: string; bold: BoldRange[]; red?: BoldRange[] } {
@@ -59,7 +59,10 @@ export function parseRichText(source: string): RichParagraph[] {
       if (heading.depth === null && heading.bold.some(range => range.start === 0 && range.end === heading.text.length)) out.length = last + 1;
     }
     const depth = Math.min(Math.floor(item[1].length / 2), previous === null ? 0 : previous + 1);
-    out.push({ ...inlineBold(item[2]), depth, ...(numbered ? { list: 'ORDERED' as const } : {}) });
+    const content = inlineBold(numbered ? numbered[3] : item[2]);
+    const titleNumber = numbered && depth === 0 && content.bold.some(range => range.start === 0 && range.end === content.text.length)
+      ? { number: Number(numbered[2]) } : {};
+    out.push({ ...content, depth, ...(numbered ? { list: 'ORDERED' as const, ...titleNumber } : {}) });
     previous = depth;
   }
   return out;
@@ -98,7 +101,7 @@ export function serializeRichText(paragraphs: RichParagraph[]): string {
     }
     if (p.depth === null || !p.text.trim()) { numbers.length = 0; return body; }
     numbers.length = p.depth + 1;
-    if (p.list === 'ORDERED') numbers[p.depth] = (numbers[p.depth] ?? 0) + 1;
+    if (p.list === 'ORDERED') numbers[p.depth] = p.number ?? (numbers[p.depth] ?? 0) + 1;
     else numbers[p.depth] = 0;
     return `${'\t'.repeat(p.depth)}${p.list === 'ORDERED' ? `${numbers[p.depth]}.` : '-'} ${body}`;
   }).join('\n');
@@ -130,14 +133,14 @@ function mergeBold(bold: BoldRange[]): BoldRange[] {
 }
 
 export function sliceParagraph(p: RichParagraph, start: number, end = p.text.length): RichParagraph {
-  return { text: p.text.slice(start, end), depth: p.depth, ...(p.list ? { list: p.list } : {}), bold: clipBold(p.bold, start, end), ...(p.red ? { red: clipBold(p.red, start, end) } : {}) };
+  return { text: p.text.slice(start, end), depth: p.depth, ...(p.list ? { list: p.list } : {}), ...(p.number !== undefined ? { number: p.number } : {}), bold: clipBold(p.bold, start, end), ...(p.red ? { red: clipBold(p.red, start, end) } : {}) };
 }
 
 // 앞 문단의 목록 단계를 따른다.
 function joinParagraphs(a: RichParagraph, b: RichParagraph): RichParagraph {
   const shift = a.text.length;
   const red = a.red || b.red ? { red: mergeBold([...(a.red ?? []), ...(b.red ?? []).map(r => ({ start: r.start + shift, end: r.end + shift }))]) } : {};
-  return { text: a.text + b.text, depth: a.depth, ...(a.list ? { list: a.list } : {}), ...red, bold: mergeBold([...a.bold, ...b.bold.map(r => ({ start: r.start + shift, end: r.end + shift }))]) };
+  return { text: a.text + b.text, depth: a.depth, ...(a.list ? { list: a.list } : {}), ...(a.number !== undefined ? { number: a.number } : {}), ...red, bold: mergeBold([...a.bold, ...b.bold.map(r => ({ start: r.start + shift, end: r.end + shift }))]) };
 }
 
 // 고른 범위를 지운다. 여러 문단에 걸치면 첫 문단에 마지막 문단의 나머지를 붙인다.
@@ -170,6 +173,7 @@ export function splitParagraph(doc: RichParagraph[], a: RichPos, b: RichPos): { 
   const current = removed.doc[at.block];
   if (current.depth !== null && !current.text) return { doc: setDepth(removed.doc, at.block, at.block, () => null), at };
   const parts = [sliceParagraph(current, 0, at.offset), sliceParagraph(current, at.offset)];
+  delete parts[1].number;
   return { doc: [...removed.doc.slice(0, at.block), ...parts, ...removed.doc.slice(at.block + 1)], at: { block: at.block + 1, offset: 0 } };
 }
 
@@ -188,7 +192,7 @@ export function setDepth(doc: RichParagraph[], from: number, to: number, next: (
   for (let i = Math.min(from, to); i <= hi; i++) {
     const wanted = next(out[i].depth);
     out[i].depth = wanted === null ? null : Math.max(0, Math.min(wanted, limit(i), MAX_DEPTH));
-    if (wanted === null) delete out[i].list;
+    if (wanted === null) { delete out[i].list; delete out[i].number; }
   }
   // 앞 항목을 얕게 하거나 글머리표를 떼면 바로 뒤의 하위 항목이 단계를 건너뛰게 되므로, 이어지는 목록 항목도 같은 규칙으로 맞춘다.
   for (let i = hi + 1; i < out.length && out[i].depth !== null; i++) out[i].depth = Math.min(out[i].depth!, limit(i));

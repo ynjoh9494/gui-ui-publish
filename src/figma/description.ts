@@ -9,9 +9,11 @@ import { DESCRIPTION_AREA, GUI_AREA, NS, linksOf, markedPart } from './template.
 // 굵은 제목 줄마다 만든 제목·본문 묶음 표식. 레이어 하나로 넣었던 본문(OLD_BODY_MARKER)도 불러오기에서 읽는다.
 const GROUP_MARKER = 'guiUiPublishDescriptionGroup';
 const OLD_BODY_MARKER = 'guiUiPublishDescriptionBody';
-// 「---」 줄로 넣은 여백(빈 프레임) 표식. 불러오면 다시 「---」 줄이 된다.
+// 이전 버전의 여백 프레임 표식. 새 내용은 다음 묶음의 Top Padding과 표식으로만 저장한다.
 const SPACER_MARKER = 'guiUiPublishDescriptionSpacer';
 const SPACER_HEIGHT = 'guiUiPublishDescriptionSpacerHeight';
+const SPACER_COUNT = 'guiUiPublishDescriptionSpacerCount';
+const TRAILING_SPACER_COUNT = 'guiUiPublishDescriptionTrailingSpacerCount';
 const ITEM_TOP_PADDING = 15;
 // 플립북 밖에서 고른 프레임에 넣는, 묶음들을 감싼 오토 레이아웃 프레임(세로, 왼쪽 위 정렬)의 표식과 간격·여백
 const TEXT_FRAME_MARKER = 'guiUiPublishTextFrame';
@@ -139,7 +141,22 @@ function bodyArea(root: SceneNode): SlotNode | FrameNode {
 function blank(): RichParagraph { return { text: '', depth: null, bold: [] }; }
 
 function isHeading(p: RichParagraph): boolean {
-  return p.depth === null && !!p.text.trim() && p.bold.some(range => range.start === 0 && range.end === p.text.length);
+  return (p.depth === null || (p.depth === 0 && p.list === 'ORDERED'))
+    && !!p.text.trim() && p.bold.some(range => range.start === 0 && range.end === p.text.length);
+}
+
+// Figma의 번호 목록은 글자에 번호가 없고, 분리된 제목 레이어마다 1부터 다시 시작한다.
+// Description 제목으로 읽을 때 번호를 글자로 고정해 제목의 의미와 표시를 함께 보존한다.
+function normalizeHeadings(doc: RichParagraph[]): RichParagraph[] {
+  let number = 0;
+  return doc.map(p => {
+    if (!isHeading(p) || p.list !== 'ORDERED') return p;
+    number = p.number ?? number + 1;
+    const prefix = `${number}. `;
+    return { ...p, text: prefix + p.text, depth: null, list: undefined, number: undefined,
+      bold: [{ start: 0, end: prefix.length + p.text.length }],
+      ...(p.red ? { red: p.red.map(range => ({ start: range.start + prefix.length, end: range.end + prefix.length })) } : {}) };
+  });
 }
 
 interface DescriptionGroup { title: RichParagraph | null; body: RichParagraph[] }
@@ -156,7 +173,7 @@ function splitItems(doc: RichParagraph[]): DescriptionItem[] {
     while (current.body[0]?.text === '') current.body.shift();
     if (current.title || current.body.some(p => p.text)) items.push({ kind: 'group', group: current });
   };
-  for (const paragraph of doc) {
+  for (const paragraph of normalizeHeadings(doc)) {
     if (isSpacer(paragraph)) {
       flush();
       items.push({ kind: 'spacer' });
@@ -183,11 +200,15 @@ function managedItems(area: SlotNode | FrameNode): FrameNode[] {
 export function readDescription(root: SceneNode): RichParagraph[] {
   const area = bodyArea(root);
   const items = managedItems(area);
-  if (items.length) {
+  const trailing = Math.max(0, Number(area.getPluginData(TRAILING_SPACER_COUNT)) || 0);
+  if (items.length || trailing) {
     const result: RichParagraph[] = [];
     let afterSpacer = true;
     for (const item of items) {
       if (item.getPluginData(SPACER_MARKER) === '1') { result.push({ text: SPACER_TEXT, depth: null, bold: [] }); afterSpacer = true; continue; }
+      const count = Math.max(0, Number(item.getPluginData(SPACER_COUNT)) || 0);
+      for (let i = 0; i < count; i++) result.push({ text: SPACER_TEXT, depth: null, bold: [] });
+      if (count) afterSpacer = true;
       const texts = item.children.filter((node): node is TextNode => node.type === 'TEXT' && node.visible);
       if (!afterSpacer) result.push(blank());
       afterSpacer = false;
@@ -195,11 +216,12 @@ export function readDescription(root: SceneNode): RichParagraph[] {
         result.push(...readRichText(node));
       });
     }
-    return result;
+    for (let i = 0; i < trailing; i++) result.push({ text: SPACER_TEXT, depth: null, bold: [] });
+    return normalizeHeadings(result);
   }
   const oldBody = area.children.find((node): node is TextNode =>
     node.type === 'TEXT' && node.visible && node.getPluginData(OLD_BODY_MARKER) === '1');
-  if (oldBody) return readRichText(oldBody);
+  if (oldBody) return normalizeHeadings(readRichText(oldBody));
   const texts = area.findAllWithCriteria({ types: ['TEXT'] })
     .filter(node => isShown(node, area))
     .sort((a, b) => (a.absoluteBoundingBox?.y ?? 0) - (b.absoluteBoundingBox?.y ?? 0)
@@ -209,7 +231,7 @@ export function readDescription(root: SceneNode): RichParagraph[] {
     if (result.length) result.push(blank());
     result.push(...readRichText(node));
   }
-  return result;
+  return normalizeHeadings(result);
 }
 
 // 담는 칸(본문 칸이나 감싼 프레임)과 그 안 글자에서 편집기 서식 도구 값을 읽는다. 읽지 못한 값은 기본값이다.
@@ -222,11 +244,11 @@ function containerLayout(container: SlotNode | FrameNode): TextLayout {
   const texts = container.findAllWithCriteria({ types: ['TEXT'] }).filter(node => isShown(node, container) && node.characters.length > 0);
   const plain = texts.find(node => node.getStyledTextSegments(['fontName']).some(s => !BOLD_STYLE.test(s.fontName.style))) ?? texts[0];
   if (plain) Object.assign(layout, readTextLayout(plain));
-  const spacer = container.children.find(isSpacerFrame);
-  if (spacer) {
-    const stored = spacer.getPluginData(SPACER_HEIGHT);
-    layout.spacer = stored && Number.isFinite(Number(stored)) ? Number(stored) : spacer.height;
-  }
+  const spacer = container.children.find(node => node.type === 'FRAME' && node.visible
+    && (node.getPluginData(SPACER_MARKER) === '1' || node.getPluginData(GROUP_MARKER) === '1' && !!node.getPluginData(SPACER_COUNT)));
+  const stored = container.getPluginData(SPACER_HEIGHT) || spacer?.getPluginData(SPACER_HEIGHT);
+  if (stored !== undefined && stored !== '' && Number.isFinite(Number(stored))) layout.spacer = Number(stored);
+  else if (spacer && isSpacerFrame(spacer)) layout.spacer = spacer.height;
   return layout;
 }
 
@@ -322,39 +344,29 @@ function makeGroup(template: FrameNode, group: DescriptionGroup, fonts: TextFont
   return frame;
 }
 
-// 「---」 표식: 읽을 때 줄을 복원한다. 실제 여백은 다음 묶음의 Top Padding에 넣는다.
-function makeSpacer(width: number, height: number): FrameNode {
-  const frame = figma.createFrame();
-  frame.name = COPY.figmaText012;
-  frame.setPluginData(SPACER_MARKER, '1');
-  frame.setPluginData(SPACER_HEIGHT, String(height));
-  frame.resize(width, 0.01);
-  frame.fills = [];
-  frame.clipsContent = false;
-  return frame;
-}
-
-function makeItems(items: DescriptionItem[], template: FrameNode, fonts: TextFonts, width: number, layout: TextLayout | undefined, out: FrameNode[]): void {
-  let seenGroup = false, extra = 0;
+// 「---」는 다음 묶음의 Top Padding과 표식으로 저장한다. 별도 레이어를 만들지 않는다.
+function makeItems(items: DescriptionItem[], template: FrameNode, fonts: TextFonts, layout: TextLayout | undefined, out: FrameNode[]): number {
+  let seenGroup = false, count = 0;
+  const height = Math.max(0, layout?.spacer ?? DEFAULT_TEXT_LAYOUT.spacer);
   for (const item of items) {
     if (item.kind === 'spacer') {
-      const height = Math.max(0, layout?.spacer ?? DEFAULT_TEXT_LAYOUT.spacer);
-      out.push(makeSpacer(width, height));
-      extra += height;
+      count++;
     } else {
-      out.push(makeGroup(template, item.group, fonts, (seenGroup ? ITEM_TOP_PADDING : 0) + extra, layout));
+      const group = makeGroup(template, item.group, fonts, seenGroup ? ITEM_TOP_PADDING + count * height : 0, layout);
+      if (count) group.setPluginData(SPACER_COUNT, String(count));
+      out.push(group);
       seenGroup = true;
-      extra = 0;
+      count = 0;
     }
   }
+  return count;
 }
 
-// 묶음·여백을 차례로 넣고 폭을 채운다. 여백은 높이를 고정한다.
+// 묶음을 차례로 넣고 폭을 채운다.
 function placeItems(container: SlotNode | FrameNode, items: FrameNode[]): void {
   for (const item of items) {
     container.appendChild(item);
     item.layoutSizingHorizontal = 'FILL';
-    if (item.getPluginData(SPACER_MARKER) === '1') item.layoutSizingVertical = 'FIXED';
     for (const node of item.children) if (node.type === 'TEXT') node.layoutSizingHorizontal = 'FILL';
   }
 }
@@ -369,22 +381,27 @@ function applySpacing(container: SlotNode | FrameNode, layout: TextLayout): void
 // select: 텍스트 편집 탭에서 적용하면 적용한 Description을 고른다. 플립북 목록의 Description 영역에서는 선택을 바꾸지 않는다.
 export async function fillDescription(root: SceneNode, doc: RichParagraph[], layout?: TextLayout, select = true): Promise<SelectionWrite> {
   const area = bodyArea(root);
-  const before = { itemSpacing: area.itemSpacing, padding: [area.paddingTop, area.paddingRight, area.paddingBottom, area.paddingLeft] as TextLayout['padding'] };
+  const before = { itemSpacing: area.itemSpacing, padding: [area.paddingTop, area.paddingRight, area.paddingBottom, area.paddingLeft] as TextLayout['padding'],
+    spacerHeight: area.getPluginData(SPACER_HEIGHT), trailing: area.getPluginData(TRAILING_SPACER_COUNT) };
   const padding = layout && area.layoutMode !== 'NONE' ? layout.padding : before.padding;
   const width = Math.max(1, area.width - padding[1] - padding[3]);
   const { template, fonts } = await makeTemplate(width, styleOf(area));
   const prepared: FrameNode[] = [];
   try {
-    makeItems(splitItems(doc), template, fonts, width, layout, prepared);
+    const trailing = makeItems(splitItems(doc), template, fonts, layout, prepared);
     const old = [...area.children];
     if (layout) applySpacing(area, layout);
     else if (area.layoutMode !== 'NONE') area.itemSpacing = 0;
     placeItems(area, prepared);
+    area.setPluginData(TRAILING_SPACER_COUNT, trailing ? String(trailing) : '');
+    area.setPluginData(SPACER_HEIGHT, String(Math.max(0, layout?.spacer ?? DEFAULT_TEXT_LAYOUT.spacer)));
     for (const node of old) if (!node.removed) node.remove();
     if (select) figma.currentPage.selection = [root];
     return { kind: 'description' };
   } catch (error) {
     for (const item of prepared) if (!item.removed) item.remove();
+    area.setPluginData(SPACER_HEIGHT, before.spacerHeight);
+    area.setPluginData(TRAILING_SPACER_COUNT, before.trailing);
     if (area.layoutMode !== 'NONE') { area.itemSpacing = before.itemSpacing; if (layout) [area.paddingTop, area.paddingRight, area.paddingBottom, area.paddingLeft] = before.padding; }
     throw error;
   } finally {
@@ -426,7 +443,9 @@ export async function addTextFrame(frame: FrameNode, doc: RichParagraph[], layou
     wrapper.paddingBottom = spacing.paddingBottom;
     wrapper.fills = [];
     wrapper.clipsContent = false;
-    makeItems(splitItems(doc), template, fonts, inner, layout, prepared);
+    const trailing = makeItems(splitItems(doc), template, fonts, layout, prepared);
+    wrapper.setPluginData(TRAILING_SPACER_COUNT, trailing ? String(trailing) : '');
+    wrapper.setPluginData(SPACER_HEIGHT, String(Math.max(0, layout?.spacer ?? DEFAULT_TEXT_LAYOUT.spacer)));
     placeItems(wrapper, prepared);
     // 오토 레이아웃이 아니면 보이는 내용 아래(빈 프레임이면 왼쪽 위)에 놓는다.
     const bottom = Math.max(0, ...frame.children.filter(node => node.visible).map(node => node.y + node.height));

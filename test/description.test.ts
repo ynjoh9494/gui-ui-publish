@@ -237,18 +237,57 @@ test('굵은 제목 줄마다 제목·본문 레이어를 묶고 문구는 검�
   assert.equal(serializeRichText(readDescription(root as unknown as SceneNode)), serializeRichText(second));
 });
 
-test('묶음마다 Top Padding 15, 「---」 뒤에는 여백 높이 15를 더하고 다시 불러온다', async () => {
+test('묶음마다 Top Padding 15, 「---」는 여백 레이어 없이 다음 묶음에 더하고 다시 불러온다', async () => {
   const { root, area } = fixture();
   setup([root]);
   const doc = parseRichText('**Policy**\n- 설명\n\n---\n\n**1. 항목**\n- 내용\n---\n**Navigation**\n- 이동');
   await fillDescription(root as unknown as SceneNode, doc);
-  assert.deepEqual(area.children.map(node => node.name), ['Policy', COPY.figmaText012, '1. 항목', COPY.figmaText012, 'Navigation']);
-  assert.deepEqual(area.children.filter(node => node.getPluginData('guiUiPublishDescriptionGroup') === '1').map(node => node.paddingTop), [0, 30, 30]);
-  const spacer = area.children[1] as Node & Record<string, unknown>;
-  assert.equal(spacer.getPluginData('guiUiPublishDescriptionSpacer'), '1');
-  assert.deepEqual([spacer.height, spacer.getPluginData('guiUiPublishDescriptionSpacerHeight'), spacer.children.length, spacer.layoutSizingHorizontal, spacer.layoutSizingVertical], [0.01, '15', 0, 'FILL', 'FIXED']);
+  assert.deepEqual(area.children.map(node => node.name), ['Policy', '1. 항목', 'Navigation']);
+  assert.deepEqual(area.children.map(node => node.paddingTop), [0, 30, 30]);
+  assert.deepEqual(area.children.map(node => node.getPluginData('guiUiPublishDescriptionSpacerCount')), ['', '1', '1']);
+  assert.ok(area.children.every(node => node.getPluginData('guiUiPublishDescriptionSpacer') === ''));
   assert.equal(serializeRichText(readDescription(root as unknown as SceneNode)),
     '**Policy**\n- 설명\n---\n**1. 항목**\n- 내용\n---\n**Navigation**\n- 이동');
+});
+
+test('굵은 번호 목록은 Description 항목 제목으로 읽고 번호를 제목에 고정한다', async () => {
+  const { root, area } = fixture();
+  setup([root]);
+  const doc = parseRichText('1. **화면 제목**\n- 설명\n2. **음성 입력 버튼**\n- 동작');
+  await fillDescription(root as unknown as SceneNode, doc);
+  assert.deepEqual(area.children.map(node => node.name), ['1. 화면 제목', '2. 음성 입력 버튼']);
+  assert.deepEqual(area.children.map(node => (node.children[0] as Text).chars[0].list), ['NONE', 'NONE']);
+  assert.equal(serializeRichText(readDescription(root as unknown as SceneNode)), '**1. 화면 제목**\n- 설명\n\n**2. 음성 입력 버튼**\n- 동작');
+
+  const imported = new Text('번호 제목', '검색창', BOLD);
+  imported.setRangeListOptions(0, imported.text.length, { type: 'ORDERED' });
+  imported.setRangeIndentation(0, imported.text.length, 1);
+  const legacy = new Node('FRAME', 'Description', [new Node('SLOT', 'description area', [imported])]);
+  assert.equal(serializeRichText(readDescription(legacy as unknown as SceneNode)), '**1. 검색창**');
+});
+
+test('연속 여백과 끝 여백도 레이어 없이 되읽고 첫 묶음의 Top Padding은 0이다', async () => {
+  const { root, area } = fixture();
+  setup([root]);
+  const source = '---\n**Policy**\n- 설명\n---\n---\n**Navigation**\n- 이동\n---';
+  await fillDescription(root as unknown as SceneNode, parseRichText(source));
+  assert.deepEqual(area.children.map(node => node.paddingTop), [0, 45]);
+  assert.deepEqual(area.children.map(node => node.getPluginData('guiUiPublishDescriptionSpacerCount')), ['1', '2']);
+  assert.equal(area.getPluginData('guiUiPublishDescriptionTrailingSpacerCount'), '1');
+  assert.equal(serializeRichText(readDescription(root as unknown as SceneNode)), source);
+});
+
+test('예전 여백 레이어는 읽은 뒤 다시 적용하면 제거한다', async () => {
+  const { root, area } = fixture();
+  setup([root]);
+  await fillDescription(root as unknown as SceneNode, parseRichText('**Policy**\n- 설명'));
+  const oldSpacer = new Node('FRAME', '여백');
+  oldSpacer.setPluginData('guiUiPublishDescriptionSpacer', '1');
+  area.appendChild(oldSpacer);
+  assert.equal(serializeRichText(readDescription(root as unknown as SceneNode)), '**Policy**\n- 설명\n---');
+  await fillDescription(root as unknown as SceneNode, readDescription(root as unknown as SceneNode));
+  assert.equal(oldSpacer.removed, true);
+  assert.deepEqual(area.children.map(node => node.name), ['Policy']);
 });
 
 test('서식 값을 넘기면 Gap을 0으로 고정하고 Padding·글자 서식·추가 여백을 쓴다', async () => {
@@ -260,11 +299,11 @@ test('서식 값을 넘기면 Gap을 0으로 고정하고 Padding·글자 서식
   assert.deepEqual([area.itemSpacing, area.paddingTop, area.paddingRight, area.paddingBottom, area.paddingLeft], [0, 8, 12, 12, 16]);
   const body = area.children[0].children[1] as Text;
   assert.deepEqual([body.fontSize, body.letterSpacing, body.lineHeight, body.listSpacing], [15, { unit: 'PERCENT', value: -1 }, { unit: 'PERCENT', value: 150 }, 4]);
-  assert.equal(area.children[1].getPluginData('guiUiPublishDescriptionSpacerHeight'), '6');
-  assert.equal(area.children[2].paddingTop, 21);
+  assert.equal(area.getPluginData('guiUiPublishDescriptionSpacerHeight'), '6');
+  assert.equal(area.children[1].paddingTop, 21);
   assert.deepEqual(readDescriptionLayout(root as unknown as SceneNode), { ...layout, gap: 0 });
   await fillDescription(root as unknown as SceneNode, parseRichText('**A**\n- 가\n---\n**B**\n- 나'), { ...layout, spacer: 0 }, false);
-  assert.equal(area.children[2].paddingTop, 15);
+  assert.equal(area.children[1].paddingTop, 15);
   assert.equal(readDescriptionLayout(root as unknown as SceneNode).spacer, 0);
 });
 

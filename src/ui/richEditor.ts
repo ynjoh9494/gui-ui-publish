@@ -51,7 +51,7 @@ function paragraphHtml(p: RichParagraph, marker: string): string {
     if ((p.red ?? []).some(r => r.start <= start && r.end >= end)) part = `<span style="color:#D63434">${part}</span>`;
     html += part;
   }
-  const depth = p.depth === null ? '' : ` data-depth="${p.depth}" data-marker="${esc(marker)}"${p.list === 'ORDERED' ? ' data-list="ORDERED"' : ''} style="--depth:${p.depth}"`;
+  const depth = p.depth === null ? '' : ` data-depth="${p.depth}" data-marker="${esc(marker)}"${p.list === 'ORDERED' ? ' data-list="ORDERED"' : ''}${p.number !== undefined ? ` data-number="${p.number}"` : ''} style="--depth:${p.depth}"`;
   return `<div class="rt-p"${depth}>${html || '<br>'}</div>`;
 }
 
@@ -113,7 +113,7 @@ export function richEditor(options: { label: string; onChange?: () => void }): R
           if (BLOCK_TAGS.has(child.tagName)) {
             if (!top || child.tagName !== 'DIV' || !child.classList.contains('rt-p')) canonical = false;
             const own = child.dataset.depth !== undefined ? Number(child.dataset.depth) : depth;
-            current = { text: '', depth: Number.isFinite(own) ? own : null, ...(child.dataset.list === 'ORDERED' ? { list: 'ORDERED' as const } : {}), bold: [] };
+            current = { text: '', depth: Number.isFinite(own) ? own : null, ...(child.dataset.list === 'ORDERED' ? { list: 'ORDERED' as const } : {}), ...(child.dataset.number !== undefined ? { number: Number(child.dataset.number) } : {}), bold: [] };
             out.push(current);
             walk(child, current.depth, false);
             current = null;
@@ -171,7 +171,7 @@ export function richEditor(options: { label: string; onChange?: () => void }): R
     el.innerHTML = doc.map(p => {
       if (p.depth === null || !p.text.trim()) { numbers.length = 0; return paragraphHtml(p, ''); }
       numbers.length = p.depth + 1;
-      numbers[p.depth] = p.list === 'ORDERED' ? (numbers[p.depth] ?? 0) + 1 : 0;
+      numbers[p.depth] = p.list === 'ORDERED' ? p.number ?? (numbers[p.depth] ?? 0) + 1 : 0;
       return paragraphHtml(p, p.list === 'ORDERED' ? `${numbers[p.depth]}.` : '•');
     }).join('');
     syncButtons();
