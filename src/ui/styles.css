@@ -742,14 +742,15 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .layout-section { min-width: 0; padding: 8px 10px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .layout-section h3 { margin: 0 0 6px; color: var(--text); font-size: 11px; font-weight: 600; }
 .layout-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 8px; }
-.layout-field { display: flex; align-items: center; min-width: 0; margin: 0; gap: 5px; color: var(--muted); font-size: 11px; }
-.layout-label { min-width: 38px; white-space: nowrap; }
+.layout-field { display: flex; flex-direction: column; align-items: stretch; min-width: 0; margin: 0; gap: 3px; color: var(--muted); font-size: 11px; }
+.layout-label { min-width: 0; white-space: nowrap; }
 .layout-control { display: flex; align-items: center; min-width: 0; height: 24px; flex: 1; padding-right: 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); }
 .layout-control:focus-within { border-color: var(--brand); }
 .layout-field input { width: 100%; min-width: 0; height: 100%; padding: 2px 4px; border: 0; background: transparent; text-align: right; appearance: textfield; -moz-appearance: textfield; }
 .layout-field input:focus { outline: none; }
 .layout-field input::-webkit-inner-spin-button, .layout-field input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .layout-control .unit { flex: none; color: var(--muted); font-size: 10px; }
+.layout-control svg { flex: none; margin-left: 5px; }
 .text-tool { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 26px; padding: 0; }
 .text-view .text-hint { flex: none; margin: 0; }
 .text-tool[aria-pressed="true"] { background: var(--selected); border-color: var(--brand); color: var(--brand); }

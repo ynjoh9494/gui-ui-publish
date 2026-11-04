@@ -41,6 +41,12 @@ const LAYOUT_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"
 const LIST_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></svg>';
 const LETTER_SPACING_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 10 3-8 3 8M6 7h4M2 13h12m-2-2 2 2-2 2M4 11l-2 2 2 2"/></svg>';
 const LINE_HEIGHT_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2v12m-2-2 2 2 2-2M1 4l2-2 2 2m3 7 3-8 3 8M9 8h4M7 14h8"/></svg>';
+const FIELD_ICONS: Record<string, string> = {
+  fontSize: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" aria-hidden="true"><path d="M3 4V2h10v2M8 2v12M5 14h6"/></svg>',
+  letterSpacing: LETTER_SPACING_ICON,
+  lineHeight: LINE_HEIGHT_ICON,
+  listSpacing: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8M6 8h8M6 13h8M2 4v8m-1-1 1 1 1-1M1 5l1-1 1 1"/></svg>',
+};
 
 
 function paragraphHtml(p: RichParagraph, marker: string): string {
@@ -372,7 +378,7 @@ export function richEditor(options: { label: string; onChange?: () => void }): R
   }
 
   const numberField = (key: string, label: string, value: number, unit = 'px', side?: number) =>
-    `<label class="layout-field"><span class="layout-label" title="${esc(label)}">${key === 'letterSpacing' ? LETTER_SPACING_ICON : key === 'lineHeight' ? LINE_HEIGHT_ICON : esc(label)}</span><span class="layout-control"><input type="number" step="any" data-layout="${key}"${side === undefined ? '' : ` data-side="${side}"`} value="${value}" aria-label="${esc(side === undefined ? label : `${COPY.textPadding} ${label}`)}"><span class="unit">${unit}</span></span></label>`;
+    `<label class="layout-field"><span class="layout-label" title="${esc(label)}">${esc(label)}</span><span class="layout-control">${FIELD_ICONS[key] ?? ''}<input type="number" step="any" data-layout="${key}"${side === undefined ? '' : ` data-side="${side}"`} value="${value}" aria-label="${esc(side === undefined ? label : `${COPY.textPadding} ${label}`)}"><span class="unit">${unit}</span></span></label>`;
   function layoutHtml(): string {
     return `<section class="layout-section"><h3>${COPY.textPadding}</h3><div class="layout-grid">${layout.padding.map((value, side) => numberField('padding', PADDING_SIDES[side], value, 'px', side)).join('')}</div></section>
       <section class="layout-section"><h3>${COPY.textLayout}</h3><div class="layout-grid">${LAYOUT_FIELDS.filter(([key]) => key !== 'spacer').map(([key, label, unit]) => numberField(key, label, layout[key], unit || 'px')).join('')}</div></section>

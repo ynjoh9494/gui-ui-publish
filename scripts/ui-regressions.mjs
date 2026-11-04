@@ -122,7 +122,8 @@ try {
   assert.equal(await page.locator('.text-layout [data-layout=spacer]').inputValue(), '15');
   assert.deepEqual(await page.locator('.text-layout .layout-label').evaluateAll(nodes => nodes.map(node => node.title)),
     ['Top', 'Right', 'Bottom', 'Left', 'Font size', 'Letter spacing', 'Line height', 'List spacing', 'Gap', 'Spacer height']);
-  assert.equal(await page.locator('.layout-label svg').count(), 2);
+  assert.equal(await page.locator('.layout-label svg').count(), 0);
+  assert.equal(await page.locator('.layout-control svg').count(), 4);
   assert.deepEqual(await page.locator('.text-layout h3').allTextContents(), ['Padding', 'Formatting', 'Spacing']);
   console.log('UI regressions: red toggle, bold overlap, undo, clipboard and typing passed');
 
