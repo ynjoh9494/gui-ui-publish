@@ -5,6 +5,9 @@ import { planFlipbooks, customSection } from '../src/core/flipbooks.ts';
 import { ensureSystemTags, systemTagId } from '../src/core/registry.ts';
 import { Store, memoryKV, keys } from '../src/core/store.ts';
 import type { ToUi } from '../src/core/wire.ts';
+import { cloneLayout, DEFAULT_TEXT_LAYOUT } from '../src/core/description.ts';
+import { parseRichText } from '../src/core/richText.ts';
+import { COPY } from '../src/core/copy.ts';
 
 function setup() {
   const actor = { id: 'u', name: 'Audit' };
@@ -125,6 +128,19 @@ test('stale identity drafts and font failures preserve saved identity', async ()
   assert.equal(prepared, true);
   assert.deepEqual(controller.store.state.flipbooks.get('fb1'), before);
   assert.equal(posted.filter(m => m.type === 'error').length, 2);
+});
+
+test('Description apply rejects a stale canvas value without overwriting it', async () => {
+  const { controller, host, store, posted } = setup();
+  const before = parseRichText('Old'), next = parseRichText('Mine'), changed = parseRichText('Other user');
+  const layout = cloneLayout(DEFAULT_TEXT_LAYOUT);
+  const writes: string[] = [];
+  host.readFlipbookDescription = async () => ({ paragraphs: changed, layout });
+  host.writeFlipbookDescription = async (_item, paragraphs) => { writes.push(paragraphs[0].text); };
+  await controller.handle({ type: 'applyFlipbookEdits', edits: [{ id: 'fb1', rev: store.state.flipbooks.get('fb1')!.rev,
+    description: { paragraphs: next, layout, before: { paragraphs: before, layout } } }] });
+  assert.deepEqual(writes, []);
+  assert.ok(posted.some(m => m.type === 'flipbookEditsApplied' && m.failed.some(f => f.message === COPY.flipbookDescriptionConflict)));
 });
 
 

@@ -264,6 +264,10 @@ const UI_STEPS: Step[] = [
     spots: d => [d.q('.detail .new-place')],
   },
   {
+    title: COPY.uiTutorial046, body: COPY.uiTutorial047,
+    spots: d => [d.q('.detail .create-picker'), d.q('.detail .create-filter'), d.q('.detail .create-screen-list')],
+  },
+  {
     title: COPY.uiTutorial044, body: COPY.uiTutorial045,
     async prepare(d) {
       // 검색 결과는 플립북 없는 화면 일괄 만들기의 대상으로 남겨 둔다.
@@ -274,10 +278,6 @@ const UI_STEPS: Step[] = [
       scrollTop(d.q('.create-screen-list'));
     },
     spots: d => [d.q('.detail .create-selected-head'), d.q('.detail .create-selected-list')],
-  },
-  {
-    title: COPY.uiTutorial046, body: COPY.uiTutorial047,
-    spots: d => [d.q('.detail .create-picker'), d.q('.detail .create-filter'), d.q('.detail .create-screen-list')],
   },
   {
     title: COPY.uiTutorial048, body: COPY.uiTutorial049,
@@ -436,6 +436,11 @@ const NEW_UI_STEPS: Step[] = [
     title: COPY.uiNew045, body: COPY.uiNew046,
     async prepare(d) { await openAdmin(d, 'gui-width'); },
     spots: d => [d.q('details[data-form="gui-width"]')],
+  },
+  {
+    title: COPY.uiNew055, body: COPY.uiNew056,
+    async prepare(d) { await openAdmin(d, 'update'); },
+    spots: d => [d.q('details[data-form="update"]')],
   },
   {
     title: COPY.uiNew047, body: COPY.uiNew048,

@@ -8,6 +8,17 @@ export const PASTE_GUI_KEY = 'pasteGui';
 export const LABELED_LAYOUT = 'labeled-v2';
 export const PREVIOUS_LAYOUT = 'mobile-v1';
 const TRACKED_PREFIX = '🔗 ';
+let labelFonts: Promise<void> | null = null;
+
+function loadLabelFonts(): Promise<void> {
+  if (!labelFonts) {
+    labelFonts = Promise.all([
+      figma.loadFontAsync({ family: 'Inter', style: 'Bold' }),
+      figma.loadFontAsync({ family: 'Inter', style: 'Medium' }),
+    ]).then(() => {}).catch(error => { labelFonts = null; throw error; });
+  }
+  return labelFonts;
+}
 
 export function trackedName(name: string): string {
   return name.startsWith(TRACKED_PREFIX) ? name : `${TRACKED_PREFIX}${name}`;
@@ -15,10 +26,7 @@ export function trackedName(name: string): string {
 
 // GUI 자체는 다시 배포할 수 있게 두고, 붙인 화면의 제목과 숨긴 Screen ID는 별도 레이어로 둔다.
 export async function labeledCopy(ns: string, gui: FrameNode, holder: FrameNode, code: string, name: string, key: string): Promise<FrameNode> {
-  await Promise.all([
-    figma.loadFontAsync({ family: 'Inter', style: 'Bold' }),
-    figma.loadFontAsync({ family: 'Inter', style: 'Medium' }),
-  ]);
+  await loadLabelFonts();
   const root = figma.createFrame();
   holder.appendChild(root);
   root.name = trackedName('GUI · 자동 업데이트');

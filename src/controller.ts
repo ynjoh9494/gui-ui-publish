@@ -8,7 +8,8 @@ import { dataModel } from './core/data.ts';
 import { chapterName, flipbookView, guiKey, validGuiWidth } from './core/flipbook.ts';
 import { canvasSections, checkMoves, followCanvasSections, importGuiUpdates, markReviewed, moveFlipbooks, pageSections, pinPolicyIds, planFlipbooks, plannedFlipbookTitle, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookMove, type FlipbookRequest, type ReviewRequest } from './core/flipbooks.ts';
 import type { Draft } from './core/drafts.ts';
-import type { SelectionWrite } from './core/description.ts';
+import { sameLayout, type SelectionWrite } from './core/description.ts';
+import { serializeRichText } from './core/richText.ts';
 import { flipbookHistoryRows, guiHistoryRows } from './core/history.ts';
 import { guiRecordInfos, guiScreens } from './core/guiScreens.ts';
 import { acknowledgeChange, addDelivery, upgradeBaseline, buildPlan, commitPlan, setDeliveryState, type BatchComment, unfinishedDeliveries, type CommitInput, type Plan } from './core/publish.ts';
@@ -1527,11 +1528,17 @@ export class Controller {
     const failed: { id: string; message: string }[] = [];
     for (const edit of edits) {
       try {
+        this.store.reload();
+        if (this.store.state.flipbooks.get(edit.id)?.rev !== edit.rev) throw new Error(COPY.flipbookTitleConflict);
         if (edit.identity) await this.renameFlipbook(edit.id, edit.identity.title, edit.identity.screenId, edit.rev, true);
         if (edit.description) {
           const fb = this.store.state.flipbooks.get(edit.id);
           if (!fb?.pageId) throw new Error(COPY.controller063);
-          await this.host.writeFlipbookDescription({ flipbookId: edit.id, pageId: fb.pageId, nodeId: this.uiScans.find(u => u.flipbookId === edit.id)?.nodeId ?? undefined }, edit.description.paragraphs, edit.description.layout);
+          const item = { flipbookId: edit.id, pageId: fb.pageId, nodeId: this.uiScans.find(u => u.flipbookId === edit.id)?.nodeId ?? undefined };
+          const current = await this.host.readFlipbookDescription(item);
+          if (serializeRichText(current.paragraphs) !== serializeRichText(edit.description.before.paragraphs) || !sameLayout(current.layout, edit.description.before.layout))
+            throw new Error(COPY.flipbookDescriptionConflict);
+          await this.host.writeFlipbookDescription(item, edit.description.paragraphs, edit.description.layout);
         }
         applied.push(edit.id);
       } catch (error) {

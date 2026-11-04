@@ -894,7 +894,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const draft = identityDrafts.get(id);
     if (draft && identityEdited(id)) edit.identity = { title: draft.title, screenId: draft.screenId };
     const d = descDrafts.get(id);
-    if (d?.status === 'ready' && descEdited(id)) edit.description = { paragraphs: d.doc, layout: d.layout };
+    if (d?.status === 'ready' && descEdited(id)) edit.description = { paragraphs: d.doc, layout: d.layout, before: { paragraphs: d.savedDoc, layout: d.savedLayout } };
     return edit.identity || edit.description ? edit : null;
   }
   // 수정 여부가 바뀌면 상세의 「적용하기」, 목록의 「수정 중」, 하단 줄을 맞춘다.

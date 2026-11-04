@@ -29,7 +29,11 @@ const shot = async (name, target = app) => {
   console.log(`${outDir}/${name}.png`);
 };
 const ready = () => page.waitForFunction(() => document.querySelector('#app .toolbar .progress')?.textContent?.includes('마지막 검토'));
-const scan = async () => { await app.locator('[data-action=scan]').click(); await ready(); };
+const scan = async () => {
+  await app.locator('[data-action=scan]').click();
+  await page.waitForFunction(() => document.querySelector('#app [data-action=scan]')?.disabled);
+  await ready();
+};
 const expandGroups = async () => {
   for (const head of await app.locator('.group-head').all())
     if (await head.getAttribute('aria-expanded') === 'false') await head.click();

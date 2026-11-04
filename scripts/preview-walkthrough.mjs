@@ -47,7 +47,12 @@ const collapseWindow = async name => {
   assert.deepEqual(await snapshot(), before, 'Window restores dimensions, inputs, selection and panels');
 };
 
-const scan = async () => { await app.locator('[data-action=scan]').click(); await ready(); };
+const scan = async () => {
+  await app.locator('[data-action=scan]').click();
+  // The previous scan can still show "마지막 검토" until the new loading message arrives.
+  await page.waitForFunction(() => document.querySelector('#app [data-action=scan]')?.disabled);
+  await ready();
+};
 // 플러그인 메뉴에서 다른 명령을 실행한 것처럼 바꾼다(미리보기 도구 버튼).
 // 목록은 다음 프레임에 다시 그린다. 새 플립북 행이 기대한 상태가 될 때까지 잠시 기다린 뒤 확인한다.
 const newRows = async (count, message) => {

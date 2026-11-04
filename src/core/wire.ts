@@ -136,7 +136,7 @@ export interface FlipbookEdit {
   id: string;
   rev: number;
   identity?: { title: string; screenId: string };
-  description?: { paragraphs: RichParagraph[]; layout: TextLayout };
+  description?: { paragraphs: RichParagraph[]; layout: TextLayout; before: { paragraphs: RichParagraph[]; layout: TextLayout } };
 }
 
 export type ToMain =
