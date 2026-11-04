@@ -5,7 +5,8 @@ import { COPY } from '../core/copy.ts';
 import { changeDetected, entryName, ignoreBlock, uiEntries as buildUiEntries, uiEstimate, type Entry, type UiScan } from '../core/compare.ts';
 import type { GuiScreenInfo } from '../core/guiScreens.ts';
 import { guiStateBadge, unlinkedBadge } from './estimate.ts';
-import { startTutorial } from './tutorial.ts';
+import { placeBubble, startTutorial } from './tutorial.ts';
+import { needsUpdate, type UpdateInfo } from '../core/update.ts';
 import { textEditor } from './textEditor.ts';
 import { richEditor } from './richEditor.ts';
 import { sameLayout, type TextLayout } from '../core/description.ts';
@@ -62,7 +63,7 @@ const ADMIN_MODE_PANELS: Record<Team, [form: string, title: string][]> = {
 };
 
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
-const WHILE_BUSY = new Set(['recovery-toggle', 'tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel', 'fb-history-open', 'fb-history-close']);
+const WHILE_BUSY = new Set(['recovery-toggle', 'tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel', 'fb-history-open', 'fb-history-close', 'update-download', 'update-go', 'update-close']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
 const BEFORE_CHECK = new Set([...WHILE_BUSY, 'switch-mode', 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'category-manage', 'new-add', 'new-remove', 'new-select', 'new-edit-title', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'fb-identity-save', 'create-layout', 'create-search-all', 'create-screen-toggle', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'text-import', 'text-apply',
@@ -309,6 +310,18 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let renumberArmed = false;
   // 설정에서 열어 둔 아코디언 항목(제목)
   let adminOpen: string | null = null;
+  // 업데이트(관리 → 시스템 → 업데이트, 2026-11-04 사용자 요청). 이 빌드의 버전은 build.mjs가 넣는다.
+  // 최신 버전은 실제 플러그인 창에서만 묻는다(미리보기·튜토리얼 예시 화면은 묻지 않는다). update: 응답을 받은 뒤의 비교 정보
+  const build = {
+    current: typeof __PLUGIN_VERSION__ === 'string' ? __PLUGIN_VERSION__ : 'dev',
+    release: typeof __PLUGIN_RELEASE__ === 'boolean' && __PLUGIN_RELEASE__,
+  };
+  let update: UpdateInfo | null = null;
+  let updateAsked = false;
+  // 업데이트 안내 말풍선. 닫거나 관리를 열면 이번 실행 동안 다시 띄우지 않는다(알림 점은 업데이트할 때까지 남는다).
+  let updateBubble: HTMLElement | null = null;
+  let updateBubbleClosed = false;
+  const UPDATE_BADGE = '<span class="update-badge" aria-hidden="true"></span>';
   // 새 버전 페이지 탭(2026-10-21 사용자 요청: 설정 안이 아니라 GUI Publish 머리의 탭으로 연다).
   // 비교할 페이지, 비교 결과, 사용자가 고친 연결(화면 ID → 노드 ID, ''는 연결 안 함), 전환을 한 번 눌렀는가
   let versionOpen = false;
@@ -378,6 +391,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     <div class="resize-handle" title="${COPY.uiApp208}" aria-label="${COPY.uiApp208}"></div>`;
   const $ = (sel: string) => root.querySelector(sel) as HTMLElement;
   bridge = windowCollapse(bridge, root, () => mode, events.signal);
+  // 창 크기를 바꾸거나 접었다 펼치면 업데이트 안내 말풍선을 관리 아이콘에 다시 맞춘다.
+  window.addEventListener('resize', () => placeUpdateBubble(), { signal: events.signal });
   const editor = textEditor(root);
   const pdf = pdfView(root);
   const flows = flowView(root, {
@@ -949,9 +964,34 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       `${mode === 'GUI' && !settings ? `<div class="create-tabs" role="tablist">${headerTab('version-close', COPY.uiApp272, !versionOpen, 'list')}${headerTab('version-open', COPY.uiApp248, versionOpen, 'versions')}</div>` : ''}` +
       `${mode === 'UI' && !settings ? `<div class="create-tabs" role="tablist">${headerTab('text-close', COPY.uiApp302, listTabOpen(), 'book')}${headerTab('paste-open', COPY.paste001, pasteOpen, 'paste')}<span class="tab-separator tab-group-separator" aria-hidden="true"></span>${headerTab('text-open', COPY.uiApp303, textOpen, 'text')}${headerTab('flow-open', COPY.flow020, flowOpen, 'flow')}${headerTab('pdf-open', COPY.pdf001, pdfOpen, 'pdf')}</div>` : ''}` +
       `<div class="tab-tools"><button class="mode-switch" data-action="switch-mode" title="${mode === 'GUI' ? COPY.modeUi : COPY.modeGui}" ${busyLabel || pdfBusy ? 'disabled' : ''}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10V5h16l-4-4M21 14v5H5l4 4M19 5l-4 4M5 19l4-4"/></svg><span>${mode === 'GUI' ? COPY.modeUi : COPY.modeGui}</span></button><span class="tab-separator" aria-hidden="true"></span>` +
-      `<button class="icon-button" data-action="settings" aria-pressed="${settings}" title="${COPY.uiApp004}" aria-label="${COPY.uiApp004}">${GEAR}</button>` +
+      `<button class="icon-button settings-button" data-action="settings" aria-pressed="${settings}" title="${COPY.uiApp004}" aria-label="${needsUpdate(update) ? `${COPY.uiApp004} · ${COPY.updateAvailable}` : COPY.uiApp004}">${GEAR}${needsUpdate(update) ? UPDATE_BADGE : ''}</button>` +
       `<button class="icon-button" data-action="collapse-window" title="${COPY.windowCollapse}" aria-label="${COPY.windowCollapse}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/><path d="M3 15v6h6M3 21l9-9"/></svg></button>` +
       `<button class="icon-button help-button" data-action="tutorial" title="${COPY.uiTutorial001}" aria-label="${COPY.uiTutorial001}">${HELP}</button></div>`;
+    placeUpdateBubble();
+  }
+
+  // 업데이트 안내: 튜토리얼과 같은 흰 말풍선을 관리 아이콘 아래에 단다. 관리 화면에서는 띄우지 않는다.
+  function placeUpdateBubble() {
+    const gear = root.querySelector<HTMLElement>('.tabs [data-action="settings"]');
+    if (!gear || !needsUpdate(update) || updateBubbleClosed || tab === 'ADMIN') {
+      if (updateBubble) updateBubble.hidden = true;
+      return;
+    }
+    if (!updateBubble) {
+      updateBubble = document.createElement('div');
+      updateBubble.className = 'tutorial-bubble update-bubble';
+      updateBubble.setAttribute('role', 'status');
+      updateBubble.innerHTML = `<strong>${COPY.updateAvailable}</strong><p><button class="link" data-action="update-go">${COPY.updateGo}</button></p>` +
+        `<button class="icon-button update-bubble-close" data-action="update-close" title="${COPY.updateClose}" aria-label="${COPY.updateClose}">${X_ICON}</button>`;
+      root.append(updateBubble);
+    }
+    updateBubble.hidden = false;
+    const base = root.getBoundingClientRect(), at = gear.getBoundingClientRect();
+    const spot = { left: at.left - base.left - 4, top: at.top - base.top - 4, right: at.right - base.left + 4, bottom: at.bottom - base.top + 4 };
+    const place = placeBubble(spot, updateBubble.offsetWidth, updateBubble.offsetHeight, root.clientWidth, root.clientHeight);
+    Object.assign(updateBubble.style, { left: `${place.left}px`, top: `${place.top}px` });
+    updateBubble.style.setProperty('--tail-x', `${place.tailX}px`);
+    updateBubble.dataset.tail = place.tail;
   }
 
   function renderToolbar() {
@@ -2133,6 +2173,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         <p class="note gui-width-sizes">${guiWidthSizes(s.project.guiWidth)}</p>
         <p class="note">${COPY.uiApp227} ${COPY.uiApp228}</p></section>
       ${renderDataSection(s)}
+      ${renderUpdateSection()}
       <section class="admin" data-form="exclusions"><h3>${COPY.uiApp120}</h3>
         ${exclusions.length ? exclusions.map(e => `<div class="inline" data-form="exc" data-id="${e.id}"><span>${esc(e.name)}</span><small>${esc(e.reason)}</small><button data-action="admin-unexclude">${COPY.uiApp121}</button></div>`).join('') : `<p class="note">${COPY.uiApp122}</p>`}</section>
       <section class="admin" data-form="pending"><h3>${COPY.adminPending}</h3><p>${pending.length}${COPY.uiApp081}</p>${pending.length ? recoveryList(s) : ''}<p class="note">${COPY.recoveryRetryHint}</p><button data-action="retry" data-reconcile="1">${COPY.uiApp124}</button></section>
@@ -2159,7 +2200,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const groups: [string | null, HTMLElement[]][] = [
       [COPY.adminWorkSetup, pick(['scope', 'flipbook', 'screen-id-prefix'])],
       [COPY.adminTemplateGroup, pick(['template', 'gui-width'])],
-      [COPY.adminSystem, pick(['exclusions', 'automatic-pages'])],
+      [COPY.adminSystem, pick(['exclusions', 'automatic-pages', 'update'])],
       [null, [maintenance]],
     ];
     const nav = document.createElement('nav');
@@ -2182,12 +2223,43 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         const button = document.createElement('button');
         button.className = 'admin-nav-item'; button.dataset.action = 'admin-nav'; button.dataset.key = panel.dataset.key ?? '';
         button.textContent = panel.querySelector(':scope > summary')?.textContent?.trim() ?? '';
+        if (form === 'update' && needsUpdate(update)) button.insertAdjacentHTML('beforeend', UPDATE_BADGE);
         nav.append(button);
       }
     }
     syncAdminNav();
     nav.scrollTop = scrolled.nav;
     panels.scrollTop = scrolled.panels;
+  }
+
+  // 업데이트: 현재 버전 · 최신 버전 · 받기 링크. 최신 버전을 묻지 않는 창(미리보기·예시 화면)에는 최신 버전 줄이 없다.
+  function renderUpdateSection(): string {
+    return `<section class="admin" data-form="update"><h3>${COPY.adminUpdate}</h3>
+        <div class="update-version"><span>${COPY.updateCurrent}</span><span>${esc(build.current)}</span></div>
+        ${updateAsked ? `<div class="update-version"><span>${COPY.updateLatest}</span><span class="update-latest">${esc(update ? update.latest ?? COPY.updateUnknown : COPY.updateChecking)}</span></div>` : ''}
+        <button class="link" data-action="update-download">${COPY.updateDownload}</button></section>`;
+  }
+
+  // 응답이 오면 관리의 업데이트 칸과 메뉴 알림 점만 고친다. 관리를 통째로 다시 그리면 입력 중인 값이 사라진다.
+  function refreshUpdateSection() {
+    const latest = root.querySelector('.update-latest');
+    if (latest) latest.textContent = update ? update.latest ?? COPY.updateUnknown : COPY.updateChecking;
+    const item = root.querySelector<HTMLElement>(`.admin-nav-item[data-key="${COPY.adminUpdate}"]`);
+    if (item && needsUpdate(update) && !item.querySelector('.update-badge')) item.insertAdjacentHTML('beforeend', UPDATE_BADGE);
+  }
+
+  // 관리를 연다. panel: 펼칠 항목(제목). 관리를 열면 업데이트 안내 말풍선은 닫는다(알림 점은 남는다).
+  function openAdmin(panel: string) {
+    categoryManageKeys = [];
+    closeVersion(false);
+    tab = 'ADMIN';
+    addMode = null; editMode = null;
+    adminOpen = panel;
+    updateBubbleClosed = true;
+    renderAll();
+    // 플러그인을 연 뒤 추가한 페이지(새 버전 페이지 등)도 고를 수 있게 페이지 목록을 다시 받는다.
+    bridge.send({ type: 'pages' });
+    bridge.send({ type: 'templateInfo', templateId: templatePick ?? undefined });
   }
 
   // 톱니바퀴로 관리를 열 때 펼칠 항목: 공통 항목이나 지금 모드의 항목을 보던 중이면 그대로, 아니면 지금 모드의 첫 항목.
@@ -2966,18 +3038,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         renderAll();
         break;
       case 'settings':
+        if (tab !== 'ADMIN') { openAdmin(adminPanelFor(mode, adminOpen)); break; }
         categoryManageKeys = [];
         closeVersion(false);
-        tab = tab === 'ADMIN' ? mode : 'ADMIN';
+        tab = mode;
         addMode = null; editMode = null;
-        if (tab === 'ADMIN') adminOpen = adminPanelFor(mode, adminOpen);
         renderAll();
-        // 플러그인을 연 뒤 추가한 페이지(새 버전 페이지 등)도 고를 수 있게 페이지 목록을 다시 받는다.
-        if (tab === 'ADMIN') {
-          bridge.send({ type: 'pages' });
-          bridge.send({ type: 'templateInfo', templateId: templatePick ?? undefined });
-        }
         break;
+      case 'update-go': openAdmin(COPY.adminUpdate); break;
+      case 'update-close': updateBubbleClosed = true; placeUpdateBubble(); break;
+      case 'update-download': bridge.send({ type: 'updateDownload' }); break;
       // 만들기 전 새 플립북은 설정을 다녀와도 남는다.
       case 'category-manage':
         categoryManageKeys = selectedKeys('GUI');
@@ -4109,6 +4179,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         renderBusy();
         renderAll();
         openNewFeatures();
+        if (!updateAsked && root.id === 'app' && window.parent !== window) { updateAsked = true; bridge.send({ type: 'updateCheck' }); }
+        break;
+      case 'updateLatest':
+        update = { ...build, latest: msg.latest };
+        renderTabs();
+        refreshUpdateSection();
         break;
       case 'workerNameResult':
         if (msg.name && !workerTyped) { workerName = msg.name; renderFooter(); }

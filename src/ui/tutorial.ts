@@ -43,7 +43,7 @@ interface Step {
   spots(d: Driver): Spot[];
 }
 
-interface Rect { left: number; top: number; right: number; bottom: number }
+export interface Rect { left: number; top: number; right: number; bottom: number }
 
 // 예시 화면 조작. 목록은 다음 프레임에 그리고 본체 응답은 비동기로 오므로 원하는 상태가 될 때까지 기다린다.
 class Driver {
@@ -580,7 +580,8 @@ function merge(rects: Rect[]): Rect[] {
 
 // 말풍선 자리: 기본은 영역 아래에 왼쪽 위 꼬리. 오른쪽이 모자라면 오른쪽 위 꼬리, 아래가 모자라면 영역 위에 왼쪽·오른쪽 아래 꼬리를 쓴다.
 // 꼬리 끝은 영역의 왼쪽(오른쪽) 끝에서 조금 안쪽을 가리킨다.
-function placeBubble(anchor: Rect, w: number, h: number, W: number, H: number): { left: number; top: number; tail: string; tailX: number } {
+// 업데이트 안내 말풍선(app.ts)도 같은 규칙으로 놓는다.
+export function placeBubble(anchor: Rect, w: number, h: number, W: number, H: number): { left: number; top: number; tail: string; tailX: number } {
   const reach = Math.min((anchor.right - anchor.left) / 2, 24);
   const tipLeft = anchor.left + reach, tipRight = anchor.right - reach;
   const fromTip = TAIL.inset + TAIL.width / 2;

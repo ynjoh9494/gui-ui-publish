@@ -10,6 +10,6 @@
     { "name": "GUI Publish", "command": "gui" },
     { "name": "UI Flipbook", "command": "ui" }
   ],
-  "networkAccess": { "allowedDomains": ["none"], "reasoning": "파일 내부 데이터만 사용하며 외부 서버와 통신하지 않는다." },
+  "networkAccess": { "allowedDomains": ["https://api.github.com"], "reasoning": "관리 → 업데이트에서 이 플러그인의 최신 배포 버전만 GitHub Release에서 읽는다. 파일 내용과 사용자 정보는 보내지 않는다." },
   "permissions": ["currentuser"]
 }

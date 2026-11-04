@@ -265,6 +265,14 @@ summary { cursor: pointer; color: var(--muted); }
 .admin-nav-item { border: 0; background: none; text-align: left; padding: 5px 8px; border-radius: 5px; white-space: nowrap; }
 .admin-nav-item[aria-current="true"] { background: var(--bg2); font-weight: 600; }
 .admin-nav-separator { height: 1px; margin: 8px 0; background: var(--border); }
+/* 업데이트 알림 점(2026-11-04 사용자 요청): 관리 아이콘과 관리 메뉴 「업데이트」 글자의 오른쪽 위에 파란 점(Figma 테마 brand 색)을 단다. */
+.update-badge { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--brand); pointer-events: none; }
+.tabs .settings-button { position: relative; }
+.tabs .settings-button .update-badge { position: absolute; top: 4px; right: 4px; }
+.admin-nav-item .update-badge { position: relative; top: -6px; margin-left: 2px; vertical-align: baseline; }
+.update-version { display: flex; gap: 8px; align-items: center; min-height: 28px; }
+.update-version > span:first-child { width: 72px; flex: none; color: var(--muted); }
+.update-version + button.link { margin-top: 6px; }
 .admin-nav .admin-group-label { margin: 12px 8px 2px; color: var(--muted); font-size: 11px; font-weight: 500; }
 .admin-nav .admin-group-label:first-child { margin-top: 0; }
 /* 관리 항목은 읽기 편한 최대 폭을 두고 작은 창에서는 줄바꿈한다. 칸 머리(details.accordion > summary)는 클릭하지 않는 제목이다. */
@@ -848,6 +856,11 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .tutorial-progress { position: absolute; top: 10px; right: 14px; font-size: 11px; color: #6b6b6b; font-variant-numeric: tabular-nums; }
 .tutorial-close { position: absolute; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: #fff; color: #000; transform: translate(-50%, -50%); }
 .tutorial-close:hover:not(:disabled) { background: #fff; }
+/* 업데이트 안내는 튜토리얼 말풍선 모양을 그대로 쓰고 어둡게 덮지 않는다. 대화상자(.overlay, z-index 5)보다 아래에 둔다. */
+.update-bubble { z-index: 4; width: max-content; max-width: calc(100% - 16px); cursor: default; }
+.update-bubble strong { padding-right: 24px; }
+.update-bubble-close.icon-button { position: absolute; top: 6px; right: 6px; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: #6b6b6b; }
+.update-bubble-close.icon-button:hover:not(:disabled) { background: #f5f5f5; }
 
 .window-bar { display: none; }
 #app.window-collapsed, .tutorial-app.window-collapsed { display: block; min-width: 0; min-height: 0; overflow: hidden; }

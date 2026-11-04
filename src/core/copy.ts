@@ -83,6 +83,16 @@ export const COPY = {
   adminNotCreated: '아직 생성되지 않았습니다.',
   adminPending: '반영 상태',
   adminDanger: '데이터 초기화',
+  // 업데이트(관리 → 시스템) — src/ui/app.ts
+  adminUpdate: '업데이트',
+  updateCurrent: '현재 버전',
+  updateLatest: '최신 버전',
+  updateChecking: '확인 중',
+  updateUnknown: '확인하지 못했습니다',
+  updateDownload: '최신 버전 받기',
+  updateAvailable: '새로운 업데이트가 있습니다',
+  updateGo: '업데이트 바로가기',
+  updateClose: '닫기',
 
   windowCollapse: '창 접기',
   windowExpand: '창 펼치기',

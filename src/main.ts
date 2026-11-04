@@ -1,6 +1,7 @@
 import { Controller } from './controller.ts';
 import { clampWindow, pasteDrop, WINDOW, type ToMain } from './core/wire.ts';
 import { figmaHost, WINDOW_KEY } from './figma/host.ts';
+import { cacheFresh, DOWNLOAD_URL, LATEST_RELEASE_API, latestTag, readCache } from './core/update.ts';
 
 // 한 플러그인 안의 두 명령: GUI Publish(gui), UI Flipbook(ui). 플러그인 메뉴에서 고른다(2026-10-20 사용자 결정).
 let mode: 'GUI' | 'UI' = figma.command === 'ui' ? 'UI' : 'GUI';
@@ -19,6 +20,24 @@ let writeQueue: Promise<void> = Promise.resolve();
 const TUTORIAL_KEY = 'gui-ui-publish:new-tutorial:2026-11-04';
 // GUI 배포 작업자 이름(사용자별 마지막 값)
 const WORKER_KEY = 'gui-ui-publish:worker-name';
+// 사용자별 마지막 업데이트 확인 결과(최신 배포 태그와 확인 시각)
+const UPDATE_KEY = 'gui-ui-publish:update-check';
+// 최신 배포 버전: 한 시간 안에 확인한 값이 있으면 그 값을 쓰고, 아니면 GitHub에 묻는다.
+// 묻지 못하면(방화벽·횟수 제한 등) 마지막에 저장한 값을 쓴다. 보내는 것은 공개 API 요청뿐이다.
+async function checkUpdate(): Promise<void> {
+  let cache = readCache(await figma.clientStorage.getAsync(UPDATE_KEY).catch(() => null));
+  if (!cacheFresh(cache, Date.now())) {
+    try {
+      const res = await fetch(LATEST_RELEASE_API);
+      const latest = res.ok ? latestTag(await res.json()) : null;
+      if (latest) {
+        cache = { latest, checkedAt: Date.now() };
+        await figma.clientStorage.setAsync(UPDATE_KEY, cache).catch(() => {});
+      }
+    } catch { /* 저장해 둔 값을 쓴다 */ }
+  }
+  figma.ui.postMessage({ type: 'updateLatest', latest: cache?.latest ?? null });
+}
 figma.ui.onmessage = (msg: ToMain) => {
   if (msg.type === 'tutorialSeenGet') {
     void figma.clientStorage.getAsync(`${TUTORIAL_KEY}:${msg.mode}`).then(seen => {
@@ -40,6 +59,8 @@ figma.ui.onmessage = (msg: ToMain) => {
     if (msg.name.trim()) void figma.clientStorage.setAsync(WORKER_KEY, msg.name.trim()).catch(() => {});
     return;
   }
+  if (msg.type === 'updateCheck') { void checkUpdate(); return; }
+  if (msg.type === 'updateDownload') { figma.openExternal(DOWNLOAD_URL); return; }
   if (msg.type === 'switchMode') { mode = msg.mode; watchPage(); }
   if (isWrite(msg)) writeQueue = writeQueue.then(() => controller.handle(msg), () => controller.handle(msg));
   else void controller.handle(msg);

@@ -38,7 +38,12 @@ function notes() {
 }
 
 if (inActions) await publish();
-else if (dryRun) { check(); build(versionArg ? `v${versionArg.replace(/^v/, '')}` : 'v0.0.0-dev'); }
+// 빌드(build.mjs)는 PLUGIN_VERSION이 태그 형식일 때만 배포본으로 만든다(관리 → 업데이트의 현재 버전·알림).
+else if (dryRun) {
+  if (versionArg) process.env.PLUGIN_VERSION = `v${versionArg.replace(/^v/, '')}`;
+  check();
+  build(process.env.PLUGIN_VERSION ?? 'v0.0.0-dev');
+}
 else pushTag();
 
 // 로컬: main이 원격과 같고 깨끗한지 확인하고, 검사를 통과하면 태그를 만들어 push한다.
@@ -97,6 +102,7 @@ async function publish() {
     return res.status === 204 ? null : res.json();
   };
   if (await api('GET', `/repos/${REPO}/releases/tags/${tag}`)) fail(`${tag} 릴리스가 이미 있습니다.`);
+  process.env.PLUGIN_VERSION = tag;
   check();
   build(tag);
   // 주석 태그면 태그 메시지를 릴리스 설명으로 쓴다.

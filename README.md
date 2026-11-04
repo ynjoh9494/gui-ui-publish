@@ -99,6 +99,8 @@ npm run release -- 1.2.0 --notes-file notes.md  # 여러 줄 설명은 파일로
 
 `npm run release`는 main이 깨끗하고 origin과 같은지 확인하고 `npm run check`를 통과하면 버전 태그를 push합니다. 그러면 GitHub Actions가 그 태그의 코드로 다시 검사·빌드해 zip(`manifest.json`, `dist/code.js`, `dist/ui.html`, 사용 안내 HTML)을 Release에 올립니다. 팀원용 링크(`releases/latest/download/GUIUIPublish.zip`)는 바뀌지 않습니다.
 
+Actions는 태그를 `PLUGIN_VERSION`으로 넘겨 빌드하므로 zip의 플러그인은 그 버전을 알고, 관리 → 업데이트에서 더 높은 Release가 나오면 알림을 띄웁니다. 그 밖의 빌드(`npm run check`·`activate-build`)는 `git describe` 값을 쓰는 개발 빌드이며 알림을 띄우지 않습니다.
+
 화면이나 흐름이 바뀌면 배포 전에 `release/guide.html` 문구와 `npm run guide-screens` 그림도 함께 고칩니다.
 
 ### 문구 관리

@@ -10,7 +10,7 @@
 - 이전 형식(이름 규칙) 플립북 변환은 플립북 상세에서 고른 플립북만 한다. Controller(`convertLegacyFlipbooks`)가 Host 변환(`figma/legacyConvert.ts`) → 기록 `tracked` → 그 페이지 추적 GUI 다시 읽기 → 바로 반영을 조정한다. 반영(`syncFlipbook`)은 연결 기록이 없는 프레임을 반영하지 않는다(등록한 프레임은 그 자리에서 표식을 단다).
 - 기존 프레임 등록은 기록된 페이지의 원본 표식도 대조해 자기 노드 ID가 잘못 적힌 복사본을 분리한다. `GuiRecovery`는 저장 복구·원본 검증을 화면별로 수행하고 검증된 화면의 복사본·플로우를 묶어서 반영한다. 부분 실패 시에만 화면별로 재시도하며, Controller의 사용처 한정 GUI 반영 결과(`failedTargets`)로 실패한 플립북에 의존하는 화면만 대기로 남긴다. 같은 화면의 여러 배포 작업은 검증과 실제 반영을 공유한다. `deliverFlipbooks`의 `onlyTargets`는 다른 미완료 작업과 위치 변경으로 발견한 다른 플립북 모두를 추가 반영 대상에서 제외한다.
 
-Figma 파일 안에서 실행하는 단일 플러그인이다. `manifest.json`의 두 메뉴 명령 `gui`와 `ui`가 같은 `dist/code.js`를 실행하되, `src/main.ts`가 선택한 명령을 `GUI` 또는 `UI` 모드로 `Controller`에 전달한다. 외부 서버나 네트워크 호출은 없다.
+Figma 파일 안에서 실행하는 단일 플러그인이다. `manifest.json`의 두 메뉴 명령 `gui`와 `ui`가 같은 `dist/code.js`를 실행하되, `src/main.ts`가 선택한 명령을 `GUI` 또는 `UI` 모드로 `Controller`에 전달한다. 기록과 GUI 전달에는 외부 서버나 네트워크 호출이 없다. 네트워크 호출은 업데이트 확인 하나다: `src/main.ts`가 GitHub `releases/latest`의 태그만 읽어 사용자별로 한 시간 동안 `figma.clientStorage`에 저장하고(`src/core/update.ts`), 이 빌드의 버전(`__PLUGIN_VERSION__`·`__PLUGIN_RELEASE__`)은 `build.mjs`가 넣는다.
 
 ```mermaid
 flowchart LR
