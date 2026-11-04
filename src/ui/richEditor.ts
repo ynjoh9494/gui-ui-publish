@@ -1,5 +1,5 @@
 import { COPY } from '../core/copy.ts';
-import { cloneLayout, DEFAULT_TEXT_LAYOUT, isSpacer, type TextLayout } from '../core/description.ts';
+import { cloneLayout, DEFAULT_TEXT_LAYOUT, type TextLayout } from '../core/description.ts';
 import { esc } from './html.ts';
 import {
   backspaceAtStart, deleteRange, insertParagraphs, insertSpacer, orderPos, outdentDepth, parseRichText, serializeRichText, setDepth, sliceParagraph,
@@ -11,7 +11,7 @@ import {
 // 글머리표와 굵은 글씨가 그대로 보이는 편집기다. Tab·Shift+Tab으로 목록 단계, Ctrl+B로 굵게,
 // 줄 처음에 `- `를 치면 목록이 된다. 붙여 넣은 글은 core/richText.ts의 텍스트 형식(`- `·탭·`**`)으로 읽는다.
 // 글자 입력(한글 조합 포함)은 브라우저에 맡기고, 문단 구조를 바꾸는 동작(줄 나누기·합치기·붙여 넣기·굵게·목록 단계·되돌리기)은
-// 문서 모델로 계산해 다시 그린다. 「---」만 있는 줄은 여백(빈 프레임)으로 넣으며 편집기에서는 흐린 줄로 보인다.
+// 문서 모델로 계산해 다시 그린다. 「---」만 있는 줄은 여백(빈 프레임)으로 넣으며 편집기에서는 일반 글자 「---」 그대로 보인다.
 // 위 줄의 기본 버튼(굵게·빨간 글씨·목록·여백) 오른쪽에 서식 도구를 접어 두고, 펼치면 오른쪽으로 Gap·Padding·글자 서식 칸이 나온다.
 
 export interface RichEditor {
@@ -34,8 +34,8 @@ const TYPING_GROUP_MS = 800;
 const HISTORY_LIMIT = 200;
 
 // 「• 목록」 버튼 아이콘
-// 「여백」 버튼 아이콘: 위아래 막대 사이 빈 칸
-const SPACER_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 5h16M4 19h16"/><path d="M12 9v6M9.5 11.5 12 9l2.5 2.5M9.5 12.5 12 15l2.5-2.5" stroke-width="1.6"/></svg>';
+// 「여백」 버튼 아이콘: 가운데 가로선 하나, 위에 위쪽 chevron, 아래에 아래쪽 chevron(2026-11-04 사용자 요청)
+const SPACER_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16"/><path d="m8 7 4-4 4 4"/><path d="m8 17 4 4 4-4"/></svg>';
 // 서식 도구 펼치기 아이콘(슬라이더)
 const LAYOUT_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>';
 const LIST_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></svg>';
@@ -52,7 +52,7 @@ function paragraphHtml(p: RichParagraph): string {
     html += part;
   }
   const depth = p.depth === null ? '' : ` data-depth="${p.depth}" style="--depth:${p.depth}"`;
-  return `<div class="rt-p${isSpacer(p) ? ' rt-spacer' : ''}"${depth}>${html || '<br>'}</div>`;
+  return `<div class="rt-p"${depth}>${html || '<br>'}</div>`;
 }
 
 const clone = (doc: RichParagraph[]) => doc.map(p => ({ ...p, bold: p.bold.map(r => ({ ...r })), ...(p.red ? { red: p.red.map(r => ({ ...r })) } : {}) }));

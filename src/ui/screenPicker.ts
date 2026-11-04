@@ -20,8 +20,18 @@ const LIST_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" s
 const GRID_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>';
 // 플립북 만들기(create)도 같은 형식을 쓴다(2026-11-04 사용자 요청).
 export type PickerScope = 'paste' | 'flow' | 'create';
+// 목록/그리드 보기 아이콘. 플립북 만들기는 두 열에 함께 적용하므로 두 열 위의 공통 머리에 따로 둔다(2026-11-04 사용자 요청).
+export function screenLayoutToggle(scope: PickerScope): string {
+  return `<div class="paste-toggle" role="group"><button class="icon-button" data-action="${scope}-layout" data-layout="list" title="${COPY.paste003}" aria-label="${COPY.paste003}">${LIST_ICON}</button><button class="icon-button" data-action="${scope}-layout" data-layout="grid" title="${COPY.paste004}" aria-label="${COPY.paste004}">${GRID_ICON}</button></div>`;
+}
+const searchInput = (scope: PickerScope, query: string) =>
+  `<input class="paste-search" type="search" data-${scope}="${scope === 'flow' ? 'query' : 'search'}" value="${esc(query)}" placeholder="${COPY.paste010}" aria-label="${COPY.paste010}">`;
 export function screenPickerControls(scope: PickerScope, query: string): string {
-  return `<div class="paste-bar"><select data-${scope}="category" aria-label="${COPY.paste002}" title="${COPY.paste002}"></select><div class="paste-toggle" role="group"><button class="icon-button" data-action="${scope}-layout" data-layout="list" title="${COPY.paste003}" aria-label="${COPY.paste003}">${LIST_ICON}</button><button class="icon-button" data-action="${scope}-layout" data-layout="grid" title="${COPY.paste004}" aria-label="${COPY.paste004}">${GRID_ICON}</button></div></div><input class="paste-search" type="search" data-${scope}="${scope === 'flow' ? 'query' : 'search'}" value="${esc(query)}" placeholder="${COPY.paste010}" aria-label="${COPY.paste010}">`;
+  return `<div class="paste-bar"><select data-${scope}="category" aria-label="${COPY.paste002}" title="${COPY.paste002}"></select>${screenLayoutToggle(scope)}</div>${searchInput(scope, query)}`;
+}
+// 보기 아이콘 없이 카테고리와 검색을 한 줄에 둔다(플립북 만들기의 「화면 선택」 열).
+export function screenPickerFilters(scope: PickerScope, query: string): string {
+  return `<div class="paste-bar"><select data-${scope}="category" aria-label="${COPY.paste002}" title="${COPY.paste002}"></select>${searchInput(scope, query)}</div>`;
 }
 export function screenPickerEmpty(scope: PickerScope, category: string, query: string): string {
   return `<div class="empty" role="status">${query.trim() && category !== ALL_CATEGORIES ? `<button class="link" data-action="${scope}-search-all">${COPY.paste011}</button>` : COPY.paste012}</div>`;

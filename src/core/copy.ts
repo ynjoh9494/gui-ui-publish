@@ -395,7 +395,10 @@ export const COPY = {
   rowStateNew: "새 플립북",
   rowStateEdited: "수정 중",
   // 「화면 선택」 머리의 우클릭 안내(2026-11-04 사용자 요청)
-  createRightClickHint: "우클릭: 그 화면 하나로 새 플립북 추가",
+  createRightClickHint: "목록에서 화면을 우클릭하면, 우클릭한 화면 하나만 들어간 새 플립북이 목록에 추가됩니다.",
+  createPageManage: "페이지 관리",
+  categoryManageShort: "관리",
+  createScaleLabel: "크기",
   fbChapterAuto: "Screen ID의 Chapter 코드에 따라 자동 결정",
   fbIdPlaceholder: "<기기>_<챕터>_POLICY",
   fbHistory: "히스토리",

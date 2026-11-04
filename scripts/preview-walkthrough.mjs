@@ -376,12 +376,11 @@ try {
   assert.match(await app.locator('.footer .pending-line .pending-counts').innerText(), /^새 플립북 1개$/);
   assert.equal(await app.locator('.footer [data-action=create-submit]').evaluate(el => el.classList.contains('primary')), false, '모두 적용하기는 주요 버튼 색을 쓰지 않는다');
   assert.equal(await app.locator('.toolbar .pending-line').count(), 0, '목록 위 줄은 없다');
-  assert.equal(await app.locator('.detail .edit-head [data-action=new-remove]').count(), 0, '플립북 편집 머리에 X가 없다');
-  assert.equal(await app.locator('[data-action=create-page-manage] svg').count(), 1, '페이지 관리 화살표는 아이콘이다');
-  assert.ok(await app.locator('.new-place .field-head').evaluate(head => {
-    const [label, link] = [head.firstElementChild.getBoundingClientRect(), head.querySelector('[data-action=create-page-manage]').getBoundingClientRect()];
-    return head.querySelector('[data-action=create-page-manage]').textContent === '관리' && Math.abs(label.top + label.height / 2 - (link.top + link.height / 2)) < 2 && Math.abs(link.right - head.getBoundingClientRect().right) < 1;
-  }), '관리 링크는 페이지 선택 줄 오른쪽에 있다');
+  assert.equal(await app.locator('.detail .title-head [data-action=new-remove]').count(), 0, '플립북 편집 머리에 X가 없다');
+  assert.ok(await app.locator('.new-place .prop').first().evaluate(row => {
+    const [select, link] = [row.querySelector('[data-input=new-page]').getBoundingClientRect(), row.querySelector('[data-action=create-page-manage]').getBoundingClientRect()];
+    return row.querySelector('[data-action=create-page-manage]').textContent === '관리' && select.right <= link.left && Math.abs(select.top + select.height / 2 - (link.top + link.height / 2)) < 2;
+  }), '관리 링크는 페이지 선택 바로 오른쪽에 있다');
   assert.deepEqual(await app.locator('[data-input=new-page] option').evaluateAll(options => options.map(option => option.value)), ['0:3']);
   await app.locator('[data-action=create-page-manage]').click();
   assert.equal(await app.locator('details[data-form=flipbook][open]').count(), 1, '페이지 관리로 이동한다');
@@ -429,15 +428,18 @@ try {
   await option.locator('[data-action=create-screen-toggle]').check();
   await shot('03-create-selected');
   assert.equal(await app.locator('.detail .create-plan-ids, .detail .id-tag:not(.create-screen-option .id-tag)').count(), 0, '선택된 화면 위에 ID를 따로 표시하지 않는다');
-  assert.equal(await app.locator('.detail .edit-head h2').innerText(), '플립북 편집', '머리에는 「플립북 편집」을 둔다');
+  assert.equal(await app.locator('.detail .title-head h2').innerText(), '플립북 편집', '머리에는 「플립북 편집」을 둔다');
   assert.ok(await app.locator('.new-place').evaluate(place => {
     const [pageField, section, title] = [place.querySelector('[data-input=new-page]'), place.querySelector('[data-input=new-section]'), place.querySelector('[data-input=new-title]')].map(el => el.getBoundingClientRect());
     return Math.abs(pageField.top - section.top) < 2 && pageField.right <= section.left && section.bottom <= title.top && Math.abs(pageField.left - title.left) < 1;
   }), '페이지와 섹션은 한 줄 2열, 그 아래 제목');
-  assert.ok(await app.locator('.detail .edit-head').evaluate(head => {
-    const [t, h] = [head.querySelector('h2'), head.querySelector('.edit-title .note')].map(el => el.getBoundingClientRect());
-    return head.querySelector('.edit-title .note').textContent.startsWith('모두 적용하기 전까지 저장 안 함') && Math.abs(h.left - t.left) < 1 && h.top >= t.bottom - 1;
-  }), '머리에는 제목과 안내만 둔다');
+  assert.ok(await app.locator('.detail .title-head').evaluate(head => {
+    const [create, h] = [head.querySelector('[data-action=new-create-one]'), head];
+    return !head.querySelector('.note') && create.textContent === '만들기' && Math.abs(create.getBoundingClientRect().right - h.getBoundingClientRect().right) < 2;
+  }), '머리에는 제목과 오른쪽 위 「만들기」만 둔다(안내 문구 없음)');
+  assert.ok(await app.locator('.new-place').evaluate(place => [...place.querySelectorAll('input, select')].every(el => el.getBoundingClientRect().height <= 25)), '입력란은 24px 한 줄 높이다');
+  assert.equal(await app.locator('.create-browser-head [data-action=create-layout]').count(), 2, '보기 방식은 두 열 위 공통 머리에 둔다');
+  assert.equal(await app.locator('.create-browser-head .template-help').getAttribute('title'), '목록에서 화면을 우클릭하면, 우클릭한 화면 하나만 들어간 새 플립북이 목록에 추가됩니다.', '우클릭 안내는 화면 선택 옆 물음표 툴팁이다');
   assert.ok(await app.locator('.footer .pending-line').evaluate(line => {
     const [counts, cancel, cta] = [line.querySelector('.pending-counts'), line.querySelector('[data-action=new-clear]'), line.querySelector('[data-action=create-submit]')];
     const [n, c, b] = [counts, cancel, cta].map(el => el.getBoundingClientRect());
@@ -446,15 +448,19 @@ try {
   assert.equal(await app.locator('.list .new-row .name').innerText(), 'STB_HO_001 · ' + initialName, '목록에는 첫 화면 이름을 제목으로 보여 준다');
   assert.ok((await app.locator('.list .section-group').filter({ has: page.locator('.new-row') }).locator('.section-label').innerText()).includes('홈'), '화면 카테고리 Section에 놓는다');
   assert.equal(await app.locator('.detail [data-input=new-title]').inputValue(), initialName, '오른쪽 제목은 첫 화면 이름이 채워진 입력란이다');
-  assert.equal(await app.locator('.detail [data-action=new-edit-title]').count(), 0, '오른쪽 제목에는 연필이 없다');
-  assert.ok(await app.locator('.list .new-row.selected').evaluate(row => row.querySelector('.name').getBoundingClientRect().right <= row.querySelector('[data-action=new-edit-title]').getBoundingClientRect().left), '연필은 목록 이름 오른쪽에 있다');
+  assert.equal(await app.locator('[data-action=new-edit-title]').count(), 0, '새 플립북에 연필이 없다');
+  assert.ok(await app.locator('.list .new-row.selected').evaluate(row => {
+    const [name, tag, handle] = [row.querySelector('.name'), row.querySelector('.row-state'), row.querySelector('.drag-handle')].map(el => el.getBoundingClientRect());
+    const other = document.querySelector('#app .list .section-group .row:not(.new-row) .name')?.getBoundingClientRect();
+    return tag.left - name.right < 8 && handle.right <= name.left && (!other || Math.abs(other.left - name.left) < 1);
+  }), '태그는 제목 바로 오른쪽, 드래그 표시는 왼쪽 여백에 있어 이름이 기존 행과 같은 자리에서 시작한다');
   assert.equal(await app.locator('.create-selected-list .create-screen-option').count(), 1, '선택 화면은 오른쪽 별도 박스로 이동한다');
   assert.equal(await app.locator('.create-screen-list .create-screen-option').count(), 0, '선택 화면을 후보 목록에 중복 표시하지 않는다');
   await app.locator('.create-selected-list [data-action=create-screen-toggle]').click();
   assert.equal(await app.locator('.create-screen-list .create-screen-option').count(), 1, '체크 해제한 화면은 후보 목록으로 돌아간다');
   await app.locator('.create-screen-list [data-action=create-screen-toggle]').click();
-  await app.locator('.list .new-row.selected [data-action=new-edit-title]').click();
-  assert.equal(await app.locator('.list [data-input=new-title]').getAttribute('placeholder'), initialName, '목록 연필을 누르면 그 행이 실제 화면 이름을 안내하는 입력으로 바뀐다');
+  await app.locator('.list .new-row.selected .name').dblclick();
+  assert.equal(await app.locator('.list [data-input=new-title]').getAttribute('placeholder'), initialName, '목록 이름을 더블클릭하면 그 행이 실제 화면 이름을 안내하는 입력으로 바뀐다');
   await app.locator('.list [data-input=new-title]').press('Enter');
   await app.locator('.list [data-input=new-title]').waitFor({ state: 'detached', timeout: 3000 }); // Enter로 목록 입력을 닫는다(목록은 다음 프레임에 다시 그린다)
   await app.locator('[data-input=create-screen-scale]').selectOption('0.5');
@@ -619,8 +625,11 @@ try {
   const pageOf = name => app.locator('.list .group').filter({ has: page.locator('.new-row').filter({ hasText: name }) }).locator('.group-head').innerText();
   assert.ok((await pageOf('다른 페이지 정책')).includes('UI 플립북'), '고른 페이지의 Section으로 옮긴다');
   assert.notEqual(await sectionOf('다른 페이지 정책'), '정책', '화면이 없다고 「정책」 Section에 넣지 않는다');
-  await app.locator('[data-action=create-submit]').click();
+  // 상세 오른쪽 위 「만들기」는 그 새 플립북 하나만 만들고, 만든 플립북을 고른다.
+  await app.locator('.detail [data-action=new-create-one]').click();
   await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('1개를 만들었습니다'));
+  await newRows(0, '만든 새 플립북 행을 지운다');
+  await page.waitForFunction(() => document.querySelector('#app .list .row.selected .name')?.textContent?.endsWith('다른 페이지 정책'));
 
   // UI Flipbook은 배포하지 않는다. 변경사항 확인·배포 체크·배포 버튼 없이 만든 플립북 목록을 바로 보여 준다.
   assert.equal(await app.locator('[data-action=scan]').count(), 0, 'UI Flipbook에는 변경사항 확인이 없다');
