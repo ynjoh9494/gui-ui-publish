@@ -32,6 +32,8 @@ export const keys = {
   track: (id: string) => `trk:${id}`,
   audit: (id: string) => `aud:${id}`,
   dataStatus: 'data',
+  // 이 파일에서 쓰인 가장 높은 플러그인 배포 버전(core/update.ts). 업데이트 알림에만 쓰며 State에 넣지 않는다.
+  pluginVersion: 'ver',
   // 화면의 변경 근거(core/changeDigest.ts). 비교 기준 하나만 덮어쓰며 State에 넣지 않는다.
   digest: (screenId: string) => `${DIGEST_PREFIX}${screenId}`,
 };

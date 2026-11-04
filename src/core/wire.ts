@@ -147,7 +147,7 @@ export type ToMain =
   // GUI 배포 작업자 이름: 사용자별로 마지막에 배포한 이름을 기억한다(figma.clientStorage, 2026-11-03 사용자 요청).
   | { type: 'workerNameGet' }
   | { type: 'workerNameSet'; name: string }
-  // 업데이트(관리 → 시스템): 최신 배포 버전을 묻고, 최신 zip 받기 링크를 브라우저로 연다.
+  // 업데이트(관리 → 시스템): 파일에 기록된 최신 버전을 묻고(이 빌드가 더 높으면 기록을 올림), 최신 zip 받기 링크를 브라우저로 연다.
   | { type: 'updateCheck' }
   | { type: 'updateDownload' }
   | { type: 'scan' }
@@ -247,7 +247,7 @@ export type ToUi =
   | { type: 'startupReady' }
   | { type: 'tutorialSeenResult'; mode: Team; seen: boolean }
   | { type: 'workerNameResult'; name: string | null }
-  // latest: 최신 배포 태그. 확인하지 못했고 저장해 둔 값도 없으면 null
+  // latest: 이 파일에서 쓰인 가장 높은 배포 버전. 기록이 없으면 null
   | { type: 'updateLatest'; latest: string | null }
   | { type: 'state'; state: WireState; pages: PageInfo[]; managedPages?: ManagedPageInfo[] }
   | { type: 'entries'; entries: Entry[] }

@@ -311,7 +311,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   // 설정에서 열어 둔 아코디언 항목(제목)
   let adminOpen: string | null = null;
   // 업데이트(관리 → 시스템 → 업데이트, 2026-11-04 사용자 요청). 이 빌드의 버전은 build.mjs가 넣는다.
-  // 최신 버전은 실제 플러그인 창에서만 묻는다(미리보기·튜토리얼 예시 화면은 묻지 않는다). update: 응답을 받은 뒤의 비교 정보
+  // 최신 버전(파일 기록)은 실제 플러그인 창에서만 묻는다(미리보기·튜토리얼 예시 화면은 묻지 않는다). update: 응답을 받은 뒤의 비교 정보
   const build = {
     current: typeof __PLUGIN_VERSION__ === 'string' ? __PLUGIN_VERSION__ : 'dev',
     release: typeof __PLUGIN_RELEASE__ === 'boolean' && __PLUGIN_RELEASE__,

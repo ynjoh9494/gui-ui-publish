@@ -1,7 +1,9 @@
 import { Controller } from './controller.ts';
 import { clampWindow, pasteDrop, WINDOW, type ToMain } from './core/wire.ts';
 import { figmaHost, WINDOW_KEY } from './figma/host.ts';
-import { cacheFresh, DOWNLOAD_URL, LATEST_RELEASE_API, latestTag, readCache } from './core/update.ts';
+import { keys } from './core/store.ts';
+import { DOWNLOAD_URL, fileVersionRecord, readFileVersion, versionToRecord } from './core/update.ts';
+import { NS } from './figma/template.ts';
 
 // 한 플러그인 안의 두 명령: GUI Publish(gui), UI Flipbook(ui). 플러그인 메뉴에서 고른다(2026-10-20 사용자 결정).
 let mode: 'GUI' | 'UI' = figma.command === 'ui' ? 'UI' : 'GUI';
@@ -20,23 +22,17 @@ let writeQueue: Promise<void> = Promise.resolve();
 const TUTORIAL_KEY = 'gui-ui-publish:new-tutorial:2026-11-04';
 // GUI 배포 작업자 이름(사용자별 마지막 값)
 const WORKER_KEY = 'gui-ui-publish:worker-name';
-// 사용자별 마지막 업데이트 확인 결과(최신 배포 태그와 확인 시각)
-const UPDATE_KEY = 'gui-ui-publish:update-check';
-// 최신 배포 버전: 한 시간 안에 확인한 값이 있으면 그 값을 쓰고, 아니면 GitHub에 묻는다.
-// 묻지 못하면(방화벽·횟수 제한 등) 마지막에 저장한 값을 쓴다. 보내는 것은 공개 API 요청뿐이다.
-async function checkUpdate(): Promise<void> {
-  let cache = readCache(await figma.clientStorage.getAsync(UPDATE_KEY).catch(() => null));
-  if (!cacheFresh(cache, Date.now())) {
-    try {
-      const res = await fetch(LATEST_RELEASE_API);
-      const latest = res.ok ? latestTag(await res.json()) : null;
-      if (latest) {
-        cache = { latest, checkedAt: Date.now() };
-        await figma.clientStorage.setAsync(UPDATE_KEY, cache).catch(() => {});
-      }
-    } catch { /* 저장해 둔 값을 쓴다 */ }
+// 업데이트: 파일 기록 `ver`(이 파일에서 쓰인 가장 높은 배포 버전)을 읽고, 이 빌드의 배포 버전이 더 높으면 올린 뒤 UI에 알린다.
+// 이 빌드의 배포 버전은 배포본이면 그 태그, 개발 빌드면 포함한 마지막 배포 태그다(build.mjs의 __PLUGIN_BASE__).
+// 보기 권한만 있어 쓰지 못해도 읽은 기록으로 알린다.
+function checkUpdate(): void {
+  let recorded: string | null = null;
+  try { recorded = readFileVersion(figma.root.getSharedPluginData(NS, keys.pluginVersion)); } catch { /* 기록 없음 */ }
+  const next = versionToRecord(recorded, typeof __PLUGIN_BASE__ === 'string' ? __PLUGIN_BASE__ : null);
+  if (next) {
+    try { figma.root.setSharedPluginData(NS, keys.pluginVersion, fileVersionRecord(next, Date.now())); } catch { /* 읽은 기록으로 알린다 */ }
   }
-  figma.ui.postMessage({ type: 'updateLatest', latest: cache?.latest ?? null });
+  figma.ui.postMessage({ type: 'updateLatest', latest: next ?? recorded });
 }
 figma.ui.onmessage = (msg: ToMain) => {
   if (msg.type === 'tutorialSeenGet') {
@@ -59,7 +55,7 @@ figma.ui.onmessage = (msg: ToMain) => {
     if (msg.name.trim()) void figma.clientStorage.setAsync(WORKER_KEY, msg.name.trim()).catch(() => {});
     return;
   }
-  if (msg.type === 'updateCheck') { void checkUpdate(); return; }
+  if (msg.type === 'updateCheck') { checkUpdate(); return; }
   if (msg.type === 'updateDownload') { figma.openExternal(DOWNLOAD_URL); return; }
   if (msg.type === 'switchMode') { mode = msg.mode; watchPage(); }
   if (isWrite(msg)) writeQueue = writeQueue.then(() => controller.handle(msg), () => controller.handle(msg));

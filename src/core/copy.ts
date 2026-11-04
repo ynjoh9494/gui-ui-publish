@@ -88,7 +88,7 @@ export const COPY = {
   updateCurrent: '현재 버전',
   updateLatest: '최신 버전',
   updateChecking: '확인 중',
-  updateUnknown: '확인하지 못했습니다',
+  updateUnknown: '기록 없음',
   updateDownload: '최신 버전 받기',
   updateAvailable: '새로운 업데이트가 있습니다',
   updateGo: '업데이트 바로가기',

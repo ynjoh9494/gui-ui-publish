@@ -10,16 +10,20 @@ const outDir = 'tmp/build';
 
 // 플러그인 버전(관리 → 업데이트). 배포본은 scripts/release.mjs가 태그(v1.2.3)를 PLUGIN_VERSION으로 넘긴다.
 // 그 밖의 빌드는 개발 빌드이며 git describe 값(v1.2.0-5-g9d5d360)을 쓰고 업데이트 알림을 띄우지 않는다.
-const release = /^v\d+\.\d+\.\d+$/.test(process.env.PLUGIN_VERSION ?? '');
-const version = release ? process.env.PLUGIN_VERSION : describe();
-function describe() {
-  try { return execFileSync('git', ['describe', '--tags', '--always', '--dirty'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || 'dev'; }
-  catch { return 'dev'; }
+// base: 파일 기록에 남길 배포 버전. 배포본은 그 태그, 개발 빌드는 포함한 마지막 배포 태그(없으면 남기지 않는다).
+const TAG = /^v\d+\.\d+\.\d+$/;
+const release = TAG.test(process.env.PLUGIN_VERSION ?? '');
+const version = release ? process.env.PLUGIN_VERSION : git(['describe', '--tags', '--always', '--dirty']) || 'dev';
+const lastTag = git(['describe', '--tags', '--abbrev=0', '--match', 'v*']);
+const base = release ? version : TAG.test(lastTag) ? lastTag : '';
+function git(args) {
+  try { return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
+  catch { return ''; }
 }
 
 const common = {
   bundle: true, write: false, target: 'es2017', charset: 'utf8', logLevel: 'warning',
-  define: { __PLUGIN_VERSION__: JSON.stringify(version), __PLUGIN_RELEASE__: String(release) },
+  define: { __PLUGIN_VERSION__: JSON.stringify(version), __PLUGIN_RELEASE__: String(release), __PLUGIN_BASE__: JSON.stringify(base) },
 };
 
 async function bundle(entry) {

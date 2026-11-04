@@ -63,6 +63,8 @@ function pushTag() {
   check();
   run('git', ['tag', '-a', tag, '-m', notesArg ?? `GUI·UI Publish ${tag}`]);
   run('git', ['push', 'origin', tag], { stdio: 'inherit' });
+  // 이 PC의 개발 빌드가 새 태그를 포함하도록 다시 빌드·반영한다. 파일을 열면 이 버전이 「최신 버전」으로 기록되어 팀원에게 알림이 간다.
+  execSync('node build.mjs && node scripts/activate-build.mjs', { stdio: 'inherit' });
   console.log(`\n${tag} 태그를 push했습니다. GitHub Actions가 빌드해 Release에 올립니다.\n진행: https://github.com/${REPO}/actions\n최신 버전 링크: ${LATEST}`);
 }
 
