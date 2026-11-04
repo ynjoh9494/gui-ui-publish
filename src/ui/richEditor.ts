@@ -39,8 +39,8 @@ const SPACER_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"
 // 서식 도구 펼치기 아이콘(슬라이더)
 const LAYOUT_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>';
 const LIST_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></svg>';
-const LETTER_SPACING_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 10 3-8 3 8M6 7h4M2 13h12m-2-2 2 2-2 2M4 11l-2 2 2 2"/></svg>';
-const LINE_HEIGHT_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2v12m-2-2 2 2 2-2M1 4l2-2 2 2m3 7 3-8 3 8M9 8h4M7 14h8"/></svg>';
+const LETTER_SPACING_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3v10M13.5 3v10M5.5 11.5 8 4.5l2.5 7M6.4 9h3.2"/></svg>';
+const LINE_HEIGHT_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2.5h10M3 13.5h10M5.5 11 8 5l2.5 6M6.4 9h3.2"/></svg>';
 const FIELD_ICONS: Record<string, string> = {
   fontSize: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" aria-hidden="true"><path d="M3 4V2h10v2M8 2v12M5 14h6"/></svg>',
   letterSpacing: LETTER_SPACING_ICON,
@@ -69,8 +69,8 @@ const hasText = (doc: RichParagraph[]) => doc.some(p => p.text.trim());
 // 서식 도구 칸: [키, 이름]. Padding은 시계 방향(위·오른쪽·아래·왼쪽) 네 칸이다.
 type LayoutKey = 'fontSize' | 'letterSpacing' | 'lineHeight' | 'listSpacing' | 'spacer';
 const LAYOUT_FIELDS: [LayoutKey, string, string][] = [
-  ['lineHeight', COPY.textLineHeight, '%'], ['letterSpacing', COPY.textLetterSpacing, '%'],
-  ['fontSize', COPY.textFontSize, ''], ['listSpacing', COPY.textListSpacing, ''], ['spacer', COPY.textSpacerHeight, ''],
+  ['fontSize', COPY.textFontSize, ''], ['listSpacing', COPY.textListSpacing, ''],
+  ['lineHeight', COPY.textLineHeight, '%'], ['letterSpacing', COPY.textLetterSpacing, '%'], ['spacer', COPY.textSpacerHeight, ''],
 ];
 const PADDING_SIDES = [COPY.textPaddingTop, COPY.textPaddingRight, COPY.textPaddingBottom, COPY.textPaddingLeft];
 
