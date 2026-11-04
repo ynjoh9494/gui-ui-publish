@@ -69,8 +69,8 @@ const hasText = (doc: RichParagraph[]) => doc.some(p => p.text.trim());
 // 서식 도구 칸: [키, 이름]. Padding은 시계 방향(위·오른쪽·아래·왼쪽) 네 칸이다.
 type LayoutKey = 'fontSize' | 'letterSpacing' | 'lineHeight' | 'listSpacing' | 'spacer';
 const LAYOUT_FIELDS: [LayoutKey, string, string][] = [
-  ['fontSize', COPY.textFontSize, ''], ['letterSpacing', COPY.textLetterSpacing, '%'], ['lineHeight', COPY.textLineHeight, '%'],
-  ['listSpacing', COPY.textListSpacing, ''], ['spacer', COPY.textSpacerHeight, ''],
+  ['lineHeight', COPY.textLineHeight, '%'], ['letterSpacing', COPY.textLetterSpacing, '%'],
+  ['fontSize', COPY.textFontSize, ''], ['listSpacing', COPY.textListSpacing, ''], ['spacer', COPY.textSpacerHeight, ''],
 ];
 const PADDING_SIDES = [COPY.textPaddingTop, COPY.textPaddingRight, COPY.textPaddingBottom, COPY.textPaddingLeft];
 
