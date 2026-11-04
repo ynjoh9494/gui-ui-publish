@@ -237,13 +237,13 @@ test('굵은 제목 줄마다 제목·본문 레이어를 묶고 문구는 검�
   assert.equal(serializeRichText(readDescription(root as unknown as SceneNode)), serializeRichText(second));
 });
 
-test('묶음마다 Top Padding 15, 「---」는 여백 레이어 없이 다음 묶음에 더하고 다시 불러온다', async () => {
+test('디바이더 다음 항목만 지정 Top Padding을 쓰고 별도 레이어 없이 되읽는다', async () => {
   const { root, area } = fixture();
   setup([root]);
   const doc = parseRichText('**Policy**\n- 설명\n\n---\n\n**1. 항목**\n- 내용\n---\n**Navigation**\n- 이동');
   await fillDescription(root as unknown as SceneNode, doc);
   assert.deepEqual(area.children.map(node => node.name), ['Policy', '1. 항목', 'Navigation']);
-  assert.deepEqual(area.children.map(node => node.paddingTop), [0, 30, 30]);
+  assert.deepEqual(area.children.map(node => node.paddingTop), [0, 15, 15]);
   assert.deepEqual(area.children.map(node => node.getPluginData('guiUiPublishDescriptionSpacerCount')), ['', '1', '1']);
   assert.ok(area.children.every(node => node.getPluginData('guiUiPublishDescriptionSpacer') === ''));
   assert.equal(serializeRichText(readDescription(root as unknown as SceneNode)),
@@ -266,15 +266,21 @@ test('굵은 번호 목록은 Description 항목 제목으로 읽고 번호를 �
   assert.equal(serializeRichText(readDescription(legacy as unknown as SceneNode)), '**1. 검색창**');
 });
 
-test('연속 여백과 끝 여백도 레이어 없이 되읽고 첫 묶음의 Top Padding은 0이다', async () => {
+test('실제 Top Padding으로 디바이더를 읽고 다른 높이는 개별 값으로 되읽는다', async () => {
   const { root, area } = fixture();
   setup([root]);
   const source = '---\n**Policy**\n- 설명\n---\n---\n**Navigation**\n- 이동\n---';
   await fillDescription(root as unknown as SceneNode, parseRichText(source));
-  assert.deepEqual(area.children.map(node => node.paddingTop), [0, 45]);
+  assert.deepEqual(area.children.map(node => node.paddingTop), [15, 15]);
   assert.deepEqual(area.children.map(node => node.getPluginData('guiUiPublishDescriptionSpacerCount')), ['1', '2']);
   assert.equal(area.getPluginData('guiUiPublishDescriptionTrailingSpacerCount'), '1');
-  assert.equal(serializeRichText(readDescription(root as unknown as SceneNode)), source);
+  area.children[1].paddingTop = 16;
+  for (const group of area.children) group.setPluginData('guiUiPublishDescriptionGroup', '');
+  assert.equal(readDescriptionLayout(root as unknown as SceneNode).spacer, 15);
+  const imported = serializeRichText(readDescription(root as unknown as SceneNode));
+  assert.equal(imported, '---\n**Policy**\n- 설명\n---(16)\n**Navigation**\n- 이동\n---');
+  await fillDescription(root as unknown as SceneNode, parseRichText(imported));
+  assert.deepEqual(area.children.map(node => node.paddingTop), [15, 16]);
 });
 
 test('예전 여백 레이어는 읽은 뒤 다시 적용하면 제거한다', async () => {
@@ -290,20 +296,20 @@ test('예전 여백 레이어는 읽은 뒤 다시 적용하면 제거한다', a
   assert.deepEqual(area.children.map(node => node.name), ['Policy']);
 });
 
-test('서식 값을 넘기면 Gap을 0으로 고정하고 Padding·글자 서식·추가 여백을 쓴다', async () => {
+test('바깥 Padding·Gap·항목 Top Padding은 각각 독립적으로 적용한다', async () => {
   const { root, area } = fixture();
   area.layoutMode = 'VERTICAL';
   setup([root]);
   const layout = { gap: 10, padding: [8, 12, 12, 16] as [number, number, number, number], fontSize: 15, letterSpacing: -1, lineHeight: 150, listSpacing: 4, spacer: 6 };
   await fillDescription(root as unknown as SceneNode, parseRichText('**A**\n\n- 가\n---\n**B**\n\n- 나'), layout, false);
-  assert.deepEqual([area.itemSpacing, area.paddingTop, area.paddingRight, area.paddingBottom, area.paddingLeft], [0, 8, 12, 12, 16]);
+  assert.deepEqual([area.itemSpacing, area.paddingTop, area.paddingRight, area.paddingBottom, area.paddingLeft], [10, 8, 12, 12, 16]);
   const body = area.children[0].children[1] as Text;
   assert.deepEqual([body.fontSize, body.letterSpacing, body.lineHeight, body.listSpacing], [15, { unit: 'PERCENT', value: -1 }, { unit: 'PERCENT', value: 150 }, 4]);
   assert.equal(area.getPluginData('guiUiPublishDescriptionSpacerHeight'), '6');
-  assert.equal(area.children[1].paddingTop, 21);
-  assert.deepEqual(readDescriptionLayout(root as unknown as SceneNode), { ...layout, gap: 0 });
+  assert.equal(area.children[1].paddingTop, 6);
+  assert.deepEqual(readDescriptionLayout(root as unknown as SceneNode), layout);
   await fillDescription(root as unknown as SceneNode, parseRichText('**A**\n- 가\n---\n**B**\n- 나'), { ...layout, spacer: 0 }, false);
-  assert.equal(area.children[1].paddingTop, 15);
+  assert.equal(area.children[1].paddingTop, 0);
   assert.equal(readDescriptionLayout(root as unknown as SceneNode).spacer, 0);
 });
 
@@ -389,11 +395,11 @@ test('새 제목·본문 레이어는 슬롯에 있던 텍스트의 서식을 �
   const [group] = check();
   assert.equal((group.children[0] as Text).chars[0].font.style, 'Bold');
   assert.equal((group.children[1] as Text).chars[0].font.style, 'Regular');
-  assert.equal(group.itemSpacing, 3);
+  assert.equal(group.itemSpacing, 0);
   group.itemSpacing = 6;
   setup([root]);
   await fillDescription(root as unknown as SceneNode, parseRichText('**Navigation**\n\n- 이동'));
-  assert.equal(check()[0].itemSpacing, 6, 'spacing follows the previous groups');
+  assert.equal(check()[0].itemSpacing, 0);
 
   const empty = new Node('SLOT', 'description area');
   const bare = new Node('FRAME', 'Description', [empty]);
@@ -434,17 +440,17 @@ test('프레임에는 묶음들을 오토 레이아웃 프레임으로 감싸 �
   assert.deepEqual(
     [wrapper.layoutMode, wrapper.primaryAxisSizingMode, wrapper.counterAxisSizingMode, wrapper.primaryAxisAlignItems, wrapper.counterAxisAlignItems],
     ['VERTICAL', 'AUTO', 'FIXED', 'MIN', 'MIN']);
-  assert.deepEqual([wrapper.itemSpacing, wrapper.paddingLeft, wrapper.paddingTop, wrapper.paddingRight, wrapper.paddingBottom], [0, 12, 8, 12, 16]);
+  assert.deepEqual([wrapper.itemSpacing, wrapper.paddingLeft, wrapper.paddingTop, wrapper.paddingRight, wrapper.paddingBottom], [12, 12, 8, 12, 16]);
   assert.deepEqual(wrapper.fills, []);
   assert.deepEqual([wrapper.x, wrapper.y, wrapper.width], [0, 120, 440], 'below the visible content, at the frame width');
   assert.deepEqual(wrapper.children.map(group => group.name), ['Policy', '1. 항목', 'Navigation']);
-  assert.deepEqual(wrapper.children.map(group => [group.paddingTop, group.paddingBottom]), [[0, 0], [15, 0], [15, 0]]);
+  assert.deepEqual(wrapper.children.map(group => [group.paddingTop, group.paddingBottom]), [[0, 0], [0, 0], [0, 0]]);
   assert.ok(wrapper.children.every(group => group.getPluginData('guiUiPublishDescriptionGroup') === '1' && group.layoutSizingHorizontal === 'FILL'));
   const [title, body] = wrapper.children[0].children as Text[];
   assert.equal(title.chars[0].font.style, 'Bold');
   assert.equal(body.chars[0].list, 'UNORDERED');
   assert.equal(body.fontSize, 16, 'Description defaults when the frame has no earlier text frame');
-  assert.equal(wrapper.children[0].itemSpacing, 3);
+  assert.equal(wrapper.children[0].itemSpacing, 0);
 
   body.fontSize = 14;
   wrapper.children[0].itemSpacing = 6;
@@ -454,7 +460,7 @@ test('프레임에는 묶음들을 오토 레이아웃 프레임으로 감싸 �
   const next = note.children[3];
   assert.equal(next.y, wrapper.y + wrapper.height);
   assert.equal((next.children[0].children[1] as Text).fontSize, 14, 'style follows the last text frame');
-  assert.equal(next.children[0].itemSpacing, 6);
+  assert.equal(next.children[0].itemSpacing, 0);
 });
 
 test('오토 레이아웃 프레임에는 마지막 자식으로 넣고 폭을 채우며, 폭이 Hug면 안쪽 폭으로 고정한다', async () => {

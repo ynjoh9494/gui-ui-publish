@@ -1,5 +1,5 @@
 import { COPY } from '../core/copy.ts';
-import { cloneLayout, DEFAULT_TEXT_LAYOUT, isSpacer, SPACER_TEXT, type SelectionTarget, type SelectionWrite, type TextLayout } from '../core/description.ts';
+import { cloneLayout, DEFAULT_TEXT_LAYOUT, isSpacer, spacerHeight, SPACER_TEXT, type SelectionTarget, type SelectionWrite, type TextLayout } from '../core/description.ts';
 import type { RichParagraph } from '../core/richText.ts';
 import { PART_KEY } from '../core/templateParts.ts';
 import { FLIPBOOK_KEY } from './flipbook.ts';
@@ -14,11 +14,10 @@ const SPACER_MARKER = 'guiUiPublishDescriptionSpacer';
 const SPACER_HEIGHT = 'guiUiPublishDescriptionSpacerHeight';
 const SPACER_COUNT = 'guiUiPublishDescriptionSpacerCount';
 const TRAILING_SPACER_COUNT = 'guiUiPublishDescriptionTrailingSpacerCount';
-const ITEM_TOP_PADDING = 15;
 // 플립북 밖에서 고른 프레임에 넣는, 묶음들을 감싼 오토 레이아웃 프레임(세로, 왼쪽 위 정렬)의 표식과 간격·여백
 const TEXT_FRAME_MARKER = 'guiUiPublishTextFrame';
 // 서식 값을 받지 않았을 때(이전 호출)만 쓰는 값이다. 편집기는 서식 도구 값을 넘긴다.
-const TEXT_FRAME = { itemSpacing: 0, paddingLeft: 12, paddingRight: 12, paddingTop: 8, paddingBottom: 16 };
+const TEXT_FRAME = { itemSpacing: 12, paddingLeft: 12, paddingRight: 12, paddingTop: 8, paddingBottom: 16 };
 
 const isDescription = (node: BaseNode): boolean =>
   node.name === 'Description' && (node.type === 'FRAME' || node.type === 'INSTANCE' || node.type === 'GROUP');
@@ -160,7 +159,7 @@ function normalizeHeadings(doc: RichParagraph[]): RichParagraph[] {
 }
 
 interface DescriptionGroup { title: RichParagraph | null; body: RichParagraph[] }
-type DescriptionItem = { kind: 'group'; group: DescriptionGroup } | { kind: 'spacer' };
+type DescriptionItem = { kind: 'group'; group: DescriptionGroup } | { kind: 'spacer'; height?: number };
 
 // A fully bold standalone line is an explicit grouping mark supplied by the editor.
 // Its words are never compared with Policy, Navigation, numbered items, or layer names.
@@ -176,7 +175,7 @@ function splitItems(doc: RichParagraph[]): DescriptionItem[] {
   for (const paragraph of normalizeHeadings(doc)) {
     if (isSpacer(paragraph)) {
       flush();
-      items.push({ kind: 'spacer' });
+      items.push({ kind: 'spacer', height: spacerHeight(paragraph.text) });
       current = { title: null, body: [] };
     } else if (isHeading(paragraph)) {
       flush();
@@ -190,26 +189,30 @@ function splitItems(doc: RichParagraph[]): DescriptionItem[] {
 const isGroup = (node: SceneNode): node is FrameNode => node.type === 'FRAME' && node.visible && node.getPluginData(GROUP_MARKER) === '1';
 const isSpacerFrame = (node: SceneNode): node is FrameNode => node.type === 'FRAME' && node.visible && node.getPluginData(SPACER_MARKER) === '1';
 
-function managedGroups(area: SlotNode | FrameNode): FrameNode[] {
-  return area.children.filter(isGroup);
-}
 function managedItems(area: SlotNode | FrameNode): FrameNode[] {
-  return area.children.filter((node): node is FrameNode => isGroup(node) || isSpacerFrame(node));
+  const marked = area.children.filter((node): node is FrameNode => isGroup(node) || isSpacerFrame(node));
+  if (marked.length) return marked;
+  if (area.children.some(node => node.visible && node.type !== 'FRAME'
+    && (node.type === 'TEXT' || 'findAllWithCriteria' in node && node.findAllWithCriteria({ types: ['TEXT'] }).length > 0))) return [];
+  return area.children.filter((node): node is FrameNode => node.type === 'FRAME' && node.visible
+    && node.findAllWithCriteria({ types: ['TEXT'] }).some(text => isShown(text, node)));
 }
 
 export function readDescription(root: SceneNode): RichParagraph[] {
   const area = bodyArea(root);
   const items = managedItems(area);
+  const defaultHeight = items.find(item => item.getPluginData(SPACER_MARKER) !== '1' && item.paddingTop > 0)?.paddingTop ?? DEFAULT_TEXT_LAYOUT.spacer;
   const trailing = Math.max(0, Number(area.getPluginData(TRAILING_SPACER_COUNT)) || 0);
   if (items.length || trailing) {
     const result: RichParagraph[] = [];
     let afterSpacer = true;
     for (const item of items) {
       if (item.getPluginData(SPACER_MARKER) === '1') { result.push({ text: SPACER_TEXT, depth: null, bold: [] }); afterSpacer = true; continue; }
-      const count = Math.max(0, Number(item.getPluginData(SPACER_COUNT)) || 0);
-      for (let i = 0; i < count; i++) result.push({ text: SPACER_TEXT, depth: null, bold: [] });
-      if (count) afterSpacer = true;
-      const texts = item.children.filter((node): node is TextNode => node.type === 'TEXT' && node.visible);
+      if (item.paddingTop > 0) {
+        result.push({ text: item.paddingTop === defaultHeight ? SPACER_TEXT : `${SPACER_TEXT}(${item.paddingTop})`, depth: null, bold: [] });
+        afterSpacer = true;
+      }
+      const texts = item.findAllWithCriteria({ types: ['TEXT'] }).filter(node => isShown(node, item));
       if (!afterSpacer) result.push(blank());
       afterSpacer = false;
       texts.forEach(node => {
@@ -238,14 +241,15 @@ export function readDescription(root: SceneNode): RichParagraph[] {
 function containerLayout(container: SlotNode | FrameNode): TextLayout {
   const layout = cloneLayout(DEFAULT_TEXT_LAYOUT);
   if (container.layoutMode !== 'NONE') {
-    layout.gap = 0;
+    layout.gap = container.itemSpacing;
     layout.padding = [container.paddingTop, container.paddingRight, container.paddingBottom, container.paddingLeft];
   }
   const texts = container.findAllWithCriteria({ types: ['TEXT'] }).filter(node => isShown(node, container) && node.characters.length > 0);
   const plain = texts.find(node => node.getStyledTextSegments(['fontName']).some(s => !BOLD_STYLE.test(s.fontName.style))) ?? texts[0];
   if (plain) Object.assign(layout, readTextLayout(plain));
-  const spacer = container.children.find(node => node.type === 'FRAME' && node.visible
-    && (node.getPluginData(SPACER_MARKER) === '1' || node.getPluginData(GROUP_MARKER) === '1' && !!node.getPluginData(SPACER_COUNT)));
+  const padded = managedItems(container).find(node => node.getPluginData(SPACER_MARKER) !== '1' && node.paddingTop > 0);
+  if (padded?.type === 'FRAME') { layout.spacer = padded.paddingTop; return layout; }
+  const spacer = container.children.find(isSpacerFrame);
   const stored = container.getPluginData(SPACER_HEIGHT) || spacer?.getPluginData(SPACER_HEIGHT);
   if (stored !== undefined && stored !== '' && Number.isFinite(Number(stored))) layout.spacer = Number(stored);
   else if (spacer && isSpacerFrame(spacer)) layout.spacer = spacer.height;
@@ -263,10 +267,9 @@ export function readTextNodeLayout(node: TextNode): TextLayout {
 
 // 새 제목·본문 레이어의 서식. 슬롯에 있던 텍스트(템플릿의 예시 문구나 이전에 적용한 묶음)의 첫 글자 서식을 이어받는다.
 interface TextStyle { font: FontName; fontSize: number; lineHeight: LineHeight; letterSpacing: LetterSpacing | null; fills: Paint[] }
-interface DescriptionStyle { text: TextStyle | null; itemSpacing: number }
+interface DescriptionStyle { text: TextStyle | null }
 // 슬롯에 텍스트나 이전 묶음이 없을 때만 쓰는 구현 기본값(BEHAVIOR.md 「텍스트 편집」, 확인 필요).
 const DEFAULT_TEXT = { fontSize: 16, lineHeight: { unit: 'PERCENT', value: 130 } as LineHeight, fills: [{ type: 'SOLID', color: { r: 0.12, g: 0.12, b: 0.12 } }] as Paint[] };
-const DEFAULT_ITEM_SPACING = 3;
 
 function isShown(node: BaseNode, area: BaseNode): boolean {
   for (let current: BaseNode | null = node; current && current.id !== area.id; current = current.parent) {
@@ -292,13 +295,12 @@ function textStyleOf(node: TextNode): TextStyle | null {
 }
 
 function styleOf(area: SlotNode | FrameNode): DescriptionStyle {
-  const group = managedGroups(area)[0];
   const texts = area.findAllWithCriteria({ types: ['TEXT'] }).filter(node => isShown(node, area) && !node.hasMissingFont);
   // 본문 글자(굵지 않은 글자)가 있는 레이어를 먼저 본다. 굵은 제목 레이어만 있으면 그 서식을 쓴다.
   const plain = (node: TextNode) => node.characters.length > 0 && node.getStyledTextSegments(['fontName']).some(s => !BOLD_STYLE.test(s.fontName.style));
   let text: TextStyle | null = null;
   for (const node of [...texts.filter(plain), ...texts.filter(node => !plain(node))]) if ((text = textStyleOf(node))) break;
-  return { text, itemSpacing: group ? group.itemSpacing : DEFAULT_ITEM_SPACING };
+  return { text };
 }
 
 // 빈 제목·본문 레이어가 든 묶음 틀. 글꼴은 여기서 한 번만 불러오고, 묶음마다 이 틀을 복제해 글자만 넣는다.
@@ -309,7 +311,7 @@ async function makeTemplate(width: number, style: DescriptionStyle): Promise<{ t
     frame.layoutMode = 'VERTICAL';
     frame.primaryAxisSizingMode = 'AUTO';
     frame.counterAxisSizingMode = 'FIXED';
-    frame.itemSpacing = style.itemSpacing;
+    frame.itemSpacing = 0;
     frame.fills = [];
     frame.clipsContent = false;
     const node = figma.createText();
@@ -346,17 +348,18 @@ function makeGroup(template: FrameNode, group: DescriptionGroup, fonts: TextFont
 
 // 「---」는 다음 묶음의 Top Padding과 표식으로 저장한다. 별도 레이어를 만들지 않는다.
 function makeItems(items: DescriptionItem[], template: FrameNode, fonts: TextFonts, layout: TextLayout | undefined, out: FrameNode[]): number {
-  let seenGroup = false, count = 0;
+  let count = 0, padding = 0;
   const height = Math.max(0, layout?.spacer ?? DEFAULT_TEXT_LAYOUT.spacer);
   for (const item of items) {
     if (item.kind === 'spacer') {
       count++;
+      padding = item.height ?? height;
     } else {
-      const group = makeGroup(template, item.group, fonts, seenGroup ? ITEM_TOP_PADDING + count * height : 0, layout);
+      const group = makeGroup(template, item.group, fonts, padding, layout);
       if (count) group.setPluginData(SPACER_COUNT, String(count));
       out.push(group);
-      seenGroup = true;
       count = 0;
+      padding = 0;
     }
   }
   return count;
@@ -374,7 +377,7 @@ function placeItems(container: SlotNode | FrameNode, items: FrameNode[]): void {
 // 서식 도구의 간격·여백을 오토 레이아웃 칸에 쓴다.
 function applySpacing(container: SlotNode | FrameNode, layout: TextLayout): void {
   if (container.layoutMode === 'NONE') return;
-  container.itemSpacing = 0;
+  container.itemSpacing = layout.gap;
   [container.paddingTop, container.paddingRight, container.paddingBottom, container.paddingLeft] = layout.padding;
 }
 
@@ -391,7 +394,7 @@ export async function fillDescription(root: SceneNode, doc: RichParagraph[], lay
     const trailing = makeItems(splitItems(doc), template, fonts, layout, prepared);
     const old = [...area.children];
     if (layout) applySpacing(area, layout);
-    else if (area.layoutMode !== 'NONE') area.itemSpacing = 0;
+    else if (area.layoutMode !== 'NONE') area.itemSpacing = DEFAULT_TEXT_LAYOUT.gap;
     placeItems(area, prepared);
     area.setPluginData(TRAILING_SPACER_COUNT, trailing ? String(trailing) : '');
     area.setPluginData(SPACER_HEIGHT, String(Math.max(0, layout?.spacer ?? DEFAULT_TEXT_LAYOUT.spacer)));
@@ -419,9 +422,9 @@ export async function addTextFrame(frame: FrameNode, doc: RichParagraph[], layou
   const fill = auto && frame.layoutSizingHorizontal !== 'HUG';
   const width = Math.max(1, auto ? frame.width - frame.paddingLeft - frame.paddingRight : frame.width);
   const previous = frame.children.filter((node): node is FrameNode => node.type === 'FRAME' && node.getPluginData(TEXT_FRAME_MARKER) === '1').pop();
-  const style = previous ? styleOf(previous) : { text: null, itemSpacing: DEFAULT_ITEM_SPACING };
+  const style = previous ? styleOf(previous) : { text: null };
   const spacing = layout
-    ? { itemSpacing: 0, paddingTop: layout.padding[0], paddingRight: layout.padding[1], paddingBottom: layout.padding[2], paddingLeft: layout.padding[3] }
+    ? { itemSpacing: layout.gap, paddingTop: layout.padding[0], paddingRight: layout.padding[1], paddingBottom: layout.padding[2], paddingLeft: layout.padding[3] }
     : TEXT_FRAME;
   const inner = Math.max(1, width - spacing.paddingLeft - spacing.paddingRight);
   const { template, fonts } = await makeTemplate(inner, style);

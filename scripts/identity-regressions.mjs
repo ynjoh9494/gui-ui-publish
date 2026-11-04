@@ -48,7 +48,7 @@ try {
   assert.equal(await page.locator('[data-input=fb-screen-id]').inputValue(), 'ST_LI_POLICY');
   const actions = () => page.locator('.detail .title-actions button').allInnerTexts();
   assert.deepEqual(await actions(), ['히스토리', '목록에서 삭제'], 'nothing to apply yet: history and remove only');
-  const layout = { gap: 0, padding: [8, 12, 12, 16], fontSize: 16, letterSpacing: 0, lineHeight: 140, listSpacing: 2, spacer: 15 };
+  const layout = { gap: 12, padding: [8, 12, 16, 12], fontSize: 16, letterSpacing: 0, lineHeight: 140, listSpacing: 2, spacer: 15 };
   const imported = parseRichText('**Policy Title**\n- <red>확인 필요</red>\n\n---\n\n**1. 화면 제목**\n- 설명\n\n**2. 버튼**\n- 동작');
   await page.evaluate(({ paragraphs, layout }) => window.postMessage({ pluginMessage: { type: 'flipbookDescription', id: 'fb', paragraphs, layout } }, '*'), { paragraphs: imported, layout });
   await page.locator('.detail .fb-description .rich-editor').waitFor();
@@ -92,7 +92,7 @@ try {
   await page.evaluate(layout => window.postMessage({ pluginMessage: { type: 'flipbookDescription', id: 'fb', paragraphs: [{ text: 'Policy', depth: null, bold: [{ start: 0, end: 6 }] }, { text: '설명 최신', depth: 0, bold: [] }], layout } }, '*'), latestLayout);
   await page.waitForFunction(() => document.querySelector('.detail .fb-description .rich-editor')?.textContent?.includes('설명 최신 추가'));
   await page.locator('.detail .fb-description [data-rt=layout]').click();
-  assert.equal(await page.locator('.detail .text-layout input').count(), 9, 'Padding x4, font size, letter spacing, line height, list spacing, spacer');
+  assert.equal(await page.locator('.detail .text-layout input').count(), 10, 'Padding x4, font size, letter spacing, line height, list spacing, gap, spacer');
   assert.equal(await page.locator('.list .row .row-state.edit-state').innerText(), '수정 중');
   assert.match(await page.locator('.footer .pending-line').innerText(), /수정 1개/);
   assert.equal(await page.locator('.footer [data-action=create-submit]').innerText(), '모두 적용하기');
