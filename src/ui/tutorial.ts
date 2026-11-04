@@ -358,7 +358,8 @@ const UI_STEPS: Step[] = [
   },
 ];
 
-// 이번 버전 새기능 튜토리얼(v1.1.5 이후 추가된 기능). 전체 튜토리얼과 같은 예시 화면에서 실제 탭과 버튼을 열어 보여 준다.
+// 새기능 튜토리얼: 이번 배포(v1.2.0)와 지난 배포(v1.1.5)의 새 기능을 묶어 GUI 4단계, UI 7단계로 짧게 보여 준다.
+// 전체 튜토리얼과 같은 예시 화면에서 실제 탭과 버튼을 열어 보여 준다.
 const NEW_GUI_STEPS: Step[] = [
   {
     title: COPY.uiNew033, body: COPY.uiNew034,
@@ -387,7 +388,7 @@ const NEW_GUI_STEPS: Step[] = [
   },
   {
     title: COPY.uiNew039, body: COPY.uiNew040,
-    // 원본이 그대로인 배포 화면의 카테고리만 바꿔 배포하면 최종 확인에 「화면 반영 건너뛰기」가 나온다. 새 화면은 배포에서 뺀다.
+    // 원본이 그대로인 배포 화면의 카테고리만 바꿔 배포하면 최종 확인에 두 옵션이 함께 나온다. 새 화면은 배포에서 뺀다.
     async prepare(d) {
       await d.click('.detail [data-action="include-selected"]');
       await d.until(() => !d.q<HTMLInputElement>('.detail [data-action="include-selected"]')?.checked);
@@ -406,9 +407,15 @@ const NEW_GUI_STEPS: Step[] = [
       await d.click('.footer [data-action="prepare"]');
       await d.until(() => d.q('.overlay:not([hidden]) .skip-layers'));
     },
-    spots: d => [d.q('.overlay .skip-layers')],
+    spots: d => [[d.q('.overlay .quiet-publish'), d.q('.overlay .skip-layers')]],
   },
 ];
+
+// 관리 메뉴 항목은 칸의 제목(data-key)으로 찾는다. 관리를 연 뒤 다시 그리면 펼친 칸이 돌아갈 수 있어 메뉴로 연다.
+async function openAdmin(d: Driver, form: string): Promise<void> {
+  await d.click(() => { const key = d.q(`details[data-form="${form}"]`)?.dataset.key; return key ? d.all('.admin-nav-item').find(b => b.dataset.key === key) : null; });
+  await d.until(() => d.q(`details[data-form="${form}"][open]`));
+}
 
 const NEW_UI_STEPS: Step[] = [
   {
@@ -418,35 +425,46 @@ const NEW_UI_STEPS: Step[] = [
   },
   {
     title: COPY.uiNew043, body: COPY.uiNew044,
-    // 관리를 연 뒤 페이지 목록을 받아 다시 그리면 펼친 칸이 돌아갈 수 있어 왼쪽 메뉴로 연다.
     async prepare(d) {
       await d.click('.tabs [data-action="settings"]');
-      // 메뉴 항목은 칸의 제목(data-key)으로 찾는다.
-      await d.click(() => { const key = d.q('details[data-form="template"]')?.dataset.key; return key ? d.all('.admin-nav-item').find(b => b.dataset.key === key) : null; });
-      await d.until(() => d.q('details[data-form="template"][open] .template-list') && !d.q('details[data-form="flipbook"][open]'));
+      await openAdmin(d, 'template');
+      await d.until(() => d.q('details[data-form="template"][open] .template-item[data-key="marker"]'));
     },
-    spots: d => [[d.q('details[data-form="template"] .template-list'), d.q('details[data-form="template"] [data-action="admin-template-default"]')?.parentElement]],
+    spots: d => [d.q('details[data-form="template"] [data-action="admin-template-default"]')?.parentElement, d.q('details[data-form="template"] .template-item[data-key="marker"]')],
   },
   {
     title: COPY.uiNew045, body: COPY.uiNew046,
+    async prepare(d) { await openAdmin(d, 'gui-width'); },
+    spots: d => [d.q('details[data-form="gui-width"]')],
+  },
+  {
+    title: COPY.uiNew047, body: COPY.uiNew048,
     async prepare(d) {
       await d.click('.tabs [data-action="settings"]');
       await d.until(() => d.q('.list [data-action="new-add"]:not(:disabled)'));
       await d.expandGroups();
-      await d.click(() => d.all('.list .row').find(r => r.querySelector('.review-dot')));
+      await d.click(() => d.row(COPY.uiPreview005));
       await d.until(() => d.q('.detail .fb-identity'));
     },
     spots: d => [[d.q('.detail .title-head'), d.q('.detail .fb-identity')]],
   },
   {
-    title: COPY.uiNew047, body: COPY.uiNew048,
-    async prepare(d) { await openHistory(d); },
-    spots: d => [d.q('.history-overlay .history-dialog')],
+    title: COPY.uiNew049, body: COPY.uiNew050,
+    spots: d => [d.q('.list [data-action="register-existing"]')],
   },
   {
-    title: COPY.uiNew049, body: COPY.uiNew050,
+    title: COPY.uiNew051, body: COPY.uiNew052,
     async prepare(d) {
-      await closeHistory(d);
+      await d.click('.tabs [data-action="paste-open"]');
+      await d.until(() => d.q('.paste-view .paste-screen'));
+      await d.click('.paste-view [data-action="paste-layout"][data-layout="grid"]');
+      await d.until(() => d.q('.paste-view .paste-card'));
+    },
+    spots: d => [[d.q('.paste-view .paste-toggle'), d.q('.paste-view .paste-screens')]],
+  },
+  {
+    title: COPY.uiNew053, body: COPY.uiNew054,
+    async prepare(d) {
       await d.click('.tabs [data-action="text-open"]');
       await d.click('.text-view [data-action="text-import"]');
       await d.until(() => d.q('.text-view .rich-editor')?.textContent);

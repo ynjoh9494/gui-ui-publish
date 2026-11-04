@@ -99,7 +99,9 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('#app [data-form=flipbook] .scope-page').length === 2);
   await app.locator('[data-action=admin-ui-page-remove][data-id="0:2"]').click();
   await page.waitForFunction(() => document.querySelectorAll('#app [data-form=flipbook] .scope-page').length === 1);
-  await shot('ui-settings');
+  await app.locator('[data-action=admin-nav][data-key="템플릿"]').click();
+  await app.locator('[data-form=template][open] .template-item[data-key=marker]').waitFor();
+  await shot('ui-template');
   await app.locator('[data-action=settings]').click();
 
   await app.locator('[data-action=new-add]').click();
@@ -134,9 +136,13 @@ try {
   await app.locator('.review-count').waitFor();
   await expandGroups();
   await app.locator('.row').filter({ has: page.locator('.review-dot') }).first().click();
-  await app.locator('.detail .fb-bottom.flagged').waitFor();
-  await app.locator('.fb-bottom [data-field=description]').fill('콜아웃 위치 확인');
+  await app.locator('.detail .fb-identity').waitFor();
+  await shot('ui-identity');
+  await app.locator('.detail [data-action=fb-history-open]').click();
+  await app.locator('.history-overlay:not([hidden]) .history-dialog').waitFor();
+  await app.locator('.history-overlay [data-field=description]').fill('콜아웃 위치 확인');
   await shot('ui-review');
+  await app.locator('.history-overlay [data-action=fb-history-close]').click();
 
   await app.locator('[data-action=paste-open]').click();
   await app.locator('.paste-view .paste-screen').first().waitFor();
@@ -150,6 +156,13 @@ try {
   await app.locator('[data-action=text-open]').click();
   await app.locator('[data-action=text-import]').click();
   await page.waitForFunction(() => document.querySelector('#app .text-view .rich-editor')?.textContent);
+  await app.locator('.rich-editor').click();
+  await page.keyboard.press('Control+End');
+  await app.locator('.rich-editor').evaluate(el => {
+    const data = new DataTransfer();
+    data.setData('text/plain', '\n- <red>포커스 이동 시 동작 확인 필요</red>');
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  });
   await shot('ui-text');
   await app.locator('[data-action=text-close]').click();
 
