@@ -148,10 +148,16 @@ test('GUI 영역에는 원본을 바로 복사해 넣고, 같은 표식이면 �
   const area = new Node('FRAME', 'GUI Image Slot');
   const marker = new Node('FRAME', 'Marker');
   area.appendChild(marker);
-  const gui = [{ uid: 's1', code: 'STB_HO_001', version: 2, key: 's1@2', sourceNodeId: source.id }];
+  const gui = [{ uid: 's1', code: 'STB_HO_001', name: '홈 메인', version: 2, key: 's1@2', sourceNodeId: source.id }];
   await syncGui('ns', area as unknown as FrameNode, gui, 0.5);
   const placed = area.children.find(n => n.getSharedPluginData('ns', COPY_KEY))!;
-  assert.deepEqual([placed.getSharedPluginData('ns', COPY_KEY), placed.name, placed.locked, placed.width], ['s1@2', 'STB_HO_001 GUI', false, 940.8]);
+  assert.deepEqual([placed.getSharedPluginData('ns', COPY_KEY), placed.name, placed.locked, placed.width], ['s1@2', '🔗 GUI · 자동 업데이트', false, 940.8]);
+  // GUI 붙이기와 같은 구조: Label(숨긴 Screen ID, 화면 이름) 위, GUI를 담은 Screen 아래. 복사본 표식은 바깥 프레임에만 있다.
+  const [label, screenBox] = placed.children;
+  assert.deepEqual([label.name, screenBox.name, placed.getSharedPluginData('ns', 'pasteLayout')], ['Label', 'Screen', 'labeled-v2']);
+  assert.deepEqual(label.children.map(n => [n.name, n.visible]), [['Screen ID', false], ['Screen Title', true]]);
+  assert.equal(label.children[1].characters, '홈 메인');
+  assert.deepEqual([screenBox.children[0].name, screenBox.children[0].getSharedPluginData('ns', COPY_KEY), screenBox.children[0].width], ['GUI', '', 940.8]);
   assert.ok(area.children.includes(marker), 'user marker stays');
   await syncGui('ns', area as unknown as FrameNode, gui, 0.5);
   assert.equal(area.children.find(n => n.getSharedPluginData('ns', COPY_KEY)), placed, 'same key and scale keeps the existing copy');
@@ -213,7 +219,7 @@ test('GUI 이미지는 1920 안에서 순서대로 줄바꿈하고 긴 행 아�
   await syncGui('ns', area as unknown as FrameNode, gui, 1);
   const placed = area.children.filter(n => n.getSharedPluginData('ns', COPY_KEY));
   assert.deepEqual(placed.map(n => Math.round(n.x)), [0, 0, 953, 0, 953, 0, 953]);
-  assert.deepEqual(placed.map(n => Math.round(n.y)), [0, 1092, 1092, 1633, 1633, 2174, 2174]);
+  assert.deepEqual(placed.map(n => Math.round(n.y)), [0, 1133, 1133, 1715, 1715, 2297, 2297]);
   assert.ok(placed.every(n => n.x + n.width <= 1920 + 0.01));
   assert.deepEqual([area.width, area.height], [1920, 1080], 'GUI 영역은 복사본이 넘쳐도 템플릿 크기를 유지한다');
 });
@@ -231,7 +237,7 @@ test('줄인 GUI는 고정 크기 노드를 원래 크기×배율로 맞추고, 
   const gui = [{ uid: 's1', code: 'STB_HO_003', version: 1, key: 's1@1', sourceNodeId: source.id }];
   await syncGui('ns', area as unknown as FrameNode, gui, 0.5, notes);
   const copy = area.children[0];
-  const [copyRow] = copy.children;
+  const [copyRow] = copy.children[1].children[0].children;
   assert.deepEqual([copyRow.children[0].width, copyRow.children[0].height], [270 * 940.8 / 1920, 270 * 940.8 / 1920], 'fixed tile is corrected');
   assert.equal(copyRow.width, 2034, 'hug row is left to auto layout');
   assert.deepEqual([...notes], [`${COPY.figmaFlipbook026} Missing Bold`]);
@@ -260,7 +266,7 @@ test('GUI 슬롯의 폭과 sizing 설정을 유지하고 복사본만 기존 영
   assert.deepEqual([area.width, area.height], [950, 1080]);
   assert.equal(area.layoutSizingHorizontal, 'FILL');
   assert.deepEqual(placed.map(n => Math.round(n.x)), [0, 0]);
-  assert.deepEqual(placed.map(n => Math.round(n.y)), [0, 541]);
+  assert.deepEqual(placed.map(n => Math.round(n.y)), [0, 582]);
 });
 
 test('최대 폭은 복사본에만 적용하고 이전 1/2·1/4 선택도 기본의 0.49배로 배치한다', async () => {
@@ -278,7 +284,7 @@ test('최대 폭은 복사본에만 적용하고 이전 1/2·1/4 선택도 기�
   assert.deepEqual([area.width, area.height], [1920, 1080]);
   assert.deepEqual(placed.map(n => Math.round(n.width)), [1440, 706, 706, 706, 706, 706, 706]);
   assert.deepEqual(placed.map(n => Math.round(n.x)), [0, 0, 718, 0, 718, 0, 718]);
-  assert.deepEqual(placed.map(n => Math.round(n.y)), [0, 822, 822, 1231, 1231, 1640, 1640]);
+  assert.deepEqual(placed.map(n => Math.round(n.y)), [0, 863, 863, 1313, 1313, 1763, 1763]);
   // 폭을 바꾸면 같은 화면도 다시 복사해 새 크기로 놓는다.
   const before = placed[0];
   await syncGui('ns', area as unknown as FrameNode, gui, 1, new Set(), 1920);
@@ -530,9 +536,9 @@ test('이전 템플릿도 모바일 원본 크기를 유지하고 오래된 축�
   const gui = [{ uid: 's1', code: 'MO_MY_009', version: 1, key: 's1@1', sourceNodeId: source.id }];
   await syncGui('ns', area as unknown as FrameNode, gui, 1, new Set(), 1440);
   assert.equal(old.removed, true);
-  assert.deepEqual([area.children[0].width, area.children[0].height], [360, 720]);
+  assert.deepEqual([area.children[0].width, area.children[0].height], [360, 761]);
   await syncGui('ns', area as unknown as FrameNode, gui, 0.5, new Set(), 1440);
-  assert.deepEqual([area.children[0].width, area.children[0].height], [176.4, 352.8]);
+  assert.deepEqual([area.children[0].width, area.children[0].height], [176.4, 352.8 + 41]);
 });
 
 test('부모 크기 보정 뒤 절대 위치 레이어의 크기와 위치를 복원한다', async () => {

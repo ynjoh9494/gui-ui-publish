@@ -546,7 +546,7 @@ test('GUI Publish는 썸네일과 배포 한 번의 추가 설명을 기록하�
 
   const [fb] = planFlipbooks({ pageId: 'p', rows: [row([screenId])] }, guiScreens(store.state), actor, 2000, () => 'fb1');
   store.put(keys.flipbook(fb.id), fb);
-  assert.deepEqual(flipbookView(store.state, fb.id).gui, [{ uid: screenId, code: 'STB_HO_001', version: 1, key: `${screenId}@1`, sourceNodeId: '1:1', scale: 1 }]);
+  assert.deepEqual(flipbookView(store.state, fb.id).gui, [{ uid: screenId, code: 'STB_HO_001', name: '홈', version: 1, key: `${screenId}@1`, sourceNodeId: '1:1', scale: 1 }]);
 
   // 변경 Publish: 썸네일을 기록하고, 반영하면 새 버전 표식을 받는다.
   const screen = store.state.screens.get(screenId) as Screen;

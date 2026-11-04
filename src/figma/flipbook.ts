@@ -15,6 +15,7 @@ import {
 } from './template.ts';
 import { LINKS_KEY } from '../core/templateParts.ts';
 import { liftMarkers, markerLookup } from './markers.ts';
+import { labeledCopy } from './labeled.ts';
 
 export { NS, GUI_AREA, DESCRIPTION_AREA, findPart, templateFromSelection, templateIssues, templateProblems, type TagKit } from './template.ts';
 
@@ -577,7 +578,7 @@ function areaOffset(area: FrameNode, parent: BaseNode & ChildrenMixin): Point {
 // 마커는 크기를 두고 위치만 화면을 따라간다(2026-10-21 사용자 결정): 다시 복사한 같은 화면에서 같은 상대 위치에 놓는다.
 // overlays는 플립북 프레임에 절대 위치로 놓은 노드다. 중심이 GUI 영역 안에 있는 것만 같은 방식으로 옮긴다.
 export async function syncGui(ns: string, area: FrameNode, gui: FlipbookGui[], scale: FlipbookView['scale'], notes = new Set<string>(), width = SOURCE_WIDTH, overlays: SceneNode[] = []): Promise<FrameNode[]> {
-  const signature = JSON.stringify(['rows-v8', width, gui.map(g => [g.key, g.scale ?? scale]), area.width]);
+  const signature = JSON.stringify(['rows-v9', width, gui.map(g => [g.key, g.scale ?? scale]), area.width]);
   const copies = area.children.filter(n => !!n.getSharedPluginData(ns, COPY_KEY));
   if (area.getSharedPluginData(ns, IMAGE_KEY) === signature && copies.length === gui.length &&
       copies.every((copy, i) => copy.getSharedPluginData(ns, COPY_KEY) === gui[i].key)) {
@@ -588,7 +589,7 @@ export async function syncGui(ns: string, area: FrameNode, gui: FlipbookGui[], s
   // 이전 크기 규칙의 복사본은 다시 만들어 원본 폭과 절대 위치를 복원한다.
   let previous: unknown;
   try { previous = JSON.parse(area.getSharedPluginData(ns, IMAGE_KEY)); } catch { previous = null; }
-  const oldRows = Array.isArray(previous) && previous[0] === 'rows-v8' && previous[1] === width
+  const oldRows = Array.isArray(previous) && previous[0] === 'rows-v9' && previous[1] === width
     && Array.isArray(previous[2]) && previous[2].length === copies.length ? previous[2] as [string, number][] : [];
   const reusable = new Map<string, FrameNode[]>();
   oldRows.forEach(([key, itemScale], i) => {
@@ -611,9 +612,12 @@ export async function syncGui(ns: string, area: FrameNode, gui: FlipbookGui[], s
       const source = g.sourceNodeId ? await figma.getNodeByIdAsync(g.sourceNodeId) : null;
       if (!source || !('visible' in source)) throw new Error(`${COPY.figmaFlipbook023} ${g.code}`);
       staging ??= figma.createFrame();
-      const copy = await copyLayers(ns, source as SceneNode, staging, g.key, `${g.code} GUI`);
-      const fittedScale = freeGuiWidth(width, g.scale ?? scale, source.width) / copy.width;
-      if (fittedScale !== 1) for (const font of await rescaleExact(copy, fittedScale)) missingFonts.add(font);
+      const screen = await copyLayers(ns, source as SceneNode, staging, g.key, `${g.code} GUI`);
+      const fittedScale = freeGuiWidth(width, g.scale ?? scale, source.width) / screen.width;
+      if (fittedScale !== 1) for (const font of await rescaleExact(screen, fittedScale)) missingFonts.add(font);
+      // GUI 붙이기와 같은 구조(화면 정보 Label 위, GUI를 담은 Screen 아래)로 감싼다(2026-11-04 사용자 요청).
+      const copy = await labeledCopy(ns, screen, staging, g.code, g.name ?? g.code, g.key);
+      copy.setSharedPluginData(ns, COPY_SCALE_KEY, String(displayScale(g.scale ?? scale)));
       placed.push(copy);
     }
   } catch (error) {

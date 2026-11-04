@@ -24,7 +24,7 @@ export interface FlipbookRow {
 
 // 플립북에 놓을 GUI. 원본 프레임을 바로 복사해 넣는다. key가 GUI 영역의 표식과 같으면 다시 복사하지 않는다.
 // formerUids: 이 화면이 이어받은(교체해 사용 안 함이 된) 화면. 그 화면의 이전 복사본 위 마커는 이 화면을 따라간다.
-export interface FlipbookGui { uid: string; code: string; version: number; key: string; sourceNodeId: string | null; scale?: FlipbookScale; formerUids?: string[] }
+export interface FlipbookGui { uid: string; code: string; name?: string; version: number; key: string; sourceNodeId: string | null; scale?: FlipbookScale; formerUids?: string[] }
 
 export interface FlipbookView {
   flipbookId: string;
@@ -139,7 +139,7 @@ export function flipbookView(state: State, flipbookId: string): FlipbookView {
     flipbookId, kind: fb.kind, name: fb.title, titleNames: [TEMPLATE_TITLE, ...fb.titleNames],
     category: fb.category, ...flipbookIdentity(state, fb), pageId: fb.pageId ?? state.project.flipbookPageId,
     gui: fb.screens.map(s => ({
-      uid: s.uid, code: s.code, version: s.version, key: guiKey(s.uid, s.version), sourceNodeId: state.screens.get(s.uid)?.source?.nodeId ?? null, scale: s.scale ?? fb.scale,
+      uid: s.uid, code: s.code, name: state.screens.get(s.uid)?.name ?? s.code, version: s.version, key: guiKey(s.uid, s.version), sourceNodeId: state.screens.get(s.uid)?.source?.nodeId ?? null, scale: s.scale ?? fb.scale,
       ...(former.has(s.uid) ? { formerUids: former.get(s.uid) } : {}),
     })),
     scale: fb.scale, guiWidth: state.project.guiWidth, status: fb.tracked && !latestRecord(fb, history) ? draftRow(state, fb, offset) ?? rows[0] ?? null : rows[0] ?? null, rows,
