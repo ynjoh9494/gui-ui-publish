@@ -1536,9 +1536,14 @@ export class Controller {
           if (!fb?.pageId) throw new Error(COPY.controller063);
           const item = { flipbookId: edit.id, pageId: fb.pageId, nodeId: this.uiScans.find(u => u.flipbookId === edit.id)?.nodeId ?? undefined };
           const current = await this.host.readFlipbookDescription(item);
-          if (serializeRichText(current.paragraphs) !== serializeRichText(edit.description.before.paragraphs) || !sameLayout(current.layout, edit.description.before.layout))
+          const before = edit.description.before;
+          const textChanged = serializeRichText(edit.description.paragraphs) !== serializeRichText(before.paragraphs);
+          const layoutChanged = !sameLayout(edit.description.layout, before.layout);
+          if ((textChanged && serializeRichText(current.paragraphs) !== serializeRichText(before.paragraphs))
+            || (layoutChanged && !sameLayout(current.layout, before.layout)))
             throw new Error(COPY.flipbookDescriptionConflict);
-          await this.host.writeFlipbookDescription(item, edit.description.paragraphs, edit.description.layout);
+          await this.host.writeFlipbookDescription(item, textChanged ? edit.description.paragraphs : current.paragraphs,
+            layoutChanged ? edit.description.layout : current.layout);
         }
         applied.push(edit.id);
       } catch (error) {

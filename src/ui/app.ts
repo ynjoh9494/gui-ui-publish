@@ -234,9 +234,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let newFlipbooks: NewFlipbook[] = [];
   const identityDrafts = new Map<string, { rev: number; title: string; screenId: string }>();
   // 기존 플립북 상세의 Description 영역(2026-11-04 사용자 요청). 고르면 캔버스의 내용을 불러오고, 고친 내용은 플립북마다 남는다.
-  // saved: 불러온 내용(텍스트 형식), fresh: 불러온 뒤 편집기에 아직 넣지 않았다(편집기로 읽은 내용으로 saved를 맞춘다).
+  // saved: 편집기 기준의 내용, sourceDoc: Figma에서 읽은 원본. 충돌 검사는 편집기에서 정규화한 savedDoc이 아니라 sourceDoc으로 한다.
+  // fresh: 불러온 뒤 편집기에 아직 넣지 않았다(편집기로 읽은 내용으로 saved를 맞춘다).
   type DescDraft = { status: 'loading' } | { status: 'error'; message: string }
-    | { status: 'ready'; fresh: boolean; saved: string; savedDoc: RichParagraph[]; savedLayout: TextLayout; doc: RichParagraph[]; layout: TextLayout };
+    | { status: 'ready'; fresh: boolean; saved: string; savedDoc: RichParagraph[]; sourceDoc: RichParagraph[]; savedLayout: TextLayout; doc: RichParagraph[]; layout: TextLayout };
   const descDrafts = new Map<string, DescDraft>();
   // Description 영역 편집기에 지금 들어 있는 플립북
   let descEditorFor: string | null = null;
@@ -894,7 +895,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const draft = identityDrafts.get(id);
     if (draft && identityEdited(id)) edit.identity = { title: draft.title, screenId: draft.screenId };
     const d = descDrafts.get(id);
-    if (d?.status === 'ready' && descEdited(id)) edit.description = { paragraphs: d.doc, layout: d.layout, before: { paragraphs: d.savedDoc, layout: d.savedLayout } };
+    if (d?.status === 'ready' && descEdited(id)) edit.description = { paragraphs: d.doc, layout: d.layout, before: { paragraphs: d.sourceDoc, layout: d.savedLayout } };
     return edit.identity || edit.description ? edit : null;
   }
   // 수정 여부가 바뀌면 상세의 「적용하기」, 목록의 「수정 중」, 하단 줄을 맞춘다.
@@ -4603,7 +4604,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         // 다시 불러오기를 요청한 뒤의 응답만 받는다.
         if (descDrafts.get(msg.id)?.status !== 'loading') break;
         descDrafts.set(msg.id, msg.error || !msg.paragraphs || !msg.layout ? { status: 'error', message: msg.error ?? COPY.figmaText006 }
-          : { status: 'ready', fresh: true, saved: '', savedDoc: msg.paragraphs, savedLayout: msg.layout, doc: msg.paragraphs, layout: msg.layout });
+          : { status: 'ready', fresh: true, saved: '', savedDoc: msg.paragraphs, sourceDoc: msg.paragraphs, savedLayout: msg.layout, doc: msg.paragraphs, layout: msg.layout });
         if (descEditorFor === msg.id) descEditorFor = null;
         if (tab === 'UI' && listTabOpen() && current()?.flipbookId === msg.id) renderDetail();
         break;

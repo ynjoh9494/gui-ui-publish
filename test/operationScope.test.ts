@@ -143,6 +143,20 @@ test('Description apply rejects a stale canvas value without overwriting it', as
   assert.ok(posted.some(m => m.type === 'flipbookEditsApplied' && m.failed.some(f => f.message === COPY.flipbookDescriptionConflict)));
 });
 
+test('Description text apply keeps a newer canvas layout when layout was not edited', async () => {
+  const { controller, host, store, posted } = setup();
+  const before = parseRichText('Old'), next = parseRichText('Mine');
+  const layout = cloneLayout(DEFAULT_TEXT_LAYOUT);
+  const currentLayout = { ...cloneLayout(layout), gap: layout.gap + 4 };
+  let written: { text: string; gap: number } | null = null;
+  host.readFlipbookDescription = async () => ({ paragraphs: before, layout: currentLayout });
+  host.writeFlipbookDescription = async (_item, paragraphs, appliedLayout) => { written = { text: paragraphs[0].text, gap: appliedLayout.gap }; };
+  await controller.handle({ type: 'applyFlipbookEdits', edits: [{ id: 'fb1', rev: store.state.flipbooks.get('fb1')!.rev,
+    description: { paragraphs: next, layout, before: { paragraphs: before, layout } } }] });
+  assert.deepEqual(written, { text: 'Mine', gap: currentLayout.gap });
+  assert.ok(posted.some(m => m.type === 'flipbookEditsApplied' && m.applied.includes('fb1')));
+});
+
 
 test('category names update matching Chapters without a full flipbook delivery', async () => {
   const { controller, host, store, calls } = setup();
