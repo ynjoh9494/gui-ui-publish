@@ -6,6 +6,7 @@ import { Store, memoryKV, keys } from '../src/core/store.ts';
 import { toUiWire } from '../src/core/wire.ts';
 import { ensureSystemTags } from '../src/core/registry.ts';
 import { planFlipbooks } from '../src/core/flipbooks.ts';
+import { parseRichText } from '../src/core/richText.ts';
 
 const store = new Store(memoryKV());
 store.saveProject({ ...store.state.project, screenIdPrefix: 'ST', flipbookPageIds: ['p'], flipbookPageId: 'p', templateNodeId: 'tpl' });
@@ -47,6 +48,12 @@ try {
   assert.equal(await page.locator('[data-input=fb-screen-id]').inputValue(), 'ST_LI_POLICY');
   const actions = () => page.locator('.detail .title-actions button').allInnerTexts();
   assert.deepEqual(await actions(), ['히스토리', '목록에서 삭제'], 'nothing to apply yet: history and remove only');
+  const layout = { gap: 0, padding: [8, 12, 12, 16], fontSize: 16, letterSpacing: 0, lineHeight: 140, listSpacing: 2, spacer: 15 };
+  const imported = parseRichText('**Policy Title**\n- <red>확인 필요</red>\n\n---\n\n**1. 화면 제목**\n- 설명\n\n**2. 버튼**\n- 동작');
+  await page.evaluate(({ paragraphs, layout }) => window.postMessage({ pluginMessage: { type: 'flipbookDescription', id: 'fb', paragraphs, layout } }, '*'), { paragraphs: imported, layout });
+  await page.locator('.detail .fb-description .rich-editor').waitFor();
+  assert.deepEqual(await actions(), ['히스토리', '목록에서 삭제'], 'loading Description alone does not create an edit');
+  assert.equal(await page.locator('.list .row.selected .row-state.edit-state').count(), 0);
   await page.locator('[data-input=fb-page-title]').fill('A title without a dash');
   assert.deepEqual(await actions(), ['취소', '적용하기'], 'unsaved input shows 취소 and 적용하기 only');
   assert.equal(await page.locator('.detail .title-head .head-name').innerText(), 'A title without a dash', 'the heading follows the typed Page title');
@@ -59,11 +66,9 @@ try {
   assert.equal(await page.locator('[data-identity-frame]').count(), 0, 'no frame-name preview row');
   // 고르면 Description을 불러온다. 불러온 내용을 고치면 「수정 중」 태그와 맨 아래 줄이 생기고 적용하기에 함께 실린다(2026-11-04).
   assert.ok(await page.evaluate(() => window.requests.some(r => r.type === 'flipbookDescription' && r.id === 'fb')), 'selecting loads the Description');
-  const layout = { gap: 0, padding: [8, 12, 12, 16], fontSize: 16, letterSpacing: 0, lineHeight: 140, listSpacing: 2, spacer: 15 };
-  await page.evaluate(layout => window.postMessage({ pluginMessage: { type: 'flipbookDescription', id: 'fb', paragraphs: [{ text: 'Policy', depth: null, bold: [{ start: 0, end: 6 }] }, { text: '설명', depth: 0, bold: [] }], layout } }, '*'), layout);
   const description = page.locator('.detail .fb-description .rich-editor');
   await description.waitFor();
-  assert.equal(await description.innerText(), 'Policy\n설명');
+  assert.ok((await description.innerText()).includes('Policy Title'));
   await page.locator('.list .row[data-key=fb2]').click();
   await page.waitForFunction(() => window.requests.some(r => r.type === 'flipbookDescription' && r.id === 'fb2'));
   await page.evaluate(layout => window.postMessage({ pluginMessage: { type: 'flipbookDescription', id: 'fb2', paragraphs: [{ text: 'Other', depth: null, bold: [] }], layout } }, '*'), layout);

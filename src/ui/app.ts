@@ -953,10 +953,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const focused = descEditor.el.contains(document.activeElement);
     const range = focused ? document.getSelection()?.getRangeAt(0)?.cloneRange() : null;
     if (descEditorFor !== id) {
-      descEditorFor = id;
-      // 서식을 먼저 넣는다(내용을 넣으면 바뀐 내용을 이 플립북의 수정으로 읽는다).
+      // 불러온 내용을 그리는 동안에는 어떤 플립북의 사용자 수정으로도 기록하지 않는다.
+      descEditorFor = null;
       descEditor.setLayout(d.layout);
       descEditor.setParagraphs(d.doc, true);
+      descEditorFor = id;
     }
     if (d.error) slot.innerHTML = `<p class="note bad">${esc(d.error)}</p>`;
     slot.appendChild(descEditor.el);
