@@ -135,7 +135,18 @@ export function figmaHost(mode: Host['mode']): Host {
         for (let p = node.parent; p && p.type !== 'PAGE'; p = p.parent) if (p.type !== 'SECTION') return false;
         return true;
       };
-      return figma.currentPage.selection.map(node => ({ nodeId: node.id, flipbookId: node.getSharedPluginData(NS, 'flipbookOf') || null, screenRoot: screenRoot(node), pageId }));
+      // 플립북 프레임 안의 레이어를 골라도 그 플립북으로 본다(2026-11-04 사용자 요청: 목록 선택이 따라가게). 가장 가까운 플립북 프레임을 쓴다.
+      const flipbookOf = (node: SceneNode): { id: string; nodeId: string } | null => {
+        for (let n: BaseNode | null = node; n && n.type !== 'PAGE' && n.type !== 'DOCUMENT'; n = n.parent) {
+          const id = 'getSharedPluginData' in n ? n.getSharedPluginData(NS, FLIPBOOK_KEY) : '';
+          if (id) return { id, nodeId: n.id };
+        }
+        return null;
+      };
+      return figma.currentPage.selection.map(node => {
+        const flipbook = flipbookOf(node);
+        return { nodeId: node.id, flipbookId: flipbook?.id ?? null, flipbookNodeId: flipbook?.nodeId, screenRoot: screenRoot(node), pageId };
+      });
     },
 
     createFingerprintReader: () => createFingerprintReader(sceneNode),

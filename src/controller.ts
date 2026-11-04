@@ -1008,8 +1008,8 @@ export class Controller {
     // 화면 안의 레이어나 GUI 페이지 밖의 노드를 고를 때는 다시 읽지 않는다(GUI 화면을 고치며 레이어를 누를 때마다 원본 목록 전체를 읽고
     // 플러그인 목록을 다시 그리지 않게). 다시 읽은 목록이 그대로면 목록도 다시 보내지 않는다.
     const scope = new Set(this.store.state.project.scopePageIds);
-    const candidate = (node: { nodeId: string; flipbookId: string | null; screenRoot?: boolean; pageId?: string }) =>
-      node.screenRoot !== false && (!node.pageId || scope.has(node.pageId)) && !node.flipbookId && !entryByNode.has(node.nodeId);
+    const candidate = (node: { nodeId: string; flipbookId: string | null; flipbookNodeId?: string; screenRoot?: boolean; pageId?: string }) =>
+      node.screenRoot !== false && (!node.pageId || scope.has(node.pageId)) && (!node.flipbookId || node.flipbookNodeId !== node.nodeId) && !entryByNode.has(node.nodeId);
     if (this.host.mode === 'GUI' && !this.scanningGui && nodes.some(candidate)) {
       const scanSeq = this.scanSeq;
       this.store.reload();
@@ -1039,7 +1039,7 @@ export class Controller {
     const gui = this.entries.filter(e => !!e.frame && selectedIds.has(e.frame.nodeId)).map(e => e.key);
     // 캔버스에서 복제한 플립북 프레임도 같은 플립북 ID를 가진다. 찾아 둔 플립북 프레임이 따로 있으면 복사본은 목록에서 고르지 않는다.
     const linked = new Map(this.uiScans.filter(scan => scan.nodeId).map(scan => [scan.flipbookId, scan.nodeId]));
-    const ui = nodes.filter(node => !node.flipbookId || !linked.has(node.flipbookId) || linked.get(node.flipbookId) === node.nodeId)
+    const ui = nodes.filter(node => !node.flipbookId || !linked.has(node.flipbookId) || linked.get(node.flipbookId) === (node.flipbookNodeId ?? node.nodeId))
       .map(node => node.flipbookId).filter((id): id is string => !!id && this.store.state.flipbooks.has(id));
     // 실행한 명령의 목록에서만 고른다. GUI Publish에서 플립북 프레임을, UI Flipbook에서 GUI 원본을 골라도
     // 다른 명령의 화면으로 넘어가지 않는다(두 명령은 2026-10-20부터 따로 연다).

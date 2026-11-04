@@ -426,6 +426,8 @@ button.link.danger { color: var(--danger); }
 .pending-line { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; width: 100%; }
 .pending-line .bad { margin-right: auto; }
 .pending-line .new-actions { display: flex; gap: 6px; }
+/* 개수는 숫자만 파랑(2026-11-04 사용자 요청) */
+.pending-counts b { color: var(--brand); font-weight: 600; }
 /* 모두 적용하기: 주요(파란 배경) 버튼이 아니라 일반 버튼에 파란 글자 */
 button.apply-all { color: var(--brand); }
 /* 플립북: 화면이 수정되었습니다 */
@@ -514,7 +516,9 @@ button.apply-all { color: var(--brand); }
 .section-label.drop-into { box-shadow: inset 0 0 0 2px var(--brand); }
 /* 제목 줄: 제목(또는 입력)과 연필·삭제 버튼 */
 .title-head { display: flex; align-items: center; gap: 4px; }
-.title-head h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.title-head h2 { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.title-head h2 .head-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.title-head h2 .head-state[hidden] { display: none; }
 .title-head .title-input { flex: 1; min-width: 0; font-weight: 600; }
 .title-head .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 25px; height: 25px; padding: 0; border: 0; background: transparent; color: var(--muted); flex: none; }
 .title-head .icon-button:hover, .title-head .icon-button[aria-pressed="true"] { color: var(--text); }
@@ -543,21 +547,28 @@ button.apply-all { color: var(--brand); }
 /* 두 열 위 공통 머리: 「화면 선택」·우클릭 안내(?)·보기 방식(두 열에 함께 적용, 2026-11-04 사용자 요청) */
 .create-browser-head { flex: none; display: flex; align-items: center; gap: 4px; min-height: 24px; }
 .create-browser-head .create-view { margin-left: auto; }
-.create-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; min-height: 0; flex: 1 1 auto; }
-.create-browser section { min-width: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 6px; }
-.create-browser header { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 34px; min-height: 34px; padding: 2px 8px; border-bottom: 1px solid var(--border); flex: none; }
-.create-bulk-scale { display: flex; align-items: center; gap: 6px; margin: 0 0 0 auto; color: var(--muted); white-space: nowrap; }
+.create-browser-head strong { font-weight: 600; }
+/* 한 격자(2026-11-04 사용자 요청): 1줄 카테고리·검색 | 선택된 화면 N, 2줄 스위치 | 크기, 3줄 두 목록과 사이의 ›.
+   오른쪽 열은 최소 232px로 왼쪽(1.25fr)보다 좁고, 좁아지면 왼쪽이 먼저 줄어든다. 상자는 두 목록에만 둔다. */
+.create-columns { display: grid; grid-template-columns: minmax(0, 1.25fr) 14px minmax(232px, 1fr); grid-template-rows: auto auto minmax(0, 1fr); column-gap: 4px; row-gap: 6px; min-height: 0; flex: 1 1 auto; }
+.create-columns > * { min-width: 0; }
+.create-columns > .create-picker { grid-area: 1 / 1; }
+.create-columns > .create-filter { grid-area: 2 / 1; margin: 0; }
+.create-columns > .create-screen-list { grid-area: 3 / 1; }
+.create-columns > .create-arrow { grid-area: 3 / 2; align-self: center; justify-self: center; display: inline-flex; color: var(--muted); }
+.create-columns > .create-selected-head { grid-area: 1 / 3; align-self: center; font-size: 11px; color: var(--muted); }
+.create-selected-head b { color: var(--text); font-weight: 600; }
+.create-columns > .create-bulk-scale { grid-area: 2 / 3; }
+.create-columns > .create-selected-list { grid-area: 3 / 3; }
+.create-columns > :is(.create-screen-list, .create-selected-list) { overflow: auto; min-height: 0; border: 1px solid var(--border); border-radius: 6px; }
+.create-bulk-scale { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin: 0; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .create-bulk-scale select { width: 63px; height: 24px; padding: 1px 3px; }
-.create-selected-list { flex: 1 1 auto; overflow: auto; min-height: 0; }
 .create-selected-list > .note { padding: 0 8px; }
-.create-available-box { flex: 1 1 auto; min-height: 0; padding-bottom: 4px; }
 /* 카테고리·목록/그리드 보기·검색은 붙여 넣기·플로우 편집기와 같은 형식(.paste-bar)이다. 보기 방식은 두 열에 함께 쓴다. */
-.create-browser header.create-picker { padding: 2px 6px; }
-.create-picker .paste-bar { flex: 1; min-width: 0; }
+.create-picker .paste-bar { min-width: 0; }
 .create-picker .paste-bar select { flex: 0 1 42%; }
 .create-picker .paste-search { flex: 1; width: auto; }
 .create-picker :is(select, input), .create-bulk-scale select { height: 24px; padding-top: 1px; padding-bottom: 1px; }
-.create-browser .create-filter { margin: 7px 8px; flex: none; }
 .create-switch { display: flex; align-items: center; gap: 7px; cursor: pointer; color: var(--text); }
 .create-switch input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .switch-track { position: relative; width: 24px; height: 14px; border-radius: 9px; background: var(--border); flex: none; transition: background .15s; }
@@ -572,7 +583,7 @@ button.apply-all { color: var(--brand); }
 :is(.create-screen-list, .create-selected-list).grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); gap: 6px; padding: 6px; align-content: start; }
 :is(.create-screen-list, .create-selected-list).grid > :is(.note, .empty) { grid-column: 1 / -1; }
 .create-screen-option.create-card { flex-direction: column; align-items: stretch; gap: 3px; min-width: 0; padding: 3px; border-bottom: 0; border-radius: 4px; }
-.create-card .paste-thumb { margin: 0; cursor: pointer; }
+.create-card .paste-thumb { margin: 0; }
 .create-card .paste-card-meta { gap: 5px; }
 .create-card .create-screen-label { gap: 4px; font-size: 11px; }
 .create-selected-list.grid .create-screen-option.drop-before { box-shadow: inset 2px 0 var(--brand); }
@@ -581,10 +592,15 @@ button.apply-all { color: var(--brand); }
 .create-category-heading { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 5px; width: 100%; margin: 0; padding: 5px 8px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: var(--bg2); color: var(--muted); font-size: 11px; font-weight: 600; text-align: left; }
 .create-category-heading:hover { color: var(--text); }
 .create-category-count { margin-left: auto; }
-.create-screen-option { display: flex; align-items: center; gap: 7px; margin: 0; padding: 6px 8px; border-bottom: 1px solid var(--border); color: var(--text); }
+.create-screen-option { display: flex; align-items: center; gap: 7px; margin: 0; padding: 4px 6px 4px 8px; min-height: 30px; border-bottom: 1px solid var(--border); color: var(--text); }
+.create-screen-list .create-screen-option { cursor: pointer; }
+.create-screen-option:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+/* 선택된 화면 끝의 X(빼기) */
+.create-remove { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 20px; height: 20px; padding: 0; border: 0; background: none; color: var(--muted); }
+.create-remove:hover { color: var(--danger); background: none; }
 .create-screen-option:hover { background: var(--bg2); }
 .create-screen-option input { width: auto; margin: 0; flex: none; }
-.create-screen-label { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; margin: 0; color: var(--text); cursor: pointer; }
+.create-screen-label { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; margin: 0; color: var(--text); }
 .create-screen-label .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .create-screen-option select { width: 58px; flex: none; padding: 2px; font-size: 11px; }
 /* 「선택된 화면」 순서 바꾸기(드래그) */
@@ -922,9 +938,11 @@ details.fb-fold > summary .review-dot { margin-left: 2px; }
 .props { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 12px; margin: 6px 0 10px; }
 .prop { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0; }
 .prop.wide { grid-column: 1 / -1; }
+.prop.side .prop-label { width: auto; }
 .prop-label { flex: none; width: 60px; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .prop > input, .prop > select, .prop > .addable { flex: 1; min-width: 0; margin: 0; color: var(--text); }
 .prop :is(input, select) { height: 24px; padding: 2px 6px; }
 .prop .addable { display: flex; gap: 4px; }
 .prop .addable button { height: 24px; padding: 0 6px; }
-.prop-link { flex: none; font-size: 11px; }
+.prop-button { flex: none; display: inline-flex; align-items: center; gap: 2px; height: 24px; padding: 0 4px 0 8px; color: var(--text); }
+.prop-button svg { width: 12px; height: 12px; }

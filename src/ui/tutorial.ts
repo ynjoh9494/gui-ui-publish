@@ -268,16 +268,16 @@ const UI_STEPS: Step[] = [
     async prepare(d) {
       // 검색 결과는 플립북 없는 화면 일괄 만들기의 대상으로 남겨 둔다.
       for (const name of [COPY.uiPreview007, COPY.uiPreview008]) {
-        await d.click(() => d.all('.create-screen-list .create-screen-option').find(o => o.querySelector('.name')?.textContent === name)?.querySelector<HTMLInputElement>('[data-action="create-screen-toggle"]'));
+        await d.click(() => d.all('.create-screen-list .create-screen-option').find(o => o.querySelector('.name')?.textContent === name) as HTMLElement | undefined);
         await d.until(() => d.all('.create-selected-list .create-screen-option').some(o => o.querySelector('.name')?.textContent === name));
       }
       scrollTop(d.q('.create-screen-list'));
     },
-    spots: d => [d.q('.detail .create-selected-box')],
+    spots: d => [d.q('.detail .create-selected-head'), d.q('.detail .create-bulk-scale'), d.q('.detail .create-selected-list')],
   },
   {
     title: COPY.uiTutorial046, body: COPY.uiTutorial047,
-    spots: d => [d.q('.detail .create-available-box')],
+    spots: d => [d.q('.detail .create-picker'), d.q('.detail .create-filter'), d.q('.detail .create-screen-list')],
   },
   {
     title: COPY.uiTutorial048, body: COPY.uiTutorial049,

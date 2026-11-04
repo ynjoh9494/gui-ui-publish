@@ -331,8 +331,6 @@ try {
   await app.locator('[data-action=settings]').click();
   // 플립북 만들기 탭은 플립북 목록에 합쳤다(2026-10-21). 목록 위 「새 플립북」으로 목록에 바로 넣고, 만들기 전에는 저장하지 않는다.
   assert.equal(await app.locator('.create-tabs button').filter({ hasText: '플립북 만들기' }).count(), 0, '플립북 목록과 만들기를 한 화면에서 한다');
-  // 새 플립북을 넣어도 창 크기를 바꾸지 않으므로(2026-11-04 사용자 요청) 사용자가 창을 키워 둔 크기에서 본다.
-  await app.evaluate(root => { root.style.width = '960px'; root.style.height = '800px'; });
   const sizeBeforeCreate = await app.evaluate(root => ({ width: root.offsetWidth, height: root.offsetHeight }));
   // 플립북 없는 화면 일괄 만들기: 페이지·카테고리·화면 유형·검색으로 범위를 정하고 화면별로 뺄 수 있다.
   {
@@ -368,7 +366,8 @@ try {
   }
   await app.locator('[data-action=new-add]').click();
   await newRows(1, '새 플립북을 목록에 바로 넣는다');
-  assert.deepEqual(await app.evaluate(root => ({ width: root.offsetWidth, height: root.offsetHeight })), sizeBeforeCreate, '새 플립북을 넣어도 창 크기를 바꾸지 않는다');
+  await page.waitForFunction(size => document.querySelector('#app').offsetWidth >= Math.max(size.width, 800) && document.querySelector('#app').offsetHeight >= Math.max(size.height, 640), sizeBeforeCreate);
+  assert.ok(await app.evaluate((root, size) => root.offsetWidth === Math.max(size.width, 800) && root.offsetHeight === Math.max(size.height, 640), sizeBeforeCreate), '새 플립북 편집에 필요한 최소 크기(800×640)까지만 넓힌다');
   assert.ok(await app.locator('.list .new-row').evaluate(el => el.classList.contains('selected')), '넣은 새 플립북을 고른다');
   assert.equal(await app.locator('.list .new-row .row-state').innerText(), '새 플립북', '새 플립북 행에 상태 태그를 붙인다');
   assert.equal(await app.locator('.detail .new-actions').count(), 0, '플립북 편집 머리에는 버튼이 없다');
@@ -376,7 +375,7 @@ try {
   assert.match(await app.locator('.footer .pending-line .pending-counts').innerText(), /^새 플립북 1개$/);
   assert.equal(await app.locator('.footer [data-action=create-submit]').evaluate(el => el.classList.contains('primary')), false, '모두 적용하기는 주요 버튼 색을 쓰지 않는다');
   assert.equal(await app.locator('.toolbar .pending-line').count(), 0, '목록 위 줄은 없다');
-  assert.equal(await app.locator('.detail .title-head [data-action=new-remove]').count(), 0, '플립북 편집 머리에 X가 없다');
+  assert.deepEqual(await app.locator('.detail .title-head .title-actions button').allInnerTexts(), ['취소', '만들기'], '새 플립북 머리 오른쪽에 취소·만들기');
   assert.ok(await app.locator('.new-place .prop').first().evaluate(row => {
     const [select, link] = [row.querySelector('[data-input=new-page]').getBoundingClientRect(), row.querySelector('[data-action=create-page-manage]').getBoundingClientRect()];
     return row.querySelector('[data-action=create-page-manage]').textContent === '관리' && select.right <= link.left && Math.abs(select.top + select.height / 2 - (link.top + link.height / 2)) < 2;
@@ -391,9 +390,9 @@ try {
   await option.waitFor();
   // 화면 선택은 붙여 넣기·플로우 편집기와 같은 형식(카테고리 드롭다운·목록/그리드 보기·검색)이고, 「선택된 화면」은 오른쪽 열이다(2026-11-04).
   assert.ok(await app.locator('.create-browser').evaluate(el => {
-    const [pick, chosen] = [el.querySelector('.create-available-box'), el.querySelector('.create-selected-box')].map(box => box.getBoundingClientRect());
-    return pick.right <= chosen.left && Math.abs(pick.top - chosen.top) < 1 && chosen.height >= 165;
-  }), '화면 선택은 왼쪽, 선택된 화면은 오른쪽 2열이다');
+    const [pick, chosen, arrow] = [el.querySelector('.create-screen-list'), el.querySelector('.create-selected-list'), el.querySelector('.create-arrow')].map(box => box.getBoundingClientRect());
+    return pick.right <= arrow.left && arrow.right <= chosen.left && Math.abs(pick.top - chosen.top) < 1 && chosen.height >= 165 && chosen.width >= 232 && (chosen.width < pick.width || Math.round(chosen.width) === 232);
+  }), '화면 선택은 왼쪽, 선택된 화면은 오른쪽 2열이다(오른쪽은 최소 232px, 여유가 있으면 왼쪽보다 좁다)');
   assert.equal(await app.locator('.create-browser [data-action=create-layout]').count(), 2, '보기 방식 아이콘은 한 벌만 둔다');
   const createCategory = app.locator('[data-create=category]');
   assert.equal(await createCategory.inputValue(), '__all__', '처음은 전체 카테고리다');
@@ -425,10 +424,17 @@ try {
   assert.ok(hoverBounds.top >= hoverBounds.hostTop && hoverBounds.bottom <= hoverBounds.hostBottom, '긴 썸네일은 창 안쪽 위로 띄운다');
   assert.ok(hoverBounds.scrollHeight <= hoverBounds.clientHeight, '썸네일 마우스오버로 세로 스크롤이 생기지 않는다');
   await shot('03-create-view');
-  await option.locator('[data-action=create-screen-toggle]').check();
+  assert.equal(await app.locator('.create-screen-option input[type=checkbox]').count(), 0, '화면 목록에 체크박스가 없다');
+  await option.click();
   await shot('03-create-selected');
+  assert.equal(await app.locator('.create-selected-list .create-unused-dot').count(), 0, '선택된 화면에는 점을 두지 않는다');
+  assert.ok(await app.locator('.create-selected-list .create-screen-option').first().evaluate(row => {
+    const x = row.querySelector('[data-action=create-screen-remove]').getBoundingClientRect();
+    return Math.abs(x.right - row.getBoundingClientRect().right) < 10;
+  }), '선택된 화면 끝에 X를 둔다');
   assert.equal(await app.locator('.detail .create-plan-ids, .detail .id-tag:not(.create-screen-option .id-tag)').count(), 0, '선택된 화면 위에 ID를 따로 표시하지 않는다');
-  assert.equal(await app.locator('.detail .title-head h2').innerText(), '플립북 편집', '머리에는 「플립북 편집」을 둔다');
+  assert.equal(await app.locator('.detail .title-head h2 .head-name').innerText(), await app.locator('.detail [data-input=new-title]').inputValue(), '머리 제목은 지금 입력한 Page title이다');
+  assert.equal(await app.locator('.detail .title-head h2 .head-state').innerText(), '새 플립북', '제목 오른쪽에 새 플립북 태그');
   assert.ok(await app.locator('.new-place').evaluate(place => {
     const [pageField, section, title] = [place.querySelector('[data-input=new-page]'), place.querySelector('[data-input=new-section]'), place.querySelector('[data-input=new-title]')].map(el => el.getBoundingClientRect());
     return Math.abs(pageField.top - section.top) < 2 && pageField.right <= section.left && section.bottom <= title.top && Math.abs(pageField.left - title.left) < 1;
@@ -456,9 +462,9 @@ try {
   }), '태그는 제목 바로 오른쪽, 드래그 표시는 왼쪽 여백에 있어 이름이 기존 행과 같은 자리에서 시작한다');
   assert.equal(await app.locator('.create-selected-list .create-screen-option').count(), 1, '선택 화면은 오른쪽 별도 박스로 이동한다');
   assert.equal(await app.locator('.create-screen-list .create-screen-option').count(), 0, '선택 화면을 후보 목록에 중복 표시하지 않는다');
-  await app.locator('.create-selected-list [data-action=create-screen-toggle]').click();
+  await app.locator('.create-selected-list [data-action=create-screen-remove]').click();
   assert.equal(await app.locator('.create-screen-list .create-screen-option').count(), 1, '체크 해제한 화면은 후보 목록으로 돌아간다');
-  await app.locator('.create-screen-list [data-action=create-screen-toggle]').click();
+  await app.locator('.create-screen-list .create-screen-option').first().click();
   await app.locator('.list .new-row.selected .name').dblclick();
   assert.equal(await app.locator('.list [data-input=new-title]').getAttribute('placeholder'), initialName, '목록 이름을 더블클릭하면 그 행이 실제 화면 이름을 안내하는 입력으로 바뀐다');
   await app.locator('.list [data-input=new-title]').press('Enter');
@@ -538,10 +544,19 @@ try {
   {
     const description = app.locator('.detail .fb-description .rich-editor');
     await description.waitFor();
-    assert.equal(await app.locator('.detail [data-action=fb-identity-save]').isDisabled(), true, '불러오기만 하면 적용할 것이 없다');
+    const actions = () => app.locator('.detail .title-actions button').allInnerTexts();
+    assert.deepEqual(await actions(), ['히스토리', '목록에서 삭제'], '불러오기만 하면 히스토리·목록에서 삭제만 보인다');
+    await description.click();
+    await page.keyboard.type('Draft');
+    assert.deepEqual(await actions(), ['취소', '적용하기'], 'Description을 고치면 취소·적용하기만 보인다');
+    assert.equal(await app.locator('.detail .title-head .head-state:not([hidden])').innerText(), '수정 중', '제목 오른쪽에 수정 중 태그');
+    await app.locator('.detail [data-action=fb-edit-cancel]').click();
+    await page.waitForFunction(() => document.querySelector('#app .detail .fb-description .rich-editor')?.textContent === '');
+    assert.deepEqual(await actions(), ['히스토리', '목록에서 삭제'], '취소하면 고치기 전으로 돌아간다');
+    assert.equal(await app.locator('.detail .title-head .head-state:not([hidden])').count(), 0, '취소하면 제목 옆 수정 중 태그를 끈다');
+    await page.waitForFunction(() => !document.querySelector('#app .list .row.selected .row-state'), null, { timeout: 3000 });
     await description.click();
     await page.keyboard.type('Policy');
-    assert.equal(await app.locator('.detail [data-action=fb-identity-save]').isDisabled(), false, 'Description을 고치면 적용하기를 누를 수 있다');
     assert.equal(await app.locator('.list .row.selected .row-state').innerText(), '수정 중');
     await app.locator('[data-action=fb-identity-save]').click();
     await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('Description:')));
@@ -553,13 +568,12 @@ try {
   await app.locator('.list .row.selected .name').dblclick();
   await app.locator('.list [data-input=fb-title]').fill('');
   await app.locator('.list [data-input=fb-title]').press('Enter');
-  await page.waitForFunction(name => document.querySelector('#app .detail h2')?.textContent === name, initialName);
+  await page.waitForFunction(name => document.querySelector('#app .detail h2 .head-name')?.textContent === name, initialName);
   // 화면 편집은 없다(2026-10-29 사용자 결정: 화면은 캔버스·GUI 목록에서 넣고 뺀다). 상세에는 들어 있는 화면 수만 보인다.
   assert.equal(await app.locator('[data-action=fb-edit-screens]').count(), 0, '플립북 상세에 화면 편집이 없다');
   assert.match(await app.locator('.detail .fb-screens-head').innerText(), /화면 1개/);
   // 제목 줄 오른쪽은 [히스토리] [목록에서 삭제] [적용하기]이고, 들어 있는 화면은 펼친 목록이다. 상태·코멘트는 상세에 없다(2026-11-03 사용자 요청).
-  assert.deepEqual(await app.locator('.detail .title-actions button').allInnerTexts(), ['히스토리', '목록에서 삭제', '적용하기']);
-  assert.equal(await app.locator('.detail [data-action=fb-identity-save]').isDisabled(), true, '수정사항이 없으면 적용하기를 누를 수 없다');
+  assert.deepEqual(await app.locator('.detail .title-actions button').allInnerTexts(), ['히스토리', '목록에서 삭제'], '고치지 않으면 적용하기·취소가 없다');
   assert.equal(await app.locator('.detail details[data-fold=screens]').evaluate(d => d.open), true, '들어 있는 화면은 펼쳐 둔다');
   assert.equal(await app.locator('.detail .fb-screen-list .fb-screen').count(), 1, '화면은 목록 줄로 보여 준다');
   assert.equal(await app.locator('.detail [data-field=description]').count(), 0, '상세에 코멘트 입력이 없다');

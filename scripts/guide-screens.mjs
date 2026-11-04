@@ -108,7 +108,7 @@ try {
   await app.locator('.list .new-row').click();
   const option = app.locator('.create-screen-option').filter({ hasText: 'STB_HO_001' }).first();
   await option.waitFor();
-  await option.locator('[data-action=create-screen-toggle]').check();
+  await option.click();
   await shot('ui-create');
   await app.locator('[data-action=create-submit]').click();
   await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('만들었습니다'));
