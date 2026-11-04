@@ -118,7 +118,7 @@ try {
   await page.evaluate(state => window.postMessage({ pluginMessage: { type: 'state', state, pages: [{ id: 'p', name: 'Pages' }] } }, '*'), toUiWire(store.state));
   await page.waitForFunction(() => document.querySelector('[data-input=fb-page-title]')?.value === 'Only Page title');
   await page.waitForFunction(() => document.querySelector('.list .row .name')?.textContent === 'ST_LI_POLICY_05 · Only Page title');
-  // 안내 화면(release/screens)은 배포 직전에만 갱신하므로 검사 화면은 tmp에 남긴다.
+  // 검사 화면은 tmp에 남긴다.
   mkdirSync('tmp/walkthrough', { recursive: true });
   await page.locator('#app').screenshot({ path: 'tmp/walkthrough/ui-identity.png' });
   console.log('Identity UI: automatic Chapter/policy ID, editable ID/title, 적용하기 enabled only with changes and title-only double click passed');

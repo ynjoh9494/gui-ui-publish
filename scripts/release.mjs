@@ -1,5 +1,5 @@
 // 팀 배포. 버전 태그(v1.2.3)를 push하면 GitHub Actions(.github/workflows/release.yml)가 이 스크립트로 검사·빌드하고,
-// manifest.json·dist(code.js, ui.html)·사용 안내를 zip 하나로 묶어 GitHub Release에 올린다.
+// manifest.json·dist(code.js, ui.html)를 zip 하나로 묶어 GitHub Release에 올린다.
 // 팀원은 항상 https://github.com/{REPO}/releases/latest/download/GUIUIPublish.zip 으로 최신본을 받는다.
 // 사용: npm run release                     검사 후 다음 패치 버전 태그를 만들어 push(첫 배포는 1.0.0)
 //       npm run release -- 1.2.0            버전 지정
@@ -12,7 +12,6 @@ import { crc32, deflateRawSync } from 'node:zlib';
 
 const REPO = process.env.GITHUB_REPOSITORY ?? 'ynjoh9494/gui-ui-publish';
 const ASSET = 'GUIUIPublish.zip';
-const GUIDE = 'GUIUIPublish-Guide.html';
 const OUT = `tmp/package/${ASSET}`;
 const LATEST = `https://github.com/${REPO}/releases/latest/download/${ASSET}`;
 
@@ -68,22 +67,13 @@ function pushTag() {
   console.log(`\n${tag} 태그를 push했습니다. GitHub Actions가 빌드해 Release에 올립니다.\n진행: https://github.com/${REPO}/actions\n최신 버전 링크: ${LATEST}`);
 }
 
-// 사용 안내에 버전·날짜·링크를 채우고 release/screens의 그림을 HTML 안에 넣어 zip을 만든다.
 function build(tag) {
   mkdirSync('tmp/package', { recursive: true });
-  const date = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
-  const guide = readFileSync('release/guide.html', 'utf8')
-    .replaceAll('{{VERSION}}', tag)
-    .replaceAll('{{DATE}}', date)
-    .replaceAll('{{DOWNLOAD_URL}}', LATEST)
-    .replaceAll('{{REPO_URL}}', `https://github.com/${REPO}/releases/latest`)
-    .replace(/src="(screens\/[\w-]+\.png)"/g, (_, file) => `src="data:image/png;base64,${readFileSync(`release/${file}`).toString('base64')}"`);
   // 맨 위에 폴더를 두지 않는다. Windows·macOS 압축 풀기가 zip 이름으로 폴더를 만들어 준다.
   writeFileSync(OUT, zip([
     ['manifest.json', readFileSync('manifest.json')],
     ['dist/code.js', readFileSync('tmp/build/code.js')],
     ['dist/ui.html', readFileSync('tmp/build/ui.html')],
-    [GUIDE, Buffer.from(guide, 'utf8')],
   ]));
   console.log(`\n${OUT} (${tag})`);
 }
@@ -111,7 +101,7 @@ async function publish() {
   const ref = await api('GET', `/repos/${REPO}/git/ref/tags/${tag}`);
   const message = ref?.object.type === 'tag' ? (await api('GET', `/repos/${REPO}/git/tags/${ref.object.sha}`)).message.trim() : '';
   const notes = message && message !== `GUI·UI Publish ${tag}` ? `${message}\n\n` : '';
-  const body = `${notes}설치·업데이트 방법은 zip 안의 ${GUIDE}를 확인하세요.\n\n커밋 ${process.env.GITHUB_SHA.slice(0, 7)}`;
+  const body = `${notes}설치·업데이트 방법은 [README](https://github.com/${REPO}#readme)를 확인하세요.\n\n커밋 ${process.env.GITHUB_SHA.slice(0, 7)}`;
   const release = await api('POST', `/repos/${REPO}/releases`, { tag_name: tag, name: `GUI·UI Publish ${tag}`, body, draft: true });
   try {
     await api('POST', `https://uploads.github.com/repos/${REPO}/releases/${release.id}/assets?name=${ASSET}`, readFileSync(OUT), { 'Content-Type': 'application/zip' });

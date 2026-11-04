@@ -24,7 +24,7 @@ GUI팀과 UI팀이 한 Figma 파일에서 함께 쓰는 플러그인입니다. G
 
 - 머리의 「창 접기」 버튼으로 작은 바만 남길 수 있습니다. 「창 펼치기」로 이전 크기와 작업 화면으로 돌아옵니다.
 
-- zip 안의 `GUIUIPublish-Guide.html`을 브라우저로 열면 용도, 전체 흐름, 초기 세팅, 기능별 사용법을 그림과 함께 볼 수 있습니다. 플러그인 창 오른쪽 위의 파란 물음표 버튼은 튜토리얼입니다.
+- 플러그인 창 오른쪽 위의 파란 물음표 버튼에서 튜토리얼을 열 수 있습니다.
 - 새 버전은 zip을 받아 처음 설치한 폴더에 덮어쓰고 플러그인을 다시 실행하면 됩니다.
 
 ---
@@ -63,7 +63,6 @@ npm run check
 | `npm run activate-build` | 플러그인을 닫지 않고 실행할 수 있습니다. 자동 종료·리로드는 하지 않습니다. 검사 빌드의 파일 해시를 검증하고 기존 `dist/`를 `tmp/dist-backup-*`에 보관한 뒤 전환합니다 |
 | `npm run walkthrough` | 미리보기에서 GUI 배포 → 플립북 만들기 → GUI 재배포 반영 흐름과 튜토리얼을 자동 조작합니다 |
 | `npm run benchmark` | Node 쪽 목록·저장소 계산 성능을 측정합니다 |
-| `npm run guide-screens` | 사용 안내 그림(`release/screens/`)을 미리보기 예시 데이터로 다시 찍습니다 |
 | `npm run release` | 팀 배포. 아래 「배포」 참고 |
 
 ### Figma에서 개발 중인 버전 실행
@@ -84,8 +83,7 @@ npm run check
 | `src/host.ts` | Controller가 쓰는 환경 계약. 실제 Figma와 미리보기용 가짜 환경이 이 계약을 구현 |
 | `src/ui/` | 플러그인 창. `demo.ts`는 미리보기·튜토리얼용 가짜 Figma 환경, `tutorial.ts`는 튜토리얼, `fonts/`는 Screen ID 표시 글꼴(Roboto Condensed, SIL OFL 1.1) |
 | `test/` | Node 테스트(`npm test`) |
-| `scripts/` | 배포(`release.mjs`), 안내 그림 캡처, 미리보기 조작, 성능 측정, 문구 시트 Apps Script(`CopySync.gs`) |
-| `release/` | 팀원용 사용 안내 원본(`guide.html`)과 그림 |
+| `scripts/` | 배포(`release.mjs`), 미리보기 조작, 성능 측정, 문구 시트 Apps Script(`CopySync.gs`) |
 | `.github/workflows/` | 검사(`check.yml`)와 배포(`release.yml`) |
 
 ### 배포
@@ -97,11 +95,9 @@ npm run release -- 1.2.0 --notes "…"  # 버전과 한 줄 릴리스 설명 지
 npm run release -- 1.2.0 --notes-file notes.md  # 여러 줄 설명은 파일로(Windows의 npm은 인자의 첫 줄만 넘깁니다)
 ```
 
-`npm run release`는 main이 깨끗하고 origin과 같은지 확인하고 `npm run check`를 통과하면 버전 태그를 push합니다. 그러면 GitHub Actions가 그 태그의 코드로 다시 검사·빌드해 zip(`manifest.json`, `dist/code.js`, `dist/ui.html`, 사용 안내 HTML)을 Release에 올립니다. 팀원용 링크(`releases/latest/download/GUIUIPublish.zip`)는 바뀌지 않습니다.
+`npm run release`는 main이 깨끗하고 origin과 같은지 확인하고 `npm run check`를 통과하면 버전 태그를 push합니다. 그러면 GitHub Actions가 그 태그의 코드로 다시 검사·빌드해 zip(`manifest.json`, `dist/code.js`, `dist/ui.html`)을 Release에 올립니다. 팀원용 링크(`releases/latest/download/GUIUIPublish.zip`)는 바뀌지 않습니다.
 
 Actions는 태그를 `PLUGIN_VERSION`으로 넘겨 빌드하므로 zip의 플러그인은 그 버전을 압니다. 플러그인은 열 때마다 이 파일에서 쓰인 가장 높은 배포 버전(파일 기록 `ver`)을 올리고, 자기보다 높은 기록이 있으면 관리 → 업데이트에 알림을 띄웁니다. 그 밖의 빌드(`npm run check`·`activate-build`)는 `git describe` 값을 쓰는 개발 빌드로 알림을 띄우지 않고, 포함한 마지막 배포 태그를 기록에 남깁니다. `npm run release`는 태그를 push한 뒤 이 PC의 개발 빌드를 다시 반영하므로, 배포한 사람이 파일을 열면 팀원에게 알림이 갑니다.
-
-화면이나 흐름이 바뀌면 배포 전에 `release/guide.html` 문구와 `npm run guide-screens` 그림도 함께 고칩니다.
 
 ### 문구 관리
 
