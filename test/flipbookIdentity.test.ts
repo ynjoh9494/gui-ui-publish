@@ -52,6 +52,7 @@ test('automatic IDs follow GUI changes; local overrides do not change GUI record
   assert.equal(flipbookIdentity(state, automatic).screenId, 'ST_LI_002');
   state.categories.set('home', { id: 'home', name: 'Home', code: 'HO', active: true, order: 1 });
   const edited = withFlipbookId(state, automatic, 'st_ho_007');
+  assert.equal(edited.screenId, 'st_ho_007', 'typed case is kept');
   assert.equal(flipbookIdentity(state, edited).chapter, 'Home');
   assert.equal(edited.screens[0].code, 'ST_LI_002');
   assert.equal(withFlipbookId(state, edited, '').screenId, undefined);

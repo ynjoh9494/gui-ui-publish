@@ -174,7 +174,7 @@ function applyFlipbookIdRenames(store: Store, list: FlipbookIdRename[], renames:
     const fb = store.state.flipbooks.get(r.flipbookId);
     if (!fb) continue;
     const first = fb.screens[0] ? next.get(fb.screens[0].uid) ?? store.state.screens.get(fb.screens[0].uid)?.code : undefined;
-    const screenId = first && first.toUpperCase() === r.to ? undefined : r.to;
+    const screenId = first && first === r.to ? undefined : r.to;
     store.put(keys.flipbook(fb.id), { ...fb, rev: fb.rev + 1, screenId });
     store.audit(actor, 'flipbook.screenId', fb.id, r.from, screenId ?? null);
   }

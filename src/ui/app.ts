@@ -3748,7 +3748,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       if (fb && draft) {
         if (el.dataset.input === 'fb-page-title') draft.title = el.value;
         else draft.screenId = el.value;
-        const info = flipbookIdentity(state!, { ...fb, title: draft.title, screenId: draft.screenId.trim().toUpperCase() });
+        const info = flipbookIdentity(state!, { ...fb, title: draft.title, screenId: draft.screenId.trim() });
         const chapter = root.querySelector<HTMLInputElement>('[data-identity-chapter]');
         if (chapter) chapter.value = info.chapter;
         const save = root.querySelector<HTMLButtonElement>('.detail [data-action="fb-identity-save"]');

@@ -82,11 +82,12 @@ export interface FlipbookIdRename { flipbookId: string; from: string; to: string
 
 // 플립북에 저장한 Screen ID(정책 플립북의 ID, 직접 정한 ID)도 화면 ID와 함께 바꾼다(BEHAVIOR 「Screen ID 규칙」: 플립북 Screen ID도 바로 바꾼다).
 // 바뀌는 화면의 지금 ID와 같은 값은 그 화면의 새 ID로, 바뀌는 규칙 머리(heads: `{Prefix}_{코드}_`)의 정책 ID(`…_POLICY`, `…_POLICY_NN`)는
-// 새 머리로 바꾼다. 그 밖에 직접 정한 ID는 그대로 둔다. 플립북 ID는 대문자로 저장한다(flipbookIdentity.withFlipbookId).
+// 새 머리로 바꾼다. 그 밖에 직접 정한 ID는 그대로 둔다.
+// 플립북 ID는 입력한 대소문자 그대로 저장하므로(2026-11-04) 찾을 때는 대소문자를 가리지 않고, 바꾼 값은 새 화면 ID·새 머리 그대로 쓴다.
 export function flipbookIdRenames(state: State, renames: CodeRename[], heads: { from: string; to: string }[] = []): FlipbookIdRename[] {
-  const byCode = new Map(renames.map(r => [r.from.toUpperCase(), r.to.toUpperCase()]));
-  const policy = heads.filter(h => h.from.toUpperCase() !== h.to.toUpperCase())
-    .map(h => ({ pattern: new RegExp(`^${escape(h.from.toUpperCase())}(POLICY(?:_\\d+)?)$`), to: h.to.toUpperCase() }));
+  const byCode = new Map(renames.map(r => [r.from.toUpperCase(), r.to]));
+  const policy = heads.filter(h => h.from !== h.to)
+    .map(h => ({ pattern: new RegExp(`^${escape(h.from)}(POLICY(?:_\\d+)?)$`, 'i'), to: h.to }));
   const out: FlipbookIdRename[] = [];
   for (const fb of state.flipbooks.values()) {
     if (fb.status !== 'active' || !fb.screenId) continue;

@@ -67,7 +67,8 @@ export function flipbookIdentity(state: State, fb: Flipbook, policies?: Readonly
 }
 
 // A value matching the first GUI screen remains automatic when GUI renumbers it.
+// 입력한 대소문자를 그대로 저장한다(2026-11-04 사용자 요청: 대문자로 바꾸는 규칙 없앰).
 export function withFlipbookId(state: State, fb: Flipbook, input?: string): Flipbook {
-  const value = input?.trim().toUpperCase() || (fb.screens.length ? fb.screens[0].code : policyScreenId(state, fb));
+  const value = input?.trim() || (fb.screens.length ? fb.screens[0].code : policyScreenId(state, fb));
   return { ...fb, screenId: fb.screens.length && value === fb.screens[0].code ? undefined : value || undefined };
 }
