@@ -542,33 +542,24 @@ button.apply-all { color: var(--brand); }
 :is(.new-place, .category-field) .field-head .link { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; line-height: inherit; }
 :is(.new-place, .category-field) .field-head .link svg { width: 12px; height: 12px; }
 /* 필드 이름의 흐린 글자색을 버튼이 물려받으면 비활성처럼 보인다. */
-/* 왼쪽 「화면 선택」, 오른쪽 「선택된 화면」 2열(2026-11-04 사용자 요청). 두 열은 남은 높이를 함께 쓰고 각자 스크롤한다. */
+/* 후보 목록이 남은 높이를 쓰고 선택한 화면은 아래의 낮은 가로 열에 고정한다. */
 .create-browser { display: flex; flex-direction: column; gap: 6px; min-height: 0; flex: 1 1 auto; }
-/* 두 열 위 공통 머리: 「화면 선택」·우클릭 안내(?)·보기 방식(두 열에 함께 적용, 2026-11-04 사용자 요청) */
 .create-browser-head { flex: none; display: flex; align-items: center; gap: 4px; min-height: 24px; }
 .create-browser-head .create-view { margin-left: auto; }
 .create-browser-head strong { font-weight: 600; }
-/* 한 격자(2026-11-04 사용자 요청): 1줄 카테고리·검색 | 선택된 화면 N, 2줄 스위치 | 크기, 3줄 두 목록과 사이의 ›.
-   오른쪽 열은 최소 232px로 왼쪽(1.25fr)보다 좁고, 좁아지면 왼쪽이 먼저 줄어든다. 상자는 두 목록에만 둔다. */
-.create-columns { display: grid; grid-template-columns: minmax(0, 1.25fr) 14px minmax(232px, 1fr); grid-template-rows: auto auto minmax(0, 1fr); column-gap: 4px; row-gap: 6px; min-height: 0; flex: 1 1 auto; }
+.create-columns { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(80px, 1fr) auto 116px; row-gap: 6px; min-width: 0; min-height: 0; flex: 1 1 auto; }
 .create-columns > * { min-width: 0; }
-.create-columns > .create-picker { grid-area: 1 / 1; }
-.create-columns > .create-filter { grid-area: 2 / 1; margin: 0; }
-.create-columns > .create-screen-list { grid-area: 3 / 1; }
-.create-columns > .create-arrow { grid-area: 3 / 2; align-self: center; justify-self: center; display: inline-flex; color: var(--muted); }
-.create-columns > .create-selected-head { grid-area: 1 / 3; align-self: center; font-size: 11px; color: var(--muted); }
+.create-columns > .create-filter { margin: 0; }
+.create-columns > .create-selected-head { align-self: end; font-size: 11px; color: var(--muted); }
 .create-selected-head b { color: var(--text); font-weight: 600; }
-.create-columns > .create-bulk-scale { grid-area: 2 / 3; }
-.create-columns > .create-selected-list { grid-area: 3 / 3; }
-.create-columns > :is(.create-screen-list, .create-selected-list) { overflow: auto; min-height: 0; border: 1px solid var(--border); border-radius: 6px; }
-.create-bulk-scale { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin: 0; color: var(--muted); font-size: 11px; white-space: nowrap; }
-.create-bulk-scale select { width: 63px; height: 24px; padding: 1px 3px; }
-.create-selected-list > .note { padding: 0 8px; }
-/* 카테고리·목록/그리드 보기·검색은 붙여 넣기·플로우 편집기와 같은 형식(.paste-bar)이다. 보기 방식은 두 열에 함께 쓴다. */
+.create-columns > :is(.create-screen-list, .create-selected-list) { min-width: 0; border: 1px solid var(--border); border-radius: 6px; }
+.create-selected-list { display: flex; align-items: flex-start; gap: 6px; overflow-x: auto; overflow-y: hidden; padding: 5px 6px; }
+.create-selected-list > .note { flex: none; margin: 0; padding: 4px 2px; }
+/* 카테고리·검색은 붙여 넣기·플로우 편집기와 같은 형식(.paste-bar)이다. */
 .create-picker .paste-bar { min-width: 0; }
 .create-picker .paste-bar select { flex: 0 1 42%; }
 .create-picker .paste-search { flex: 1; width: auto; }
-.create-picker :is(select, input), .create-bulk-scale select { height: 24px; padding-top: 1px; padding-bottom: 1px; }
+.create-picker :is(select, input) { height: 24px; padding-top: 1px; padding-bottom: 1px; }
 .create-switch { display: flex; align-items: center; gap: 7px; cursor: pointer; color: var(--text); }
 .create-switch input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .switch-track { position: relative; width: 24px; height: 14px; border-radius: 9px; background: var(--border); flex: none; transition: background .15s; }
@@ -579,35 +570,38 @@ button.apply-all { color: var(--brand); }
 .create-browser.inactive > .note { margin: 10px; }
 .create-screen-list { flex: 1 1 auto; overflow: auto; min-height: 0; border-top: 1px solid var(--border); }
 .create-screen-list > .empty { padding: 8px; color: var(--muted); }
-/* 그리드 보기: 붙여 넣기 그리드와 같은 칸 크기. 썸네일을 누르면 고르고, 아래 줄에 체크박스·이름·크기·점 */
-:is(.create-screen-list, .create-selected-list).grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); gap: 6px; padding: 6px; align-content: start; }
-:is(.create-screen-list, .create-selected-list).grid > :is(.note, .empty) { grid-column: 1 / -1; }
+/* 그리드 카드의 행 높이는 내용에 맞춘다. 남는 높이로 썸네일을 늘리지 않는다. */
+.create-screen-list.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); grid-auto-rows: max-content; gap: 6px; padding: 6px; align-content: start; }
+.create-screen-list.grid > :is(.note, .empty) { grid-column: 1 / -1; }
 .create-screen-option.create-card { flex-direction: column; align-items: stretch; gap: 3px; min-width: 0; padding: 3px; border-bottom: 0; border-radius: 4px; }
-.create-card .paste-thumb { margin: 0; }
+.create-card .paste-thumb { flex: none; width: 100%; margin: 0; }
 .create-card .paste-card-meta { gap: 5px; }
 .create-card .create-screen-label { gap: 4px; font-size: 11px; }
-.create-selected-list.grid .create-screen-option.drop-before { box-shadow: inset 2px 0 var(--brand); }
-.create-selected-list.grid .create-screen-option.drop-after { box-shadow: inset -2px 0 var(--brand); }
 .create-screen-list > .note { padding: 8px; }
 .create-category-heading { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 5px; width: 100%; margin: 0; padding: 5px 8px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: var(--bg2); color: var(--muted); font-size: 11px; font-weight: 600; text-align: left; }
 .create-category-heading:hover { color: var(--text); }
 .create-category-count { margin-left: auto; }
 .create-screen-option { display: flex; align-items: center; gap: 7px; margin: 0; padding: 4px 6px 4px 8px; min-height: 30px; border-bottom: 1px solid var(--border); color: var(--text); }
 .create-screen-list .create-screen-option { cursor: pointer; }
+.create-screen-list .create-screen-option.is-selected { background: var(--bg2); }
 .create-screen-option:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
-/* 선택된 화면 끝의 X(빼기) */
-.create-remove { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 20px; height: 20px; padding: 0; border: 0; background: none; color: var(--muted); }
-.create-remove:hover { color: var(--danger); background: none; }
+/* 선택된 화면: 썸네일 안 ID·원형 지우기, 아래 번호·이름. */
+.create-selected-card.create-screen-option { display: flex; flex: 0 0 142px; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; min-height: 0; padding: 2px; border: 0; border-radius: 4px; }
+.create-selected-card .paste-thumb { flex: none; width: 100%; margin: 0; }
+.create-selected-card .picker-thumb-id { max-width: calc(100% - 32px); }
+.create-selected-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 15px; }
+.create-remove { position: absolute; top: 4px; right: 4px; z-index: 1; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; background: var(--bg); color: var(--text); box-shadow: 0 0 0 1px var(--border); }
+.create-remove svg { width: 11px; height: 11px; }
+.create-remove:hover { color: var(--danger); background: var(--bg); }
 .create-screen-option:hover { background: var(--bg2); }
 .create-screen-option input { width: auto; margin: 0; flex: none; }
 .create-screen-label { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; margin: 0; color: var(--text); }
 .create-screen-label .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.create-screen-option select { width: 58px; flex: none; padding: 2px; font-size: 11px; }
 /* 「선택된 화면」 순서 바꾸기(드래그) */
 .create-selected-list .create-screen-option[draggable="true"] { cursor: grab; }
 .create-screen-option.dragging { opacity: .45; }
-.create-screen-option.drop-before { box-shadow: inset 0 2px var(--brand); }
-.create-screen-option.drop-after { box-shadow: inset 0 -2px var(--brand); }
+.create-selected-list .create-screen-option.drop-before { box-shadow: inset 2px 0 var(--brand); }
+.create-selected-list .create-screen-option.drop-after { box-shadow: inset -2px 0 var(--brand); }
 /* 화면 편집: 머리 아래 대상 플립북 제목 한 줄 */
 .create-unused-dot { width: 8px; height: 8px; border-radius: 50%; background: #d9ae00; flex: none; }
 .create-unused-dot.planned { background: #999; }

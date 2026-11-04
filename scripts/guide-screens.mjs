@@ -52,9 +52,9 @@ try {
     await app.locator('[data-action=text-open]').click();
     await app.locator('[data-action=text-import]').click();
     await page.waitForFunction(() => document.querySelector('#app .rich-editor')?.textContent);
-    await app.locator('.rich-editor').click();
+    await app.locator('.text-view .rich-editor').click();
     await page.keyboard.press('Control+End');
-    await app.locator('.rich-editor').evaluate(el => {
+    await app.locator('.text-view .rich-editor').evaluate(el => {
       const data = new DataTransfer();
       data.setData('text/plain', '\n- <red>Confirm behavior (confirmation needed)</red>');
       el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
@@ -109,6 +109,7 @@ try {
   const option = app.locator('.create-screen-option').filter({ hasText: 'STB_HO_001' }).first();
   await option.waitFor();
   await option.click();
+  await page.mouse.move(1000, 40);
   await shot('ui-create');
   await app.locator('[data-action=create-submit]').click();
   await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('만들었습니다'));
@@ -156,9 +157,9 @@ try {
   await app.locator('[data-action=text-open]').click();
   await app.locator('[data-action=text-import]').click();
   await page.waitForFunction(() => document.querySelector('#app .text-view .rich-editor')?.textContent);
-  await app.locator('.rich-editor').click();
+  await app.locator('.text-view .rich-editor').click();
   await page.keyboard.press('Control+End');
-  await app.locator('.rich-editor').evaluate(el => {
+  await app.locator('.text-view .rich-editor').evaluate(el => {
     const data = new DataTransfer();
     data.setData('text/plain', '\n- <red>포커스 이동 시 동작 확인 필요</red>');
     el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));

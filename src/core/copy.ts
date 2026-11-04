@@ -569,7 +569,7 @@ export const COPY = {
   uiTutorial042: '위치·제목',
   uiTutorial043: '페이지와 Section을 고르고 제목을 입력해 주세요.',
   uiTutorial044: '선택된 화면',
-  uiTutorial045: '화면 순서를 드래그해 바꾸세요. 크기는 ‘기본’ 또는 ‘작게’를 고를 수 있어요.',
+  uiTutorial045: '선택한 화면은 아래에 썸네일로 표시돼요. 드래그해 순서를 바꿀 수 있어요.',
   uiTutorial046: '화면 선택',
   uiTutorial047: '플립북에 넣을 화면을 고르세요. 노란 점은 아직 플립북이 없는 화면이에요.',
   uiTutorial048: '만들기',

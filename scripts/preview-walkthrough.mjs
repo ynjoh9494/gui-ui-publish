@@ -388,11 +388,11 @@ try {
   await app.locator('.list .new-row').click();
   const option = app.locator('.create-screen-option').filter({ hasText: 'STB_HO_001' }).first();
   await option.waitFor();
-  // 화면 선택은 붙여 넣기·플로우 편집기와 같은 형식(카테고리 드롭다운·목록/그리드 보기·검색)이고, 「선택된 화면」은 오른쪽 열이다(2026-11-04).
+  // 후보 목록 아래의 낮은 썸네일 줄은 창 너비를 채우고 가로 스크롤한다.
   assert.ok(await app.locator('.create-browser').evaluate(el => {
-    const [pick, chosen, arrow] = [el.querySelector('.create-screen-list'), el.querySelector('.create-selected-list'), el.querySelector('.create-arrow')].map(box => box.getBoundingClientRect());
-    return pick.right <= arrow.left && arrow.right <= chosen.left && Math.abs(pick.top - chosen.top) < 1 && chosen.height >= 165 && chosen.width >= 232 && (chosen.width < pick.width || Math.round(chosen.width) === 232);
-  }), '화면 선택은 왼쪽, 선택된 화면은 오른쪽 2열이다(오른쪽은 최소 232px, 여유가 있으면 왼쪽보다 좁다)');
+    const [pick, chosen] = [el.querySelector('.create-screen-list'), el.querySelector('.create-selected-list')].map(box => box.getBoundingClientRect());
+    return pick.bottom <= chosen.top && Math.abs(pick.left - chosen.left) < 1 && Math.abs(pick.width - chosen.width) < 1 && chosen.height <= 120;
+  }), '선택된 화면은 후보 목록 아래에 같은 너비의 낮은 가로 줄이다');
   assert.equal(await app.locator('.create-browser [data-action=create-layout]').count(), 2, '보기 방식 아이콘은 한 벌만 둔다');
   const createCategory = app.locator('[data-create=category]');
   assert.equal(await createCategory.inputValue(), '__all__', '처음은 전체 카테고리다');
@@ -408,8 +408,19 @@ try {
   assert.equal(await app.locator('.create-screen-list .create-screen-option').count(), 0, '화면 선택 목록을 검색한다');
   await app.locator('[data-create=search]').fill('');
   await app.locator('[data-action=create-layout][data-layout=grid]').click();
-  assert.ok(await app.locator('.create-screen-list').evaluate(el => el.classList.contains('grid')) && await app.locator('.create-selected-list').evaluate(el => el.classList.contains('grid')), '그리드 보기는 두 열에 함께 쓴다');
+  assert.ok(await app.locator('.create-screen-list').evaluate(el => el.classList.contains('grid')) && !await app.locator('.create-selected-list').evaluate(el => el.classList.contains('grid')), '그리드 보기는 후보 목록에만 쓴다');
   assert.ok(await app.locator('.create-screen-list .create-card .paste-thumb').count() > 0, '그리드는 썸네일 카드다');
+  assert.ok(await app.locator('.create-screen-list .create-card').first().evaluate(card => {
+    const thumb = card.querySelector('.paste-thumb').getBoundingClientRect();
+    return thumb.height > 50 && thumb.width > 100 && card.getBoundingClientRect().height < 160;
+  }), '그리드 썸네일은 세로로 찌그러지지 않는다');
+  const createWidth = await app.evaluate(root => root.style.width);
+  await app.evaluate(root => { root.style.width = '620px'; });
+  assert.ok(await app.locator('.create-browser').evaluate(el => {
+    const [pick, chosen, detail] = [el.querySelector('.create-screen-list'), el.querySelector('.create-selected-list'), el.closest('.detail')].map(node => node.getBoundingClientRect());
+    return pick.width > 200 && pick.left >= detail.left && pick.right <= detail.right && Math.abs(pick.width - chosen.width) < 1;
+  }), '좁은 창에서도 후보 목록과 아래 선택 영역이 같은 너비로 보인다');
+  await app.evaluate((root, width) => { root.style.width = width; }, createWidth);
   await shot('03-create-grid');
   await app.locator('[data-action=create-layout][data-layout=list]').click();
   // 화면 선택에서 마우스를 올리면 GUI 썸네일을 보여 준다.
@@ -430,8 +441,17 @@ try {
   assert.equal(await app.locator('.create-selected-list .create-unused-dot').count(), 0, '선택된 화면에는 점을 두지 않는다');
   assert.ok(await app.locator('.create-selected-list .create-screen-option').first().evaluate(row => {
     const x = row.querySelector('[data-action=create-screen-remove]').getBoundingClientRect();
-    return Math.abs(x.right - row.getBoundingClientRect().right) < 10;
-  }), '선택된 화면 끝에 X를 둔다');
+    const thumb = row.querySelector('.paste-thumb').getBoundingClientRect();
+    return x.right <= thumb.right && x.top >= thumb.top && getComputedStyle(row.querySelector('[data-action=create-screen-remove]')).borderRadius === '50%' && row.querySelector('.create-selected-name').textContent.startsWith('1. ');
+  }), '선택된 화면에 번호·썸네일 안의 원형 X를 둔다');
+  assert.ok(await app.locator('.create-selected-list').evaluate(list => {
+    const card = list.querySelector('.create-selected-card');
+    const copies = Array.from({ length: 5 }, () => card.cloneNode(true));
+    list.append(...copies);
+    const horizontal = list.scrollWidth > list.clientWidth && list.clientHeight < 120 && list.scrollHeight <= list.clientHeight;
+    copies.forEach(copy => copy.remove());
+    return horizontal;
+  }), '선택한 화면이 많아도 영역 높이와 너비는 유지하고 가로 스크롤한다');
   assert.equal(await app.locator('.detail .create-plan-ids, .detail .id-tag:not(.create-screen-option .id-tag)').count(), 0, '선택된 화면 위에 ID를 따로 표시하지 않는다');
   assert.equal(await app.locator('.detail .title-head h2 .head-name').innerText(), await app.locator('.detail [data-input=new-title]').inputValue(), '머리 제목은 지금 입력한 Page title이다');
   assert.equal(await app.locator('.detail .title-head h2 .head-state').innerText(), '새 플립북', '제목 오른쪽에 새 플립북 태그');
@@ -460,17 +480,16 @@ try {
     const other = document.querySelector('#app .list .section-group .row:not(.new-row) .name')?.getBoundingClientRect();
     return tag.left - name.right < 8 && handle.right <= name.left && (!other || Math.abs(other.left - name.left) < 1);
   }), '태그는 제목 바로 오른쪽, 드래그 표시는 왼쪽 여백에 있어 이름이 기존 행과 같은 자리에서 시작한다');
-  assert.equal(await app.locator('.create-selected-list .create-screen-option').count(), 1, '선택 화면은 오른쪽 별도 박스로 이동한다');
-  assert.equal(await app.locator('.create-screen-list .create-screen-option').count(), 0, '선택 화면을 후보 목록에 중복 표시하지 않는다');
+  assert.equal(await app.locator('.create-selected-list .create-screen-option').count(), 1, '선택 화면은 아래 썸네일 줄에 추가한다');
+  assert.equal(await app.locator('.create-screen-list .create-screen-option').count(), 1, '선택 화면도 후보 목록에 남긴다');
   await app.locator('.create-selected-list [data-action=create-screen-remove]').click();
-  assert.equal(await app.locator('.create-screen-list .create-screen-option').count(), 1, '체크 해제한 화면은 후보 목록으로 돌아간다');
+  assert.equal(await app.locator('.create-screen-list .create-screen-option').count(), 1, '선택 해제해도 후보 목록은 유지된다');
   await app.locator('.create-screen-list .create-screen-option').first().click();
   await app.locator('.list .new-row.selected .name').dblclick();
   assert.equal(await app.locator('.list [data-input=new-title]').getAttribute('placeholder'), initialName, '목록 이름을 더블클릭하면 그 행이 실제 화면 이름을 안내하는 입력으로 바뀐다');
   await app.locator('.list [data-input=new-title]').press('Enter');
   await app.locator('.list [data-input=new-title]').waitFor({ state: 'detached', timeout: 3000 }); // Enter로 목록 입력을 닫는다(목록은 다음 프레임에 다시 그린다)
-  await app.locator('[data-input=create-screen-scale]').selectOption('0.5');
-  assert.equal(await app.locator('[data-input=create-bulk-scale]').inputValue(), '0.5', '선택된 화면 제목에서 일괄 크기를 보여 준다');
+  assert.equal(await app.locator('[data-input=create-screen-scale], [data-input=create-bulk-scale]').count(), 0, '크기 선택 기능이 없다');
   // 새 플립북을 하나 더 넣으면 고른 항목 바로 다음에 들어간다.
   await app.locator('[data-action=new-add]').click();
   await newNames([initialName, '새 플립북']);
