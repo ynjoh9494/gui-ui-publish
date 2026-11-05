@@ -475,13 +475,20 @@ function withPrevious(plan: Plan, committed: string[], screenIds: Set<string>): 
   return [...out];
 }
 
+// 화면 반영 건너뛰기(2026-11-05 사용자 요청): 원본 지문이 지난 버전과 같으면 썸네일도 같으므로 새로 만들지 않고 지난 썸네일을 쓴다.
+// 지난 버전에 썸네일이 없으면(썸네일 기능 전 배포 등) null이고, 그 화면은 썸네일을 만든다.
+export function reusedThumb(plan: Plan, item: PlanItem, previous: GuiRecord | null | undefined): GuiThumb | null {
+  if (!plan.skipLayers || item.team !== 'GUI' || !item.needsThumb || !item.frame?.fingerprint || !previous?.thumb) return null;
+  return previous.fingerprint === item.frame.fingerprint && (previous.fpVersion ?? 1) === FINGERPRINT_VERSION ? previous.thumb : null;
+}
+
 function writeGui(store: Store, plan: Plan, item: PlanItem, input: CommitInput, now: number): void {
   const state = store.state;
   let categoryId = item.categoryId;
   if (item.newCategoryName) categoryId = (findCategoryByName(state, item.newCategoryName) ?? addCategory(store, item.newCategoryName, plan.actor)).id;
   const before = item.isNew ? null : state.screens.get(item.screenId)!;
   const previous = item.isNew ? null : lastGui(state, item.screenId);
-  const thumb = item.needsThumb ? input.thumbs[item.entryKey] ?? null : previous?.thumb ?? null;
+  const thumb = item.needsThumb ? input.thumbs[item.entryKey] ?? reusedThumb(plan, item, previous) : previous?.thumb ?? null;
   const captured = item.needsThumb && !!item.frame;
   const category = categoryId ? state.categories.get(categoryId) ?? null : null;
   const base = item.baseScreenId ? state.screens.get(item.baseScreenId) ?? null : null;

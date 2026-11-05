@@ -12,7 +12,7 @@ import { sameLayout, type SelectionWrite } from './core/description.ts';
 import { serializeRichText } from './core/richText.ts';
 import { flipbookHistoryRows, guiHistoryRows } from './core/history.ts';
 import { guiRecordInfos, guiScreens } from './core/guiScreens.ts';
-import { acknowledgeChange, addDelivery, upgradeBaseline, buildPlan, commitPlan, setDeliveryState, type BatchComment, unfinishedDeliveries, type CommitInput, type Plan } from './core/publish.ts';
+import { acknowledgeChange, addDelivery, upgradeBaseline, buildPlan, commitPlan, setDeliveryState, type BatchComment, unfinishedDeliveries, reusedThumb, type CommitInput, type Plan } from './core/publish.ts';
 import {
   addCategory, addExclusion, addTag, addWorker, correctRecord, ensureScreenIdRules, ensureSystemTags, removeExclusion, renameCategory, renameWorker, setCaseRelation,
   relinkSource, renumberScreenIds, reorderCategories, updateCategory, setCategoryActive, setCategoryCode, setScreenCategory, setScreenIdPrefix, setWorkerActive, updateTag,
@@ -20,7 +20,7 @@ import {
 import type { CodeRename } from './core/screenCode.ts';
 import { formatFrameName } from './core/screenName.ts';
 import { addTemplate, removeTemplate, setCurrentTemplate, setRepresentativeTemplate, templateEntries, templateForItem } from './core/templateList.ts';
-import { DIGEST_PREFIX, keys, lastUi, randomId, Store } from './core/store.ts';
+import { DIGEST_PREFIX, keys, lastGui, lastUi, randomId, Store } from './core/store.ts';
 import type { DataStatus, Flipbook, ProjectConfig, Team, UiBaseline } from './core/types.ts';
 import { applyReplaceSuggestions, suggestReplacements, tokenHashes, type ReplaceSuggestion } from './core/replaceMatch.ts';
 import { explainMatch, matchVersion, versionCommon, versionLinkErrors, type VersionFrame } from './core/versionMatch.ts';
@@ -1303,14 +1303,18 @@ export class Controller {
     const reader = this.host.createFingerprintReader?.() ?? this.host;
     // 확정한 지문과 같은 스냅샷으로 만든 변경 근거. 확정 뒤 새 비교 기준의 근거로 기록한다.
     const digests = new Map<string, string>();
+    // 화면 반영 건너뛰기로 지난 썸네일을 그대로 쓰는 화면. 썸네일을 만들거나 다시 놓지 않고 이름만 맞춘다.
+    const reused = new Set<string>();
     for (const [i, item] of plan.items.entries()) {
       if (!item.frame) continue;
-      if (item.needsThumb) await this.progress(`${COPY.controller019} ${i + 1}/${plan.items.length}`);
+      const reuse = !!reusedThumb(plan, item, lastGui(this.store.state, item.screenId));
+      if (reuse) reused.add(item.entryKey);
+      if (item.needsThumb && !reuse) await this.progress(`${COPY.controller019} ${i + 1}/${plan.items.length}`);
       const fresh = await reader.fingerprint(item.frame.nodeId, false, plan.team === 'GUI' ? { always: true } : undefined);
       input.fingerprints[item.entryKey] = fresh.fingerprint;
       if (fresh.digest) digests.set(item.entryKey, fresh.digest);
       // 확인한 내용과 같을 때만 썸네일을 만든다. 다르면 commitPlan이 충돌로 돌려준다.
-      if (!item.needsThumb || fresh.fingerprint !== item.frame.fingerprint) continue;
+      if (!item.needsThumb || reuse || fresh.fingerprint !== item.frame.fingerprint) continue;
       try { input.thumbs[item.entryKey] = await this.host.makeThumbnail(item.frame.nodeId, formatFrameName(item.code, item.name)); }
       catch (e) { thumbErrors.push(`${item.name}: ${e instanceof Error ? e.message : String(e)}`); }
     }
@@ -1337,6 +1341,8 @@ export class Controller {
       try { await this.host.placeThumbnails?.(thumbnails); }
       catch (e) { thumbErrors.push(`${COPY.controller062} ${e instanceof Error ? e.message : String(e)}`); }
     }
+    const relabeled = new Map(items.filter(item => reused.has(item.entryKey)).map(item => [item.screenId, formatFrameName(item.code, item.name)]));
+    if (relabeled.size) await this.host.renameThumbnails(relabeled).catch(() => { thumbErrors.push(COPY.controller105); });
     // 근거를 기록하지 못해도 확정에는 영향이 없다. 그 화면은 다음 확인에서 근거를 채우거나 「근거 기록 없음」으로 보인다.
     for (const item of items) {
       const digest = digests.get(item.entryKey);

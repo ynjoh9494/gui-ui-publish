@@ -250,6 +250,37 @@ test('변경 근거: 배포 확정은 확정한 지문과 같은 상태의 근�
   assert.equal(digestFingerprint(store.kv.get(keys.digest('a'))), fingerprint(snapshot(400)));
 });
 
+test('화면 반영 건너뛰기: 지난 썸네일을 그대로 쓰고 썸네일 이름만 맞추며, 지난 썸네일이 없거나 끄면 썸네일을 만든다', async () => {
+  const old = { hash: 'old', width: 480, height: 270 };
+  for (const [skip, previousThumb, expectMade] of [[true, old, false], [true, null, true], [false, old, true]] as const) {
+    const { store, posted, controller, scan, entry } = setup();
+    store.put(keys.gui('a', 1), { ...store.state.gui.get('a')![0], thumb: previousThumb });
+    store.reload();
+    const made: string[] = [];
+    const placed: string[] = [];
+    const renamed: [string, string][] = [];
+    const host = (controller as unknown as { host: Host }).host as unknown as Record<string, unknown>;
+    host.makeThumbnail = async (nodeId: string) => { made.push(nodeId); return { hash: 'new', width: 480, height: 270 }; };
+    host.placeThumbnails = async (updates: { screenId: string }[]) => { placed.push(...updates.map(u => u.screenId)); };
+    host.renameThumbnails = async (labels: Map<string, string>) => { renamed.push(...labels); };
+    await scan();
+    const listed = entry();
+    assert.equal(listed.estimate, 'unchanged');
+    const [classified] = classify(controller.store.state, [listed.frame!]);
+    await controller.handle({ type: 'prepare', team: 'GUI', drafts: { [listed.key]: { ...defaultDraft('GUI', controller.store.state, classified), included: true, tagId: 't', name: '홈 2' } } });
+    const plan = posted.find((m): m is Extract<ToUi, { type: 'plan' }> => m.type === 'plan')?.plan;
+    assert.ok(plan && !plan.blockers.length && plan.layersUnchanged, JSON.stringify(plan?.blockers));
+    await controller.handle({ type: 'commit', batchId: plan.batchId, skipLayers: skip });
+    assert.deepEqual(posted.filter(m => m.type === 'error'), []);
+    store.reload();
+    const record = store.state.gui.get('a')!.find(r => r.version === 2)!;
+    assert.equal(made.length, expectMade ? 1 : 0);
+    assert.deepEqual(placed, expectMade ? ['a'] : []);
+    assert.deepEqual(renamed, expectMade ? [] : [['a', '[STB_HO_001] 홈 2']]);
+    assert.equal(record.thumb?.hash, expectMade ? 'new' : 'old');
+  }
+});
+
 test('변경 근거: 레이어를 누르면 캔버스에서 선택하고 화면을 맞추며, 없으면 알린다', async () => {
   const { posted, selected, revealed, controller } = setup();
   await controller.handle({ type: 'revealNode', nav: 1, nodeId: '1:2', select: true });
