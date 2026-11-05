@@ -52,6 +52,28 @@ try {
     await page.waitForFunction(() => !document.querySelector('.tutorial'));
     assert.deepEqual(await listeners(), before, 'tutorial disposal releases its document listeners');
   }
+  await page.locator('#app [data-action=settings]').click();
+  await page.getByRole('button', { name: '히스토리 날짜', exact: true }).click();
+  const dateFormat = page.locator('#history-date-format');
+  assert.equal(await dateFormat.inputValue(), 'YY.MM.DD');
+  await dateFormat.selectOption('MM/DD HH:mm');
+  await page.locator('[data-action=admin-history-date]').click();
+  await page.waitForFunction(() => document.querySelector('#history-date-format')?.value === 'MM/DD HH:mm');
+  await page.locator('#app [data-action=settings]').click();
+  await page.locator('#app [data-action=settings]').click();
+  await page.getByRole('button', { name: '히스토리 날짜', exact: true }).click();
+  assert.equal(await dateFormat.inputValue(), 'MM/DD HH:mm', 'history date format survives closing management');
+  await switcher.click();
+  await page.locator('#app [data-action=settings]').click();
+  await page.getByRole('button', { name: '히스토리 날짜', exact: true }).click();
+  assert.equal(await dateFormat.inputValue(), 'MM/DD HH:mm', 'GUI and UI share the history date format');
+  await dateFormat.selectOption('YY.MM.DD');
+  await page.locator('[data-action=admin-history-date]').click();
+  await page.waitForFunction(() => document.querySelector('#history-date-format')?.value === 'YY.MM.DD');
+  await page.screenshot({ path: 'tmp/history-date-menu.png' });
+  await switcher.click();
+  console.log('UI regressions: shared history date menu saves and restores both formats');
+
   await page.locator('#app [data-action=text-open]').click();
   const editor = page.locator('#app .rich-editor');
   await editor.click();

@@ -69,6 +69,7 @@ export const DEFAULT_PROJECT: ProjectConfig = {
   schema: 1, scopePageIds: [], scopeSectionIds: [], flipbookPageIds: [], flipbookPageId: null, templateNodeId: null, templateName: null,
   previousTemplates: [], policyTemplateNodeId: null, policyTemplateName: null, dataPageId: null, utcOffsetMinutes: 540, guiWidth: 1440,
   screenIdPrefix: '',
+  historyDateFormat: 'YY.MM.DD',
 };
 
 export interface LoadIssue { key: string; message: string }

@@ -1255,6 +1255,9 @@ export const COPY = {
   commentPlaceholder: '추가 설명 (선택)',
   // 캔버스에서 숨긴 화면(관리 → 숨긴 화면)의 프레임을 골랐을 때 상세 가운데 안내. 아래에 「다시 표시」 버튼(2026-11-05 사용자 요청) — src/ui/app.ts
   excludedScreenHint: '목록에서 숨긴 화면입니다.',
+  historyDateMenu: '히스토리 날짜',
+  historyDateLabel: '날짜 형식',
+  historyDateInvalid: '날짜 형식을 목록에서 선택하세요.',
 } as const;
 
 // 화면·안내·오류 문구. 원본 파일과 행은 추출 당시 위치다.

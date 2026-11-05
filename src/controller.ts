@@ -5,7 +5,7 @@ import { planExistingFlipbooks } from './core/registerFlipbooks.ts';
 import { baseline, changeDetected, classify, ignoreBlock, uiEstimate, uncheckedEntries, uiEntries, UI_FINGERPRINT_VERSION, type Entry, type FlipbookSpot, type ScannedFrame, type UiScan } from './core/compare.ts';
 import { FINGERPRINT_VERSION, LEGACY_FINGERPRINT_VERSION } from './core/fingerprint.ts';
 import { dataModel } from './core/data.ts';
-import { chapterName, flipbookView, guiKey, validGuiWidth } from './core/flipbook.ts';
+import { chapterName, flipbookView, guiKey, isHistoryDateFormat, validGuiWidth } from './core/flipbook.ts';
 import { canvasSections, checkMoves, followCanvasSections, importGuiUpdates, markReviewed, moveFlipbooks, pageSections, pinPolicyIds, planFlipbooks, plannedFlipbookTitle, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookMove, type FlipbookRequest, type ReviewRequest } from './core/flipbooks.ts';
 import type { Draft } from './core/drafts.ts';
 import { sameLayout, type SelectionWrite } from './core/description.ts';
@@ -1977,6 +1977,14 @@ export class Controller {
         const before = s.state.project;
         s.saveProject({ ...before, guiWidth: action.width });
         s.audit(a, 'project.guiWidth', 'project', before.guiWidth, action.width);
+        break;
+      }
+      case 'setHistoryDateFormat': {
+        if (!isHistoryDateFormat(action.format)) throw new Error(COPY.historyDateInvalid);
+        const before = s.state.project;
+        if (before.historyDateFormat === action.format) break;
+        s.saveProject({ ...before, historyDateFormat: action.format });
+        s.audit(a, 'project.historyDateFormat', 'project', before.historyDateFormat, action.format);
         break;
       }
       // 기존 페이지를 DATA 페이지로 연결한다. 그 페이지에 표시를 새로 그리며 기존 내용은 지우지 않는다.

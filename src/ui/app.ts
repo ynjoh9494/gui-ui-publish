@@ -25,7 +25,7 @@ import { formatTime, type HistoryRow } from '../core/history.ts';
 import { arrangeFlipbooks, buildList, guiGroupKey, placeDrafts, savedGuiDisplay, savedGuiPlace, UNCATEGORIZED, type ArrangedGroup, type GuiDisplay, type GuiPlace, type ListModel } from '../core/list.ts';
 import { emptyComment, type BatchComment, type Plan } from '../core/publish.ts';
 import { customSection, defaultSection, filterScreens, needsReview, pageSections, rowKind, screenCategoryKey, uncreatedScreens, unreviewed, type FlipbookMove, type FlipbookRequest, type FlipbookRowRequest, type FlipbookSection, type ScreenFilter, type ScreenKind } from '../core/flipbooks.ts';
-import { defaultTitle, GUI_WIDTH_MAX, GUI_WIDTH_MIN, NO_SECTION_KEY, screenTags, SMALL_SCALE, validGuiWidth } from '../core/flipbook.ts';
+import { defaultTitle, formatShort, GUI_WIDTH_MAX, GUI_WIDTH_MIN, HISTORY_DATE_FORMATS, isHistoryDateFormat, NO_SECTION_KEY, screenTags, SMALL_SCALE, validGuiWidth } from '../core/flipbook.ts';
 import { TAG_PALETTE } from '../core/palette.ts';
 import { TEMPLATE_SECTIONS, TEMPLATE_ITEMS, isFallbackItem, isTemplateItem, type ItemKind, type TemplateInfo, type TemplateItemDef, type TemplateItemState } from '../core/templateParts.ts';
 import { templateEntries, type TemplateEntry } from '../core/templateList.ts';
@@ -2419,6 +2419,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         </div>
         </section>
       ${renderTemplateSection(s)}
+      <section class="admin" data-form="history-date"><h3>${COPY.historyDateMenu}</h3>
+        <label for="history-date-format">${COPY.historyDateLabel}</label>
+        <div class="inline"><select id="history-date-format" data-f="format" aria-label="${COPY.historyDateLabel}">
+          ${HISTORY_DATE_FORMATS.map(format => option(format, `${format} · ${formatShort(Date.now(), s.project.utcOffsetMinutes, format)}`, format === s.project.historyDateFormat)).join('')}
+        </select><button data-action="admin-history-date">${COPY.uiApp110}</button></div></section>
       <section class="admin" data-form="gui-width"><h3>${COPY.uiApp225}</h3>
         <label>${COPY.uiApp226}</label>
         <div class="inline"><input type="number" data-f="width" data-input="admin-gui-width" min="${GUI_WIDTH_MIN}" max="${GUI_WIDTH_MAX}" step="1" value="${s.project.guiWidth}" aria-label="${COPY.uiApp226}"><button data-action="admin-gui-width">${COPY.uiApp110}</button></div>
@@ -2451,7 +2456,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     // 묶음 이름이 null이면 이름 없이 구분선으로 나눈다(2026-11-03 사용자 요청: 작업 환경·템플릿·시스템, 구분선 아래 관리자).
     const groups: [string | null, HTMLElement[]][] = [
       [COPY.adminWorkSetup, pick(['scope', 'flipbook', 'screen-id-prefix'])],
-      [COPY.adminTemplateGroup, pick(['template', 'gui-width'])],
+      [COPY.adminTemplateGroup, pick(['template', 'history-date', 'gui-width'])],
       [COPY.adminSystem, pick(['exclusions', 'automatic-pages', 'update'])],
       [null, [maintenance]],
     ];
@@ -3705,6 +3710,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'admin-gui-width': {
         const width = Number(formValue(el, 'width'));
         if (width !== state?.project.guiWidth) admin({ op: 'setGuiWidth', width });
+        break;
+      }
+      case 'admin-history-date': {
+        const format = formValue(el, 'format');
+        if (isHistoryDateFormat(format) && format !== state?.project.historyDateFormat) admin({ op: 'setHistoryDateFormat', format });
         break;
       }
       case 'admin-screen-prefix': {

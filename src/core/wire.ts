@@ -14,7 +14,7 @@ import type { GuiScreenInfo } from './guiScreens.ts';
 import type { State } from './store.ts';
 import type { TemplateInfo, TemplateItem } from './templateParts.ts';
 import type { PasteSpot, TrackListItem } from './tracks.ts';
-import type { Actor, FlipbookScale, Team } from './types.ts';
+import type { Actor, FlipbookScale, HistoryDateFormat, Team } from './types.ts';
 import type { VersionEvidence, VersionLink } from './versionMatch.ts';
 
 type Entries<M> = M extends Map<infer K, infer V> ? [K, V][] : never;
@@ -122,6 +122,7 @@ export type AdminOp =
   | { op: 'connectTemplateItem'; templateId: string; key: TemplateItem }
   | { op: 'disconnectTemplateItem'; templateId: string; key: TemplateItem }
   | { op: 'setGuiWidth'; width: number }
+  | { op: 'setHistoryDateFormat'; format: HistoryDateFormat }
   | { op: 'setCaseRelation'; screenId: string; baseId: string | null; reason: string }
   | { op: 'setScreenCategory'; screenId: string; categoryId: string | null; reason: string }
   | { op: 'correctRecord'; team: Team; screenId: string; version: number; description: string; reason: string };

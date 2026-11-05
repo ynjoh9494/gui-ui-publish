@@ -19,6 +19,7 @@ export interface Snapshot { id: string; name: string }
 export interface TagSnapshot { id: string; name: string; color: string; colorKey: string }
 
 export interface TemplateRef { nodeId: string; name: string }
+export type HistoryDateFormat = 'YY.MM.DD' | 'MM/DD HH:mm';
 
 export interface ProjectConfig {
   schema: 1;
@@ -41,6 +42,7 @@ export interface ProjectConfig {
   dataPageId: string | null;
   // 표시 시간대. 540 = Asia/Seoul
   utcOffsetMinutes: number;
+  historyDateFormat: HistoryDateFormat;
   // 플립북 GUI 영역에 놓는 1x 화면의 가로 크기(px). GUI 영역 폭도 이 값이며 1/2x·1/4x는 이 값에서 계산한다.
   guiWidth: number;
   // Screen ID 자동 입력의 플랫폼 Prefix(예: STB → STB_HO_001). 비어 있으면 `HO_001`로 만든다.

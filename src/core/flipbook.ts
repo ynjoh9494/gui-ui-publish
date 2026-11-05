@@ -4,7 +4,7 @@ import { formerUids } from './guiScreens.ts';
 import { flipbookHistoryRows, type HistoryRow } from './history.ts';
 import { systemTagId } from './registry.ts';
 import type { State } from './store.ts';
-import type { Flipbook, FlipbookKind, FlipbookScale, TagSnapshot, Team } from './types.ts';
+import type { Flipbook, FlipbookKind, FlipbookScale, HistoryDateFormat, TagSnapshot, Team } from './types.ts';
 
 // 플립북 페이지에 반영할 내용. 전달 작업마다 따로 적용하지 않고 플립북의 현재 상태로 맞추므로
 // 같은 전달을 다시 실행하거나 여러 건이 밀려 있어도 이미지·이력 행이 중복되지 않는다.
@@ -93,9 +93,15 @@ export const TEMPLATE_TITLE = COPY.coreFlipbook001;
 
 function pad(n: number): string { return String(n).padStart(2, '0'); }
 
-// 템플릿 히스토리 행은 프로젝트 시간대의 날짜만 표시한다.
-export function formatShort(ms: number, utcOffsetMinutes: number): string {
+export const HISTORY_DATE_FORMATS = ['YY.MM.DD', 'MM/DD HH:mm'] as const;
+export function isHistoryDateFormat(value: unknown): value is HistoryDateFormat {
+  return HISTORY_DATE_FORMATS.some(format => format === value);
+}
+
+// 표시 형식만 바꾸고 원기록의 시각과 프로젝트 시간대는 유지한다.
+export function formatShort(ms: number, utcOffsetMinutes: number, format: HistoryDateFormat = 'YY.MM.DD'): string {
   const d = new Date(ms + utcOffsetMinutes * 60000);
+  if (format === 'MM/DD HH:mm') return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
   return `${pad(d.getUTCFullYear() % 100)}.${pad(d.getUTCMonth() + 1)}.${pad(d.getUTCDate())}`;
 }
 
@@ -133,7 +139,7 @@ export function flipbookView(state: State, flipbookId: string): FlipbookView {
   const history = flipbookHistoryRows(state, flipbookId);
   const rows: FlipbookRow[] = history.map(r => ({
     key: `${r.team}:${r.batchId}`, team: r.team, tag: r.tag, colorKey: r.tag.colorKey, description: r.description,
-    worker: r.worker, at: formatShort(r.committedAt, offset),
+    worker: r.worker, at: formatShort(r.committedAt, offset, state.project.historyDateFormat),
   }));
   return {
     flipbookId, kind: fb.kind, name: fb.title, titleNames: [TEMPLATE_TITLE, ...fb.titleNames],
@@ -151,5 +157,5 @@ function draftRow(state: State, fb: Flipbook, offset: number): FlipbookRow | nul
   const id = systemTagId(state, 'draft');
   const tag = id ? state.tags.get(id) : undefined;
   if (!tag) return null;
-  return { key: 'UI:draft', team: 'UI', tag: { id: tag.id, name: tag.name, color: tag.color, colorKey: tag.colorKey }, colorKey: tag.colorKey, description: '', worker: fb.actor.name, at: formatShort(fb.createdAt, offset) };
+  return { key: 'UI:draft', team: 'UI', tag: { id: tag.id, name: tag.name, color: tag.color, colorKey: tag.colorKey }, colorKey: tag.colorKey, description: '', worker: fb.actor.name, at: formatShort(fb.createdAt, offset, state.project.historyDateFormat) };
 }
