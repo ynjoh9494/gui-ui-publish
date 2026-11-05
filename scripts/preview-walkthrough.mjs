@@ -2,7 +2,7 @@
 // 사용: npm run walkthrough (CHROME_PATH로 브라우저 경로 지정 가능)
 import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -73,71 +73,12 @@ const mode = async name => {
   await page.locator(`#tools [data-mode=${name}]`).click();
   await page.waitForFunction(tab => document.querySelector(`#app .tabs [data-action=${tab}]`), name === 'UI' ? 'text-close' : 'version-close');
 };
-// 튜토리얼: 예시 화면에서 단계마다 설명할 영역을 찾고 말풍선이 창 안에 있는지 본다. Enter·Space로 넘기고 마지막 단계에서 누르면 끝난다.
-// 끝나면 실제 창의 목록·화면정보·크기가 그대로여야 한다.
-const tutorial = async name => {
-  const real = () => app.evaluate(root => ({ list: root.querySelector('.list').textContent, detail: root.querySelector('.detail').textContent, width: root.offsetWidth, height: root.offsetHeight, inert: root.inert }));
-  const before = await real();
-  await app.locator('[data-action=tutorial]').click();
-  for (let step = 1; ; step++) {
-    await page.waitForFunction(n => document.querySelector('.tutorial-layer')?.dataset.step === String(n), step, { timeout: 15000 });
-    const info = await page.evaluate(() => {
-      const box = document.querySelector('.tutorial').getBoundingClientRect();
-      const bubble = document.querySelector('.tutorial-bubble');
-      const b = bubble.getBoundingClientRect();
-      return { missing: document.querySelector('.tutorial-layer').dataset.missing, tail: bubble.dataset.tail, progress: bubble.querySelector('.tutorial-progress').textContent,
-        inside: b.left >= box.left && b.right <= box.right && b.top >= box.top && b.bottom <= box.bottom };
-    });
-    assert.equal(info.missing, '0', `${name} ${step}단계 영역`);
-    const pasteTutorial = page.locator('.tutorial .paste-view');
-    if (await pasteTutorial.isVisible()) {
-      assert.ok(await pasteTutorial.locator('.paste-screen').count() > 0);
-      assert.ok(await pasteTutorial.locator('.paste-track:disabled .paste-count').count() > 0, '0개 버튼은 숫자와 함께 비활성화');
-      assert.equal(await pasteTutorial.locator('.paste-track:not(:disabled)').count(), 0, '0개 버튼은 목록을 열지 않는다');
-    }
-
-    assert.ok(info.tail && info.inside, `${name} ${step}단계 말풍선 위치 ${JSON.stringify(info)}`);
-    if (step === 1) await shot(`${name}-first`);
-    const [, total] = info.progress.split('/').map(Number);
-    if (step === total) break;
-    await page.keyboard.press(step % 2 ? 'Enter' : ' ');
-  }
-  await shot(`${name}-last`);
-  await page.locator('.tutorial-bubble').click();
-  await page.waitForFunction(() => !document.querySelector('.tutorial'));
-  assert.deepEqual(await real(), before, '튜토리얼은 실제 창을 바꾸지 않는다');
-};
-
-// 새기능 튜토리얼: 플러그인 창(iframe)에서 처음 실행할 때만 열린다(app.ts openNewFeatures). 미리보기를 iframe에 넣고
-// new-tutorial(「본 적 없음」)로 열어 단계마다 설명할 영역을 찾고 말풍선이 창 안에 있는지 본다.
-const newTutorial = async mode => {
-  const host = resolve(outDir, `new-tutorial-${mode}.html`);
-  writeFileSync(host, `<!doctype html><meta charset="utf-8"><style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%}</style><iframe src="${pathToFileURL(resolve(previewPath)).href}?new-tutorial${mode === 'UI' ? '&mode=ui' : ''}"></iframe>`);
-  await page.goto(pathToFileURL(host).href);
-  // file:// 페이지끼리는 출처가 달라 바깥에서 iframe 문서를 읽지 못하므로 iframe 프레임 안에서 기다린다.
-  const frame = await (await page.waitForSelector('iframe')).contentFrame();
-  await frame.waitForFunction(() => document.querySelector('.tutorial-layer'), null, { timeout: 30000 });
-  for (let step = 1; ; step++) {
-    await frame.waitForFunction(n => document.querySelector('.tutorial-layer')?.dataset.step === String(n), step, { timeout: 15000 });
-    const info = await frame.evaluate(() => {
-      const box = document.querySelector('.tutorial').getBoundingClientRect();
-      const bubble = document.querySelector('.tutorial-bubble');
-      const b = bubble.getBoundingClientRect();
-      return { missing: document.querySelector('.tutorial-layer').dataset.missing, tail: bubble.dataset.tail, progress: bubble.querySelector('.tutorial-progress').textContent,
-        inside: b.left >= box.left && b.right <= box.right && b.top >= box.top && b.bottom <= box.bottom };
-    });
-    assert.equal(info.missing, '0', `새기능 ${mode} ${step}단계 영역`);
-    assert.ok(info.tail && info.inside, `새기능 ${mode} ${step}단계 말풍선 위치 ${JSON.stringify(info)}`);
-    const [, total] = info.progress.split('/').map(Number);
-    if (step === total) break;
-    await frame.locator('.tutorial-bubble').click();
-  }
-  await shot(`15-new-tutorial-${mode.toLowerCase()}-last`);
-  await frame.locator('.tutorial-bubble').click();
-  await frame.waitForFunction(() => !document.querySelector('.tutorial'));
-};
-
 try {
+  // 이번 빌드에는 도움말 버튼과 새 기능 안내를 싣지 않는다.
+  await page.goto(pathToFileURL(previewPath).href);
+  await page.locator('#app [data-action=settings]').waitFor();
+  assert.equal(await app.locator('[data-action=tutorial]').count(), 0);
+  assert.equal(await app.locator('.tutorial').count(), 0);
   await page.goto(`${pathToFileURL(previewPath).href}?tall-thumb`);
   await page.waitForFunction(() => document.querySelector('#app .tabs [data-action=version-close]'));
   assert.equal(await app.locator('[data-action=settings]').count(), 1, 'settings gear instead of admin tab');
@@ -155,7 +96,7 @@ try {
   assert.notEqual(nativeTab.fullBg, 'rgba(0, 0, 0, 0)', '선택 배경은 아이콘과 텍스트를 함께 감싼다');
   assert.equal(nativeTab.weight, '400', '선택한 탭은 볼드 없음');
   assert.equal(nativeTab.iconWidth, 28);
-  assert.equal(await app.locator('.tab-tools button').count(), 4);
+  assert.equal(await app.locator('.tab-tools button').count(), 3);
   await app.evaluate((root, size) => { root.style.width = size.width; root.style.height = size.height; }, headerBefore);
 
   const divider = app.locator('.pane-divider');
@@ -189,7 +130,6 @@ try {
   assert.ok((await widths()).list >= 200 && (await widths()).detail >= 240, '창이 작아져도 양쪽 최소 너비 유지');
   await app.evaluate((root, width) => { root.style.width = width; }, originalWidth);
   await shot('00-start');
-  await tutorial('00b-tutorial-gui');
 
   await scan();
   await app.locator('.group-head').first().click();
@@ -1069,7 +1009,6 @@ try {
   const moves = await page.locator('#log div').filter({ hasText: '캔버스 이동' }).count();
   await sourceRow.click();
   await page.waitForFunction(n => [...document.querySelectorAll('#log div')].filter(x => x.textContent?.includes('캔버스 이동')).length > n, moves);
-  await tutorial('06c-tutorial-ui');
   await shot('06-ui-simplified');
   // 목록에서 삭제(2026-11-02): 프레임이 남은 플립북도 상세 제목 줄의 빨간 「목록에서 삭제」로 바로 뺀다. 캔버스와 기록은 남고 되살리는 방법을 알린다.
   {
@@ -1524,8 +1463,6 @@ try {
   await app.locator('[data-action=changed-only]').uncheck();
   for (const head of await app.locator('.group-head').all()) if (await head.getAttribute('aria-expanded') === 'false') await head.click();
   await page.waitForFunction(code => [...document.querySelectorAll('#app .row .id-tag')].some(x => x.textContent === code), `${pendingBaseCode}-01`);
-  await newTutorial('GUI');
-  await newTutorial('UI');
   assert.deepEqual(errors, []);
   console.log('walkthrough passed');
 } catch (error) {

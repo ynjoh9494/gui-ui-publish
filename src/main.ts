@@ -18,8 +18,6 @@ const writes = new Set<ToMain['type']>([
 // UI 쪽 스캔은 플립북 페이지를 읽으며 표식 없는(캔버스에서 만든·복제한) Section에 표식을 쓰므로 쓰기 순서에 넣는다.
 const isWrite = (msg: ToMain) => writes.has(msg.type) || msg.type === 'scanUi' || (msg.type === 'scanSelected' && msg.team === 'UI');
 let writeQueue: Promise<void> = Promise.resolve();
-// 새기능 튜토리얼을 바꾸면 날짜를 바꿔 모두에게 한 번 다시 보여 준다(v1.1.5 이후 기능, 2026-11-04).
-const TUTORIAL_KEY = 'gui-ui-publish:new-tutorial:2026-11-04';
 // GUI 배포 작업자 이름(사용자별 마지막 값)
 const WORKER_KEY = 'gui-ui-publish:worker-name';
 // 업데이트: 파일 기록 `ver`(이 파일에서 쓰인 가장 높은 배포 버전)을 읽고, 이 빌드의 배포 버전이 더 높으면 올린 뒤 UI에 알린다.
@@ -35,16 +33,6 @@ function checkUpdate(): void {
   figma.ui.postMessage({ type: 'updateLatest', latest: next ?? recorded });
 }
 figma.ui.onmessage = (msg: ToMain) => {
-  if (msg.type === 'tutorialSeenGet') {
-    void figma.clientStorage.getAsync(`${TUTORIAL_KEY}:${msg.mode}`).then(seen => {
-      figma.ui.postMessage({ type: 'tutorialSeenResult', mode: msg.mode, seen: seen === true });
-    }).catch(() => figma.ui.postMessage({ type: 'tutorialSeenResult', mode: msg.mode, seen: false }));
-    return;
-  }
-  if (msg.type === 'tutorialSeenSet') {
-    void figma.clientStorage.setAsync(`${TUTORIAL_KEY}:${msg.mode}`, true).catch(() => {});
-    return;
-  }
   if (msg.type === 'workerNameGet') {
     void figma.clientStorage.getAsync(WORKER_KEY).then(name => {
       figma.ui.postMessage({ type: 'workerNameResult', name: typeof name === 'string' && name.trim() ? name : null });

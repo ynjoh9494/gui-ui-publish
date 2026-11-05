@@ -149,8 +149,6 @@ export interface FlipbookEdit {
 export type ToMain =
   | { type: 'ready' }
   | { type: 'switchMode'; mode: Team }
-  | { type: 'tutorialSeenGet'; mode: Team }
-  | { type: 'tutorialSeenSet'; mode: Team }
   // GUI 배포 작업자 이름: 사용자별로 마지막에 배포한 이름을 기억한다(figma.clientStorage, 2026-11-03 사용자 요청).
   | { type: 'workerNameGet' }
   | { type: 'workerNameSet'; name: string }
@@ -253,7 +251,6 @@ export type ToUi =
   | { type: 'init'; mode: Team; state: WireState; actor: Actor; pages: PageInfo[]; managedPages?: ManagedPageInfo[]; issues: string[] }
   // 첫 실행 시 UI Flipbook의 템플릿·플립북 페이지 확인과 Section 맞추기가 끝났다(실패해도 보냄).
   | { type: 'startupReady' }
-  | { type: 'tutorialSeenResult'; mode: Team; seen: boolean }
   | { type: 'workerNameResult'; name: string | null }
   // latest: 이 파일에서 쓰인 가장 높은 배포 버전. 기록이 없으면 null
   | { type: 'updateLatest'; latest: string | null }

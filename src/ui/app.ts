@@ -6,7 +6,7 @@ import { changeDetected, entryName, ignoreBlock, uiEntries as buildUiEntries, ui
 import type { GuiScreenInfo } from '../core/guiScreens.ts';
 import { pickerFrameEntries, pickerRegisteredScreens } from '../core/guiPicker.ts';
 import { guiStateBadge, unlinkedBadge, unlinkedGroupBadge } from './estimate.ts';
-import { placeBubble, startTutorial } from './tutorial.ts';
+import { placeBubble } from './bubblePosition.ts';
 import { needsUpdate, type UpdateInfo } from '../core/update.ts';
 import { richEditor } from './richEditor.ts';
 import { sameLayout, type TextLayout } from '../core/description.ts';
@@ -63,8 +63,8 @@ const ADMIN_MODE_PANELS: Record<Team, [form: string, title: string][]> = {
   UI: [['flipbook', COPY.uiApp107], ['template', COPY.uiApp392], ['gui-width', COPY.uiApp225]],
 };
 
-// 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
-const WHILE_BUSY = new Set(['recovery-toggle', 'tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'tutorial', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel', 'update-download', 'update-go', 'update-close']);
+// 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색
+const WHILE_BUSY = new Set(['recovery-toggle', 'tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel', 'update-download', 'update-go', 'update-close']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
 const BEFORE_CHECK = new Set([...WHILE_BUSY, 'switch-mode', 'scan', 'scan-selected', 'excluded-unexclude','nav', 'nav-suggested', 'create-page-manage', 'category-manage', 'new-add', 'new-remove', 'new-select', 'new-create-one', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'fb-identity-save', 'create-layout', 'create-search-all', 'create-screen-add', 'create-screen-remove', 'fb-edit-cancel', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'version-open', 'version-close', 'version-match', 'version-select', 'version-review-only', 'version-reveal', 'version-switch', 'version-cancel']);
@@ -126,13 +126,6 @@ function mixedOption(): string {
 
 export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let disposed = false;
-  let newFeaturesRequested = false;
-  let newFeaturesOpened = false;
-  const openNewFeatures = () => {
-    if (newFeaturesRequested || !state || startupPending || root.id !== 'app' || window.parent === window) return;
-    newFeaturesRequested = true;
-    bridge.send({ type: 'tutorialSeenGet', mode });
-  };
   const cleanups: (() => void)[] = [];
   const events = new AbortController();
   const timers = new Set<ReturnType<typeof setTimeout>>();
@@ -1091,8 +1084,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
 
   // 관리는 탭이 아니라 오른쪽 위 톱니바퀴(설정)로 연다(2026-10-20 사용자 결정).
   const GEAR = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>';
-  // 튜토리얼은 톱니바퀴 오른쪽(원래 톱니바퀴 자리)의 도움말로 연다(2026-10-21 사용자 요청).
-  const HELP = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>';
   function renderTabs() {
     const settings = tab === 'ADMIN';
     // 머리에는 명령 이름(GUI Publish·UI Flipbook)을 쓰지 않고 탭만 둔다(2026-10-22 사용자 요청). 탭이 없는 관리 화면만 「관리」를 쓴다.
@@ -1103,7 +1094,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       `<div class="tab-tools"><button class="mode-switch" data-action="switch-mode" title="${mode === 'GUI' ? COPY.modeUi : COPY.modeGui}" ${busyLabel || pdfBusy ? 'disabled' : ''}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10V5h16l-4-4M21 14v5H5l4 4M19 5l-4 4M5 19l4-4"/></svg><span>${mode === 'GUI' ? COPY.modeUi : COPY.modeGui}</span></button><span class="tab-separator" aria-hidden="true"></span>` +
       `<button class="icon-button settings-button" data-action="settings" aria-pressed="${settings}" title="${COPY.uiApp004}" aria-label="${needsUpdate(update) ? `${COPY.uiApp004} · ${COPY.updateAvailable}` : COPY.uiApp004}">${GEAR}${needsUpdate(update) ? UPDATE_BADGE : ''}</button>` +
       `<button class="icon-button" data-action="collapse-window" title="${COPY.windowCollapse}" aria-label="${COPY.windowCollapse}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/><path d="M3 15v6h6M3 21l9-9"/></svg></button>` +
-      `<button class="icon-button help-button" data-action="tutorial" title="${COPY.uiTutorial001}" aria-label="${COPY.uiTutorial001}">${HELP}</button></div>`;
+      `</div>`;
     placeUpdateBubble();
   }
 
@@ -1116,7 +1107,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     }
     if (!updateBubble) {
       updateBubble = document.createElement('div');
-      updateBubble.className = 'tutorial-bubble update-bubble';
+      updateBubble.className = 'update-bubble';
       updateBubble.setAttribute('role', 'status');
       updateBubble.innerHTML = `<strong>${COPY.updateAvailable}</strong><p><button class="link" data-action="update-go">${COPY.updateGo}</button></p>` +
         `<button class="icon-button update-bubble-close" data-action="update-close" title="${COPY.updateClose}" aria-label="${COPY.updateClose}">${X_ICON}</button>`;
@@ -3265,9 +3256,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (locked(t) && !BEFORE_CHECK.has(action)) { ev.preventDefault(); return; }
     if (canvasPick && action !== 'canvas-pick' && action !== 'pick') cancelCanvasPick();
     switch (action) {
-      case 'tutorial':
-        startTutorial({ mode, actor: actor ?? { id: '', name: '' }, root, startApp, resize: (width, height) => bridge.send({ type: 'resize', width, height }) });
-        break;
       case 'switch-mode':
         closeVersion(false);
         mode = mode === 'GUI' ? 'UI' : 'GUI';
@@ -4423,7 +4411,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         busyLabel = null;
         renderBusy();
         renderAll();
-        openNewFeatures();
         if (!updateAsked && root.id === 'app' && window.parent !== window) { updateAsked = true; bridge.send({ type: 'updateCheck' }); }
         break;
       case 'updateLatest':
@@ -4434,18 +4421,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'workerNameResult':
         if (msg.name && !workerTyped) { workerName = msg.name; renderFooter(); }
         break;
-      case 'tutorialSeenResult':
-        if (msg.mode !== mode || !newFeaturesRequested || newFeaturesOpened || msg.seen || disposed) break;
-        newFeaturesOpened = true;
-        later(() => { if (!disposed) startTutorial({ mode, actor: actor ?? { id: '', name: '' }, root, startApp, variant: 'new',
-          resize: (width, height) => bridge.send({ type: 'resize', width, height }),
-          onClose: () => bridge.send({ type: 'tutorialSeenSet', mode }),
-        }); });
-        break;
       case 'startupReady':
         startupPending = false;
         renderStartup();
-        openNewFeatures();
         break;
       case 'state': {
         const previousRules = state ? codeRules(state) : '';

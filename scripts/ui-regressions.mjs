@@ -34,8 +34,8 @@ try {
     return JSON.parse(result.result.value);
   };
   await page.goto(pathToFileURL('tmp/build/preview.html').href + '?mode=ui');
-  await page.locator('#app [data-action=tutorial]').waitFor();
-  const before = await listeners();
+  await page.locator('#app [data-action=settings]').waitFor();
+  assert.equal(await page.locator('#app [data-action=tutorial]').count(), 0, 'this build hides the tutorial');
   const switcher = page.locator('#app [data-action=switch-mode]');
   assert.equal(await switcher.innerText(), 'GUI 배포');
   await switcher.click();
@@ -46,13 +46,6 @@ try {
   await page.locator('#app [data-action=text-close]').waitFor();
   assert.equal(await page.locator('#app [data-action=text-open]').count(), 0, 'Description editing lives in the flipbook list');
   assert.equal(await switcher.innerText(), 'GUI 배포');
-  for (let i = 0; i < 3; i++) {
-    await page.locator('#app [data-action=tutorial]').click();
-    await page.waitForFunction(() => document.querySelector('.tutorial-layer')?.dataset.step === '1' && !document.querySelector('.tutorial-bubble')?.hidden);
-    await page.keyboard.press('Escape');
-    await page.waitForFunction(() => !document.querySelector('.tutorial'));
-    assert.deepEqual(await listeners(), before, 'tutorial disposal releases its document listeners');
-  }
   await page.locator('#app [data-action=settings]').click();
   await page.getByRole('button', { name: '히스토리 날짜', exact: true }).click();
   const dateFormat = page.locator('#history-date-format');
@@ -93,7 +86,7 @@ try {
   assert.equal(await editor.innerText(), 'base', 'cancelling composition preserves the document');
   await page.keyboard.press('Control+Shift+z');
   assert.equal(await editor.innerText(), 'base한', 'redo restores the committed composition');
-  console.log('UI regressions: tutorial disposal and IME undo/redo passed');
+  console.log('UI regressions: tutorial hidden and IME undo/redo passed');
 
   await page.keyboard.press('ControlOrMeta+a');
   await page.locator('[data-rt=red]').click();

@@ -19,7 +19,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 body { background: var(--bg); color: var(--text); font: 12px/1.45 Inter, "Noto Sans KR", system-ui, sans-serif; }
-#app, .tutorial-app { --list-width: 45%; display: grid; grid-template-columns: clamp(200px, var(--list-width), calc(100% - 248px)) 8px minmax(240px, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto; height: 100vh; position: relative; }
+#app { --list-width: 45%; display: grid; grid-template-columns: clamp(200px, var(--list-width), calc(100% - 248px)) 8px minmax(240px, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto; height: 100vh; position: relative; }
 button { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 3px 8px; cursor: pointer; }
 button:hover:not(:disabled) { background: var(--bg2); }
 button:disabled { opacity: .45; cursor: default; }
@@ -352,7 +352,9 @@ button.link.danger { color: var(--danger); }
 .screen-picker[open] > summary { border-color: var(--brand); }
 .screen-picker[open] > .picker-search { display: block; position: absolute; top: 1px; bottom: 1px; left: 1px; right: 22px; width: auto; padding: 0 6px; border: 0; border-radius: 4px; outline: none; }
 .picker-empty { margin: 4px; }
-.screen-picker-control { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.screen-picker-control { position: relative; display: flex; align-items: center; gap: 4px; width: 100%; min-width: 0; height: 29px; }
+.screen-picker-control > .screen-picker { flex: 1 1 0; width: 0; min-width: 0; }
+.screen-picker-control > .screen-picker > .tag-options { right: -32px; }
 .screen-picker-control .canvas-pick { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; color: var(--muted); }
 .screen-picker-control .canvas-pick[aria-pressed="true"] { color: var(--brand); background: var(--selected); }
 
@@ -675,7 +677,7 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .recovery-name { flex: 0 1 auto; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recovery-count { color: var(--muted); }
 .recovery-reason { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
-#app.has-recovery, .tutorial-app.has-recovery { grid-template-rows: auto auto auto minmax(0, 1fr) auto; }
+#app.has-recovery { grid-template-rows: auto auto auto minmax(0, 1fr) auto; }
 .has-recovery > .tabs { grid-row: 1; }
 .has-recovery > .toolbar { grid-row: 3; }
 .has-recovery > :is(.list, .detail, .pane-divider) { grid-row: 4; }
@@ -845,33 +847,19 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .flow-form label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; color: var(--muted); }
 .flow-actions { flex: none; display: flex; align-items: center; gap: 6px; }
 .flow-actions button { flex: none; }
-/* 튜토리얼: 실제 창 위에 예시 화면을 겹치고, 설명하는 영역만 밝게 남긴 어두운 막과 말풍선을 올린다. */
-.tutorial { position: fixed; z-index: 1000; overflow: hidden; }
-/* 예시 화면 안의 고정 머리·대화상자(z-index)가 어두운 막 위로 올라오지 않게 쌓임 맥락을 따로 만든다. */
-.tutorial-app { position: absolute; inset: 0; z-index: 0; height: auto; overflow: hidden; background: var(--bg); }
-.tutorial-layer { position: absolute; inset: 0; z-index: 1; cursor: pointer; outline: none; }
-.tutorial-dim { position: absolute; inset: 0; width: 100%; height: 100%; }
-.tutorial-dim path { fill: rgba(0, 0, 0, .2); }
-.tutorial-bubble { position: absolute; width: 264px; padding: 10px 14px 12px; border-radius: 8px; background: #fff; color: #1e1e1e; filter: drop-shadow(0 4px 12px rgba(0, 0, 0, .2)); }
-.tutorial-bubble[hidden] { display: none; }
-/* 꼬리: 긴 변의 왼쪽(오른쪽) 끝에서 조금 안쪽. 가리킬 곳에 맞춰 --tail-x로 조금 옮긴다. */
-.tutorial-bubble[data-tail]:not([data-tail=""])::before { content: ""; position: absolute; left: var(--tail-x, 14px); width: 14px; height: 7px; background: inherit; }
-.tutorial-bubble[data-tail^="top"]::before { top: -7px; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
-.tutorial-bubble[data-tail^="bottom"]::before { bottom: -7px; clip-path: polygon(0 0, 100% 0, 50% 100%); }
-.tutorial-bubble strong { display: block; padding-right: 44px; font-size: 13px; }
-.tutorial-bubble p { margin: 4px 0 0; }
-.tutorial-progress { position: absolute; top: 10px; right: 14px; font-size: 11px; color: #6b6b6b; font-variant-numeric: tabular-nums; }
-.tutorial-close { position: absolute; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: #fff; color: #000; transform: translate(-50%, -50%); }
-.tutorial-close:hover:not(:disabled) { background: #fff; }
-/* 업데이트 안내는 튜토리얼 말풍선 모양을 그대로 쓰고 어둡게 덮지 않는다. 대화상자(.overlay, z-index 5)보다 아래에 둔다. */
-.update-bubble { z-index: 4; width: max-content; max-width: calc(100% - 16px); cursor: default; }
+.update-bubble { position: absolute; z-index: 4; padding: 10px 14px 12px; border-radius: 8px; background: #fff; color: #1e1e1e; filter: drop-shadow(0 4px 12px rgba(0, 0, 0, .2)); width: max-content; max-width: calc(100% - 16px); cursor: default; }
+.update-bubble[hidden] { display: none; }
+.update-bubble[data-tail]:not([data-tail=""])::before { content: ""; position: absolute; left: var(--tail-x, 14px); width: 14px; height: 7px; background: inherit; }
+.update-bubble[data-tail^="top"]::before { top: -7px; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.update-bubble[data-tail^="bottom"]::before { bottom: -7px; clip-path: polygon(0 0, 100% 0, 50% 100%); }
+.update-bubble p { margin: 4px 0 0; }
 .update-bubble strong { padding-right: 24px; }
 .update-bubble-close.icon-button { position: absolute; top: 6px; right: 6px; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: #6b6b6b; }
 .update-bubble-close.icon-button:hover:not(:disabled) { background: #f5f5f5; }
 
 .window-bar { display: none; }
-#app.window-collapsed, .tutorial-app.window-collapsed { display: block; min-width: 0; min-height: 0; overflow: hidden; }
-#app.window-collapsed > :not(.window-bar), .tutorial-app.window-collapsed > :not(.window-bar) { display: none !important; }
+#app.window-collapsed { display: block; min-width: 0; min-height: 0; overflow: hidden; }
+#app.window-collapsed > :not(.window-bar) { display: none !important; }
 .window-collapsed > .window-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 100%; padding: 6px 8px; color: var(--muted); background: var(--bg2); }
 .window-bar strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .window-bar button { flex: none; display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; padding: 4px; color: var(--muted); }
