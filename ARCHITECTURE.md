@@ -43,6 +43,7 @@ GUI 배포 히스토리는 GuiRecovery가 검증한 GUI 원기록 참조를 Deli
 | `src/core/compare.ts`, `fingerprint.ts`, `versionMatch.ts`, `replaceMatch.ts` | GUI 변경 판정, 지문 정규화, 새 버전 페이지의 화면 연결 제안, 변경사항 확인의 기존 화면 교체 제안 |
 | `src/core/changeDigest.ts` | 변경 근거: 스냅샷을 (레이어 이름 경로 × 속성 묶음 → 값 해시) 원소로 나눠(이름이 글자를 따라 바뀌는 텍스트는 이름 대신 순서로 이음) 고정 크기 IBLT와 묶음별 요약값으로 저장하고, 현재 화면과 빼서 다른 레이어·묶음과 「보이는 값은 같음」(화면 기준 짝 해시) 판정을 풀어냄. 근거를 만들지 정하는 `changeDigest()` |
 | `src/core/drafts.ts`, `publish.ts`, `registry.ts` | 입력 검증, GUI 배포 계획·확정, 카테고리·작업자·태그·화면 레지스트리 |
+| `src/core/guiPicker.ts` | GUI 화면 선택 후보: 교체 짝은 새버전 프레임으로 대표하고 이어받는 화면 ID를 유지하며, 구버전·사용 안 함이 될 항목은 제외한다. UI는 같은 후보에 현재 표시값을 붙이고 캔버스 선택을 후보의 프레임 키로 연결한다. |
 | `src/core/flow.ts` | 플로우 계획(배포된 화면만, 가장 왼쪽·위 썸네일이 (0, 0)이 되게 당김, 잘못된·중복 화살표 제외), 썸네일마다 제 크기 자리(격자는 놓는 위치 스냅)와 다른 화면 자리를 피해 화면 사이 통로를 따르는 꺾인 화살표 경로(`routeLink`, 플러그인 판과 캔버스가 함께 씀), 조건 레이어 자리, 다시 배포된 화면이 든 플로우 고르기 |
 | `src/core/pdf.ts` | PDF 저장 탭의 정책: 연결 기록이 없는 프레임에서 저장하는 동안 숨길 요소 이름(UI Title·Update History List), 쪽 이미지 배율(2배 JPG), 쪽 순서(캔버스 왼쪽 위 → 오른쪽 아래), 파일 이름 |
 | `src/core/templateParts.ts` | 템플릿 연결 항목 정의(관리 화면의 의미 묶음 `section`과 들여쓰기 부모 `parent`, 연결·검사가 쓰는 위치 `group`(플립북 칸·컴포넌트·이력 행 안의 칸), 종류·필수·여러 개, 대표가 아닌 템플릿이 다루는 반영용 항목 `isFallbackItem`), 레이어 표식 키(`templatePart`)와 템플릿 프레임의 연결 기록(`templateLinks`, 컴포넌트 노드 ID) 형식, UI에 보내는 연결 상태(`TemplateInfo`) |

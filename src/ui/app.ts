@@ -4,6 +4,7 @@ import { headerTab } from './headerTab.ts';
 import { COPY } from '../core/copy.ts';
 import { changeDetected, entryName, ignoreBlock, uiEntries as buildUiEntries, uiEstimate, type Entry, type UiScan } from '../core/compare.ts';
 import type { GuiScreenInfo } from '../core/guiScreens.ts';
+import { pickerFrameEntries, pickerRegisteredScreens } from '../core/guiPicker.ts';
 import { guiStateBadge, unlinkedBadge, unlinkedGroupBadge } from './estimate.ts';
 import { placeBubble, startTutorial } from './tutorial.ts';
 import { needsUpdate, type UpdateInfo } from '../core/update.ts';
@@ -46,7 +47,7 @@ export interface Bridge {
   drop?(clientX: number, clientY: number, metadata: unknown): void;
 }
 
-interface ScreenItem { value: string; code: string; name: string; categoryId?: string | null }
+interface ScreenItem { value: string; code: string; name: string; categoryId?: string | null; entryKey?: string }
 
 export function sortScreenItems(items: ScreenItem[], preferredCategoryId?: string): ScreenItem[] {
   return [...items].sort((a, b) =>
@@ -80,6 +81,7 @@ const NEW_EDITOR_MIN = { width: 800, height: 640 };
 const VERSION_MIN = { width: 960, height: 720 };
 const CHEVRON_RIGHT_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
 const REFRESH_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>';
+const CURSOR_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="m5 3 15 10-7 1-3 7Z"/></svg>';
 
 // 「+ 추가」 버튼 내용. 더하기 아이콘을 글자 앞에 붙인다.
 const ADD_LABEL = `<svg class="add-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>${COPY.uiApp101}`;
@@ -292,6 +294,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   const revealed: Record<Team, Set<string>> = { GUI: new Set(), UI: new Set() };
   const selected: Record<Team, string | null> = { GUI: null, UI: null };
   const selection: Record<Team, Set<string>> = { GUI: new Set(), UI: new Set() };
+  let canvasPick: { field: string; keys: string[]; current: string | null } | null = null;
   const anchor: Record<Team, string | null> = { GUI: null, UI: null };
   // 캔버스에서 고른 숨긴 프레임(exclusions ID). 목록 선택이 없을 때 상세 가운데에 숨긴 화면 안내와 「다시 표시」 버튼을 보인다(2026-11-05 사용자 요청).
   // unexcludedNodes: 다시 표시한 프레임. 신규 후보로 목록에 다시 나오면 그 행을 고른다.
@@ -615,6 +618,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       changed: t === 'UI' ? e => !!e.flipbookId && hasNewHistory(e.flipbookId) : undefined,
       spots: t === 'UI' ? id => uiScans.get(id)?.spot : undefined,
       guiDisplay, guiPlace, follows: t === 'GUI' ? previousOf : undefined,
+      bottom: t === 'GUI' ? entry => !!drafts.GUI[entry.key]?.included && (!!drafts.GUI[entry.key].notScreen || isUnpublish(entry, drafts.GUI[entry.key])) : undefined,
     });
   }
 
@@ -1286,11 +1290,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const movable = (key: string) => !!state!.categories.get(key)?.active;
     box.innerHTML = model.groups.map(g => `
       <div class="group"${movable(g.key) ? ` data-category="${esc(g.key)}"` : ''}>
-        <div class="group-bar"${movable(g.key) ? ` draggable="true" title="${COPY.uiApp391}"` : ''}>${movable(g.key) ? '<span class="drag-handle" aria-hidden="true">⠿</span>' : ''}<input type="checkbox" data-action="include-group" data-group="${esc(g.key)}" ${g.visibleRows.length && g.visibleRows.every(r => draftOf(t, r.entry).included) ? 'checked' : ''} ${g.visibleRows.length && !lock ? '' : 'disabled'} aria-label="${esc(g.name)}${COPY.uiApp032}">
+        ${g.trailing ? '' : `<div class="group-bar"${movable(g.key) ? ` draggable="true" title="${COPY.uiApp391}"` : ''}>${movable(g.key) ? '<span class="drag-handle" aria-hidden="true">⠿</span>' : ''}<input type="checkbox" data-action="include-group" data-group="${esc(g.key)}" ${g.visibleRows.length && g.visibleRows.every(r => draftOf(t, r.entry).included) ? 'checked' : ''} ${g.visibleRows.length && !lock ? '' : 'disabled'} aria-label="${esc(g.name)}${COPY.uiApp032}">
         <button class="group-head" data-action="group" data-group="${esc(g.key)}" aria-expanded="${g.expanded}">
           <span class="caret">${g.expanded ? '▾' : '▸'}</span> ${esc(g.name)}
           <span class="count">${g.total}${COPY.uiApp033} <span class="${g.included ? 'count-on' : ''}">${g.included}</span></span>
-        </button></div>
+        </button></div>`}
         ${g.rows.map(r => {
           const draft = drafts[t][r.entry.key];
           const sel = selection[t].has(r.entry.key);
@@ -1526,9 +1530,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const sorted = top ? [top, ...ordered.filter(i => i !== top)] : ordered;
     const chosen = opts.mixed ? null : sorted.find(i => i.value === selectedValue);
     const head = chosen ? screenLabel(chosen, chosen === top) : `<span class="placeholder">${esc(opts.mixed ? COPY.uiApp175 : placeholder)}</span>`;
-    return `<details class="tag-picker screen-picker${opts.disabled ? ' disabled' : ''}"><summary aria-label="${esc(placeholder)}" data-required-field="${esc(field)}">${head}<span class="dropdown-caret" aria-hidden="true"></span></summary>
+    return `<div class="screen-picker-control"><details class="tag-picker screen-picker${opts.disabled ? ' disabled' : ''}"><summary aria-label="${esc(placeholder)}" data-required-field="${esc(field)}">${head}<span class="dropdown-caret" aria-hidden="true"></span></summary>
       <input type="search" class="picker-search" placeholder="${COPY.uiApp358}" aria-label="${COPY.uiApp358}" autocomplete="off">
-      <div class="tag-options">${sorted.length ? sorted.map(i => `<button data-action="pick" data-field="${field}" data-value="${esc(i.value)}" data-search="${esc(`${i.code} ${i.name}`.toLowerCase())}" class="tag-option" aria-pressed="${i.value === selectedValue}"${opts.thumbs?.get(i.value) ? ` data-thumb="${esc(opts.thumbs.get(i.value)!)}"` : ''}>${screenLabel(i, i === top)}</button>`).join('') + `<p class="note picker-empty" hidden>${COPY.uiApp028}</p>` : `<p class="note">${COPY.uiApp190}</p>`}</div></details>`;
+      <div class="tag-options">${sorted.length ? sorted.map(i => `<button data-action="pick" data-field="${field}" data-value="${esc(i.value)}" data-entry-key="${esc(i.entryKey ?? i.value)}" data-search="${esc(`${i.code} ${i.name}`.toLowerCase())}" class="tag-option" aria-pressed="${i.value === selectedValue}"${opts.thumbs?.get(i.value) ? ` data-thumb="${esc(opts.thumbs.get(i.value)!)}"` : ''}>${screenLabel(i, i === top)}</button>`).join('') + `<p class="note picker-empty" hidden>${COPY.uiApp028}</p>` : `<p class="note">${COPY.uiApp190}</p>`}</div></details>
+      <button class="icon-button canvas-pick" data-action="canvas-pick" data-field="${esc(field)}" aria-label="${COPY.canvasPickScreen}" aria-pressed="${!opts.disabled && canvasPick?.field === field}"${opts.disabled ? ' disabled' : ''}>${CURSOR_ICON}</button></div>`;
   }
   function filterScreenPicker(picker: HTMLElement, query: string) {
     const q = query.trim().toLowerCase();
@@ -1542,20 +1547,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   }
   // 등록된 화면은 왼쪽 목록과 같은 이름·Screen ID로 보여 준다(배포 전 수정값 포함, 2026-10-21 사용자 요청).
   const registeredItems = (filter: (id: string) => boolean = () => true): ScreenItem[] => {
-    const byScreen = new Map(entries.filter(e => e.screenId).map(e => [e.screenId!, e]));
-    return [...state!.screens.values()].filter(x => x.status === 'active' && filter(x.id)).map(x => {
-      const entry = byScreen.get(x.id);
-      const shown = entry ? guiDisplay(entry) : { code: x.code, name: x.name };
-      return { value: x.id, code: shown.code, name: shown.name, categoryId: x.categoryId };
+    return pickerRegisteredScreens(state!, entries, drafts.GUI).filter(({ screen }) => filter(screen.id)).map(({ screen, entry }) => {
+      const shown = entry ? guiDisplay(entry) : screen;
+      return { value: screen.id, entryKey: entry?.key, code: shown.code, name: shown.name, categoryId: entry ? guiPlace(entry).categoryId : screen.categoryId };
     });
   };
   // 교체에 쓸 프레임: 신규 후보와 원본이 있는 다른 배포 화면(2026-10-27 사용자 요청: 잘못 배포한 화면으로도 교체).
-  // 이름·ID는 왼쪽 목록과 같고, 신규 후보의 ID는 프레임 이름의 대괄호 안을 보여 준다.
-  const candidateItems = (self: string): ScreenItem[] => entries.filter(e => e.frame && e.key !== self && (!e.screenId || (e.estimate !== 'missing' && e.estimate !== 'retired'))).map(e => {
-    if (e.screenId) return { value: e.key, ...guiDisplay(e), categoryId: state!.screens.get(e.screenId)?.categoryId };
-    const parsed = parseFrameName(e.frame!.name);
-    return { value: e.key, code: parsed.code ?? '', name: guiDisplay(e).name };
-  });
+  // 이름·ID·카테고리는 왼쪽 목록과 같은 입력 중인 값을 쓴다.
+  const candidateItems = (self: string): ScreenItem[] => pickerFrameEntries(entries, drafts.GUI).filter(e => e.key !== self).map(e => ({
+    value: e.key, entryKey: e.key, ...guiDisplay(e), categoryId: guiPlace(e).categoryId,
+  }));
 
   // 등록 방식: 왼쪽에 선택 체크가 있는 아코디언(2026-11-03 사용자 요청). 이름 옆에 설명을 두고, 고른 항목만 펼쳐 그 메뉴를 보여 준다.
   interface Choice { value: string; label: string; hint: string; checked: boolean; body?: () => string }
@@ -1622,6 +1623,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   }
 
   function renderDetail() {
+    if (canvasPick && (busyLabel || pdfBusy || tab !== 'GUI' || detailLocked('GUI') || selected.GUI !== canvasPick.current ||
+        selection.GUI.size !== canvasPick.keys.length || canvasPick.keys.some(key => !selection.GUI.has(key)))) canvasPick = null;
+    renderDetailContent();
+    if (canvasPick && !root.querySelector('.canvas-pick[aria-pressed="true"]:enabled')) cancelCanvasPick();
+  }
+
+  function renderDetailContent() {
     if (team() !== 'UI' || currentNew() || !listTabOpen()) {
       leaveDescription();
       for (const id of identityDrafts.keys()) if (!identityEdited(id)) identityDrafts.delete(id);
@@ -3219,10 +3227,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   }
 
   // 화면 선택 드롭다운에서 고른 값
+  function cancelCanvasPick() {
+    canvasPick = null;
+    for (const button of root.querySelectorAll<HTMLElement>('.canvas-pick')) button.setAttribute('aria-pressed', 'false');
+  }
+
   function pick(field: string, value: string) {
     const t = team();
     const entry = current();
     if (!entry || detailLocked(t)) return;
+    canvasPick = null;
     if (field === 'replaceScreenId') pair(entry.key, value);
     else if (field === 'replaceWith') pair(value, entry.key);
     else if (field === 'baseScreenId') {
@@ -3259,6 +3273,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (action.startsWith('track-') && trackList.handle(action, el)) return;
     const t = team();
     if (locked(t) && !BEFORE_CHECK.has(action)) { ev.preventDefault(); return; }
+    if (canvasPick && action !== 'canvas-pick' && action !== 'pick') cancelCanvasPick();
     switch (action) {
       case 'tutorial':
         startTutorial({ mode, actor: actor ?? { id: '', name: '' }, root, startApp, resize: (width, height) => bridge.send({ type: 'resize', width, height }) });
@@ -3452,6 +3467,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         break;
       }
       case 'include-selected': toggleIncluded(selectedKeys(t)); break;
+      case 'canvas-pick':
+        if (detailLocked(t) || el.matches(':disabled')) break;
+        canvasPick = canvasPick?.field === el.dataset.field ? null : { field: el.dataset.field!, keys: selectedKeys('GUI'), current: selected.GUI };
+        for (const button of root.querySelectorAll<HTMLElement>('.canvas-pick')) button.setAttribute('aria-pressed', String(button.dataset.field === canvasPick?.field));
+        break;
       case 'pick': pick(el.dataset.field!, el.dataset.value!); break;
       case 'fb-remove-list': {
         const ids = selectedEntries('UI').filter(e => !!e.flipbookId).map(e => e.key);
@@ -4006,6 +4026,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
 
   on('keydown', ev => {
     const el = ev.target as HTMLElement;
+    if (canvasPick && ev.key === 'Escape') {
+      ev.preventDefault();
+      cancelCanvasPick();
+      return;
+    }
     if (bulk && ev.key === 'Escape' && !bulk.submitting) { ev.preventDefault(); bulk = null; renderBulk(); return; }
     if (newDialog && ev.key === 'Escape') { ev.preventDefault(); newDialog = null; renderNewDialog(); return; }
     // 관리의 템플릿: 연결된 항목 줄은 Enter·Space로도 연결된 레이어를 보여 준다.
@@ -4557,6 +4582,17 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'canvasSelection': {
         // 실행한 명령과 다른 목록의 선택으로는 화면을 바꾸지 않는다.
         if (!state || msg.team !== mode) break;
+        if (canvasPick && msg.team === 'GUI') {
+          // 후보 목록의 허용 범위를 그대로 사용한다. 검색어로 숨은 후보도 캔버스로 고를 수 있다.
+          const button = root.querySelector<HTMLButtonElement>('.canvas-pick[aria-pressed="true"]');
+          if (busyLabel || pdfBusy || tab !== 'GUI' || detailLocked('GUI') || !button || button.matches(':disabled')) { cancelCanvasPick(); break; }
+          if (msg.entryKeys.length === 1 && !canvasPick.keys.includes(msg.entryKeys[0])) {
+            const field = canvasPick.field;
+            const option = [...button.closest('.screen-picker-control')!.querySelectorAll<HTMLElement>('.tag-option')].find(item => item.dataset.entryKey === msg.entryKeys[0]);
+            if (option) pick(field, option.dataset.value!);
+          }
+          break;
+        }
         if (!msg.entryKeys.length) {
           // 목록에 없는 제외 프레임만 골랐으면 목록 선택을 풀고 상세에 제외 안내를 보인다. 안내를 보던 중 다른 곳을 고르면 안내를 거둔다.
           if (msg.team !== 'GUI' || (!msg.excludedIds.length && !excludedPick.length)) break;
@@ -4807,7 +4843,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         break;
       }
       case 'notice': notify('info', msg.message); break;
-      case 'busy': busyLabel = msg.label; renderBusy(); break;
+      case 'busy': busyLabel = msg.label; if (busyLabel) cancelCanvasPick(); renderBusy(); break;
       case 'error':
         pendingCategory = null; pendingTag = null;
         // 목록 새로고침이 실패해도 아이콘이 계속 돌지 않게 한다.

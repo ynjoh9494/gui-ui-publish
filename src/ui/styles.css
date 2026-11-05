@@ -352,6 +352,9 @@ button.link.danger { color: var(--danger); }
 .screen-picker[open] > summary { border-color: var(--brand); }
 .screen-picker[open] > .picker-search { display: block; position: absolute; top: 1px; bottom: 1px; left: 1px; right: 22px; width: auto; padding: 0 6px; border: 0; border-radius: 4px; outline: none; }
 .picker-empty { margin: 4px; }
+.screen-picker-control { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.screen-picker-control .canvas-pick { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; color: var(--muted); }
+.screen-picker-control .canvas-pick[aria-pressed="true"] { color: var(--brand); background: var(--selected); }
 
 /* 변경사항 확인: 탭 맨 위 */
 .toolbar { flex-direction: column; align-items: stretch; }

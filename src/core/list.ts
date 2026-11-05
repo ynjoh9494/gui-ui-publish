@@ -37,6 +37,8 @@ export interface ListGroup {
   included: number;
   rows: ListRow[];
   visibleRows: ListRow[];
+  // GUI에서 배포 취소·화면이 아님 항목을 모으는, 머리글 없는 맨 아래 영역.
+  trailing?: boolean;
 }
 
 export interface ListView {
@@ -55,6 +57,7 @@ export interface ListView {
   changed?: (entry: Entry) => boolean;
   // GUI 목록: 교체 짝이 정해진 이전 화면이 따라갈 새 버전의 항목 키. 이전 화면은 숨기지 않고 새 버전 바로 아래에 둔다(2026-11-03 사용자 요청).
   follows?: (entry: Entry) => string | null;
+  bottom?: (entry: Entry) => boolean;
 }
 
 // GUI 목록에서 화면이 놓이는 카테고리와 기본 화면(케이스일 때)
@@ -245,6 +248,10 @@ export function buildList(team: Team, state: State, entries: Entry[], statusOf: 
     : [...state.categories.values()].sort((a, b) => a.order - b.order).map(c => [c.id, c.name + (c.active ? '' : COPY.coreList002)]));
   const groupOrder = team === 'UI' ? [...groupNames.keys(), UNCATEGORIZED] : [UNCATEGORIZED, ...groupNames.keys()];
   const model: ListModel = { groups: [], included: 0, invalid: 0 };
+  const trailing: ListRow[] = [];
+  const filterRows = (rows: ListRow[]) => rows.filter(r =>
+    (!query || r.name.toLowerCase().includes(query) || r.code.toLowerCase().includes(query)) &&
+    (!view.changedOnly || (view.changed ? view.changed(r.entry) : r.status !== 'excluded' || needsChangeReview(r.entry))));
 
   for (const key of groupOrder) {
     const bucket = buckets.get(key);
@@ -258,16 +265,25 @@ export function buildList(team: Team, state: State, entries: Entry[], statusOf: 
     const included = rows.filter(r => r.status !== 'excluded').length;
     model.included += included;
     model.invalid += rows.filter(r => r.status === 'invalid').length;
-    const filtered = rows.filter(r =>
-      (!query || r.name.toLowerCase().includes(query) || r.code.toLowerCase().includes(query)) &&
-      (!view.changedOnly || (view.changed ? view.changed(r.entry) : r.status !== 'excluded' || needsChangeReview(r.entry))));
+    const regular = rows.filter(row => {
+      if (team !== 'GUI' || row.previous || !view.bottom?.(row.entry)) return true;
+      trailing.push({ ...row, depth: 0 });
+      return false;
+    });
+    if (!regular.length) continue;
+    const filtered = filterRows(regular);
     if ((query || view.changedOnly) && !filtered.length) continue;
     // 검색 중에는 결과가 있는 그룹을 펼친다. 접힘 설정 자체는 바꾸지 않는다.
     const expanded = query ? true : !view.collapsed.has(key);
     model.groups.push({
       key, name: key === UNCATEGORIZED ? COPY.coreList001 : groupNames.get(key)!,
-      expanded, total: rows.length, included, visibleRows: filtered, rows: expanded ? filtered : [],
+      expanded, total: regular.length, included: regular.filter(r => r.status !== 'excluded').length, visibleRows: filtered, rows: expanded ? filtered : [],
     });
   }
+  const filteredTrailing = filterRows(trailing);
+  if (filteredTrailing.length) model.groups.push({
+    key: '__gui_trailing__', name: '', trailing: true, expanded: true, total: trailing.length,
+    included: trailing.filter(row => row.status !== 'excluded').length, visibleRows: filteredTrailing, rows: filteredTrailing,
+  });
   return model;
 }
