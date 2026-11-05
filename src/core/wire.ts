@@ -258,7 +258,8 @@ export type ToUi =
   // partialAt: 선택 화면 확인을 마친 시각. 전체 확인 전에도 판정이 나온 화면은 배포할 수 있다.
   | { type: 'scanStatus'; team: Team; status: ScanState; done: number; total: number; checkedAt: number | null; partialAt: number | null }
   | { type: 'nav'; nav: number; ok: boolean; message: string }
-  | { type: 'canvasSelection'; team: Team; entryKeys: string[]; lastKey: string | null }
+  // excludedIds: 고른 프레임 중 제외 설정에 있는 프레임의 제외 ID(GUI Publish만). 목록에 없으므로 상세에서 제외 해제를 받는다.
+  | { type: 'canvasSelection'; team: Team; entryKeys: string[]; lastKey: string | null; excludedIds: string[] }
   | { type: 'plan'; plan: Plan }
   // ok: 한 건 이상 확정했다. committed: 확정한 항목의 entryKey, conflicts: 확정하지 못한 항목과 이유
   | { type: 'committed'; ok: boolean; committed: string[]; conflicts: Blocker[]; batchId: string; pending: number; message: string }

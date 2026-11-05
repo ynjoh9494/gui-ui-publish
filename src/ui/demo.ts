@@ -63,6 +63,8 @@ export interface Demo {
   // 플립북 프레임을 모두 고르거나 선택을 푼다(PDF 저장 탭). 바꾼 뒤 Controller에 캔버스 선택이 바뀌었다고 알린다.
   pickFlipbookFrames(on: boolean): void;
   flipbookFramesPicked(): boolean;
+  // GUI 원본 프레임 하나를 캔버스에서 고른 것처럼 한다(null이면 선택을 푼다). 바꾼 뒤 Controller에 알린다.
+  pickGuiFrame(nodeId: string | null): void;
   // 미리보기 도구: 플립북 프레임을 이전 형식(연결 기록 없음)으로 되돌린 것처럼 한다. 변환하기 전에는 반영하지 않는다.
   makeLegacy(flipbookId: string): void;
 }
@@ -102,6 +104,8 @@ export function createDemo(options: DemoOptions): Demo {
   const flows = new Map<string, Map<string, number>>();
   // 가짜 캔버스에서 플립북 프레임을 모두 골랐다(PDF 저장 탭).
   let framesPicked = false;
+  // 가짜 캔버스에서 고른 GUI 원본 프레임
+  let guiPicked: string | null = null;
   const legacyFlipbooks = new Set<string>();
   let deliver: (message: ToUi) => void = () => {};
   const text = { name: 'Description', paragraphs: parseRichText(COPY.uiPreview051) };
@@ -146,7 +150,8 @@ export function createDemo(options: DemoOptions): Demo {
     async placeThumbnails() { thumbPageMade = true; },
     async selectNodes(nodeIds) { log(`프레임 선택: ${nodeIds.join(', ')}`); },
     // 미리보기 도구로 플립북 프레임을 고르면 캔버스에서 그 프레임들을 고른 것으로 본다.
-    selectionNodeIds: () => framesPicked ? [...flipbooks].map(([flipbookId, nodeId]) => ({ nodeId, flipbookId })) : [],
+    selectionNodeIds: () => framesPicked ? [...flipbooks].map(([flipbookId, nodeId]) => ({ nodeId, flipbookId }))
+      : guiPicked ? frames.filter(f => f.nodeId === guiPicked).map(f => ({ nodeId: f.nodeId, flipbookId: null, screenRoot: true, pageId: f.pageId })) : [],
     async listFrames(pageIds) {
       if (options.slowLoad) {
         document.body.dataset.previewLoading = 'true';
@@ -399,6 +404,7 @@ export function createDemo(options: DemoOptions): Demo {
     },
     editFrame(frame) { frame.content = `v${Number(frame.content.slice(1)) + 1}`; },
     pickFlipbookFrames(on) { framesPicked = on; },
+    pickGuiFrame(nodeId) { guiPicked = nodeId; },
     flipbookFramesPicked: () => framesPicked,
     makeLegacy(flipbookId) { legacyFlipbooks.add(flipbookId); },
   };

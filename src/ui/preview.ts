@@ -41,7 +41,7 @@ function renderTools() {
   tools.innerHTML = `<h2>${COPY.uiPreview031}</h2>` + frames.map(f => `
     <div class="frame"><span>${f.pageId === DEMO_VERSION_PAGE.id ? `${DEMO_VERSION_PAGE.name} / ` : ''}${f.name}</span><small>${f.content}${f.tag ? COPY.uiPreview032 : ''}</small>
       <button data-edit="${f.nodeId}">${COPY.uiPreview033}</button><button data-rename="${f.nodeId}">${COPY.uiPreview034}</button>
-      <button data-dup="${f.nodeId}">${COPY.uiPreview035}</button><button data-paste="${f.nodeId}">붙여 넣기</button><button data-del="${f.nodeId}">${COPY.uiPreview036}</button></div>`).join('') +
+      <button data-dup="${f.nodeId}">${COPY.uiPreview035}</button><button data-paste="${f.nodeId}">붙여 넣기</button><button data-del="${f.nodeId}">${COPY.uiPreview036}</button><button data-pick-gui="${f.nodeId}">캔버스 선택</button></div>`).join('') +
     (flipbooks.size ? `<h2>${COPY.uiPreview037}</h2>` + [...flipbooks.keys()].map(screenId => `
     <div class="frame"><span>${screenName(screenId)}</span><small>${COPY.uiPreview038} ${uiEdits.get(screenId) ?? 0}${COPY.uiPreview039}</small>
       <button data-uiedit="${screenId}">${COPY.uiPreview038}</button><button data-legacy="${screenId}">${COPY.uiPreview061}</button></div>`).join('') +
@@ -76,6 +76,8 @@ document.getElementById('tools')!.addEventListener('click', ev => {
   }
   // 캔버스에서 플립북 프레임을 고른 것처럼 바꾼다(PDF 저장 탭).
   if (el.dataset.pickFlipbooks !== undefined) { demo.pickFlipbookFrames(!demo.flipbookFramesPicked()); void controller.canvasSelectionChanged(); }
+  // 캔버스에서 GUI 원본 프레임 하나를 고른 것처럼 바꾼다(제외된 프레임 안내 확인용).
+  if (el.dataset.pickGui) { demo.pickGuiFrame(el.dataset.pickGui); void controller.canvasSelectionChanged(); }
   // 플러그인 메뉴에서 다른 명령을 실행한 것처럼 바꾼다. 파일 데이터(kv)는 그대로다.
   if (el.dataset.mode) { host.mode = el.dataset.mode as typeof host.mode; void controller.handle({ type: 'ready' }); }
   if (el.dataset.version !== undefined && !demo.hasVersionPage()) write(`${DEMO_VERSION_PAGE.name}: ${demo.pasteVersionPage()}개 프레임 붙여 넣음`);

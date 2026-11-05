@@ -65,7 +65,7 @@ const ADMIN_MODE_PANELS: Record<Team, [form: string, title: string][]> = {
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
 const WHILE_BUSY = new Set(['recovery-toggle', 'tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel', 'fb-history-open', 'fb-history-close', 'update-download', 'update-go', 'update-close']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
-const BEFORE_CHECK = new Set([...WHILE_BUSY, 'switch-mode', 'scan', 'scan-selected', 'nav', 'nav-suggested', 'create-page-manage', 'category-manage', 'new-add', 'new-remove', 'new-select', 'new-create-one', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'fb-identity-save', 'create-layout', 'create-search-all', 'create-screen-add', 'create-screen-remove', 'fb-edit-cancel', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
+const BEFORE_CHECK = new Set([...WHILE_BUSY, 'switch-mode', 'scan', 'scan-selected', 'excluded-unexclude','nav', 'nav-suggested', 'create-page-manage', 'category-manage', 'new-add', 'new-remove', 'new-select', 'new-create-one', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'fb-identity-save', 'create-layout', 'create-search-all', 'create-screen-add', 'create-screen-remove', 'fb-edit-cancel', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'text-import', 'text-apply',
   'version-open', 'version-close', 'version-match', 'version-select', 'version-review-only', 'version-reveal', 'version-switch', 'version-cancel']);
 
@@ -287,6 +287,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   const selected: Record<Team, string | null> = { GUI: null, UI: null };
   const selection: Record<Team, Set<string>> = { GUI: new Set(), UI: new Set() };
   const anchor: Record<Team, string | null> = { GUI: null, UI: null };
+  // 캔버스에서 고른 제외 프레임(제외 ID). 목록 선택이 없을 때 상세 가운데에 제외 안내와 해제 버튼을 보인다(2026-11-05 사용자 요청).
+  // unexcludedNodes: 해제한 프레임. 신규 후보로 목록에 다시 나오면 그 행을 고른다.
+  let excludedPick: string[] = [];
+  let unexcludedNodes = new Set<string>();
   let addMode: 'tag' | null = null;
   let editMode: 'tag' | null = null;
   // 그룹은 접힌 상태가 기본이다. 펼친 그룹만 기억한다.
@@ -1545,6 +1549,24 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   }
 
 
+  // 고른 행이 검색·변경된 화면만 보기에 가려 있으면 걸러내기를 풀고, 고른 행이 있는 묶음을 펼친다.
+  function showSelectedRows(t: Team) {
+    let model = listModel(t);
+    const shown = new Set(model.groups.flatMap(group => group.visibleRows.map(row => row.entry.key)));
+    if ([...selection[t]].some(key => !shown.has(key))) {
+      query[t] = '';
+      changedOnly[t] = false;
+      model = listModel(t);
+    }
+    for (const group of model.groups)
+      if (group.visibleRows.some(row => selection[t].has(row.entry.key))) expanded[t].add(group.key);
+  }
+
+  // 고른 제외 프레임 중 아직 제외 설정에 남은 것(관리에서 해제했으면 빠진다).
+  function excludedPicked(): string[] {
+    return state ? excludedPick.filter(id => state!.exclusions.get(id)?.active) : [];
+  }
+
   function renderDetail() {
     if (team() !== 'UI' || currentNew() || !listTabOpen()) {
       leaveDescription();
@@ -1555,6 +1577,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (tab === 'ADMIN') { forgetHistoryFold(); renderAdmin(); return; }
     if (team() === 'UI') { forgetHistoryFold(); if (currentNew()) renderNewDetail(); else renderFlipbookDetail(); return; }
     const t = team();
+    // 캔버스에서 제외 프레임만 골랐으면 확인 전후와 관계없이 제외 안내와 해제 버튼을 가운데에 보인다.
+    const picked = excludedPicked();
+    if (picked.length && !selection[t].size) {
+      $('.detail').innerHTML = `<div class="detail-hint excluded-hint"><div><p>${COPY.excludedScreenHint}</p><button data-action="excluded-unexclude">${COPY.uiApp121}</button></div></div>`;
+      return;
+    }
     // 변경사항 확인 전에는 안내 문구만 가운데에 보여 주고 입력은 숨긴다. 고른 배포 화면의 History는 아래에서 볼 수 있다(2026-11-03 사용자 요청).
     if (state && locked(t)) {
       const only = selectedEntries(t).length === 1 ? current() : null;
@@ -2962,6 +2990,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const uiSelectOnly = t === 'UI' && selectedNew === null && editingTitle === null && !addingSection && $('.list').dataset.team === 'UI';
     // 기존 플립북을 고르면 새 플립북 선택과 제목 입력을 닫는다.
     if (t === 'UI') { selectedNew = null; editingTitle = null; addingSection = false; renderFooter(); }
+    else { excludedPick = []; unexcludedNodes.clear(); }
     if (modifiers?.shiftKey && anchor[t]) {
       const visible = listModel(t).groups.flatMap(g => g.rows.map(r => r.entry.key));
       const start = visible.indexOf(anchor[t]!);
@@ -3434,6 +3463,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         break;
       }
       case 'select': if (target.closest('input')) return; select(el.dataset.key!, ev); break;
+      // 캔버스에서 고른 제외 프레임의 제외를 푼다. 신규 후보로 목록에 다시 나오면 그 행을 고른다(아래 'entries').
+      case 'excluded-unexclude': {
+        const ids = excludedPicked();
+        unexcludedNodes = new Set(ids.map(id => state!.exclusions.get(id)!.nodeId));
+        for (const id of ids) admin({ op: 'unexclude', id });
+        break;
+      }
       case 'nav': navigate(el.dataset.target as NavTarget); break;
       case 'nav-suggested': {
         const s = current()?.suggestedScreenId;
@@ -4433,6 +4469,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
           for (const key of selection[t]) if (!entriesFor(t).some(e => e.key === key)) { selection[t].delete(key); cleared = true; }
           if (selected[t] && !selection[t].has(selected[t]!)) selected[t] = [...selection[t]][0] ?? null;
         }
+        // 제외를 푼 프레임이 신규 후보로 돌아오면 그 행을 고르고 보이게 한다.
+        const returned = unexcludedNodes.size ? entries.filter(e => e.frame && unexcludedNodes.has(e.frame.nodeId)).map(e => e.key) : [];
+        if (returned.length) {
+          selection.GUI = new Set(returned);
+          selected.GUI = anchor.GUI = returned[returned.length - 1];
+          if (returned.length === unexcludedNodes.size) { excludedPick = []; unexcludedNodes.clear(); }
+          showSelectedRows('GUI');
+          revealSelection = true;
+          cleared = true;
+        }
         if (tab !== 'ADMIN') { renderList(); renderFooter(); if (cleared) renderDetail(); else if (estimateChanged) renderDetailKeepingFocus(); else renderValidation(); }
         break;
       }
@@ -4489,7 +4535,25 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         break;
       case 'canvasSelection': {
         // 실행한 명령과 다른 목록의 선택으로는 화면을 바꾸지 않는다.
-        if (!msg.entryKeys.length || !state || msg.team !== mode) break;
+        if (!state || msg.team !== mode) break;
+        if (!msg.entryKeys.length) {
+          // 목록에 없는 제외 프레임만 골랐으면 목록 선택을 풀고 상세에 제외 안내를 보인다. 안내를 보던 중 다른 곳을 고르면 안내를 거둔다.
+          if (msg.team !== 'GUI' || (!msg.excludedIds.length && !excludedPick.length)) break;
+          excludedPick = msg.excludedIds;
+          unexcludedNodes.clear();
+          if (!excludedPick.length) { if (tab === 'GUI' && listTabOpen()) renderDetail(); break; }
+          const fromAdmin = tab === 'ADMIN';
+          tab = 'GUI';
+          selection.GUI = new Set();
+          selected.GUI = null;
+          addMode = null;
+          editMode = null;
+          if (fromAdmin) { renderAll(); break; }
+          if (!listTabOpen()) break;
+          renderTabs(); renderToolbar(); renderList(); renderDetail(); renderFooter();
+          break;
+        }
+        if (msg.team === 'GUI') { excludedPick = []; unexcludedNodes.clear(); }
         // 다른 하위 레이어를 골라도 목록에서 가리키는 화면이 같으면 입력 영역을 다시 만들지 않는다.
         if (tab === msg.team && selectedNew === null && !editingTitle && !addingSection && !addMode && !editMode &&
             !query[msg.team] && !changedOnly[msg.team] &&
@@ -4501,15 +4565,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         selection[msg.team] = new Set(msg.entryKeys);
         selected[msg.team] = msg.lastKey;
         anchor[msg.team] = msg.lastKey;
-        let selectionModel = listModel(msg.team);
-        const shown = new Set(selectionModel.groups.flatMap(group => group.visibleRows.map(row => row.entry.key)));
-        if (msg.entryKeys.some(key => !shown.has(key))) {
-          query[msg.team] = '';
-          changedOnly[msg.team] = false;
-          selectionModel = listModel(msg.team);
-        }
-        for (const group of selectionModel.groups)
-          if (group.visibleRows.some(row => selection[msg.team].has(row.entry.key))) expanded[msg.team].add(group.key);
+        showSelectedRows(msg.team);
         addMode = null;
         editMode = null;
         // 관리에서 나오면 화면 틀(관리 전용 배치, 텍스트·플로우·PDF·붙이기 탭)까지 다시 그린다. 일부만 그리면 관리 배치가 남아

@@ -362,6 +362,7 @@ button.link.danger { color: var(--danger); }
 /* 변경사항 확인 전 안내: 오른쪽 영역 가운데 */
 .detail-hint { display: flex; align-items: center; justify-content: center; min-height: 100%; text-align: center; color: var(--muted); line-height: 1.6; }
 .detail-hint b { color: var(--text); }
+.excluded-hint p { margin: 0 0 8px; }
 /* 「비교 전」 화면 안내: 제목 줄 아래 남은 영역의 가운데(2026-11-03 사용자 요청) */
 .detail-main:has(> .entry-hint) { display: flex; flex-direction: column; }
 .detail-main > .entry-hint { flex: 1 0 auto; min-height: 0; }

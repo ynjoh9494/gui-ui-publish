@@ -1247,6 +1247,8 @@ export const COPY = {
   replaceSideOldHint: '목록에서 제외되며 선택한 화면으로 교체됩니다',
   // GUI 배포 아래 줄: 추가 설명 입력란 안내, 작업자 입력(2026-11-03 사용자 요청) — src/ui/app.ts
   commentPlaceholder: '추가 설명 (선택)',
+  // 캔버스에서 제외 설정에 있는 프레임을 골랐을 때 상세 가운데 안내. 아래에 「제외 해제」 버튼(2026-11-05 사용자 요청) — src/ui/app.ts
+  excludedScreenHint: '제외된 화면입니다.',
 } as const;
 
 // 화면·안내·오류 문구. 원본 파일과 행은 추출 당시 위치다.
