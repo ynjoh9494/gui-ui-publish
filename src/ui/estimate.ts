@@ -4,9 +4,10 @@ import { isNotScreen, isOldSide, isPrevious, isUnpublish, mergesInto, type Draft
 import type { State } from '../core/store.ts';
 import { esc } from './html.ts';
 
-function icon(className: string, label: string, body: string): string {
+// focusable: 버튼 안에 두는 아이콘(페이지 머리 등)은 포커스를 받지 않게 false로 준다.
+function icon(className: string, label: string, body: string, focusable = true): string {
   const tooltip = esc(label);
-  return `<span class="estimate-icon ${className}" role="img" tabindex="0" title="${tooltip}" aria-label="${tooltip}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg></span>`;
+  return `<span class="estimate-icon ${className}" role="img"${focusable ? ' tabindex="0"' : ''} title="${tooltip}" aria-label="${tooltip}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg></span>`;
 }
 
 // ── GUI 목록 상태(2026-10-20 사용자 결정) ─────────────────
@@ -72,6 +73,12 @@ export function guiStateBadge(state: State, entry: Entry, draft: Draft | undefin
 export function unlinkedBadge(): string {
   const { tone, body } = GUI_ICON['detected-delete'];
   return icon(`estimate-${tone}`, `${COPY.uiApp235}\n${COPY.uiApp236}`, body);
+}
+
+// 접힌 페이지 머리의 연결 끊김 표시(2026-11-05 사용자 요청). 머리가 버튼이라 포커스를 받지 않는다.
+export function unlinkedGroupBadge(): string {
+  const { tone, body } = GUI_ICON['detected-delete'];
+  return icon(`estimate-${tone} group-unlinked`, COPY.uiApp240, body, false);
 }
 
 export function uiListState(entry: Entry, draft: Draft | undefined): UiListState {

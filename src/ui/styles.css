@@ -480,10 +480,13 @@ button.apply-all { color: var(--brand); }
 .list-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 2px; }
 .list-actions button { white-space: nowrap; }
 .group-head .new-count { color: var(--brand); font-weight: 600; }
-/* UI Flipbook 페이지 머리: 이름 바로 오른쪽에 개수, 맨 오른쪽에 확인이 필요한 플립북 빨간 점(접혀 있을 때) */
+/* UI Flipbook 페이지 머리: 이름 바로 오른쪽에 개수, 맨 오른쪽에 연결 끊김 아이콘·확인이 필요한 플립북 빨간 점(접혀 있을 때) */
 .group-head.flipbook-head .group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .group-head.flipbook-head .count { flex: none; margin-left: 0; }
 .group-head.flipbook-head .group-review { margin-left: auto; }
+/* 접힌 페이지의 연결 끊김 아이콘: 맨 오른쪽(빨간 점이 있으면 그 왼쪽). 머리 높이가 바뀌지 않게 위아래를 줄인다. */
+.group-head.flipbook-head .group-unlinked { margin: -4px 0 -4px auto; }
+.group-head.flipbook-head .group-unlinked + .group-review { margin-left: 0; }
 /* 접기 화살표(▸·▾): 폭을 고정하고 오른쪽 여백을 3px로 줄인다(2026-10-23 사용자 요청). 글자는 8 + 10 + 3 = 21px에서 시작한다. */
 .group-head .caret { flex: none; width: 10px; margin-right: -3px; text-align: center; }
 .create-category-heading .category-chevron { flex: none; width: 10px; margin-right: -2px; text-align: center; }

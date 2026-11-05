@@ -4,7 +4,7 @@ import { headerTab } from './headerTab.ts';
 import { COPY } from '../core/copy.ts';
 import { changeDetected, entryName, ignoreBlock, uiEntries as buildUiEntries, uiEstimate, type Entry, type UiScan } from '../core/compare.ts';
 import type { GuiScreenInfo } from '../core/guiScreens.ts';
-import { guiStateBadge, unlinkedBadge } from './estimate.ts';
+import { guiStateBadge, unlinkedBadge, unlinkedGroupBadge } from './estimate.ts';
 import { placeBubble, startTutorial } from './tutorial.ts';
 import { needsUpdate, type UpdateInfo } from '../core/update.ts';
 import { textEditor } from './textEditor.ts';
@@ -1287,7 +1287,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const made = [...state!.flipbooks.values()].some(fb => fb.status === 'active');
     // 목록 하단: 연결 끊긴 플립북 전체 삭제(두 번 눌러 삭제). 검색·필터와 관계없이 연결이 끊긴 플립북 전체가 대상이다.
     // 한 번 누르면 버튼 글자만 「한 번 더 눌러 삭제하세요」로 바꾼다. 버튼 밖에 안내 줄을 더하지 않아 버튼 위치가 그대로다.
-    const unlinkedCount = uiEntries().filter(e => e.estimate === 'missing').length;
+    const unlinkedKeys = new Set(uiEntries().filter(e => e.estimate === 'missing').map(e => e.key));
+    const unlinkedCount = unlinkedKeys.size;
     if (!unlinkedCount) removeAllArmed = false;
     list.querySelector<HTMLElement>('.unlinked-all')!.innerHTML = unlinkedCount
       ? `<p class="note">${unlinkedBadge()}<span>${COPY.uiApp240} <b>${unlinkedCount}</b>${COPY.uiApp241}</span></p><button class="danger" data-action="remove-all-unlinked" aria-live="polite">${removeAllArmed ? COPY.uiApp242Armed : COPY.uiApp242}</button>`
@@ -1323,11 +1324,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       const open = !!query.UI || pageOpen(pageId);
       // 접힌 페이지에 확인이 필요한 플립북이 있으면 머리 맨 오른쪽에 빨간 점을 둔다(2026-10-22 사용자 요청). 펼치면 행마다 보인다.
       const flagged = !open && all.some(item => !isNewKey(item) && (needsReview(state!, item) || !!state!.flipbooks.get(item)?.deletedAlert));
+      // 접힌 페이지에 연결이 끊긴 플립북이 있으면 빨간 점 왼쪽(행과 같은 순서)에 연결 끊김 아이콘을 둔다(2026-11-05 사용자 요청).
+      const unlinked = !open && all.some(item => unlinkedKeys.has(item));
       const name = pages.find(p => p.id === pageId)?.name ?? sections[0].name;
       return `<div class="group">
         <div class="group-bar"><button class="group-head flipbook-head" data-action="page-group" data-page="${esc(pageId)}" aria-expanded="${open}">
           <span class="caret">${open ? '▾' : '▸'}</span><span class="group-name">${esc(name)}</span>
           <span class="count">${all.length - drafts}${drafts ? ` <b class="new-count" title="${COPY.uiApp333}">+${drafts}</b>` : ''}</span>
+          ${unlinked ? unlinkedGroupBadge() : ''}
           ${flagged ? `<span class="review-dot group-review" role="img" title="${COPY.uiApp192}" aria-label="${COPY.uiApp192}"></span>` : ''}
         </button></div>
         ${open ? sections.map(g => sectionRows(g)).join('') : ''}
