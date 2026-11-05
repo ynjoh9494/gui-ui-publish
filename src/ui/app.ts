@@ -287,8 +287,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   const selected: Record<Team, string | null> = { GUI: null, UI: null };
   const selection: Record<Team, Set<string>> = { GUI: new Set(), UI: new Set() };
   const anchor: Record<Team, string | null> = { GUI: null, UI: null };
-  // 캔버스에서 고른 제외 프레임(제외 ID). 목록 선택이 없을 때 상세 가운데에 제외 안내와 해제 버튼을 보인다(2026-11-05 사용자 요청).
-  // unexcludedNodes: 해제한 프레임. 신규 후보로 목록에 다시 나오면 그 행을 고른다.
+  // 캔버스에서 고른 숨긴 프레임(exclusions ID). 목록 선택이 없을 때 상세 가운데에 숨긴 화면 안내와 「다시 표시」 버튼을 보인다(2026-11-05 사용자 요청).
+  // unexcludedNodes: 다시 표시한 프레임. 신규 후보로 목록에 다시 나오면 그 행을 고른다.
   let excludedPick: string[] = [];
   let unexcludedNodes = new Set<string>();
   let addMode: 'tag' | null = null;

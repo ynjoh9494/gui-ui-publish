@@ -1225,7 +1225,7 @@ try {
   await candidate.locator('[data-action=include]').uncheck();
   await stateIs(target, '변경 감지');
   assert.equal(await target.locator('[data-action=include]').isChecked(), false);
-  // 이미 배포한 화면도 화면이 아님으로 고를 수 있다. 입력란 없이 제외 사유만 받는다.
+  // 이미 배포한 화면도 화면이 아님으로 고를 수 있다. 입력란 없이 숨긴 이유만 받는다.
   await target.click();
   await target.locator('[data-action=include]').check();
   assert.equal(await app.locator('[data-field=disposition][value=modify]').isChecked(), true, '배포한 화면의 기본 등록 방식은 화면 수정');
@@ -1507,7 +1507,7 @@ try {
   await app.locator('[data-action=settings]').click();
   // 관리는 왼쪽 메뉴에서 고른 항목만 오른쪽에 보여 주고, 관리자 메뉴 한 곳에 반영 상태·감사 기록·데이터 초기화를 모은다.
   assert.deepEqual(await app.locator('.admin-group-label').allTextContents(), ['작업 환경', '템플릿', '시스템']);
-  assert.deepEqual(await app.locator('.admin-nav-item').allTextContents(), ['GUI 페이지', '플립북 페이지', '카테고리', '템플릿', '화면 크기', '제외 설정', '자동 관리 페이지', '업데이트', '관리자']);
+  assert.deepEqual(await app.locator('.admin-nav-item').allTextContents(), ['GUI 페이지', '플립북 페이지', '카테고리', '템플릿', '화면 크기', '숨긴 화면', '자동 관리 페이지', '업데이트', '관리자']);
   assert.equal(await app.locator('details[data-form=workers]').count(), 0, '관리에는 작업자 목록이 없다(작업자는 아래 줄에 직접 입력)');
   assert.equal(await app.locator('.admin-nav-item').last().textContent(), '관리자');
   assert.equal(await app.locator('.admin-panels > details[open]').count(), 1, '한 번에 한 항목만 보인다');

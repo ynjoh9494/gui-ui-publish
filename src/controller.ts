@@ -1124,7 +1124,7 @@ export class Controller {
     const lastKey = team === 'GUI'
       ? entryByNode.get(lastId)?.key
       : lastNode?.flipbookId ?? undefined;
-    // 제외 설정에 있는 프레임은 목록에 없으므로 따로 알려, 상세에서 제외된 화면임을 보이고 해제를 받는다(2026-11-05 사용자 요청).
+    // 숨긴 화면(exclusions)의 프레임은 목록에 없으므로 따로 알려, 상세에서 숨긴 화면임을 보이고 다시 표시를 받는다(2026-11-05 사용자 요청).
     const excludedIds = team === 'GUI' ? [...this.store.state.exclusions.values()].filter(e => e.active && selectedIds.has(e.nodeId)).map(e => e.id) : [];
     this.host.post({ type: 'canvasSelection', team, entryKeys: keys, lastKey: lastKey && keys.includes(lastKey) ? lastKey : keys[keys.length - 1] ?? null, excludedIds });
     // UI Flipbook은 캔버스 선택마다 플립북 페이지를 다시 읽지 않는다(캔버스 작업이 느려져서, 2026-10-23 사용자 요청).

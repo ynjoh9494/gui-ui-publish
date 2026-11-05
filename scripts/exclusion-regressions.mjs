@@ -1,5 +1,5 @@
-// 캔버스에서 제외 설정에 있는 프레임을 고르면 목록 선택을 풀고 상세 가운데에 제외 안내와 「제외 해제」를 보인다.
-// 해제하면 그 프레임이 신규 후보로 목록에 돌아와 선택된다(BEHAVIOR.md 「변경사항 확인과 화면 목록」, 2026-11-05 사용자 요청).
+// 캔버스에서 숨긴 화면(관리 → 숨긴 화면)의 프레임을 고르면 목록 선택을 풀고 상세 가운데에 안내와 「다시 표시」를 보인다.
+// 다시 표시하면 그 프레임이 신규 후보로 목록에 돌아와 선택된다(BEHAVIOR.md 「변경사항 확인과 화면 목록」, 2026-11-05 사용자 요청).
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright-core';
 import { pathToFileURL } from 'node:url';
@@ -27,29 +27,29 @@ try {
     .find(f => f.querySelector('span').textContent === n).querySelector('[data-pick-gui]').dataset.pickGui, NAME);
   const other = await page.locator('#tools [data-pick-gui]').first().getAttribute('data-pick-gui');
 
-  // 다른 화면을 고른 상태에서 제외 프레임을 고르면 목록 선택을 풀고 안내를 보인다.
+  // 다른 화면을 고른 상태에서 숨긴 프레임을 고르면 목록 선택을 풀고 안내를 보인다.
   await pick(other);
   await app.locator('.list .row.selected').waitFor();
   await pick(nodeId);
   await app.locator('.excluded-hint [data-action=excluded-unexclude]').waitFor();
-  assert.equal(await app.locator('.list .row.selected').count(), 0, '제외 프레임을 고르면 목록 선택을 푼다');
-  assert.equal(await app.locator('.excluded-hint p').innerText(), '제외된 화면입니다.');
+  assert.equal(await app.locator('.list .row.selected').count(), 0, '숨긴 프레임을 고르면 목록 선택을 푼다');
+  assert.equal(await app.locator('.excluded-hint p').innerText(), '목록에서 숨긴 화면입니다.');
 
   // 목록에 있는 화면을 고르면 안내를 거둔다.
   await pick(other);
   await app.locator('.list .row.selected').waitFor();
-  assert.equal(await app.locator('.excluded-hint').count(), 0, '목록 화면을 고르면 제외 안내를 거둔다');
+  assert.equal(await app.locator('.excluded-hint').count(), 0, '목록 화면을 고르면 안내를 거둔다');
 
-  // 관리를 보던 중에 골라도 목록 화면으로 돌아와 안내를 보이고, 해제하면 신규 후보로 돌아와 선택된다.
+  // 관리를 보던 중에 골라도 목록 화면으로 돌아와 안내를 보이고, 다시 표시하면 신규 후보로 돌아와 선택된다.
   await app.locator('[data-action=settings]').click();
   await page.locator('.admin-nav').waitFor();
   await pick(nodeId);
   await app.locator('.excluded-hint').waitFor();
   await app.locator('[data-action=excluded-unexclude]').click();
   await page.waitForFunction(n => document.querySelector('#app .list .row.selected')?.textContent.includes(n), NAME);
-  assert.equal(await app.locator('.excluded-hint').count(), 0, '해제하면 안내 대신 그 화면을 보인다');
+  assert.equal(await app.locator('.excluded-hint').count(), 0, '다시 표시하면 안내 대신 그 화면을 보인다');
   assert.equal(await app.locator('.list .row.selected').count(), 1);
 
   assert.deepEqual(errors, []);
-  console.log('Exclusion regressions: picking an excluded frame shows the centered notice; unexcluding returns and selects it');
+  console.log('Exclusion regressions: picking a hidden frame shows the centered notice; 다시 표시 returns and selects it');
 } finally { await browser.close(); }
