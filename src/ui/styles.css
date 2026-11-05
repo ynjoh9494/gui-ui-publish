@@ -207,6 +207,7 @@ select { appearance: none; -webkit-appearance: none; padding-right: 22px; backgr
 .change-reason { margin: 8px 0 0; padding: 6px 8px 8px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
 .change-reason h3 { margin: 0 0 4px; padding-bottom: 4px; border-bottom: 1px solid var(--border); color: var(--text); }
 .change-reason > .note { margin: 2px 0 0; }
+.change-reason > .reason-loading { display: flex; align-items: center; gap: 6px; }
 /* 안내 문구(글자·아이콘)는 Figma 경고 색 그대로 쓴다. */
 .change-reason .reason-same { display: flex; align-items: flex-start; gap: 6px; margin: 0 0 4px; color: var(--danger); word-break: keep-all; }
 .change-reason .reason-same svg { flex: none; margin-top: 2px; }

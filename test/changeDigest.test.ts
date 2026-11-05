@@ -213,6 +213,14 @@ test('변경 근거: 근거만 기록할 때와 풀이할 때의 기록이 같�
   assert.notEqual(again.names, first.names);
   assert.deepEqual(again.reason!.renamed.map(l => l.path.join('/')), ['Group 5/Renamed']);
   assert.deepEqual(pathsOf(again.reason!, 'geometry'), ['Group 3/Layer 4']);
+
+  // 미루기: 새로 계산할 근거(근거 채우기, 처음 감지, 이름이 바뀐 감지)는 deferred만, 다시 쓸 수 있는 근거는 그대로 돌려준다.
+  const untouched = () => { throw new Error('미룰 때는 스냅샷을 읽지 않는다'); };
+  assert.deepEqual(changeDigest(baseFp, { baseline: baseFp, stored: '', defer: true }, untouched), { deferred: true });
+  assert.deepEqual(changeDigest(afterFp, { baseline: baseFp, stored: filled.digest, defer: true }, untouched), { deferred: true });
+  assert.equal(changeDigest(afterFp, { baseline: baseFp, stored: filled.digest, previous, defer: true }, () => after).reason, first.reason);
+  assert.deepEqual(changeDigest(afterFp, { baseline: baseFp, stored: filled.digest, previous, defer: true }, () => renamed), { deferred: true });
+  assert.deepEqual(changeDigest(baseFp, { baseline: baseFp, stored: filled.digest, defer: true }, untouched), {});
 });
 
 // 레이어·묶음마다 속성 하나를 바꾸는 방법. 보이는 값이 같은 변경과 다른 변경을 함께 둔다.

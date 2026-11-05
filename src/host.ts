@@ -23,7 +23,8 @@ export interface PasteItem { key: string; code: string; name: string; sourceNode
 export interface FingerprintReader {
   // digest를 주면 core/changeDigest.ts의 changeDigest()가 정한 대로 변경 근거(reason)와 기록할 근거(digest), 레이어 이름 요약값(names)을 함께 돌려준다.
   // withTokens: 교체 제안(core/replaceMatch.ts)에 쓸 화면 내용 토큰 해시를 같은 스냅숏에서 함께 돌려준다.
-  fingerprint(nodeId: string, includeLegacy?: boolean, digest?: DigestRequest, withTokens?: boolean): Promise<{ fingerprint: string | null; legacyFingerprint?: string | null; reason?: ChangeReason; digest?: string; names?: number; tokens?: Uint32Array; error: string | null }>;
+  // digest.defer이면 새로 계산해야 할 근거는 deferred로만 알린다.
+  fingerprint(nodeId: string, includeLegacy?: boolean, digest?: DigestRequest, withTokens?: boolean): Promise<{ fingerprint: string | null; legacyFingerprint?: string | null; reason?: ChangeReason; digest?: string; names?: number; deferred?: boolean; tokens?: Uint32Array; error: string | null }>;
   screenFeatures(nodeId: string, includeLegacy?: boolean): Promise<{ fingerprint: string | null; legacyFingerprint?: string | null; tokens: string[] | null; name?: string; error: string | null }>;
   uiFingerprint(nodeId: string): Promise<{ fingerprint: string | null; error: string | null }>;
 }

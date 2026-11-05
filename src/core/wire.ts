@@ -200,6 +200,8 @@ export type ToMain =
   | { type: 'versionDetail'; pageId: string; screenId: string; nodeId: string }
   // 기존 화면 교체의 변경 사항: 교체하는 항목의 프레임을 교체할 화면의 지난 배포와 비교한다(읽기만 한다).
   | { type: 'replaceReason'; entryKey: string; screenId: string }
+  // 상세에서 고른 변경 감지 화면의 근거가 아직 계산 중이면 그 화면을 먼저 계산한다.
+  | { type: 'needReason'; nodeId: string }
   // 프레임 미리보기 이미지(새 버전 페이지의 기존 원본·새 프레임 비교)
   | { type: 'framePreviews'; nodeIds: string[] }
   // select: 캔버스에서 그 노드를 선택까지 한다(변경 근거의 레이어).
@@ -283,6 +285,8 @@ export type ToUi =
   | { type: 'versionDetail'; pageId: string; screenId: string; nodeId: string; evidence: VersionEvidence | null }
   // same: 교체할 화면의 지난 배포와 같다. reason: 다르면 바뀐 레이어(읽지 못하면 null)
   | { type: 'replaceReason'; entryKey: string; screenId: string; same: boolean; reason: ChangeReason | null }
+  // 변경사항 확인 뒤 계산한 변경 근거. fingerprint는 목록에 보낸 그 프레임의 지문이다(다른 확인 결과에는 적용하지 않는다).
+  | { type: 'changeReason'; nodeId: string; fingerprint: string; reason: ChangeReason }
   | { type: 'framePreviews'; items: { nodeId: string; bytes: Uint8Array | null }[] }
   | { type: 'pages'; pages: PageInfo[]; managedPages?: ManagedPageInfo[] }
   | { type: 'thumbnails'; items: { hash: string; bytes: Uint8Array | null }[] }

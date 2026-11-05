@@ -45,7 +45,8 @@ function seeded(baseline: string, fpVersion = FINGERPRINT_VERSION) {
 // 실제 근거 계산(changeDigest)을 쓰는 가짜 원본 하나. legacyBase를 주면 비교 기준이 그 1 규칙 지문이다.
 function setup(initial = snapshot(), legacyBase?: string) {
   const store = legacyBase ? seeded(legacyBase, LEGACY_FINGERPRINT_VERSION) : seeded(fingerprint(initial));
-  const canvas = { snap: initial };
+  // gate: 확인 뒤 근거 계산(미루지 않는 근거 요청)을 이 약속이 풀릴 때까지 붙잡는다.
+  const canvas: { snap: NodeSnapshot; gate: Promise<void> | null } = { snap: initial, gate: null };
   const posted: ToUi[] = [];
   const selected: string[][] = [];
   const revealed: string[] = [];
@@ -53,6 +54,7 @@ function setup(initial = snapshot(), legacyBase?: string) {
     kv: store.kv, mode: 'GUI', actor, post: (m: ToUi) => posted.push(m), pages: () => [{ id: PAGE, name: '원본' }],
     listFrames: async () => [{ nodeId: '1:1', pageId: PAGE, name: 'Frame 1', width: 1920, height: 1080, screenTag: 'a', fingerprint: null, error: null }],
     fingerprint: async (_id: string, legacy?: boolean, digest?: Parameters<typeof changeDigest>[1]) => {
+      if (digest && !digest.defer && canvas.gate) await canvas.gate;
       const fp = fingerprint(canvas.snap);
       return { fingerprint: fp, ...(legacy ? { legacyFingerprint: `legacy:${fp}` } : {}), ...changeDigest(fp, digest, () => canvas.snap), error: null };
     },
@@ -67,14 +69,25 @@ function setup(initial = snapshot(), legacyBase?: string) {
     renderData: async () => {},
   } as unknown as Host;
   const controller = new Controller(host);
-  const entry = (): Entry => (posted.filter((m): m is Extract<ToUi, { type: 'entries' }> => m.type === 'entries').pop()!.entries.find(e => e.screenId === 'a')!);
-  return { store, canvas, posted, selected, revealed, controller, entry };
+  // UI처럼 마지막 목록에 그 뒤에 온 변경 근거를 붙인다.
+  const entry = (): Entry => {
+    const at = posted.map(m => m.type).lastIndexOf('entries');
+    const listed = (posted[at] as Extract<ToUi, { type: 'entries' }>).entries.find(e => e.screenId === 'a')!;
+    let frame = listed.frame;
+    for (const m of posted.slice(at + 1)) {
+      if (m.type === 'changeReason' && frame && m.nodeId === frame.nodeId && m.fingerprint === frame.fingerprint) frame = { ...frame, reason: m.reason, reasonPending: undefined };
+    }
+    return { ...listed, frame };
+  };
+  // 변경사항 확인과 그 뒤의 근거 계산까지
+  const scan = async () => { await controller.handle({ type: 'scan' }); await controller.reasonsSettled(); };
+  return { store, canvas, posted, selected, revealed, controller, entry, scan };
 }
 
 test('변경 근거: 변경사항 없는 화면은 첫 확인 때 근거를 채우고, 기록 로드에서는 읽지 않는다', async () => {
-  const { store, controller, entry } = setup();
+  const { store, controller, scan, entry } = setup();
   assert.equal(store.kv.get(keys.digest('a')), '');
-  await controller.handle({ type: 'scan' });
+  await scan();
   assert.equal(entry().estimate, 'unchanged');
   assert.equal(digestFingerprint(store.kv.get(keys.digest('a'))), store.state.gui.get('a')![0].fingerprint);
   // 근거 키는 State에 넣지 않고, 읽기 실패로도 보지 않는다.
@@ -84,10 +97,10 @@ test('변경 근거: 변경사항 없는 화면은 첫 확인 때 근거를 채�
 });
 
 test('변경 근거: 변경 감지된 화면에 근거를 보여 주고, 변경 무시하면 그 상태가 새 근거가 된다', async () => {
-  const { store, canvas, controller, entry } = setup();
-  await controller.handle({ type: 'scan' });
+  const { store, canvas, controller, scan, entry } = setup();
+  await scan();
   canvas.snap = snapshot(100.3);
-  await controller.handle({ type: 'scan' });
+  await scan();
   const changed = entry();
   assert.equal(changed.estimate, 'changed');
   const reason = changed.frame!.reason!;
@@ -107,20 +120,20 @@ test('변경 근거: 변경 감지된 화면에 근거를 보여 주고, 변경 
 
   // 다음 변경은 변경 무시한 상태와 비교한다.
   canvas.snap = snapshot(100.3, '홈 화면');
-  await controller.handle({ type: 'scan' });
+  await scan();
   assert.deepEqual(entry().frame!.reason!.groups.map(g => g.group), ['text']);
   assert.equal(entry().frame!.reason!.visible, true);
 });
 
 test('변경 근거: 근거가 없는 비교 기준은 「근거 기록 없음」이고, 사용 안 함이 된 화면의 근거만 지운다', async () => {
-  const { store, canvas, controller, entry } = setup();
+  const { store, canvas, controller, scan, entry } = setup();
   store.put(keys.screen('old'), { ...store.state.screens.get('a')!, id: 'old', code: 'STB_HO_002', status: 'deleted', source: null });
   store.reload();
   store.kv.set(keys.digest('old'), '{}');
   // 기록에 아직 없는 화면(확인하는 동안 다른 작업자가 배포한 화면)의 근거는 그대로 둔다.
   store.kv.set(keys.digest('new'), '{}');
   canvas.snap = snapshot(300);
-  await controller.handle({ type: 'scan' });
+  await scan();
   assert.equal(entry().frame!.reason!.status, 'no-record');
   assert.match(changeReasonSection(entry().frame!.reason), new RegExp(COPY.uiApp386.slice(0, 10)));
   assert.equal(store.kv.get(keys.digest('old')), '');
@@ -128,34 +141,103 @@ test('변경 근거: 근거가 없는 비교 기준은 「근거 기록 없음�
 });
 
 test('변경 근거: 1 규칙 비교 기준과 다른 화면도 「근거 기록 없음」이다', async () => {
-  const { controller, entry } = setup(snapshot(), 'legacy-base');
-  await controller.handle({ type: 'scan' });
+  const { controller, scan, entry } = setup(snapshot(), 'legacy-base');
+  await scan();
   assert.equal(entry().estimate, 'changed');
   assert.equal(entry().frame!.reason!.status, 'no-record');
 });
 
 test('변경 근거: 같은 상태를 다시 확인하면 지난 근거를 다시 쓰고, 레이어 이름이 바뀌면 다시 계산한다', async () => {
-  const { canvas, controller, entry } = setup();
-  await controller.handle({ type: 'scan' });
+  const { canvas, controller, scan, entry } = setup();
+  await scan();
   canvas.snap = snapshot(100.3);
-  await controller.handle({ type: 'scan' });
+  await scan();
   const first = entry().frame!.reason!;
-  await controller.handle({ type: 'scan' });
+  await scan();
   assert.equal(entry().frame!.reason, first, '지문과 레이어 이름·ID가 같으면 계산하지 않는다');
   const renamed = snapshot(100.3);
   renamed.children![1].name = 'Backdrop';
   canvas.snap = renamed;
-  await controller.handle({ type: 'scan' });
+  await scan();
   const again = entry().frame!.reason!;
   assert.notEqual(again, first);
   assert.deepEqual(again.renamed.map(l => l.path.join('/')), ['Backdrop']);
   assert.deepEqual(again.groups.find(g => g.group === 'geometry')?.layers.map(l => l.layer.path.join('/')), ['Title']);
 });
 
-test('변경 근거: 배포 확정은 확정한 지문과 같은 상태의 근거를 기록한다', async () => {
-  const { store, canvas, posted, controller, entry } = setup();
-  canvas.snap = snapshot(400);
+function held(canvas: { gate: Promise<void> | null }): () => void {
+  let release!: () => void;
+  canvas.gate = new Promise<void>(resolve => { release = resolve; });
+  return () => { canvas.gate = null; release(); };
+}
+
+test('변경 근거: 확인은 지문 비교로 끝내고, 근거는 목록을 보낸 뒤 계산한다', async () => {
+  const { store, canvas, posted, controller, scan, entry } = setup();
+  await scan();
+  canvas.snap = snapshot(100.3);
+  const release = held(canvas);
   await controller.handle({ type: 'scan' });
+  const done = posted.map(m => m.type === 'scanStatus' && m.status === 'done').lastIndexOf(true);
+  assert.ok(done >= 0);
+  assert.equal(entry().estimate, 'changed');
+  assert.equal(entry().frame!.reasonPending, true);
+  assert.equal(entry().frame!.reason, undefined);
+  // 상세에서 고른 화면을 먼저 계산하라는 요청은 받기만 한다.
+  await controller.handle({ type: 'needReason', nodeId: '1:1' });
+  release();
+  await controller.reasonsSettled();
+  assert.ok(posted.slice(done).some(m => m.type === 'changeReason'));
+  assert.equal(entry().frame!.reason!.status, 'complete');
+  assert.deepEqual(entry().frame!.reason!.groups.map(g => g.group), ['geometry']);
+  // 변경 감지된 화면의 근거는 기록하지 않는다(변경 무시·배포 때 기록한다).
+  assert.equal(digestFingerprint(store.kv.get(keys.digest('a'))), fingerprint(snapshot()));
+});
+
+test('변경 근거: 근거 채우기도 확인 뒤에 한다', async () => {
+  const { store, canvas, controller, entry } = setup();
+  const release = held(canvas);
+  await controller.handle({ type: 'scan' });
+  assert.equal(entry().estimate, 'unchanged');
+  assert.equal(entry().frame!.reasonPending, undefined);
+  assert.equal(store.kv.get(keys.digest('a')), '');
+  release();
+  await controller.reasonsSettled();
+  assert.equal(digestFingerprint(store.kv.get(keys.digest('a'))), fingerprint(snapshot()));
+});
+
+test('변경 근거: 확인 뒤 화면이 바뀌면 바뀐 레이어를 찾지 못한 것으로 보여 준다', async () => {
+  const { store, canvas, controller, scan, entry } = setup();
+  await scan();
+  canvas.snap = snapshot(300);
+  const release = held(canvas);
+  await controller.handle({ type: 'scan' });
+  canvas.snap = snapshot(500);
+  release();
+  await controller.reasonsSettled();
+  assert.equal(entry().frame!.reason!.status, 'unknown');
+  assert.equal(digestFingerprint(store.kv.get(keys.digest('a'))), fingerprint(snapshot()));
+});
+
+test('변경 근거: 근거를 계산하기 전에 변경 무시하면 그때 계산해 기록한다', async () => {
+  const { store, canvas, controller, scan, entry } = setup();
+  await scan();
+  canvas.snap = snapshot(100.3);
+  const release = held(canvas);
+  await controller.handle({ type: 'scan' });
+  const key = entry().key;
+  const ignoring = controller.handle({ type: 'ignoreChanges', entryKeys: [key] });
+  release();
+  await ignoring;
+  await controller.reasonsSettled();
+  assert.equal(entry().estimate, 'unchanged');
+  assert.equal(entry().frame!.reasonPending, undefined);
+  assert.equal(digestFingerprint(store.kv.get(keys.digest('a'))), fingerprint(snapshot(100.3)));
+});
+
+test('변경 근거: 배포 확정은 확정한 지문과 같은 상태의 근거를 기록한다', async () => {
+  const { store, canvas, posted, controller, scan, entry } = setup();
+  canvas.snap = snapshot(400);
+  await scan();
   const changed = entry();
   const [classified] = classify(controller.store.state, [changed.frame!]);
   await controller.handle({ type: 'prepare', team: 'GUI', drafts: { [changed.key]: { ...defaultDraft('GUI', controller.store.state, classified), included: true, tagId: 't' } } });

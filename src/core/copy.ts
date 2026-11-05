@@ -525,6 +525,7 @@ export const COPY = {
   uiApp419: '제안',
   uiApp421: '교체할 화면의 지난 배포와 같습니다.',
   uiApp422: '교체할 화면의 지난 배포와 비교하는 중입니다.',
+  uiApp423: '바뀐 레이어를 찾는 중입니다.',
   // 튜토리얼 — src/ui/tutorial.ts. 단계마다 말풍선 제목·설명 순서다.
   uiTutorial001: '도움말',
   uiTutorial002: '튜토리얼 종료',

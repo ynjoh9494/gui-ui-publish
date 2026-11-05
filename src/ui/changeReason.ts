@@ -33,6 +33,11 @@ function line(kind: string, layer: LayerRef | null, why = '', count = ''): strin
 }
 
 // 「변경 사항」 상자에 안내 한 줄만 보여 준다(기존 화면 교체가 지난 배포와 같을 때, 비교 중일 때).
+// 근거를 확인 뒤에 계산하는 동안 보여 준다.
+export function changeReasonLoading(): string {
+  return `<section class="change-reason"><h3>${esc(COPY.uiApp361)}</h3><p class="note reason-loading" role="status"><span class="spinner" aria-hidden="true"></span><span>${esc(COPY.uiApp423)}</span></p></section>`;
+}
+
 export function changeReasonNote(text: string): string {
   return `<section class="change-reason"><h3>${esc(COPY.uiApp361)}</h3><p class="note">${esc(text)}</p></section>`;
 }

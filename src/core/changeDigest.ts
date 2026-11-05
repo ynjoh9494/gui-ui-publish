@@ -363,7 +363,8 @@ export interface GroupChange {
 export interface ChangeReason {
   // complete: 차이를 모두 풀었다. partial: 차이가 많아 일부 레이어만 풀었다(묶음 판정은 정확하다).
   // no-record: 비교 기준의 근거가 없다(이 기능 전의 배포, 다른 버전의 플러그인, 기록 실패).
-  // unknown: 지문은 다른데 근거에서 차이를 찾지 못했다(묶음 표가 수집 속성을 모두 덮으면 생기지 않는다), 또는 근거를 만들지 못했다.
+  // unknown: 지문은 다른데 근거에서 차이를 찾지 못했다(묶음 표가 수집 속성을 모두 덮으면 생기지 않는다), 또는 근거를 만들지 못했다
+  // (미룬 근거를 계산하려고 다시 읽었을 때 확인 뒤 화면이 바뀌었거나 읽지 못한 경우 포함).
   status: 'complete' | 'partial' | 'no-record' | 'unknown';
   // 보이는 값이 바뀌었을 수 있다. false면 다른 속성이 모두 짝 기준으로 같다.
   visible: boolean;
@@ -379,24 +380,28 @@ export interface PreviousReason { fingerprint: string; names: number; reason: Ch
 
 // baseline: 지금 비교 기준의 지문(정규화 버전이 현재와 같을 때만). stored: 저장된 근거. always: 배포 확정처럼 늘 기록할 근거를 만든다.
 // previous: 같은 비교 기준·저장 근거로 지난번에 만든 근거. 지문과 레이어 이름·ID가 그대로면 다시 계산하지 않고 그대로 돌려준다.
-export interface DigestRequest { baseline?: string | null; stored?: string | null; always?: boolean; previous?: PreviousReason }
+// defer: 근거를 새로 계산해야 하면 계산하지 않고 deferred만 돌려준다. 변경사항 확인은 지문 비교를 먼저 끝내 목록을 보여 주고,
+// 미룬 화면은 그 뒤에 다시 읽어 계산한다. 지난 근거를 다시 쓸 수 있으면(레이어 이름 요약값만 계산) 미루지 않는다.
+export interface DigestRequest { baseline?: string | null; stored?: string | null; always?: boolean; previous?: PreviousReason; defer?: boolean }
 
 // 지문을 계산한 뒤 근거가 필요한지 정하고 만든다. 기준과 같고 근거가 맞으면 아무것도 하지 않는다(대부분의 화면).
 // 기준과 다르면 reason과 「변경 무시」 때 기록할 digest, 다음 확인에서 previous로 넘길 names를 돌려준다.
 // 기준과 같은데 근거가 없거나 맞지 않으면 채울 digest만 돌려준다.
 // named는 레이어 이름·ID를 붙인 스냅샷으로, 근거를 만들 때만 부른다. 근거를 만들지 못해도(레이어 읽기 실패 등) 지문 비교는
 // 그대로 쓰고, 기준과 다른 화면은 「바뀐 레이어를 찾지 못함」으로 보인다.
-export function changeDigest(fingerprint: string, request: DigestRequest | undefined, named: () => NodeSnapshot): { reason?: ChangeReason; digest?: string; names?: number } {
+export function changeDigest(fingerprint: string, request: DigestRequest | undefined, named: () => NodeSnapshot): { reason?: ChangeReason; digest?: string; names?: number; deferred?: boolean } {
   if (!request) return {};
   const changed = !!request.baseline && fingerprint !== request.baseline;
   const missing = request.baseline === fingerprint && digestFingerprint(request.stored) !== fingerprint;
   if (!request.always && !changed && !missing) return {};
+  const previous = request.previous;
+  if (request.defer && !(changed && previous?.fingerprint === fingerprint)) return { deferred: true };
   try {
     const snapshot = named();
     if (!changed) return { digest: encodeDigest(summarize(snapshot, fingerprint, null)) };
     const names = namesOf(snapshot);
-    const previous = request.previous;
     if (previous && previous.fingerprint === fingerprint && previous.names === names) return { reason: previous.reason, digest: previous.digest, names };
+    if (request.defer) return { deferred: true };
     const current = digestOf(snapshot, fingerprint);
     return { reason: explainChange(request.stored, request.baseline!, current), digest: encodeDigest(current), names };
   } catch {
@@ -405,7 +410,7 @@ export function changeDigest(fingerprint: string, request: DigestRequest | undef
 }
 
 export const NO_RECORD: ChangeReason = { status: 'no-record', visible: true, groups: [], added: [], renamed: [], removed: 0 };
-const UNKNOWN: ChangeReason = { ...NO_RECORD, status: 'unknown' };
+export const UNKNOWN: ChangeReason = { ...NO_RECORD, status: 'unknown' };
 
 export function explainChange(stored: string | null | undefined, baseline: string, current: CurrentDigest): ChangeReason {
   const base = decodeDigest(stored);

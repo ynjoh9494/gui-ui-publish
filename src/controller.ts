@@ -1,4 +1,4 @@
-import { digestFingerprint, NO_RECORD, type ChangeReason, type DigestRequest, type PreviousReason } from './core/changeDigest.ts';
+import { digestFingerprint, NO_RECORD, UNKNOWN, type ChangeReason, type DigestRequest, type PreviousReason } from './core/changeDigest.ts';
 import { flipbookIdentity, unsavedPolicy, unsavedPolicyIds, withFlipbookId } from './core/flipbookIdentity.ts';
 import { COPY } from './core/copy.ts';
 import { planExistingFlipbooks } from './core/registerFlipbooks.ts';
@@ -48,7 +48,7 @@ function yielder(): () => Promise<void> {
 }
 // 다시 읽은 원본 목록에 앞서 계산한 지문·변경 근거를 이어 쓴다.
 function carried(frame: ScannedFrame, before: ScannedFrame): ScannedFrame {
-  return { ...frame, fingerprint: before.fingerprint, legacyFingerprint: before.legacyFingerprint, reason: before.reason, error: before.error };
+  return { ...frame, fingerprint: before.fingerprint, legacyFingerprint: before.legacyFingerprint, reason: before.reason, reasonPending: before.reasonPending, error: before.error };
 }
 const DATA_OPS = new Set<AdminOp['op']>(['renameCategory', 'updateCategory', 'setCategoryActive', 'setCategoryCode', 'reorderCategories', 'setScreenIdPrefix', 'renumberScreenIds', 'setScreenCategory', 'setCaseRelation', 'correctRecord', 'setDataPage']);
 // 오래 걸리는 요청. 처리하는 동안 UI에 진행 표시를 띄우고 중복 조작을 막는다.
@@ -119,6 +119,14 @@ export class Controller {
   // 원본 노드 ID → 변경 감지된 화면의 지난 근거와 그때의 비교 기준·저장 근거. 둘이 그대로면 다음 확인에서 previous로 넘겨
   // 지문과 레이어 이름이 같을 때 다시 계산하지 않는다.
   private reasons = new Map<string, { baseline: string; stored: string; previous: PreviousReason }>();
+  // 원본 노드 ID → 확인 뒤에 계산할 변경 근거. 변경사항 확인은 지문 비교만 끝내고 목록을 보여 준 뒤, 이 화면들을 다시 읽어
+  // 근거를 계산한다(변경 감지된 화면 먼저, 상세에서 고른 화면은 그보다 먼저). fingerprint: 확인 때의 지문
+  private pendingDigests = new Map<string, { screenId: string; baseline: string; stored: string; fingerprint: string; changed: boolean }>();
+  // 확인을 다시 시작하거나 기록을 지우면 올려, 진행 중인 근거 계산을 멈춘다.
+  private digestSeq = 0;
+  private digestReader: FingerprintReader | null = null;
+  private digestFirst: string | null = null;
+  private digestRun: Promise<void> = Promise.resolve();
   // 새 버전 페이지 비교 결과. 전환은 이 결과의 프레임만 연결하고, 계산한 지문을 그대로 원본 목록으로 쓴다.
   // sources·common: 유사도 근거를 제안 때와 같은 규칙으로 다시 계산하는 데 쓴다.
   private version: { pageId: string; frames: VersionFrame[]; scanned: ScannedFrame[]; sources: Map<string, string[]>; common: Set<string> } | null = null;
@@ -188,7 +196,7 @@ export class Controller {
         case 'scanUi': await this.scanUi(); break;
         case 'scanSelected': await (msg.team === 'GUI' ? this.scanSelectedGui(msg.entryKeys) : this.scanSelectedUi(msg.entryKeys)); break;
         case 'cancelScan': this.cancelScan(msg.team); break;
-        case 'ignoreChanges': this.ignoreChanges(msg.entryKeys); break;
+        case 'ignoreChanges': await this.ignoreChanges(msg.entryKeys); break;
         case 'navigate': await this.navigate(msg.nav, msg.entryKey, msg.target); break;
         case 'selectFrames': await this.selectFrames(msg.nav, msg.team, msg.entryKeys, msg.lastKey); break;
         case 'prepare': await this.prepare(msg.team, msg.drafts, msg.comment); break;
@@ -252,6 +260,7 @@ export class Controller {
         case 'matchVersion': await this.matchVersion(msg.pageId); break;
         case 'switchVersion': await this.switchVersion(msg.pageId, msg.links); break;
         case 'replaceReason': await this.replaceReason(msg.entryKey, msg.screenId); break;
+        case 'needReason': this.digestFirst = msg.nodeId; break;
         case 'versionDetail': {
           const v = this.version;
           if (!v || v.pageId !== msg.pageId) break;
@@ -501,16 +510,19 @@ export class Controller {
   }
 
   // 지문과 함께 변경 근거를 읽는다. 저장된 근거는 배포 화면을 읽을 때만 꺼내고, 계산 여부는 core/changeDigest.ts의 changeDigest()가 정한다.
-  // fresh: 1 규칙 지문도 계산할 신규 프레임(legacyFresh)
-  private async readFrame(reader: FingerprintReader, frame: ScannedFrame, legacy: Map<string, string>, targets: Map<string, { screenId: string; baseline: string }>, fresh = new Set<string>()): Promise<ScannedFrame> {
+  // fresh: 1 규칙 지문도 계산할 신규 프레임(legacyFresh). defer: 새로 계산할 근거는 확인 뒤로 미룬다(startDigests).
+  private async readFrame(reader: FingerprintReader, frame: ScannedFrame, legacy: Map<string, string>, targets: Map<string, { screenId: string; baseline: string }>, fresh = new Set<string>(), defer = false): Promise<ScannedFrame> {
     const nodeId = frame.nodeId;
     const target = targets.get(nodeId);
     const stored = target ? this.store.kv.get(keys.digest(target.screenId)) : '';
     const last = this.reasons.get(nodeId);
     const request: DigestRequest | undefined = target
-      ? { baseline: target.baseline, stored, previous: last && last.baseline === target.baseline && last.stored === stored ? last.previous : undefined }
+      ? { baseline: target.baseline, stored, previous: last && last.baseline === target.baseline && last.stored === stored ? last.previous : undefined, defer }
       : undefined;
-    const { digest, names, tokens, ...result } = await reader.fingerprint(nodeId, legacy.has(nodeId) || fresh.has(nodeId), request, true);
+    const { digest, names, tokens, deferred, ...result } = await reader.fingerprint(nodeId, legacy.has(nodeId) || fresh.has(nodeId), request, true);
+    const changed = !!target && !!result.fingerprint && result.fingerprint !== target.baseline;
+    if (deferred && target && result.fingerprint) this.pendingDigests.set(nodeId, { ...target, stored, fingerprint: result.fingerprint, changed });
+    else this.pendingDigests.delete(nodeId);
     if (tokens) this.tokens.set(nodeId, tokens);
     else this.tokens.delete(nodeId);
     if (digest) this.digests.set(nodeId, digest);
@@ -521,7 +533,60 @@ export class Controller {
     // 1 규칙 비교 기준(변경 근거를 남기기 전의 배포)과 다르면 바뀐 레이어를 알 수 없다.
     const legacyBase = legacy.get(nodeId);
     const reason = result.reason ?? (legacyBase && result.legacyFingerprint && result.legacyFingerprint !== legacyBase ? NO_RECORD : undefined);
-    return { ...frame, ...result, reason };
+    return { ...frame, ...result, reason, reasonPending: deferred && changed ? true : undefined };
+  }
+
+  // 확인 뒤 근거 계산을 멈춘다. 남은 화면은 다음 확인이 다시 정한다.
+  private stopDigests(): void {
+    this.digestSeq++;
+    this.pendingDigests.clear();
+    this.digestFirst = null;
+  }
+
+  // 미룬 근거를 차례로 계산한다. 확인은 이미 끝났으므로 배포·변경 무시를 막지 않는다. 다 계산하면 근거 채우기를 기록한다.
+  private startDigests(reader: FingerprintReader): void {
+    const seq = ++this.digestSeq;
+    this.digestReader = reader;
+    this.digestRun = (async () => {
+      const pause = yielder();
+      while (seq === this.digestSeq && this.pendingDigests.size) {
+        await this.computeDigest(reader, this.nextDigest());
+        await pause();
+      }
+      if (seq === this.digestSeq) this.recordDigests();
+    })().catch(() => { /* 근거만 남지 않는다. 화면은 다음 확인에서 다시 계산한다 */ });
+  }
+
+  // 상세에서 고른 화면, 변경 감지된 화면, 근거 채우기 순서
+  private nextDigest(): string {
+    if (this.digestFirst && this.pendingDigests.has(this.digestFirst)) return this.digestFirst;
+    for (const [nodeId, item] of this.pendingDigests) if (item.changed) return nodeId;
+    return this.pendingDigests.keys().next().value!;
+  }
+
+  // 미룬 근거 하나를 계산한다. 원본을 다시 읽으므로, 확인 뒤 화면이 바뀌었거나 읽지 못하면 바뀐 레이어를 찾지 못한 것으로 보여 준다.
+  // 계산하는 동안 다른 확인·변경 무시가 그 화면을 맡았으면(대기 항목이 바뀌었으면) 결과를 버린다.
+  private async computeDigest(reader: FingerprintReader, nodeId: string): Promise<void> {
+    const item = this.pendingDigests.get(nodeId);
+    if (!item) return;
+    const result = await reader.fingerprint(nodeId, false, { baseline: item.baseline, stored: item.stored });
+    if (this.pendingDigests.get(nodeId) !== item) return;
+    this.pendingDigests.delete(nodeId);
+    const i = this.frames.findIndex(f => f.nodeId === nodeId);
+    if (i < 0) return;
+    const same = !!result.fingerprint && result.fingerprint === item.fingerprint && this.frames[i].fingerprint === item.fingerprint;
+    if (same && result.digest) this.digests.set(nodeId, result.digest);
+    if (!item.changed) return;
+    if (same && result.reason && result.digest && result.names !== undefined)
+      this.reasons.set(nodeId, { baseline: item.baseline, stored: item.stored, previous: { fingerprint: item.fingerprint, names: result.names, reason: result.reason, digest: result.digest } });
+    const reason = same && result.reason ? result.reason : UNKNOWN;
+    this.frames[i] = { ...this.frames[i], reason, reasonPending: undefined };
+    this.host.post({ type: 'changeReason', nodeId, fingerprint: item.fingerprint, reason });
+  }
+
+  // 미룬 근거 계산이 끝날 때까지 기다린다(테스트).
+  async reasonsSettled(): Promise<void> {
+    await this.digestRun;
   }
 
   // 변경사항 없음으로 확인된 화면에 근거가 없거나 기준과 맞지 않으면 지금 상태로 채운다. 판정을 바꾸지 않는 기록이라
@@ -558,6 +623,7 @@ export class Controller {
     this.selectedScan.GUI = false;
     this.checkedAt = null;
     this.partialAt = null;
+    this.stopDigests();
     this.store.reload();
     const legacy = this.legacySources();
     const targets = this.digestTargets();
@@ -583,7 +649,7 @@ export class Controller {
     // 확인하는 동안에는 진행 표시만 바꾸고 목록은 끝났을 때 한 번 보낸다(2026-11-04 사용자 결정: 확인 중 목록 갱신 불필요).
     const pause = yielder();
     for (let i = 0; i < frames.length; i++) {
-      const frame = await this.readFrame(reader, frames[i], legacy, targets, fresh);
+      const frame = await this.readFrame(reader, frames[i], legacy, targets, fresh, true);
       await pause();
       if (seq !== this.scanSeq) return;
       this.frames[i] = frame;
@@ -601,6 +667,7 @@ export class Controller {
     this.findReplacements();
     this.postEntries();
     this.scanStatus('GUI', 'done', frames.length, frames.length);
+    this.startDigests(reader);
   }
 
   // 변경사항 확인(UI): 아직 반영하지 않은 GUI 갱신을 모든 플립북에 반영한 뒤,
@@ -734,6 +801,8 @@ export class Controller {
   async scanSelectedGui(entryKeys: string[]): Promise<void> {
     const seq = ++this.scanSeq;
     this.selectedScan.GUI = true;
+    // 진행 중인 근거 계산은 멈추고, 다시 읽지 않는 화면의 대기 항목은 끝난 뒤 이어서 계산한다.
+    this.digestSeq++;
     this.store.reload();
     const legacy = this.legacySources();
     const targets = this.digestTargets();
@@ -754,6 +823,8 @@ export class Controller {
       const before = known.get(f.nodeId);
       return before && !wanted.has(f.nodeId) ? carried(f, before) : f;
     });
+    const listed = new Set(frames.map(f => f.nodeId));
+    for (const nodeId of this.pendingDigests.keys()) if (wanted.has(nodeId) || !listed.has(nodeId)) this.pendingDigests.delete(nodeId);
     this.framesLoaded = true;
     this.postEntries();
     const indexes = this.frames.map((f, i) => (wanted.has(f.nodeId) ? i : -1)).filter(i => i >= 0);
@@ -761,7 +832,7 @@ export class Controller {
     this.scanStatus('GUI', 'comparing', 0, indexes.length);
     const pause = yielder();
     for (const [n, i] of indexes.entries()) {
-      const frame = await this.readFrame(reader, this.frames[i], legacy, targets, fresh);
+      const frame = await this.readFrame(reader, this.frames[i], legacy, targets, fresh, true);
       await pause();
       if (seq !== this.scanSeq) return;
       this.frames[i] = frame;
@@ -779,6 +850,7 @@ export class Controller {
     this.findReplacements();
     this.postEntries();
     this.scanStatus('GUI', 'done', indexes.length, indexes.length);
+    this.startDigests(reader);
   }
 
   // 선택 화면 확인(UI): 플립북 목록은 다시 읽고 고른 플립북의 UI 작성 영역만 비교한다. GUI 갱신은 전체 확인에서 반영한다.
@@ -1319,9 +1391,15 @@ export class Controller {
   }
 
   // 변경 무시: 변경 감지된 화면의 현재 지문을 비교 기준으로 바로 저장한다. 프레임 이름·카테고리가 바뀐 화면은 무시할 수 없다.
-  private ignoreChanges(entryKeys: string[]): void {
-    this.store.reload();
+  private async ignoreChanges(entryKeys: string[]): Promise<void> {
     const wanted = new Set(entryKeys);
+    // 무시한 상태가 새 비교 기준이 되므로, 아직 계산하지 않은 근거는 지금 계산해 함께 기록한다.
+    const reader = this.digestReader ?? this.host.createFingerprintReader?.() ?? this.host;
+    for (const entry of this.entries) {
+      const nodeId = entry.frame?.nodeId;
+      if (wanted.has(entry.key) && nodeId && this.pendingDigests.has(nodeId)) await this.computeDigest(reader, nodeId);
+    }
+    this.store.reload();
     const blocked: string[] = [];
     let done = 0;
     for (const entry of this.entries) {
@@ -1333,7 +1411,7 @@ export class Controller {
       const nodeId = entry.frame.nodeId;
       const digest = this.digests.get(nodeId);
       if (digest && digestFingerprint(digest) === entry.frame.fingerprint) this.store.kv.set(keys.digest(entry.screenId), digest);
-      this.frames = this.frames.map(f => f.nodeId === nodeId ? { ...f, reason: undefined } : f);
+      this.frames = this.frames.map(f => f.nodeId === nodeId ? { ...f, reason: undefined, reasonPending: undefined } : f);
       done++;
     }
     this.store.reload();
@@ -1695,6 +1773,7 @@ export class Controller {
     for (const key of keys) this.store.kv.set(key, '');
     this.frames = [];
     this.framesLoaded = false;
+    this.stopDigests();
     this.reasons.clear();
     this.clearReplacements();
     this.checkedAt = null;

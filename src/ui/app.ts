@@ -15,7 +15,7 @@ import { flowView } from './flowView.ts';
 import { pasteView } from './pasteView.ts';
 import { trackListView } from './trackListView.ts';
 import { pdfView } from './pdfView.ts';
-import { changeReasonNote, changeReasonSection, REASON_PAGE } from './changeReason.ts';
+import { changeReasonLoading, changeReasonNote, changeReasonSection, REASON_PAGE } from './changeReason.ts';
 import type { ChangeReason } from '../core/changeDigest.ts';
 import { esc } from './html.ts';
 import { NODE_PREVIEW, PreviewCache } from './previewCache.ts';
@@ -359,6 +359,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   // 기존 화면 교체의 변경 사항. 키: 항목 키|교체할 화면 ID|프레임 지문, 값: 받은 결과(요청 중이면 null). 목록을 다시 받으면 비운다.
   const replaceReasons = new Map<string, { same: boolean; reason: ChangeReason | null } | null>();
   const replaceReasonKey = (entry: Entry, screenId: string) => `${entry.key}|${screenId}|${entry.frame?.fingerprint ?? ''}`;
+  // 근거를 먼저 계산해 달라고 요청한 프레임(노드 ID|지문). 같은 상태로 다시 그릴 때 거듭 요청하지 않는다.
+  const reasonAsked = new Set<string>();
   let versionPageId = '';
   let versionMatch: VersionMatchView | null = null;
   let versionChoice = new Map<string, string>();
@@ -1515,6 +1517,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (got.same) return changeReasonNote(COPY.uiApp421);
     return changeReasonSection(got.reason ?? undefined, reasonShown?.count ?? 0);
   }
+  // 변경 감지된 화면의 근거. 확인 뒤에 계산 중이면 로딩을 보여 주고 그 화면을 먼저 계산하게 한다.
+  function detectedReasonSection(entry: Entry): string {
+    const frame = entry.frame;
+    if (!frame?.reasonPending) return changeReasonSection(frame?.reason, reasonShown?.count ?? 0);
+    const key = `${frame.nodeId}|${frame.fingerprint ?? ''}`;
+    if (!reasonAsked.has(key)) { reasonAsked.add(key); bridge.send({ type: 'needReason', nodeId: frame.nodeId }); }
+    return changeReasonLoading();
+  }
   // 상세 패널의 「변경 사항」에 쓰는 근거: 기존 화면 교체는 교체할 화면과 비교한 결과, 그 밖에는 지난 배포와 비교한 결과
   function shownReason(entry: Entry): ChangeReason | undefined {
     const draft = drafts.GUI[entry.key];
@@ -1572,7 +1582,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     // 기존 화면 교체(제안 포함)는 이 프레임을 교체할 화면의 지난 배포와 비교한 변경 사항을 보여 준다(2026-11-02 사용자 요청).
     const replacing = t === 'GUI' && !multi && entry.frame ? replaceTarget(entry, draft) : null;
     if (replacing) html += replaceReasonSection(entry, replacing);
-    else if (t === 'GUI' && !multi && entry.estimate === 'changed' && changeDetected(entry)) html += changeReasonSection(entry.frame?.reason, reasonShown?.count ?? 0);
+    else if (t === 'GUI' && !multi && entry.estimate === 'changed' && changeDetected(entry)) html += detectedReasonSection(entry);
     // 변경 감지: 배포 토글 위에 「변경 무시」. 프레임 이름·카테고리가 바뀐 화면은 무시할 수 없다.
     // 배포를 켜 수정됨·이전 버전으로 정해진 화면은 변경 상태가 해결되었으므로 누를 수 없다.
     if (t === 'GUI' && chosen.every(e => changeDetected(e))) {
@@ -4558,6 +4568,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         clearNodePreviews();
         closeVersion();
         break;
+      case 'changeReason': {
+        const entry = entries.find(e => e.frame?.nodeId === msg.nodeId && e.frame.fingerprint === msg.fingerprint);
+        if (!entry?.frame) break;
+        entry.frame = { ...entry.frame, reason: msg.reason, reasonPending: undefined };
+        if (tab === 'GUI' && current()?.key === entry.key) renderDetailKeepingFocus();
+        break;
+      }
       case 'replaceReason': {
         const entry = entries.find(e => e.key === msg.entryKey);
         if (!entry) break;

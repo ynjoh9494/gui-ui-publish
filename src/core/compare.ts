@@ -21,6 +21,8 @@ export interface ScannedFrame {
   legacyFingerprint?: string | null;
   // 비교 기준과 지문이 다를 때 어느 레이어의 어떤 속성 묶음이 다른지(core/changeDigest.ts)
   reason?: ChangeReason;
+  // 변경 감지됐고 근거를 확인 뒤에 계산하는 중이다. 계산하면 reason과 함께 지운다.
+  reasonPending?: boolean;
   error: string | null;
 }
 
