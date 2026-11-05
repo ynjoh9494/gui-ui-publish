@@ -134,6 +134,15 @@ try {
     window.postMessage({ pluginMessage: m }, '*');
     window.postMessage({ pluginMessage: { type: 'startupReady' } }, '*');
   }, init);
+  // 처리 중에 탭을 다시 그려도(업데이트 확인 응답 등) 처리가 끝나면 모드 전환 버튼이 다시 켜져야 한다.
+  await page.locator('[data-action=switch-mode]:not([disabled])').waitFor();
+  await page.evaluate(() => {
+    window.postMessage({ pluginMessage: { type: 'busy', label: '처리 중' } }, '*');
+    window.postMessage({ pluginMessage: { type: 'updateLatest', latest: null } }, '*');
+  });
+  await page.locator('[data-action=switch-mode][disabled]').waitFor();
+  await page.evaluate(() => window.postMessage({ pluginMessage: { type: 'busy', label: null } }, '*'));
+  await page.locator('[data-action=switch-mode]:not([disabled])').waitFor({ timeout: 2000 });
   await page.locator('[data-action=paste-open]').click();
   await page.evaluate(() => window.postMessage({ pluginMessage: { type: 'guiScreens', counts: [], screens: Array.from({ length: 100 }, (_, i) => ({ uid: 's' + i, code: 'S' + i, name: 'Screen ' + i, category: null, status: 'active', isCase: false, version: 1, thumb: { hash: 'h' + i, width: 100, height: 100 }, sourceNodeId: 'n' + i })) } }, '*'));
   await page.locator('.paste-screen').first().waitFor();

@@ -4710,6 +4710,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     (el.querySelector('.busy-label') as HTMLElement).textContent = label ?? '';
     root.classList.toggle('is-busy', !!label);
     root.setAttribute('aria-busy', String(startupPending || !!label));
+    // 모드 전환 버튼은 탭을 그릴 때의 상태로 막힌다. 처리 중에 탭을 다시 그린 뒤 처리가 끝나면 막힌 채 남으므로 여기서도 맞춘다.
+    root.querySelector('.tabs .mode-switch')?.toggleAttribute('disabled', !!label);
   }
 
   function renderStartup() {
