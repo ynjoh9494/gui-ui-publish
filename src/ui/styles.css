@@ -680,7 +680,7 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .has-recovery > .toolbar { grid-row: 3; }
 .has-recovery > :is(.list, .detail, .pane-divider) { grid-row: 4; }
 .has-recovery > .footer { grid-row: 5; }
-.has-recovery > :is(.paste-view, .flow-view, .text-view, .pdf-view, .version-view) { grid-row: 3 / 6; }
+.has-recovery > :is(.paste-view, .flow-view, .pdf-view, .version-view) { grid-row: 3 / 6; }
 .unlinked-all { display: flex; flex-direction: column; gap: 4px; margin: 0 8px 8px; }
 .unlinked-all:empty { display: none; }
 .unlinked-all .note { display: flex; align-items: center; gap: 6px; margin: 0; }
@@ -726,12 +726,7 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .version-actions { flex: none; display: flex; align-items: end; margin-left: auto; }
 .version-notes { flex: none; display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
 .version-actions .dialog-actions { margin: 0; flex: none; }
-/* 텍스트 편집 탭: 새 버전 페이지 탭처럼 툴바 아래 영역 전체를 쓴다. 들여쓰기를 맞춰 보도록 고정폭 글꼴로 입력한다. */
-.texting-mode :is(.toolbar, .list, .pane-divider, .detail, .footer) { display: none; }
-.text-view { grid-column: 1 / -1; grid-row: 2 / 5; min-height: 0; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-.text-view > .note { flex: none; margin: 0; }
 .rich-block { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
-.text-view .rich-block { flex: 1; }
 /* 기본 버튼 아래에 속성 패널처럼 묶인 서식 값을 펼친다. */
 .text-tools { flex: none; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .text-tools-divider { width: 1px; height: 16px; background: var(--border); margin: 0 2px; }
@@ -753,7 +748,6 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .layout-control .unit { flex: none; margin-left: -4px; color: var(--text); font-size: 11px; }
 .layout-control svg { flex: none; width: 16px; height: 16px; color: var(--muted); }
 .text-tool { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 26px; padding: 0; }
-.text-view .text-hint { flex: none; margin: 0; }
 .text-tool[aria-pressed="true"] { background: var(--selected); border-color: var(--brand); color: var(--brand); }
 /* 편집기: 문단마다 div 하나. 목록 문단은 단계마다 20px 들여 글머리표를 그린다(Figma 목록처럼 모든 단계가 •). */
 .rich-editor { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; outline: none; cursor: text; }
@@ -762,12 +756,7 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .rt-p { min-height: 1.6em; }
 .rt-p[data-depth] { position: relative; padding-left: calc(var(--depth) * 20px + 18px); }
 .rt-p[data-depth]::before { content: attr(data-marker); position: absolute; left: calc(var(--depth) * 20px + 5px); font-weight: 400; }
-.text-actions { flex: none; display: flex; align-items: center; gap: 6px; }
-.text-actions .note { flex: 1; min-width: 0; margin: 0; }
-/* 대상 이름은 한 줄로 줄인다(이름이 자동인 텍스트 레이어는 이름이 본문 전체다). 오류 문구는 줄바꿈해 끝까지 보여 준다. */
-.text-actions .text-target:not(.bad) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.text-actions button { flex: none; }
-/* PDF 저장 탭: 텍스트 편집 탭처럼 툴바 아래 영역 전체를 쓴다. */
+/* PDF 저장 탭: 툴바 아래 영역 전체를 쓴다. */
 .pdf-mode :is(.toolbar, .list, .pane-divider, .detail, .footer) { display: none; }
 .pdf-view { grid-column: 1 / -1; grid-row: 2 / 5; min-height: 0; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .pdf-view > .note { flex: none; margin: 0; }

@@ -8,7 +8,6 @@ import { pickerFrameEntries, pickerRegisteredScreens } from '../core/guiPicker.t
 import { guiStateBadge, unlinkedBadge, unlinkedGroupBadge } from './estimate.ts';
 import { placeBubble, startTutorial } from './tutorial.ts';
 import { needsUpdate, type UpdateInfo } from '../core/update.ts';
-import { textEditor } from './textEditor.ts';
 import { richEditor } from './richEditor.ts';
 import { sameLayout, type TextLayout } from '../core/description.ts';
 import { serializeRichText, type RichParagraph } from '../core/richText.ts';
@@ -65,10 +64,9 @@ const ADMIN_MODE_PANELS: Record<Team, [form: string, title: string][]> = {
 };
 
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색, 튜토리얼(예시 화면에서 진행하므로 처리 중인 작업과 겹치지 않는다)
-const WHILE_BUSY = new Set(['recovery-toggle', 'tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'tutorial', 'text-open', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel', 'update-download', 'update-go', 'update-close']);
+const WHILE_BUSY = new Set(['recovery-toggle', 'tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'tutorial', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel', 'update-download', 'update-go', 'update-close']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
 const BEFORE_CHECK = new Set([...WHILE_BUSY, 'switch-mode', 'scan', 'scan-selected', 'excluded-unexclude','nav', 'nav-suggested', 'create-page-manage', 'category-manage', 'new-add', 'new-remove', 'new-select', 'new-create-one', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'fb-identity-save', 'create-layout', 'create-search-all', 'create-screen-add', 'create-screen-remove', 'fb-edit-cancel', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
-  'text-import', 'text-apply',
   'version-open', 'version-close', 'version-match', 'version-select', 'version-review-only', 'version-reveal', 'version-switch', 'version-cancel']);
 
 import { WORK_LABEL } from '../core/copy.ts';
@@ -343,9 +341,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   // 새 버전 페이지 탭(2026-10-21 사용자 요청: 설정 안이 아니라 GUI Publish 머리의 탭으로 연다).
   // 비교할 페이지, 비교 결과, 사용자가 고친 연결(화면 ID → 노드 ID, ''는 연결 안 함), 전환을 한 번 눌렀는가
   let versionOpen = false;
-  // UI Flipbook의 텍스트 편집 탭(2026-10-22 사용자 요청). 관리를 다녀와도 열린 탭을 유지한다.
-  let textOpen = false;
-  // UI Flipbook의 플로우 탭(2026-10-23 사용자 결정). 텍스트 편집 탭과 같이 하나만 열린다.
+  // UI Flipbook의 플로우 탭(2026-10-23 사용자 결정). 다른 탭과 같이 하나만 열린다.
   let flowOpen = false;
   // UI Flipbook의 PDF 저장 탭(2026-10-26 사용자 요청). 다른 탭과 같이 하나만 열린다.
   let pdfOpen = false;
@@ -353,14 +349,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let pasteOpen = false;
   // 화면 목록을 캔버스에서 읽은 마지막 플립북(상세를 다시 그릴 때마다 읽지 않게)
   let followed: string | null = null;
-  // 텍스트·플로우·PDF·붙이기 탭은 UI Flipbook에만 있다. GUI Publish에서는 그 탭을 열어 둔 채 넘어와도 목록 화면이 열려 있다
+  // 플로우·PDF·붙이기 탭은 UI Flipbook에만 있다. GUI Publish에서는 그 탭을 열어 둔 채 넘어와도 목록 화면이 열려 있다
   // (2026-11-05 회귀: GUI 붙이기 탭을 연 채 GUI Publish로 바꾸면 History 썸네일이 「불러오는 중」에서 바뀌지 않았다).
-  const listTabOpen = () => mode !== 'UI' || (!textOpen && !flowOpen && !pdfOpen && !pasteOpen);
+  const listTabOpen = () => mode !== 'UI' || (!flowOpen && !pdfOpen && !pasteOpen);
   let pdfTabSent = false;
   // PDF를 합쳐 저장하는 동안의 진행 표시. 본체의 진행 표시(busyLabel)가 끝난 뒤에도 이어서 보여 준다.
   let pdfBusy: string | null = null;
-  // 플러그인에 마지막으로 알린 텍스트 편집 탭 표시 여부
-  let textTabSent = false;
   // History를 펼친 화면 ID. 보고 있는 화면이 바뀌면 잊어서, 다른 화면이나 관리·UI Flipbook에 갔다가 같은 화면으로 돌아와도 접힌 채로 시작한다
   // (2026-11-05 사용자 요청: 펼친 상태를 기억하지 않는다). 같은 화면을 다시 그릴 때(히스토리 도착 등)는 펼친 채로 둔다.
   let historyOpenId: string | null = null;
@@ -420,7 +414,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   bridge = windowCollapse(bridge, root, () => mode, events.signal);
   // 창 크기를 바꾸거나 접었다 펼치면 업데이트 안내 말풍선을 관리 아이콘에 다시 맞춘다.
   window.addEventListener('resize', () => placeUpdateBubble(), { signal: events.signal });
-  const editor = textEditor(root);
   const pdf = pdfView(root);
   const flows = flowView(root, {
     track: (uid, name) => trackList.open(uid, name),
@@ -1106,7 +1099,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     $('.tabs').classList.toggle('ui-tabs', mode === 'UI');
     $('.tabs').innerHTML = `${settings ? `<span class="app-title">${COPY.uiApp004}</span>` : ''}` +
       `${mode === 'GUI' && !settings ? `<div class="create-tabs" role="tablist">${headerTab('version-close', COPY.uiApp272, !versionOpen, 'list')}${headerTab('version-open', COPY.uiApp248, versionOpen, 'versions')}</div>` : ''}` +
-      `${mode === 'UI' && !settings ? `<div class="create-tabs" role="tablist">${headerTab('text-close', COPY.uiApp302, listTabOpen(), 'book')}${headerTab('paste-open', COPY.paste001, pasteOpen, 'paste')}<span class="tab-separator tab-group-separator" aria-hidden="true"></span>${headerTab('text-open', COPY.uiApp303, textOpen, 'text')}${headerTab('flow-open', COPY.flow020, flowOpen, 'flow')}${headerTab('pdf-open', COPY.pdf001, pdfOpen, 'pdf')}</div>` : ''}` +
+      `${mode === 'UI' && !settings ? `<div class="create-tabs" role="tablist">${headerTab('text-close', COPY.uiApp302, listTabOpen(), 'book')}${headerTab('paste-open', COPY.paste001, pasteOpen, 'paste')}<span class="tab-separator tab-group-separator" aria-hidden="true"></span>${headerTab('flow-open', COPY.flow020, flowOpen, 'flow')}${headerTab('pdf-open', COPY.pdf001, pdfOpen, 'pdf')}</div>` : ''}` +
       `<div class="tab-tools"><button class="mode-switch" data-action="switch-mode" title="${mode === 'GUI' ? COPY.modeUi : COPY.modeGui}" ${busyLabel || pdfBusy ? 'disabled' : ''}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10V5h16l-4-4M21 14v5H5l4 4M19 5l-4 4M5 19l4-4"/></svg><span>${mode === 'GUI' ? COPY.modeUi : COPY.modeGui}</span></button><span class="tab-separator" aria-hidden="true"></span>` +
       `<button class="icon-button settings-button" data-action="settings" aria-pressed="${settings}" title="${COPY.uiApp004}" aria-label="${needsUpdate(update) ? `${COPY.uiApp004} · ${COPY.updateAvailable}` : COPY.uiApp004}">${GEAR}${needsUpdate(update) ? UPDATE_BADGE : ''}</button>` +
       `<button class="icon-button" data-action="collapse-window" title="${COPY.windowCollapse}" aria-label="${COPY.windowCollapse}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/><path d="M3 15v6h6M3 21l9-9"/></svg></button>` +
@@ -2979,11 +2972,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   function renderAll() {
     renderRecovery();
     renderTabs(); renderToolbar(); renderList(); renderDetail(); renderFooter(); renderConfirm(); renderVersion(); renderToast();
-    const textShown = textOpen && mode === 'UI' && tab !== 'ADMIN' && !!state;
     flows.render(flowOpen && mode === 'UI' && tab !== 'ADMIN' && !!state);
     paste.render(pasteOpen && mode === 'UI' && tab !== 'ADMIN' && !!state);
-    editor.render(textShown);
-    if (textShown !== textTabSent) { textTabSent = textShown; bridge.send({ type: 'textTab', open: textShown }); }
     const pdfShown = pdfOpen && mode === 'UI' && tab !== 'ADMIN' && !!state;
     pdf.render(pdfShown);
     if (pdfShown !== pdfTabSent) { pdfTabSent = pdfShown; bridge.send({ type: 'pdfTab', open: pdfShown }); }
@@ -3568,8 +3558,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         admin({ op: 'renumberScreenIds' });
         break;
       case 'renumber-cancel': renumberArmed = false; renderDetail(); break;
-      case 'text-open': textOpen = true; flowOpen = false; pdfOpen = false; pasteOpen = false; renderAll(); root.querySelector<HTMLElement>('.text-view .rich-editor')?.focus(); break;
-      case 'text-close': textOpen = false; flowOpen = false; pdfOpen = false; pasteOpen = false; renderAll(); break;
+      case 'text-close': flowOpen = false; pdfOpen = false; pasteOpen = false; renderAll(); break;
       case 'fb-screen-gui': {
         const source = el.dataset.uid ? state?.screens.get(el.dataset.uid)?.source : null;
         if (source) bridge.send({ type: 'revealNode', nav: ++navSeq, nodeId: source.nodeId });
@@ -3582,13 +3571,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         if (ids.length) bridge.send({ type: 'convertLegacyFlipbooks', ids });
         break;
       }
-      case 'paste-open': pasteOpen = true; textOpen = false; flowOpen = false; pdfOpen = false; renderAll(); bridge.send({ type: 'guiScreens' }); break;
-      case 'flow-open': flowOpen = true; textOpen = false; pdfOpen = false; pasteOpen = false; renderAll(); bridge.send({ type: 'guiScreens' }); break;
-      case 'pdf-open': pdfOpen = true; textOpen = false; flowOpen = false; pasteOpen = false; renderAll(); break;
+      case 'paste-open': pasteOpen = true; flowOpen = false; pdfOpen = false; renderAll(); bridge.send({ type: 'guiScreens' }); break;
+      case 'flow-open': flowOpen = true; pdfOpen = false; pasteOpen = false; renderAll(); bridge.send({ type: 'guiScreens' }); break;
+      case 'pdf-open': pdfOpen = true; flowOpen = false; pasteOpen = false; renderAll(); break;
       case 'pdf-export': pdf.setRunning(true); bridge.send({ type: 'exportPdf' }); break;
       case 'pdf-cancel': pdf.cancel(); bridge.send({ type: 'cancelPdf' }); break;
-      case 'text-import': bridge.send({ type: 'textImport' }); break;
-      case 'text-apply': { const paragraphs = editor.paragraphs(); if (paragraphs.some(p => p.text.trim())) bridge.send({ type: 'textApply', paragraphs, layout: editor.layout() }); break; }
       case 'version-open': openVersion(); break;
       case 'version-close': closeVersion(); break;
       case 'version-match':
@@ -4625,7 +4612,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         showSelectedRows(msg.team);
         addMode = null;
         editMode = null;
-        // 관리에서 나오면 화면 틀(관리 전용 배치, 텍스트·플로우·PDF·붙이기 탭)까지 다시 그린다. 일부만 그리면 관리 배치가 남아
+        // 관리에서 나오면 화면 틀(관리 전용 배치, 플로우·PDF·붙이기 탭)까지 다시 그린다. 일부만 그리면 관리 배치가 남아
         // 목록 칸이 숨은 채 상세만 보인다.
         if (fromAdmin) { renderAll(); break; }
         if (!listTabOpen()) break;
@@ -4774,7 +4761,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         paste.thumbsLoaded(msg.items.map(item => item.hash));
         if (hoverThumb && msg.items.some(item => item.hash === hoverThumb?.hash)) showHoverThumb();
         break;
-      case 'textImported': editor.setParagraphs(msg.paragraphs, msg.layout); break;
       case 'flipbookDescription': {
         // 다시 불러오기를 요청한 뒤의 응답만 받는다.
         const previous = descDrafts.get(msg.id);
@@ -4830,7 +4816,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         if (tab === 'UI') { renderList(); renderDetail(); renderFooter(); }
         break;
       }
-      case 'textTarget': editor.setTarget(msg.target); break;
       case 'pdfSelection': pdf.setSelection(msg.selection); break;
       case 'pdfCancelled': pdf.setRunning(false); notify('info', COPY.pdf015); break;
       case 'pdfPages': {

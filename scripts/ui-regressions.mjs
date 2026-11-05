@@ -43,7 +43,8 @@ try {
   assert.equal(await switcher.innerText(), '플립북 관리');
   await page.locator('#app [data-action=settings]').click();
   await switcher.click();
-  await page.locator('#app [data-action=text-open]').waitFor();
+  await page.locator('#app [data-action=text-close]').waitFor();
+  assert.equal(await page.locator('#app [data-action=text-open]').count(), 0, 'Description editing lives in the flipbook list');
   assert.equal(await switcher.innerText(), 'GUI 배포');
   for (let i = 0; i < 3; i++) {
     await page.locator('#app [data-action=tutorial]').click();
@@ -74,8 +75,11 @@ try {
   await switcher.click();
   console.log('UI regressions: shared history date menu saves and restores both formats');
 
-  await page.locator('#app [data-action=text-open]').click();
-  const editor = page.locator('#app .rich-editor');
+  await page.locator('#app [data-action=new-add]').click();
+  await page.locator('#app .detail [data-action=new-create-one]').click();
+  await page.locator('#app .list .row').first().click();
+  const editor = page.locator('#app .fb-description .rich-editor');
+  await editor.waitFor();
   await editor.click();
   await page.keyboard.type('base');
   await page.waitForTimeout(900);
