@@ -93,10 +93,10 @@ export const TEMPLATE_TITLE = COPY.coreFlipbook001;
 
 function pad(n: number): string { return String(n).padStart(2, '0'); }
 
-// 템플릿 이력 행의 날짜 형식(MM/DD HH:mm)
+// 템플릿 히스토리 행은 프로젝트 시간대의 날짜만 표시한다.
 export function formatShort(ms: number, utcOffsetMinutes: number): string {
   const d = new Date(ms + utcOffsetMinutes * 60000);
-  return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  return `${pad(d.getUTCFullYear() % 100)}.${pad(d.getUTCMonth() + 1)}.${pad(d.getUTCDate())}`;
 }
 
 export function guiKey(uid: string, version: number): string {
