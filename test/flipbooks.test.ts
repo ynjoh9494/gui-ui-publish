@@ -1005,7 +1005,7 @@ test('연결이 끊긴 플립북만 목록에서 삭제하고, 프레임이 남�
   assert.equal(uiEntries(store.state, new Map()).find(e => e.key === 'fb1')!.estimate, 'retired');
 });
 
-test('UI Flipbook은 열 때 프레임이 없는 플립북을 연결 끊김으로 알리고, 삭제 직전 플립북 페이지만 한 번 다시 찾는다', async () => {
+test('UI Flipbook은 연결 끊긴 플립북을 삭제할 때 캔버스를 다시 찾지 않고 등록을 해제한다', async () => {
   const posted: ToUi[] = [];
   const store = new Store(memoryKV());
   let n = 0;
@@ -1025,13 +1025,13 @@ test('UI Flipbook은 열 때 프레임이 없는 플립북을 연결 끊김으�
   frames.ui.fb3 = '9:9'; // 삭제 전에 플립북 페이지로 되돌린 프레임
   const before = searched.length;
   await controller.handle({ type: 'removeFlipbooks', ids: ['fb2', 'fb3'] });
-  assert.deepEqual(searched.slice(before), [['ui']], 'only flipbook pages are searched, once');
+  assert.deepEqual(searched.slice(before), [], '삭제는 캔버스를 다시 읽지 않는다');
   const done = posted.filter(m => m.type === 'flipbooksRemoved').pop() as Extract<ToUi, { type: 'flipbooksRemoved' }>;
-  assert.deepEqual(done.ids, ['fb2']);
-  assert.match(done.message, /복구/);
-  assert.deepEqual([...controller.store.state.flipbooks.values()].map(fb => fb.status), ['active', 'deleted', 'active']);
+  assert.deepEqual(done.ids, ['fb2', 'fb3']);
+  assert.equal(done.message, '');
+  assert.deepEqual([...controller.store.state.flipbooks.values()].map(fb => fb.status), ['active', 'deleted', 'deleted']);
   const after = (posted.filter(m => m.type === 'uiScan').pop() as Extract<ToUi, { type: 'uiScan' }>).scans;
-  assert.deepEqual(after.map(u => [u.flipbookId, u.nodeId]), [['fb1', '1:1'], ['fb2', null], ['fb3', '9:9']], 'links come from the same search');
+  assert.deepEqual(after.map(u => [u.flipbookId, u.nodeId]), [['fb1', '1:1']], '남은 플립북의 연결 상태를 유지한다');
 });
 
 // 목록에서 삭제(2026-11-02 사용자 결정): 상세 제목 줄의 「목록에서 삭제」는 캔버스에 프레임이 남은 플립북도 뺀다.

@@ -1194,8 +1194,8 @@ export class Controller {
     return canvas;
   }
 
-  private async inspectFlipbooks(pageIds = this.flipbookPages()): Promise<CanvasRead> {
-    if (this.host.inspectFlipbooks) return this.host.inspectFlipbooks(pageIds);
+  private async inspectFlipbooks(pageIds = this.flipbookPages(), originalsOnly = false): Promise<CanvasRead> {
+    if (this.host.inspectFlipbooks) return this.host.inspectFlipbooks(pageIds, originalsOnly);
     const found = await this.host.listFlipbooks(pageIds);
     return { found, spots: await this.spots(pageIds) };
   }
@@ -1208,6 +1208,21 @@ export class Controller {
       if (flipbookIds.every(id => canvas.found.has(id))) return canvas;
     }
     return this.inspectFlipbooks();
+  }
+
+  // 생성·이동은 영향을 받은 페이지만 읽고, 나머지 페이지의 연결·위치는 마지막 조회 결과를 유지한다.
+  // 일부 페이지만 읽으며 다른 페이지의 원본 대신 복사본을 채택하지 않도록 원본 표식만 인정한다.
+  private async inspectFlipbookPages(pageIds: string[]): Promise<CanvasRead> {
+    const pages = new Set(pageIds);
+    const canvas = await this.inspectFlipbooks([...pages], true);
+    for (const scan of this.uiScans) {
+      const fb = this.store.state.flipbooks.get(scan.flipbookId);
+      const pageId = scan.spot?.pageId ?? fb?.pageId ?? this.store.state.project.flipbookPageId;
+      if (!pageId || pages.has(pageId) || !scan.nodeId || canvas.found.has(scan.flipbookId)) continue;
+      canvas.found.set(scan.flipbookId, scan.nodeId);
+      if (scan.spot) canvas.spots[scan.nodeId] = scan.spot;
+    }
+    return canvas;
   }
 
   // 플립북 프레임의 캔버스 위치. 목록 순서에만 쓰므로 읽지 못하면 위치 없이 둔다(Screen ID 순).
@@ -1234,25 +1249,19 @@ export class Controller {
   }
 
   // 플립북을 목록에서 삭제한다. 기록은 사용 안 함으로 남기고 캔버스의 프레임은 지우지 않는다.
-  // withFrames가 아니면(연결 끊긴 플립북 삭제) 삭제 직전에 플립북 페이지에서 다시 찾고, 프레임이 있으면 지우지 않는다.
-  // 파일 전체 페이지를 불러오면 삭제가 너무 느려서 플립북 페이지만 찾는다(2026-10-21 사용자 결정). 플립북 페이지가 아닌 곳으로 직접 옮긴 프레임은 찾지 못한다.
-  // withFrames(2026-11-02 사용자 결정: 프레임이 남은 플립북도 목록에서 뺀다): 그 프레임 안의 GUI는 그대로 보관한다. 그 페이지를 다시 읽으면
-  // 삭제한 플립북 안의 복사본은 추적하지 않으므로(core/tracks.ts trackable) 추적 기록이 빠지고, 이후 GUI 배포가 바꾸지 않는다.
+  // 삭제는 등록 상태만 바꾼다. trackable이 사용 안 함인 플립북의 GUI를 제외하므로 추적 중지에 캔버스 조회가 필요 없다.
+  // DATA 표시는 다음 갱신에서 원기록을 따라가며, 삭제 자체는 페이지 조회·노드 수정·위치 재계산을 하지 않는다.
   private async removeFlipbooks(ids: string[], withFrames = false): Promise<void> {
     const s = this.store;
     s.reload();
-    const { found, spots } = await this.inspectFlipbooks();
-    const removed = removeFlipbooks(s, ids, withFrames ? new Set() : new Set(found.keys()), this.host.actor);
-    const kept = withFrames ? [] : ids.filter(id => found.has(id)).map(id => s.state.flipbooks.get(id)?.title ?? id);
-    const framed = removed.filter(id => found.has(id));
-    for (const pageId of new Set(framed.map(id => s.state.flipbooks.get(id)?.pageId).filter((id): id is string => !!id))) await this.tracks.refreshPage(pageId);
-    if (removed.length) await this.refreshData(false, false);
+    const removed = removeFlipbooks(s, ids, new Set(), this.host.actor);
+    const removedIds = new Set(removed);
+    const framed = this.uiScans.some(scan => removedIds.has(scan.flipbookId) && scan.nodeId);
+    this.uiScans = this.uiScans.filter(scan => !removedIds.has(scan.flipbookId));
     this.postState();
-    this.applyLinks(found, spots);
+    this.postUiScans();
     // 연결 끊긴 플립북 삭제는 버튼이 두 번 눌러 삭제함을 이미 보여 주므로 삭제한 결과는 알리지 않는다(2026-11-04 사용자 요청).
-    // 삭제 직전에 프레임을 다시 찾아 지우지 않은 플립북만 알린다.
-    const message = withFrames ? [`${removed.length}${COPY.controller069}`, framed.length ? COPY.flipbookRemoveRestore : ''].filter(Boolean).join(' ')
-      : kept.length ? `${COPY.controller070} ${kept.join(', ')}` : '';
+    const message = withFrames ? [`${removed.length}${COPY.controller069}`, framed ? COPY.flipbookRemoveRestore : ''].filter(Boolean).join(' ') : '';
     this.host.post({ type: 'flipbooksRemoved', ids: removed, message });
   }
 
@@ -1578,8 +1587,8 @@ export class Controller {
     await this.refreshData();
     this.postState();
     // 새 플립북은 UI 목록에서 「비교 전」이다. 만든 직후 지문을 기준으로 저장했으므로 바로 차이 없음으로 보이게 한다.
-    // 새 플립북이 들어가며 같은 Section의 기존 플립북 자리도 바뀌므로 위치는 모든 플립북에 다시 붙인다.
-    const { found, spots } = await this.inspectFlipbooks();
+    // 같은 페이지의 기존 플립북 자리도 바뀌므로 만든 페이지만 위치를 다시 읽는다.
+    const { found, spots } = await this.inspectFlipbookPages(this.flipbookPages(new Set(made.map(fb => fb.id))));
     for (const fb of made) {
       const baseline = s.state.uiBaselines.get(fb.id);
       const scan: UiScan = { flipbookId: fb.id, nodeId: found.get(fb.id) ?? null, fingerprint: baseline?.fingerprint ?? null, error: null };
@@ -1615,7 +1624,8 @@ export class Controller {
     if (done.length) {
       await this.refreshData();
       this.postState();
-      const { found, spots } = await this.inspectFlipbooks();
+      const pages = done.flatMap(move => [fromPage.get(move.flipbookId)!, move.pageId]);
+      const { found, spots } = await this.inspectFlipbookPages(pages);
       this.uiScans = this.uiScans.map(u => ({ ...u, nodeId: found.get(u.flipbookId) ?? u.nodeId, spot: spotOf(spots, found.get(u.flipbookId) ?? u.nodeId) }));
       this.postUiScans();
     }
