@@ -297,6 +297,14 @@ try {
   }));
   let rows = await templateRows();
   assert.equal(rows.find(r => r.key === 'title').name, '화면 이름');
+  // 의미 단위 묶음(2026-11-05): 다섯 묶음 머리글, 부모 아래 항목은 상태 아이콘이 한 단계(17px)씩 들어간다.
+  const sectionHeads = await app.locator('[data-form=template] .template-group').allInnerTexts();
+  assert.deepEqual(sectionHeads.slice(-5), ['플립북 정보', 'GUI', 'Description', '히스토리', 'PDF 저장'], '묶음 머리글');
+  const indents = Object.fromEntries(await app.locator('.template-item[data-key]').evaluateAll(items => items.map(item => [item.dataset.key, Math.round(item.querySelector('.template-state').getBoundingClientRect().left)])));
+  const step = (child, parent) => indents[child] - indents[parent];
+  for (const [child, parent] of [['statusTag', 'status'], ['idTag', 'ids'], ['description', 'descriptionArea'], ['previous', 'history'], ['row', 'history'], ['rowComment', 'row'], ['rowStatusTag', 'rowStatus']])
+    assert.equal(step(child, parent), 17, `${child}는 ${parent} 아래로 들여쓴다`);
+  assert.equal(step('chapter', 'title'), 0, '같은 단계는 같은 자리');
   assert.equal(rows.find(r => r.key === 'gui').disconnect, false, 'GUI 영역은 해제할 수 없다');
   for (const r of rows) {
     assert.ok(['ok', 'need', 'optional'].includes(r.state), `${r.key} 상태 ${r.state}`);
@@ -317,7 +325,13 @@ try {
   await app.locator('.template-entry[data-node="tpl-old"] .template-item-name').click();
   await page.waitForFunction(() => document.querySelector('#app .template-entry[data-node="tpl-old"][aria-selected="true"]') && document.querySelector('#app .template-item[data-key="title"]') && !document.querySelector('#app .template-item[data-key="gui"]'));
   rows = await templateRows();
-  assert.deepEqual(rows.map(r => r.key), ['title', 'chapter', 'idTag', 'row', 'statusTag', 'rowStatusTag', 'marker', 'rowStatus', 'rowComment', 'rowWorker', 'rowDate', 'rowTeam'], '반영에 쓰는 항목만');
+  assert.deepEqual(rows.map(r => r.key), ['title', 'chapter', 'statusTag', 'idTag', 'marker', 'row', 'rowStatus', 'rowStatusTag', 'rowComment', 'rowWorker', 'rowDate', 'rowTeam'], '반영에 쓰는 항목만');
+  {
+    // 숨은 부모(상태·Screen ID 칸·히스토리 목록)는 세지 않아 그 아래 항목이 홀로 들여써지지 않는다.
+    const left = Object.fromEntries(await app.locator('.template-item[data-key]').evaluateAll(items => items.map(item => [item.dataset.key, Math.round(item.querySelector('.template-state').getBoundingClientRect().left)])));
+    assert.deepEqual([left.statusTag, left.idTag, left.row].map(x => x - left.title), [0, 0, 0], '숨은 부모 아래 항목은 들여쓰지 않는다');
+    assert.equal(left.rowComment - left.row, 17, '보이는 부모 아래는 들여쓴다');
+  }
   assert.ok((await app.locator('[data-form=template] .note').allTextContents()).some(t => t.includes('대표가 아닌 템플릿')), '대표가 아닌 템플릿 안내');
   await app.locator('.template-item[data-key="rowTeam"] [data-action=admin-template-disconnect]').click();
   await page.waitForFunction(() => document.querySelector('#app .template-item[data-key="rowTeam"] .template-state.optional'));

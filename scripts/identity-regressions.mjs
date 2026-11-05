@@ -25,7 +25,7 @@ try {
     window.requests = [];
     window.addEventListener('message', e => {
       const m = e.data?.pluginMessage;
-      if (m?.type === 'updateFlipbookIdentity' || m?.type === 'renameFlipbook' || m?.type === 'applyFlipbookEdits' || (m?.type === 'flipbookDescription' && !('paragraphs' in m) && !('error' in m))) { window.requests.push(m); e.stopImmediatePropagation(); }
+      if (m?.type === 'updateFlipbookIdentity' || m?.type === 'renameFlipbook' || m?.type === 'applyFlipbookEdits' || (m?.type === 'flipbookDescription' && !('paragraphs' in m) && !('error' in m) && !('area' in m))) { window.requests.push(m); e.stopImmediatePropagation(); }
       else if ((m?.type === 'history' && !('rows' in m)) || (m?.type === 'guiScreens' && !('screens' in m))) e.stopImmediatePropagation();
     }, true);
   });
@@ -53,6 +53,7 @@ try {
   await page.evaluate(({ paragraphs, layout }) => window.postMessage({ pluginMessage: { type: 'flipbookDescription', id: 'fb', paragraphs, layout } }, '*'), { paragraphs: imported, layout });
   await page.locator('.detail .fb-description .rich-editor').waitFor();
   assert.deepEqual(await actions(), ['히스토리', '목록에서 삭제'], 'loading Description alone does not create an edit');
+  assert.equal(await page.locator('.detail .fb-desc-switch').count(), 0, 'no Description toggle without a Description area mark');
   assert.equal(await page.locator('.list .row.selected .row-state.edit-state').count(), 0);
   await page.locator('[data-input=fb-page-title]').fill('A title without a dash');
   assert.deepEqual(await actions(), ['취소', '적용하기'], 'unsaved input shows 취소 and 적용하기 only');
@@ -126,5 +127,58 @@ try {
   // 검사 화면은 tmp에 남긴다.
   mkdirSync('tmp/walkthrough', { recursive: true });
   await page.locator('#app').screenshot({ path: 'tmp/walkthrough/ui-identity.png' });
-  console.log('Identity UI: automatic Chapter/policy ID, editable ID/title, 적용하기 enabled only with changes and title-only double click passed');
+
+  // Description 토글(2026-11-05): 숨긴 Description 영역은 본문을 불러오지 않고 토글이 꺼져 있다. 켜면 그때 읽고(force),
+  // 「적용하기」로 영역 보이기를 바꾼다. 「취소」는 캔버스 상태로 되돌린다.
+  const descRequests = id => page.evaluate(id => window.requests.filter(r => r.type === 'flipbookDescription' && r.id === id), id);
+  const toggle = page.locator('.detail .fb-desc-switch input');
+  const editor = page.locator('.detail .fb-description .rich-editor');
+  const reply = message => page.evaluate(message => window.postMessage({ pluginMessage: { type: 'flipbookDescription', ...message } }, '*'), message);
+  const seen = (await descRequests('fb2')).length;
+  await page.locator('.list .row').filter({ hasText: 'Zeta' }).click();
+  await page.waitForFunction(n => window.requests.filter(r => r.type === 'flipbookDescription' && r.id === 'fb2').length > n, seen);
+  assert.equal((await descRequests('fb2')).at(-1).force, undefined, 'the first read does not force a hidden area');
+  await reply({ id: 'fb2', area: 'hidden' });
+  await toggle.waitFor();
+  assert.equal(await toggle.isChecked(), false, 'a hidden Description area shows the toggle off');
+  assert.equal(await editor.count(), 0, 'no editor while the toggle is off');
+  assert.deepEqual(await actions(), ['히스토리', '목록에서 삭제'], 'a hidden area alone is not an edit');
+  await page.locator('#app').screenshot({ path: 'tmp/walkthrough/ui-description-off.png' });
+  const beforeOn = (await descRequests('fb2')).length;
+  await toggle.click();
+  await page.waitForFunction(n => window.requests.filter(r => r.type === 'flipbookDescription' && r.id === 'fb2').length > n, beforeOn);
+  assert.equal((await descRequests('fb2')).at(-1).force, true, 'turning the toggle on reads the hidden body');
+  assert.ok((await page.locator('.detail .fb-desc-body .note').innerText()).length > 0 && await toggle.isChecked(), 'loading keeps the toggle on');
+  await reply({ id: 'fb2', area: 'hidden', paragraphs: [{ text: 'Hidden body', depth: null, bold: [] }], layout });
+  await page.waitForFunction(() => document.querySelector('.detail .fb-description .rich-editor')?.textContent === 'Hidden body');
+  assert.equal(await toggle.isChecked(), true);
+  assert.deepEqual(await actions(), ['취소', '적용하기'], 'turning a hidden area on is an edit');
+  await page.locator('[data-action=fb-edit-cancel]').click();
+  await page.waitForFunction(() => !document.querySelector('.detail .fb-description .rich-editor') && document.querySelector('.detail .fb-desc-switch input')?.checked === false);
+  assert.deepEqual(await actions(), ['히스토리', '목록에서 삭제'], '취소 turns the toggle back off');
+  await toggle.click();
+  await reply({ id: 'fb2', area: 'hidden', paragraphs: [{ text: 'Hidden body', depth: null, bold: [] }], layout });
+  await editor.waitFor();
+  await page.locator('[data-action=fb-identity-save]').click();
+  await page.waitForFunction(() => window.requests.at(-1)?.type === 'applyFlipbookEdits');
+  let edit = (await page.evaluate(() => window.requests.at(-1))).edits[0];
+  assert.deepEqual([edit.id, edit.descriptionShown, edit.description], ['fb2', true, undefined], 'applying shows the area without rewriting an untouched body');
+  const beforeApplied = (await descRequests('fb2')).length;
+  await page.evaluate(() => window.postMessage({ pluginMessage: { type: 'flipbookEditsApplied', applied: ['fb2'], failed: [], message: 'ok', creating: false } }, '*'));
+  await page.waitForFunction(n => window.requests.filter(r => r.type === 'flipbookDescription' && r.id === 'fb2').length > n, beforeApplied);
+  await reply({ id: 'fb2', area: 'shown', paragraphs: [{ text: 'Shown body', depth: null, bold: [] }], layout });
+  await page.waitForFunction(() => document.querySelector('.detail .fb-description .rich-editor')?.textContent === 'Shown body');
+  assert.equal(await toggle.isChecked(), true, 'a shown area has the toggle on');
+  assert.deepEqual(await actions(), ['히스토리', '목록에서 삭제']);
+  const beforeOff = (await descRequests('fb2')).length;
+  await toggle.click();
+  await page.waitForFunction(() => !document.querySelector('.detail .fb-description .rich-editor'));
+  assert.equal((await descRequests('fb2')).length, beforeOff, 'turning the toggle off reads nothing');
+  assert.deepEqual(await actions(), ['취소', '적용하기'], 'turning a shown area off is an edit');
+  assert.ok(await page.locator('.detail .fb-description.off').count(), 'the off section stops filling the height');
+  await page.locator('[data-action=fb-identity-save]').click();
+  await page.waitForFunction(() => window.requests.at(-1)?.type === 'applyFlipbookEdits');
+  edit = (await page.evaluate(() => window.requests.at(-1))).edits[0];
+  assert.deepEqual([edit.id, edit.descriptionShown, edit.description], ['fb2', false, undefined], 'applying hides the area and writes no body');
+  console.log('Identity UI: automatic Chapter/policy ID, editable ID/title, 적용하기 enabled only with changes, title-only double click and Description toggle passed');
 } finally { await browser.close(); }

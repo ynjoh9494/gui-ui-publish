@@ -27,7 +27,7 @@ import { emptyComment, type BatchComment, type Plan } from '../core/publish.ts';
 import { customSection, defaultSection, filterScreens, needsReview, pageSections, rowKind, screenCategoryKey, uncreatedScreens, unreviewed, type FlipbookMove, type FlipbookRequest, type FlipbookRowRequest, type FlipbookSection, type ScreenFilter, type ScreenKind } from '../core/flipbooks.ts';
 import { defaultTitle, GUI_WIDTH_MAX, GUI_WIDTH_MIN, NO_SECTION_KEY, screenTags, SMALL_SCALE, validGuiWidth } from '../core/flipbook.ts';
 import { TAG_PALETTE } from '../core/palette.ts';
-import { TEMPLATE_GROUPS, TEMPLATE_ITEMS, isFallbackItem, isTemplateItem, type ItemKind, type TemplateInfo, type TemplateItemDef, type TemplateItemState } from '../core/templateParts.ts';
+import { TEMPLATE_SECTIONS, TEMPLATE_ITEMS, isFallbackItem, isTemplateItem, type ItemKind, type TemplateInfo, type TemplateItemDef, type TemplateItemState } from '../core/templateParts.ts';
 import { templateEntries, type TemplateEntry } from '../core/templateList.ts';
 import { findCategoryByName, systemTagId } from '../core/registry.ts';
 import { formatFrameName, parseFrameName } from '../core/screenName.ts';
@@ -36,7 +36,7 @@ import type { Actor, Category, Flipbook, ImportedGuiRecord, SystemTag, Team } fr
 import { ALL_CATEGORIES, filterPickerScreens, screenCategories, screenLayoutToggle, screenPickerEmpty, screenPickerFilters } from './screenPicker.ts';
 import { thumbnailImage, updateThumbnailImages } from './thumbnailImage.ts';
 import { SIMILAR_MIN, type VersionEvidence, type VersionLink } from '../core/versionMatch.ts';
-import { clampWindow, fromWire, PANE, pasteDropMetadata, type AdminOp, type FlipbookEdit, type NavTarget, type PageInfo, type ManagedPageInfo, type ScanState, type ToMain, type ToUi, type VersionMatchView } from '../core/wire.ts';
+import { clampWindow, fromWire, PANE, pasteDropMetadata, type AdminOp, type DescriptionArea, type FlipbookEdit, type NavTarget, type PageInfo, type ManagedPageInfo, type ScanState, type ToMain, type ToUi, type VersionMatchView } from '../core/wire.ts';
 
 export interface Bridge {
   send(message: ToMain): void;
@@ -235,8 +235,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   const identityDrafts = new Map<string, { rev: number; title: string; screenId: string }>();
   // 기존 플립북 상세의 Description 영역(2026-11-04 사용자 요청). 고르면 캔버스의 내용을 불러오고, 고친 내용은 플립북마다 남는다.
   // 캔버스에서 다시 읽을 때는 고치지 않은 항목을 최신 값으로 갱신하고, 사용자가 바꾼 항목만 초안으로 유지한다.
-  type DescDraft = { status: 'loading' } | { status: 'error'; message: string }
-    | { status: 'ready'; refreshing: boolean; error?: string; saved: string; savedDoc: RichParagraph[]; savedLayout: TextLayout; doc: RichParagraph[]; layout: TextLayout };
+  // Description 토글(2026-11-05 사용자 결정): area는 캔버스의 Description 영역 상태다(none: 영역 표식이 없어 토글 없음).
+  // ready는 토글이 켜진 상태, off는 꺼진 상태로 내용을 불러오지 않는다. 토글이 area와 다르면(보이는 영역을 끔, 숨긴 영역을 켬) 수정이다.
+  // loading의 area: 토글을 켜서 다시 읽는 중이면 토글을 계속 보여 준다.
+  type DescDraft = { status: 'loading'; area?: DescriptionArea } | { status: 'error'; message: string } | { status: 'off'; area: DescriptionArea }
+    | { status: 'ready'; refreshing: boolean; error?: string; area: DescriptionArea; saved: string; savedDoc: RichParagraph[]; savedLayout: TextLayout; doc: RichParagraph[]; layout: TextLayout };
   const descDrafts = new Map<string, DescDraft>();
   let descriptionViewed: string | null = null;
   // Description 영역 편집기에 지금 들어 있는 플립북
@@ -898,7 +901,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   }
   function descEdited(id: string): boolean {
     const d = descDrafts.get(id);
-    return d?.status === 'ready' && (serializeRichText(d.doc) !== d.saved || !sameLayout(d.layout, d.savedLayout));
+    return descShownChange(d) !== undefined || d?.status === 'ready' && descContentEdited(d);
+  }
+  function descContentEdited(d: Extract<DescDraft, { status: 'ready' }>): boolean { return descEditedText(d) || descEditedLayout(d); }
+  // 토글로 바꾼 Description 영역 보이기. 바꾸지 않았으면 undefined
+  function descShownChange(d: DescDraft | undefined): boolean | undefined {
+    if (d?.status === 'off' && d.area === 'shown') return false;
+    if (d?.status === 'ready' && d.area === 'hidden') return true;
+    return undefined;
   }
   function descEditedText(d: Extract<DescDraft, { status: 'ready' }>): boolean { return serializeRichText(d.doc) !== d.saved; }
   function descEditedLayout(d: Extract<DescDraft, { status: 'ready' }>): boolean { return !sameLayout(d.layout, d.savedLayout); }
@@ -921,8 +931,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const draft = identityDrafts.get(id);
     if (draft && identityEdited(id)) edit.identity = { title: draft.title, screenId: draft.screenId };
     const d = descDrafts.get(id);
-    if (d?.status === 'ready' && descEdited(id)) edit.description = { paragraphs: d.doc, layout: d.layout, before: { paragraphs: d.savedDoc, layout: d.savedLayout } };
-    return edit.identity || edit.description ? edit : null;
+    if (d?.status === 'ready' && descContentEdited(d)) edit.description = { paragraphs: d.doc, layout: d.layout, before: { paragraphs: d.savedDoc, layout: d.savedLayout } };
+    const shown = descShownChange(d);
+    if (shown !== undefined) edit.descriptionShown = shown;
+    return edit.identity || edit.description || edit.descriptionShown !== undefined ? edit : null;
   }
   // 수정 여부가 바뀌면 상세의 「적용하기」, 목록의 「수정 중」, 하단 줄을 맞춘다.
   // 상세 제목 줄 버튼: renderFlipbookDetail이 그 플립북에 맞게 정한다(고치는 중인지에 따라 다른 버튼).
@@ -965,11 +977,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     // A selection change invalidates read values; retain only actual unsaved edits.
     const selectedNow = descriptionViewed !== id;
     descriptionViewed = id;
-    if (selectedNow) for (const [otherId, draft] of descDrafts) if (otherId !== id && (draft.status !== 'ready' || !descEdited(otherId))) descDrafts.delete(otherId);
+    if (selectedNow) for (const otherId of [...descDrafts.keys()]) if (otherId !== id && !descEdited(otherId)) descDrafts.delete(otherId);
     let d = descDrafts.get(id);
+    // 숨긴 Description 영역은 본문을 읽지 않는다(force 없이 보내면 영역 상태만 온다). 토글을 켠 초안은 숨긴 영역이어도 읽는다.
     if (!d) { d = { status: 'loading' }; descDrafts.set(id, d); bridge.send({ type: 'flipbookDescription', id }); }
-    else if (selectedNow && d.status === 'ready' && !d.refreshing) { d.refreshing = true; bridge.send({ type: 'flipbookDescription', id }); }
+    else if (selectedNow && d.status === 'ready' && !d.refreshing) { d.refreshing = true; bridge.send({ type: 'flipbookDescription', id, force: true }); }
     else if (selectedNow && d.status === 'error') { d = { status: 'loading' }; descDrafts.set(id, d); bridge.send({ type: 'flipbookDescription', id }); }
+    paintDescriptionHead(id, d);
+    if (d.status === 'off') { slot.replaceChildren(); return; }
     if (d.status === 'loading' || d.status === 'ready' && d.refreshing) { slot.innerHTML = `<p class="note">${COPY.fbDescriptionLoading}</p>`; return; }
     if (d.status === 'error') { slot.innerHTML = `<p class="note bad">${esc(d.message)}</p>`; return; }
     const focused = descEditor.el.contains(document.activeElement);
@@ -985,11 +1000,41 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     slot.appendChild(descEditor.el);
     if (range) { descEditor.el.querySelector<HTMLElement>('.rich-editor')?.focus(); document.getSelection()?.removeAllRanges(); document.getSelection()?.addRange(range); }
   }
-  // 상세의 「취소」: 그 플립북의 고친 제목·ID·Description을 불러온 내용으로 되돌린다.
+  // Description 머리: 이름과 오른쪽 토글. 영역 표식이 있는 플립북만 토글을 둔다. 꺼지면 영역이 남은 높이를 채우지 않는다.
+  function paintDescriptionHead(id: string, d: DescDraft) {
+    const section = root.querySelector<HTMLElement>('.detail .fb-description');
+    const head = section?.querySelector<HTMLElement>('.fb-description-head');
+    if (!section || !head) return;
+    const area = d.status === 'error' ? undefined : d.area;
+    const on = d.status !== 'off';
+    head.innerHTML = `<span>${COPY.fbDescription}</span>${area && area !== 'none'
+      ? `<label class="switch fb-desc-switch"><input type="checkbox" role="switch" data-action="fb-desc-toggle" data-id="${esc(id)}" aria-label="${COPY.fbDescription}" ${on ? 'checked' : ''}></label>` : ''}`;
+    section.classList.toggle('off', !on);
+  }
+  // Description 토글: 끄면 불러온 내용과 고친 본문을 버리고 편집 영역을 숨긴다. 켜면 그때 캔버스에서 다시 읽는다(숨긴 영역도 읽는다).
+  // 캔버스의 영역 보이기는 「적용하기」 때 바꾼다.
+  function toggleDescription(id: string, on: boolean) {
+    const d = descDrafts.get(id);
+    if (on && d?.status === 'off') {
+      descDrafts.set(id, { status: 'loading', area: d.area });
+      bridge.send({ type: 'flipbookDescription', id, force: true });
+    } else if (!on && d?.status === 'ready') {
+      descDrafts.set(id, { status: 'off', area: d.area });
+      if (descEditorFor === id) { descEditorFor = null; descEditor.setParagraphs([], true); }
+    } else return;
+    renderDetail();
+    paintEditState();
+  }
+  // 상세의 「취소」: 그 플립북의 고친 제목·ID·Description을 불러온 내용으로 되돌린다. 토글도 캔버스 상태로 되돌린다
+  // (숨긴 영역을 켰으면 다시 끄고, 보이는 영역을 껐으면 다시 불러온다).
   function discardEditsOf(id: string) {
     identityDrafts.delete(id);
     const d = descDrafts.get(id);
-    if (d?.status === 'ready') { d.doc = d.savedDoc.map(p => ({ ...p, bold: p.bold.map(b => ({ ...b })), ...(p.red ? { red: p.red.map(r => ({ ...r })) } : {}) })); d.layout = { ...d.savedLayout, padding: [...d.savedLayout.padding] as TextLayout['padding'] }; }
+    if (d?.status === 'ready' && d.area === 'hidden') {
+      descDrafts.set(id, { status: 'off', area: 'hidden' });
+      if (descEditorFor === id) descEditor.setParagraphs([], true);
+    } else if (d?.status === 'off' && d.area === 'shown') descDrafts.delete(id);
+    else if (d?.status === 'ready') { d.doc = d.savedDoc.map(p => ({ ...p, bold: p.bold.map(b => ({ ...b })), ...(p.red ? { red: p.red.map(r => ({ ...r })) } : {}) })); d.layout = { ...d.savedLayout, padding: [...d.savedLayout.padding] as TextLayout['padding'] }; }
     if (descEditorFor === id) descEditorFor = null;
     renderDetail();
     paintEditState();
@@ -2505,9 +2550,17 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const info = templateInfo && templateInfo.id === id ? templateInfo : null;
     // 대표가 아닌 템플릿은 이미 있는 플립북을 반영할 때 쓰는 항목만 보여 준다(2026-11-02 사용자 결정).
     const defs = TEMPLATE_ITEMS.filter(d => picked?.representative || isFallbackItem(d.key));
-    const groups = info && !info.error ? TEMPLATE_GROUPS.map(g => ({ label: g.label, items: defs.filter(d => d.group === g.group) })).filter(g => g.items.length).map(g => `
+    // 의미 단위 묶음(2026-11-05 사용자 결정). 부모 칸 안에 들어가거나 부모가 있어야 쓰이는 항목은 부모 아래에 들여쓴다.
+    // 깊이는 지금 보이는 조상만 센다(대표가 아닌 템플릿에서 숨은 부모 때문에 홀로 들여써지지 않게).
+    const shown = new Set(defs.map(d => d.key));
+    const depthOf = (d: TemplateItemDef) => {
+      let depth = 0;
+      for (let key = d.parent; key; key = TEMPLATE_ITEMS.find(x => x.key === key)?.parent) if (shown.has(key)) depth++;
+      return depth;
+    };
+    const groups = info && !info.error ? TEMPLATE_SECTIONS.map(g => ({ label: g.label, items: defs.filter(d => d.section === g.section) })).filter(g => g.items.length).map(g => `
         <h4 class="template-group">${esc(g.label)}</h4>
-        <div class="template-items">${g.items.map(d => templateRow(d, info.items.find(i => i.key === d.key))).join('')}</div>`).join('') : '';
+        <div class="template-items">${g.items.map(d => templateRow(d, info.items.find(i => i.key === d.key), depthOf(d))).join('')}</div>`).join('') : '';
     const name = picked ? esc(info?.name || picked.name || picked.nodeId) : '';
     return `<section class="admin" data-form="template"><h3>${COPY.uiApp392}</h3>
         <p class="note">${COPY.uiApp114}</p>
@@ -2533,12 +2586,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
 
   // 템플릿 항목 한 줄(2026-11-02 사용자 요청): 상태 아이콘 · 항목 이름 · 받는 레이어 형식 아이콘 · 안내(?) · 연결/재연결·해제.
   // 연결된 레이어 이름은 보여 주지 않고, 연결된 항목을 누르면 그 레이어를 캔버스에서 고른다. 문제는 상태 아이콘 툴팁에 둔다.
-  function templateRow(def: TemplateItemDef, item: TemplateItemState | undefined): string {
+  // depth: 들여쓰기 단계(부모 아래 항목)
+  function templateRow(def: TemplateItemDef, item: TemplateItemState | undefined, depth = 0): string {
     const connected = !!item?.layers.length;
     const status = item?.problem || (def.required && !connected) ? 'need' : connected ? 'ok' : 'optional';
     const statusLabel = status === 'need' ? (item?.problem ? `${COPY.uiApp411} · ${item.problem}` : COPY.uiApp411) : status === 'ok' ? COPY.uiApp410 : COPY.uiApp412;
     const formats = KIND_FORMATS[def.kind].map(f => `<span class="format-${f}" title="${esc(FORMAT_LABEL[f])}" role="img" aria-label="${esc(FORMAT_LABEL[f])}">${FORMAT_ICON[f]}</span>`).join('');
-    return `<div class="template-item" data-key="${def.key}"${connected ? ` data-action="admin-template-show" tabindex="0" title="${COPY.uiApp400}"` : ''}>
+    return `<div class="template-item" data-key="${def.key}"${depth ? ` style="--depth:${depth}"` : ''}${connected ? ` data-action="admin-template-show" tabindex="0" title="${COPY.uiApp400}"` : ''}>
         <span class="template-state ${status}" role="img" title="${esc(statusLabel)}" aria-label="${esc(statusLabel)}">${STATE_ICON[status]}</span>
         <span class="template-item-name">${esc(def.label)}</span>
         <span class="template-formats">${formats}</span>
@@ -3336,6 +3390,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       }
       // 기존 플립북 상세의 「취소」: 이 플립북의 제목·ID·Description 수정을 버린다.
       case 'fb-edit-cancel': discardEditsOf(el.dataset.id!); break;
+      case 'fb-desc-toggle': toggleDescription(el.dataset.id!, (el as HTMLInputElement).checked); break;
       case 'create-submit': submitAll(); break;
       case 'arrange-skip': submitAll(false); break;
       case 'arrange-apply': submitAll(true); break;
@@ -4738,7 +4793,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'flipbookDescription': {
         // 다시 불러오기를 요청한 뒤의 응답만 받는다.
         const previous = descDrafts.get(msg.id);
-        if (!previous || previous.status === 'ready' && !previous.refreshing) break;
+        if (!previous || previous.status === 'off' || previous.status === 'ready' && !previous.refreshing) break;
+        // 숨긴 Description 영역은 본문을 읽지 않고 영역 상태만 온다. 토글이 꺼진 채로 둔다.
+        if (!msg.error && msg.area === 'hidden' && !msg.paragraphs && previous.status === 'loading') {
+          descDrafts.set(msg.id, { status: 'off', area: 'hidden' });
+          if (descEditorFor === msg.id) descEditorFor = null;
+          if (tab === 'UI' && listTabOpen() && current()?.flipbookId === msg.id) renderDetail();
+          break;
+        }
         if (msg.error || !msg.paragraphs || !msg.layout) {
           if (previous.status === 'ready') { previous.refreshing = false; previous.error = msg.error ?? COPY.figmaText006; }
           else descDrafts.set(msg.id, { status: 'error', message: msg.error ?? COPY.figmaText006 });
@@ -4751,7 +4813,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         const oldLayout = descEditorFor === msg.id ? descEditor.layout() : null;
         const nextDoc = dirtyText && previous.status === 'ready' ? previous.doc : msg.paragraphs;
         const nextLayout = dirtyLayout && previous.status === 'ready' ? previous.layout : msg.layout;
-        descDrafts.set(msg.id, { status: 'ready', refreshing: false, saved: serializeRichText(msg.paragraphs), savedDoc: msg.paragraphs, savedLayout: msg.layout,
+        descDrafts.set(msg.id, { status: 'ready', refreshing: false, area: msg.area ?? 'none', saved: serializeRichText(msg.paragraphs), savedDoc: msg.paragraphs, savedLayout: msg.layout,
           doc: nextDoc, layout: nextLayout });
         if (descEditorFor === msg.id) {
           descEditorFor = null;

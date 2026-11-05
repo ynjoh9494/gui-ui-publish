@@ -191,6 +191,7 @@ export async function createDefaultTemplate(maxWidth: number, ns = NS): Promise<
     mark(status, 'status');
     mark(ids, 'ids');
     mark(gui, 'gui');
+    mark(panel, 'descriptionArea');
     mark(description, 'description');
     mark(list, 'history');
     mark(history, 'pdfHidden');

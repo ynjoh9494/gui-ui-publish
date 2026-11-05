@@ -9,7 +9,7 @@ import type { Actor, FlipbookScale, FlowRecord, GuiThumb, Team } from './core/ty
 import type { SelectionTarget, SelectionWrite, TextLayout } from './core/description.ts';
 import type { RichParagraph } from './core/richText.ts';
 import type { PdfPage, PdfSelection } from './core/pdf.ts';
-import type { ManagedPageInfo, PageInfo, ToUi } from './core/wire.ts';
+import type { DescriptionArea, ManagedPageInfo, PageInfo, ToUi } from './core/wire.ts';
 import type { TemplateInfo, TemplateItem } from './core/templateParts.ts';
 import type { FoundCopy, NodePlace, PasteSpot } from './core/tracks.ts';
 export type { PasteSpot } from './core/tracks.ts';
@@ -106,6 +106,9 @@ export interface Host extends FingerprintReader {
   // 플립북 상세의 Description 영역: 플립북 프레임의 Description 본문과 서식을 읽고 쓴다. 선택은 바꾸지 않는다.
   readFlipbookDescription(item: { flipbookId: string; pageId: string; nodeId?: string }): Promise<{ paragraphs: RichParagraph[]; layout: TextLayout }>;
   writeFlipbookDescription(item: { flipbookId: string; pageId: string; nodeId?: string }, paragraphs: RichParagraph[], layout: TextLayout): Promise<void>;
+  // Description 영역(본문을 품은 표식 레이어)이 있는지·보이는지, 보이기를 바꾼다(상세의 Description 토글, 2026-11-05 사용자 결정).
+  flipbookDescriptionArea(item: { flipbookId: string; pageId: string; nodeId?: string }): Promise<DescriptionArea>;
+  setFlipbookDescriptionShown(item: { flipbookId: string; pageId: string; nodeId?: string }, shown: boolean): Promise<void>;
   // 플로우: 지금 보고 있는 페이지에 그룹을 만든다. notes: 썸네일을 찾지 못한 화면 등 알릴 내용
   createFlow?(plan: FlowPlan): Promise<{ nodeId: string; pageId: string; notes: string[] }>;
   // 다시 배포된 화면의 썸네일만 바꾼다. 플로우 그룹을 찾지 못하면 null

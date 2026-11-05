@@ -312,7 +312,7 @@ export class Controller {
           this.host.post({ type: 'notice', message: writeMessage(await this.host.writeSelection(msg.paragraphs, msg.layout)) });
           break;
         }
-        case 'flipbookDescription': await this.postFlipbookDescription(msg.id); break;
+        case 'flipbookDescription': await this.postFlipbookDescription(msg.id, !!msg.force); break;
         case 'applyFlipbookEdits': await this.applyFlipbookEdits(msg.edits, msg.create); break;
         case 'pdfTab':
           if (this.host.mode === 'UI') this.pdf.setTab(msg.open);
@@ -1607,12 +1607,16 @@ export class Controller {
 
   // 플립북 제목 변경(2026-10-21 사용자 요청): 기록을 바꾸고 큰 제목·Page title·프레임 이름을 새 제목으로 맞춘다.
   // 플립북 상세의 Description 영역: 고른 플립북의 Description을 읽어 보낸다. 읽지 못하면 이유를 보낸다(오류 알림은 띄우지 않는다).
-  private async postFlipbookDescription(id: string): Promise<void> {
+  // Description 영역을 숨긴 플립북은 force가 아니면 본문을 읽지 않고 영역 상태만 보낸다(2026-11-05 사용자 결정).
+  private async postFlipbookDescription(id: string, force: boolean): Promise<void> {
     const fb = this.store.state.flipbooks.get(id);
     try {
       if (!fb?.pageId) throw new Error(COPY.controller063);
-      const read = await this.host.readFlipbookDescription({ flipbookId: id, pageId: fb.pageId, nodeId: this.uiScans.find(u => u.flipbookId === id)?.nodeId ?? undefined });
-      this.host.post({ type: 'flipbookDescription', id, ...read });
+      const item = { flipbookId: id, pageId: fb.pageId, nodeId: this.uiScans.find(u => u.flipbookId === id)?.nodeId ?? undefined };
+      const area = await this.host.flipbookDescriptionArea(item);
+      if (area === 'hidden' && !force) { this.host.post({ type: 'flipbookDescription', id, area }); return; }
+      const read = await this.host.readFlipbookDescription(item);
+      this.host.post({ type: 'flipbookDescription', id, area, ...read });
     } catch (error) {
       this.host.post({ type: 'flipbookDescription', id, error: error instanceof Error ? error.message : String(error) });
     }
@@ -1628,19 +1632,13 @@ export class Controller {
         this.store.reload();
         if (this.store.state.flipbooks.get(edit.id)?.rev !== edit.rev) throw new Error(COPY.flipbookTitleConflict);
         if (edit.identity) await this.renameFlipbook(edit.id, edit.identity.title, edit.identity.screenId, edit.rev, true);
-        if (edit.description) {
+        // Description 영역 보이기를 먼저 바꾼다. 끄는 수정에는 본문 수정이 없다(꺼진 동안은 본문을 불러오지 않는다).
+        if (edit.descriptionShown !== undefined || edit.description) {
           const fb = this.store.state.flipbooks.get(edit.id);
           if (!fb?.pageId) throw new Error(COPY.controller063);
           const item = { flipbookId: edit.id, pageId: fb.pageId, nodeId: this.uiScans.find(u => u.flipbookId === edit.id)?.nodeId ?? undefined };
-          const current = await this.host.readFlipbookDescription(item);
-          const before = edit.description.before;
-          const textChanged = serializeRichText(edit.description.paragraphs) !== serializeRichText(before.paragraphs);
-          const layoutChanged = !sameLayout(edit.description.layout, before.layout);
-          if ((textChanged && serializeRichText(current.paragraphs) !== serializeRichText(before.paragraphs))
-            || (layoutChanged && !sameLayout(current.layout, before.layout)))
-            throw new Error(COPY.flipbookDescriptionConflict);
-          await this.host.writeFlipbookDescription(item, textChanged ? edit.description.paragraphs : current.paragraphs,
-            layoutChanged ? edit.description.layout : current.layout);
+          if (edit.descriptionShown !== undefined) await this.host.setFlipbookDescriptionShown(item, edit.descriptionShown);
+          if (edit.description) await this.writeDescriptionEdit(item, edit.description);
         }
         applied.push(edit.id);
       } catch (error) {
@@ -1655,6 +1653,19 @@ export class Controller {
     ].filter(Boolean).join(' ');
     this.host.post({ type: 'flipbookEditsApplied', applied, failed, message, creating: !!create });
     if (create) await this.createFlipbooks(create);
+  }
+
+  // 적용 직전에 사용자가 고친 본문·서식 항목만 충돌을 확인하고, 고치지 않은 항목은 캔버스의 현재 값을 유지해 쓴다.
+  private async writeDescriptionEdit(item: { flipbookId: string; pageId: string; nodeId?: string }, description: NonNullable<FlipbookEdit['description']>): Promise<void> {
+    const current = await this.host.readFlipbookDescription(item);
+    const before = description.before;
+    const textChanged = serializeRichText(description.paragraphs) !== serializeRichText(before.paragraphs);
+    const layoutChanged = !sameLayout(description.layout, before.layout);
+    if ((textChanged && serializeRichText(current.paragraphs) !== serializeRichText(before.paragraphs))
+      || (layoutChanged && !sameLayout(current.layout, before.layout)))
+      throw new Error(COPY.flipbookDescriptionConflict);
+    await this.host.writeFlipbookDescription(item, textChanged ? description.paragraphs : current.paragraphs,
+      layoutChanged ? description.layout : current.layout);
   }
 
   private async renameFlipbook(id: string, title: string, screenId?: string, rev?: number, quiet = false): Promise<void> {

@@ -15,7 +15,7 @@ import { createFlow, flowNode, updateFlow } from './flow.ts';
 import { SCREEN_KEY } from './layers.ts';
 import { exportPdfPages, pdfSelection } from './pdf.ts';
 import { readRichText, selectedTextNode, writeRichText } from './richText.ts';
-import { connectTemplateItem, describeTemplate, disconnectTemplateItem, templateItemNodes } from './template.ts';
+import { connectTemplateItem, describeTemplate, disconnectTemplateItem, markedPart, templateItemNodes } from './template.ts';
 import { convertLegacyFlipbooks } from './legacyConvert.ts';
 import { createDefaultTemplate } from './templateDefault.ts';
 import { createdCopies, markTracked, nodePlaces, pasteCopy, retagCopies, scanCopies, updateCopies } from './tracked.ts';
@@ -295,6 +295,16 @@ export function figmaHost(mode: Host['mode']): Host {
     },
     async writeFlipbookDescription(item, paragraphs, layout) {
       await fillDescription(flipbookDescriptionRoot(await flipbookFrame(item)), paragraphs, layout, false);
+    },
+    async flipbookDescriptionArea(item) {
+      const area = markedPart(await flipbookFrame(item), 'descriptionArea', NS);
+      return !area ? 'none' : area.visible ? 'shown' : 'hidden';
+    },
+    // 영역 레이어의 보이기만 바꾼다. 본문 내용은 건드리지 않는다.
+    async setFlipbookDescriptionShown(item, shown) {
+      const area = markedPart(await flipbookFrame(item), 'descriptionArea', NS);
+      if (!area) throw new Error(COPY.figmaTemplate041);
+      if (area.visible !== shown) area.visible = shown;
     },
     createFlow: plan => createFlow(NS, plan),
     updateFlow: (flow, thumbs) => updateFlow(NS, flow, thumbs),

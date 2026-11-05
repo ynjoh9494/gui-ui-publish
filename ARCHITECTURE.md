@@ -37,7 +37,7 @@ flowchart LR
 | `src/core/drafts.ts`, `publish.ts`, `registry.ts` | 입력 검증, GUI 배포 계획·확정, 카테고리·작업자·태그·화면 레지스트리 |
 | `src/core/flow.ts` | 플로우 계획(배포된 화면만, 가장 왼쪽·위 썸네일이 (0, 0)이 되게 당김, 잘못된·중복 화살표 제외), 썸네일마다 제 크기 자리(격자는 놓는 위치 스냅)와 다른 화면 자리를 피해 화면 사이 통로를 따르는 꺾인 화살표 경로(`routeLink`, 플러그인 판과 캔버스가 함께 씀), 조건 레이어 자리, 다시 배포된 화면이 든 플로우 고르기 |
 | `src/core/pdf.ts` | PDF 저장 탭의 정책: 연결 기록이 없는 프레임에서 저장하는 동안 숨길 요소 이름(UI Title·Update History List), 쪽 이미지 배율(2배 JPG), 쪽 순서(캔버스 왼쪽 위 → 오른쪽 아래), 파일 이름 |
-| `src/core/templateParts.ts` | 템플릿 연결 항목 정의(플립북 칸·컴포넌트·이력 행 안의 칸, 종류·필수·여러 개, 대표가 아닌 템플릿이 다루는 반영용 항목 `isFallbackItem`), 레이어 표식 키(`templatePart`)와 템플릿 프레임의 연결 기록(`templateLinks`, 컴포넌트 노드 ID) 형식, UI에 보내는 연결 상태(`TemplateInfo`) |
+| `src/core/templateParts.ts` | 템플릿 연결 항목 정의(관리 화면의 의미 묶음 `section`과 들여쓰기 부모 `parent`, 연결·검사가 쓰는 위치 `group`(플립북 칸·컴포넌트·이력 행 안의 칸), 종류·필수·여러 개, 대표가 아닌 템플릿이 다루는 반영용 항목 `isFallbackItem`), 레이어 표식 키(`templatePart`)와 템플릿 프레임의 연결 기록(`templateLinks`, 컴포넌트 노드 ID) 형식, UI에 보내는 연결 상태(`TemplateInfo`) |
 | `src/core/templateList.ts` | 템플릿 목록(대표 지정) 규칙: 화면에 보일 목록(`templateEntries`, 대표가 맨 위), 대표를 바꾸면 이전 대표를 대표 바로 아래에 남김(`setCurrentTemplate`·`setRepresentativeTemplate`), 더하기(비었으면 대표)·빼기(대표는 못 뺌), 항목을 다룰 템플릿 검증(`templateForItem`: 대표가 아니면 `isFallbackItem` 항목만), 등록에서 뺄 템플릿 노드. 저장은 `templateNodeId`(대표)·`previousTemplates`(나머지) |
 | `src/core/richText.ts` | 텍스트 편집 탭의 문서 모델(문단·목록 단계·굵은 범위), 편집 동작(줄 나누기·합치기·붙여 넣기·굵게·목록 단계), 붙여 넣기·복사용 텍스트 형식 |
 | `src/core/flipbooks.ts`, `flipbook.ts`, `guiScreens.ts`, `history.ts`, `data.ts` | 플립북 기록·확인 상태, 캔버스 반영용 뷰(새 템플릿 플립북은 만든 뒤 기록이 없으면 「작성 전」), 화면 목록의 상태 태그(`screenTags`: 가장 최근 GUI 배포로 바뀐 화면에만), 화면 목록·이력·DATA 모델 |

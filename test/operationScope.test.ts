@@ -158,6 +158,45 @@ test('Description text apply keeps a newer canvas layout when layout was not edi
 });
 
 
+// Description 토글(2026-11-05): 영역 보이기를 먼저 바꾸고, 끄는 수정은 본문을 읽거나 쓰지 않는다.
+test('Description toggle off hides the area without reading or writing the body', async () => {
+  const { controller, host, store, posted } = setup();
+  const calls: string[] = [];
+  host.setFlipbookDescriptionShown = async (_item, shown) => { calls.push(`shown:${shown}`); };
+  host.readFlipbookDescription = async () => { calls.push('read'); return { paragraphs: parseRichText('x'), layout: cloneLayout(DEFAULT_TEXT_LAYOUT) }; };
+  host.writeFlipbookDescription = async () => { calls.push('write'); };
+  await controller.handle({ type: 'applyFlipbookEdits', edits: [{ id: 'fb1', rev: store.state.flipbooks.get('fb1')!.rev, descriptionShown: false }] });
+  assert.deepEqual(calls, ['shown:false']);
+  assert.ok(posted.some(m => m.type === 'flipbookEditsApplied' && m.applied.includes('fb1')));
+});
+
+test('Description toggle on shows the area before writing the edited body', async () => {
+  const { controller, host, store } = setup();
+  const before = parseRichText('Old'), next = parseRichText('Mine');
+  const layout = cloneLayout(DEFAULT_TEXT_LAYOUT);
+  const calls: string[] = [];
+  host.setFlipbookDescriptionShown = async (_item, shown) => { calls.push(`shown:${shown}`); };
+  host.readFlipbookDescription = async () => { calls.push('read'); return { paragraphs: before, layout }; };
+  host.writeFlipbookDescription = async (_item, paragraphs) => { calls.push(`write:${paragraphs[0].text}`); };
+  await controller.handle({ type: 'applyFlipbookEdits', edits: [{ id: 'fb1', rev: store.state.flipbooks.get('fb1')!.rev, descriptionShown: true,
+    description: { paragraphs: next, layout, before: { paragraphs: before, layout } } }] });
+  assert.deepEqual(calls, ['shown:true', 'read', 'write:Mine']);
+});
+
+test('hidden Description areas send only the area state unless forced', async () => {
+  const { controller, host, posted } = setup();
+  let reads = 0;
+  host.flipbookDescriptionArea = async () => 'hidden';
+  host.readFlipbookDescription = async () => { reads++; return { paragraphs: parseRichText('Body'), layout: cloneLayout(DEFAULT_TEXT_LAYOUT) }; };
+  await controller.handle({ type: 'flipbookDescription', id: 'fb1' });
+  assert.equal(reads, 0);
+  assert.deepEqual(posted.filter(m => m.type === 'flipbookDescription').pop(), { type: 'flipbookDescription', id: 'fb1', area: 'hidden' });
+  await controller.handle({ type: 'flipbookDescription', id: 'fb1', force: true });
+  assert.equal(reads, 1);
+  const last = posted.filter(m => m.type === 'flipbookDescription').pop();
+  assert.ok(last?.type === 'flipbookDescription' && last.area === 'hidden' && last.paragraphs?.[0].text === 'Body');
+});
+
 test('category names update matching Chapters without a full flipbook delivery', async () => {
   const { controller, host, store, calls } = setup();
   store.put(keys.category('live'), { id: 'live', name: 'Live', code: 'LI', order: 0, active: true });

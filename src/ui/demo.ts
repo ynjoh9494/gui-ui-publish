@@ -95,6 +95,8 @@ export function createDemo(options: DemoOptions): Demo {
   let thumbSeq = 0;
   const flipbooks = new Map<string, string>();
   const descriptions = new Map<string, RichParagraph[]>();
+  // 플립북마다 Description 영역을 숨겼는지(처음은 모두 보인다)
+  const descriptionHidden = new Set<string>();
   // 플립북마다 마지막으로 반영한 GUI 영역(Screen ID@크기). 화면 편집을 로그로 보여 준다.
   const shownGui = new Map<string, string>();
   // 플립북 프레임의 캔버스 배치. 같은 페이지·Section끼리 배열 순서가 Section 안 순서이고, Section은 처음 나온 순서다.
@@ -333,12 +335,23 @@ export function createDemo(options: DemoOptions): Demo {
     // 플립북 Description: 플립북마다 문단을 따로 둔다(처음은 비어 있다).
     async readFlipbookDescription(item) {
       if (!flipbooks.has(item.flipbookId)) throw new Error(COPY.figmaFlipbook027);
+      if (options.instrument) document.body.dataset.previewDescriptionReads = String(Number(document.body.dataset.previewDescriptionReads ?? 0) + 1);
       return { paragraphs: (descriptions.get(item.flipbookId) ?? []).map(p => ({ ...p, bold: p.bold.map(b => ({ ...b })) })), layout: cloneLayout(DEFAULT_TEXT_LAYOUT) };
     },
     async writeFlipbookDescription(item, paragraphs) {
       if (!flipbooks.has(item.flipbookId)) throw new Error(COPY.figmaFlipbook027);
       descriptions.set(item.flipbookId, paragraphs);
       log(`Description: ${item.flipbookId}`);
+      changed();
+    },
+    async flipbookDescriptionArea(item) {
+      if (!flipbooks.has(item.flipbookId)) throw new Error(COPY.figmaFlipbook027);
+      return descriptionHidden.has(item.flipbookId) ? 'hidden' : 'shown';
+    },
+    async setFlipbookDescriptionShown(item, shown) {
+      if (!flipbooks.has(item.flipbookId)) throw new Error(COPY.figmaFlipbook027);
+      if (shown) descriptionHidden.delete(item.flipbookId); else descriptionHidden.add(item.flipbookId);
+      log(`Description ${shown ? 'ON' : 'OFF'}: ${item.flipbookId}`);
       changed();
     },
     async createFlow(plan) {

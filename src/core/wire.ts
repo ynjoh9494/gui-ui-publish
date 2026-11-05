@@ -131,12 +131,17 @@ export type NavTarget = 'source' | 'flipbook' | 'history';
 // idle: 확인 전, loading: 원본·플립북 읽는 중, comparing: 지문 비교 중
 export type ScanState = 'idle' | 'loading' | 'comparing' | 'done' | 'cancelled' | 'failed';
 
-// 기존 플립북 하나의 수정. identity: Page title·Screen ID, description: Description 본문과 서식. rev: 고칠 때 본 기록
+// 플립북 Description 영역(템플릿의 「Description 영역」 표식 레이어). none: 표식이 없는 플립북(토글 없음)
+export type DescriptionArea = 'none' | 'shown' | 'hidden';
+
+// 기존 플립북 하나의 수정. identity: Page title·Screen ID, description: Description 본문과 서식,
+// descriptionShown: Description 영역을 보일지(토글을 바꿨을 때만). rev: 고칠 때 본 기록
 export interface FlipbookEdit {
   id: string;
   rev: number;
   identity?: { title: string; screenId: string };
   description?: { paragraphs: RichParagraph[]; layout: TextLayout; before: { paragraphs: RichParagraph[]; layout: TextLayout } };
+  descriptionShown?: boolean;
 }
 
 export type ToMain =
@@ -217,7 +222,8 @@ export type ToMain =
   | { type: 'revealTemplateItem'; nav: number; templateId: string; key: TemplateItem }
   | { type: 'textApply'; paragraphs: RichParagraph[]; layout?: TextLayout }
   // 플립북 상세의 Description 영역(2026-11-04 사용자 요청): 고른 플립북의 Description 본문과 서식을 읽는다.
-  | { type: 'flipbookDescription'; id: string }
+  // force: Description 영역이 숨겨져 있어도 읽는다(상세에서 토글을 켰을 때). 아니면 숨긴 영역은 읽지 않는다(2026-11-05 사용자 결정).
+  | { type: 'flipbookDescription'; id: string; force?: boolean }
   // 「적용하기」·「모두 적용하기」: 기존 플립북의 제목·ID·Description 수정을 반영하고, create가 있으면 이어서 새 플립북을 만들고 옮긴다.
   | { type: 'applyFlipbookEdits'; edits: FlipbookEdit[]; create?: FlipbookRequest }
   // 플로우: 고른 배포 화면으로 지금 보고 있는 페이지에 플로우 그룹을 만든다.
@@ -292,8 +298,8 @@ export type ToUi =
   | { type: 'pages'; pages: PageInfo[]; managedPages?: ManagedPageInfo[] }
   | { type: 'thumbnails'; items: { hash: string; bytes: Uint8Array | null }[] }
   | { type: 'textImported'; paragraphs: RichParagraph[]; layout?: TextLayout }
-  // 플립북 Description을 읽었다. 읽지 못하면 error
-  | { type: 'flipbookDescription'; id: string; paragraphs?: RichParagraph[]; layout?: TextLayout; error?: string }
+  // 플립북 Description을 읽었다. 읽지 못하면 error. area: Description 영역 상태(숨겼으면 force가 아닐 때 본문을 읽지 않아 paragraphs가 없다)
+  | { type: 'flipbookDescription'; id: string; area?: DescriptionArea; paragraphs?: RichParagraph[]; layout?: TextLayout; error?: string }
   // 기존 플립북 수정을 반영했다. creating: 이어서 새 플립북 만들기·옮기기를 하며 그 결과는 flipbooksCreated로 온다.
   | { type: 'flipbookEditsApplied'; applied: string[]; failed: { id: string; message: string }[]; message: string; creating: boolean }
   // 텍스트 편집 대상. 탭이 보이는 동안 캔버스 선택이 바뀔 때와 탭을 열 때 보낸다.

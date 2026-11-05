@@ -249,12 +249,14 @@ export interface Parts {
   status: InstanceNode | TextNode | null;
   ids: SceneNode | null;
   gui: FrameNode | null;
+  // Description 본문을 품은 영역. 플립북 상세의 Description 토글이 이 레이어를 숨기거나 보인다.
+  descriptionArea: SceneNode | null;
   description: SceneNode | null;
   list: SceneNode | null;
   previous: SceneNode | null;
 }
 
-const NO_PARTS: Parts = { links: null, titles: [], chapter: null, status: null, ids: null, gui: null, description: null, list: null, previous: null };
+const NO_PARTS: Parts = { links: null, titles: [], chapter: null, status: null, ids: null, gui: null, descriptionArea: null, description: null, list: null, previous: null };
 
 export function flipbookParts(root: FrameNode, ns = NS): Parts {
   const links = linksOf(root, ns);
@@ -268,6 +270,7 @@ export function flipbookParts(root: FrameNode, ns = NS): Parts {
     status: asTag(first('status')),
     ids: first('ids'),
     gui: asFrame(first('gui')),
+    descriptionArea: first('descriptionArea'),
     description: first('description'),
     list: first('history'),
     previous: first('previous'),
@@ -391,6 +394,9 @@ async function linkedItems(template: FrameNode, links: TemplateLinks, ns: string
     let problem = nodes.map(n => kindProblem(def.kind, n)).find(Boolean) ?? null;
     if (!problem && !nodes.length && def.required) problem = COPY.figmaTemplate007;
     if (!problem && def.key === 'previous' && nodes.length && !connected('history')) problem = COPY.figmaTemplate010;
+    // Description 본문은 Description 영역 안에 있어야 한다(2026-11-05 사용자 결정). 연결 순서를 자유롭게 하려고 연결할 때 막지 않고 여기서 알린다.
+    const area = marked.get('descriptionArea')?.[0];
+    if (!problem && def.key === 'description' && nodes.length && area && !contains(area, nodes[0])) problem = COPY.figmaTemplate040;
     return { key: def.key, layers: layers(nodes, def.group === 'row' ? components.row : template), problem };
   });
 }

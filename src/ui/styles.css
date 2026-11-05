@@ -293,7 +293,8 @@ summary { cursor: pointer; color: var(--muted); }
    연결된 항목 줄은 누르면 그 레이어를 캔버스에서 고른다. */
 .template-actions { flex-wrap: wrap; }
 .template-group { margin: 10px 0 2px; font-size: 11px; color: var(--muted); }
-.template-item { display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 3px 4px; margin: 0 -4px; border-top: 1px solid var(--border); }
+/* 부모 아래 항목(--depth)은 플러그인 목록의 묶음 안 줄과 같은 17px씩 들여쓴다. 구분선·hover 배경은 줄 전체 폭에 둔다(2026-11-05 사용자 결정). */
+.template-item { display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 3px 4px 3px calc(4px + var(--depth, 0) * 17px); margin: 0 -4px; border-top: 1px solid var(--border); }
 .template-item[data-action] { cursor: pointer; }
 .template-item[data-action]:hover { background: var(--bg2); }
 .template-item:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
@@ -921,7 +922,9 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: var(--onb
 .fb-identity { padding-bottom: 6px; }
 /* 기존 플립북 상세의 Description 영역(2026-11-04): ID·Chapter 아래, 고르면 캔버스 내용을 불러온 편집기 */
 .fb-top > .fb-description { flex: 1 0 auto; display: flex; flex-direction: column; gap: 4px; padding-bottom: 8px; }
-.fb-description-head { flex: none; color: var(--muted); font-size: 11px; }
+.fb-description-head { flex: none; display: flex; align-items: center; min-height: 16px; color: var(--muted); font-size: 11px; }
+/* Description 토글이 꺼지면(2026-11-05 사용자 결정) 편집 영역이 없으므로 남은 높이를 채우지 않는다. */
+.fb-top > .fb-description.off { flex: none; }
 /* Description 영역은 최소 높이를 두고 남은 높이를 채운다(2026-11-04 사용자 요청) */
 .fb-desc-body { flex: 1 0 auto; display: flex; flex-direction: column; }
 .fb-desc-body > .rich-block { flex: 1 0 auto; }

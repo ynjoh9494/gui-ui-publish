@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { COPY } from '../src/core/copy.ts';
-import { LINKS_KEY, PART_KEY, parseLinks } from '../src/core/templateParts.ts';
+import { LINKS_KEY, PART_KEY, TEMPLATE_ITEMS, TEMPLATE_SECTIONS, itemDef, parseLinks } from '../src/core/templateParts.ts';
 import type { FlipbookRow } from '../src/core/flipbook.ts';
 import { syncMarkedRows, type TagKit } from '../src/figma/flipbook.ts';
 import { selectionTarget } from '../src/figma/description.ts';
@@ -429,4 +429,42 @@ test('이력 행이 없는 이전 형식 플립북은 첫 이전 형식 템플�
   await convertLegacyFlipbooks({ pageIds: [w.page.id], flipbookIds: ['fb-lone'], templateIds: [marked.id] });
   assert.equal(lone.frame.getSharedPluginData(NS, TEMPLATE_KEY), '');
   assert.deepEqual(parseLinks(lone.frame.getSharedPluginData(NS, LINKS_KEY))?.components, { row: t.rowComponent.id });
+});
+
+// 관리 화면의 의미 단위 묶음(2026-11-05): 자식은 부모 바로 뒤쪽에, 같은 묶음 안에 둔다.
+test('템플릿 항목은 묶음마다 모이고, 부모가 있는 항목은 같은 묶음에서 부모 뒤에 온다', () => {
+  const index = new Map(TEMPLATE_ITEMS.map((d, i) => [d.key, i]));
+  const sections = TEMPLATE_SECTIONS.map(s => s.section);
+  let last = -1;
+  for (const [i, def] of TEMPLATE_ITEMS.entries()) {
+    const at = sections.indexOf(def.section);
+    assert.ok(at >= last, `${def.key}: 묶음 순서대로 놓는다`);
+    last = at;
+    if (!def.parent) continue;
+    const parent = TEMPLATE_ITEMS[index.get(def.parent)!];
+    assert.ok(parent, `${def.key}: 부모 ${def.parent}가 있다`);
+    assert.ok(index.get(def.parent)! < i, `${def.key}: 부모 뒤에 온다`);
+    assert.equal(parent.section, def.section, `${def.key}: 부모와 같은 묶음이다`);
+  }
+  assert.equal(itemDef('description')?.parent, 'descriptionArea');
+});
+
+test('Description 본문이 Description 영역 밖에 있으면 알리고, 플립북은 영역 표식을 찾는다', async () => {
+  const w = world();
+  const gui = w.role(w.make('FRAME', 'GUI'), 'gui');
+  const body = w.make('FRAME', 'Body');
+  const outside = w.make('FRAME', 'Outside');
+  const panel = w.make('FRAME', 'Description', [body]);
+  const template = w.make('FRAME', 'Template', [gui, panel, outside]);
+  w.page.appendChild(template);
+  template.setSharedPluginData(NS, LINKS_KEY, '{"components":{}}');
+  w.select(body);
+  await connectTemplateItem(template.id, 'description');
+  w.select(panel);
+  await connectTemplateItem(template.id, 'descriptionArea');
+  assert.deepEqual(await templateIssues(template.id), []);
+  assert.equal(flipbookParts(template as unknown as FrameNode).descriptionArea?.id, panel.id);
+  w.select(outside);
+  await connectTemplateItem(template.id, 'description');
+  assert.deepEqual(await templateIssues(template.id), [`${COPY.coreTemplate011}: ${COPY.figmaTemplate040}`]);
 });
