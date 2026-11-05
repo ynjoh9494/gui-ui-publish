@@ -1,5 +1,5 @@
 import { COPY } from './copy.ts';
-import { flipbookHistoryRows, formatTime, guiHistoryRows, type HistoryRow } from './history.ts';
+import { formatTime, guiHistoryRows, type HistoryRow } from './history.ts';
 import { formatFrameName } from './screenName.ts';
 import type { State } from './store.ts';
 import type { Actor, DeliveryState, TagSnapshot } from './types.ts';
@@ -93,8 +93,6 @@ export function dataModel(state: State, actor: Actor, now: number): DataModel {
   const history: DataHistoryRow[] = [];
   for (const s of screens) for (const row of guiHistoryRows(state, s.id))
     history.push({ ...row, key: `${s.id}:${row.team}:${row.version}`, screenId: s.id, screenName: formatFrameName(s.code, s.name) });
-  for (const fb of flipbooks) for (const row of flipbookHistoryRows(state, fb.id))
-    history.push({ ...row, key: `${fb.id}:${row.team}:${row.batchId}`, screenId: fb.id, screenName: row.code && fb.kind !== 'single' ? `${fb.title} · ${row.code}` : fb.title });
   // 화면별 정렬과 같은 규칙으로 전체를 최신순 정렬한다. 순서는 GUI·UI 반영 관계를 뜻하지 않는다.
   history.sort((a, b) => b.committedAt - a.committedAt || a.screenName.localeCompare(b.screenName, 'ko') || (a.team < b.team ? -1 : a.team > b.team ? 1 : 0));
 

@@ -27,7 +27,9 @@ flowchart LR
 
 ## 코드 경계
 
-템플릿 날짜 형식은 `ProjectConfig.historyDateFormat`에 파일 공통으로 저장한다. `core/flipbook.ts`가 허용 형식과 프로젝트 시간대를 사용해 히스토리·Status 날짜를 만들고, Controller의 `setHistoryDateFormat`은 형식 검증·설정 저장·감사 기록만 수행한다. 기록의 타임스탬프와 플러그인·DATA의 전체 시각 표시는 유지한다.
+GUI 배포 히스토리는 GuiRecovery가 검증한 GUI 원기록 참조를 Delivery.history로 전달한다. Controller는 대기 중인 참조만 guiAppendRows()로 묶어 Figma에 전달하며, 반영 완료 시 참조를 지운다. syncMarkedRows()는 기존 행을 재작성·정렬·삭제하지 않고 목록 아래에 추가하며 캔버스의 배포 키로 재시도 중복만 막는다. 일반 동기화·생성은 과거 히스토리를 불러오지 않는다. 구형 파일 기록은 보존하되 플러그인 UI와 DATA에 플립북 히스토리를 전송·표시하지 않는다.
+
+템플릿 날짜 형식은 `ProjectConfig.historyDateFormat`에 파일 공통으로 저장한다. `core/flipbook.ts`가 허용 형식과 프로젝트 시간대를 사용해 새 GUI 배포 행의 날짜를 만들고, Controller의 `setHistoryDateFormat`은 형식 검증·설정 저장·감사 기록만 수행한다. 기록의 타임스탬프와 플러그인·DATA의 전체 시각 표시는 유지한다.
 
 `src/ui/windowCollapse.ts`는 DOM을 유지해 접기 전 입력·선택을 보존하고, 접힌 동안 발생한 크기 변경을 펼칠 때 반영한다. `Host.resize`는 접힌 창의 크기를 Figma에 전달하되 다음 실행 크기로 저장하지 않는다.
 

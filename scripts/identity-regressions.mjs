@@ -47,12 +47,12 @@ try {
   assert.equal(await page.locator('[data-identity-chapter]').isDisabled(), true);
   assert.equal(await page.locator('[data-input=fb-screen-id]').inputValue(), 'ST_LI_POLICY');
   const actions = () => page.locator('.detail .title-actions button').allInnerTexts();
-  assert.deepEqual(await actions(), ['히스토리', '목록에서 삭제'], 'nothing to apply yet: history and remove only');
+  assert.deepEqual(await actions(), ['목록에서 삭제'], 'nothing to apply yet: history and remove only');
   const layout = { gap: 12, padding: [8, 12, 16, 12], fontSize: 16, letterSpacing: 0, lineHeight: 140, listSpacing: 2, spacer: 15 };
   const imported = parseRichText('**Policy Title**\n- <red>확인 필요</red>\n\n---\n\n**1. 화면 제목**\n- 설명\n\n**2. 버튼**\n- 동작');
   await page.evaluate(({ paragraphs, layout }) => window.postMessage({ pluginMessage: { type: 'flipbookDescription', id: 'fb', paragraphs, layout } }, '*'), { paragraphs: imported, layout });
   await page.locator('.detail .fb-description .rich-editor').waitFor();
-  assert.deepEqual(await actions(), ['히스토리', '목록에서 삭제'], 'loading Description alone does not create an edit');
+  assert.deepEqual(await actions(), ['목록에서 삭제'], 'loading Description alone does not create an edit');
   assert.equal(await page.locator('.detail .fb-desc-switch').count(), 0, 'no Description toggle without a Description area mark');
   assert.equal(await page.locator('.list .row.selected .row-state.edit-state').count(), 0);
   await page.locator('[data-input=fb-page-title]').fill('A title without a dash');
@@ -61,7 +61,7 @@ try {
   assert.equal(await page.locator('.detail .title-head .head-state:not([hidden])').innerText(), '수정 중');
   assert.equal(await page.evaluate(() => document.activeElement?.dataset.input), 'fb-page-title', 'typing keeps focus while the buttons change');
   await page.locator('[data-input=fb-page-title]').fill('Policy');
-  assert.deepEqual(await actions(), ['히스토리', '목록에서 삭제'], 'typing the saved title back restores history and remove');
+  assert.deepEqual(await actions(), ['목록에서 삭제'], 'typing the saved title back restores history and remove');
   await page.locator('[data-input=fb-page-title]').fill('A title without a dash');
   await page.locator('[data-input=fb-screen-id]').fill('ST_LI_POLICY_05');
   assert.equal(await page.locator('[data-identity-frame]').count(), 0, 'no frame-name preview row');
@@ -142,7 +142,7 @@ try {
   await toggle.waitFor();
   assert.equal(await toggle.isChecked(), false, 'a hidden Description area shows the toggle off');
   assert.equal(await editor.count(), 0, 'no editor while the toggle is off');
-  assert.deepEqual(await actions(), ['히스토리', '목록에서 삭제'], 'a hidden area alone is not an edit');
+  assert.deepEqual(await actions(), ['목록에서 삭제'], 'a hidden area alone is not an edit');
   await page.locator('#app').screenshot({ path: 'tmp/walkthrough/ui-description-off.png' });
   const beforeOn = (await descRequests('fb2')).length;
   await toggle.click();
@@ -155,7 +155,7 @@ try {
   assert.deepEqual(await actions(), ['취소', '적용하기'], 'turning a hidden area on is an edit');
   await page.locator('[data-action=fb-edit-cancel]').click();
   await page.waitForFunction(() => !document.querySelector('.detail .fb-description .rich-editor') && document.querySelector('.detail .fb-desc-switch input')?.checked === false);
-  assert.deepEqual(await actions(), ['히스토리', '목록에서 삭제'], '취소 turns the toggle back off');
+  assert.deepEqual(await actions(), ['목록에서 삭제'], '취소 turns the toggle back off');
   await toggle.click();
   await reply({ id: 'fb2', area: 'hidden', paragraphs: [{ text: 'Hidden body', depth: null, bold: [] }], layout });
   await editor.waitFor();
@@ -169,7 +169,7 @@ try {
   await reply({ id: 'fb2', area: 'shown', paragraphs: [{ text: 'Shown body', depth: null, bold: [] }], layout });
   await page.waitForFunction(() => document.querySelector('.detail .fb-description .rich-editor')?.textContent === 'Shown body');
   assert.equal(await toggle.isChecked(), true, 'a shown area has the toggle on');
-  assert.deepEqual(await actions(), ['히스토리', '목록에서 삭제']);
+  assert.deepEqual(await actions(), ['목록에서 삭제']);
   const beforeOff = (await descRequests('fb2')).length;
   await toggle.click();
   await page.waitForFunction(() => !document.querySelector('.detail .fb-description .rich-editor'));

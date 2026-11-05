@@ -7,7 +7,7 @@ import type { TrackController } from './trackController.ts';
 import type { FlowController } from './flowController.ts';
 
 interface RecoveryActions {
-  pull(batchId: string, targets: string[], uids: Set<string>): Promise<{ message: string; failed: boolean; failedTargets?: string[] } | null>;
+  pull(batchId: string, targets: string[], uids: Set<string>, history: { uid: string; version: number }[]): Promise<{ message: string; failed: boolean; failedTargets?: string[] } | null>;
   data(): Promise<boolean>;
   progress?(label: string): Promise<void>;
 }
@@ -152,7 +152,13 @@ export class GuiRecovery {
     const targets = [...s.state.flipbooks.values()].filter(f => f.status === 'active' &&
       (alerted.includes(f.id) || f.screens.some(screen => safe.has(screen.uid)))).map(f => f.id);
     try {
-      const pulled = safe.size ? await this.actions.pull(`resume:${batchId ?? 'pending'}`, targets, uids) : null;
+      const history = jobs.flatMap(job => {
+        const record = recordOf(job);
+        return safe.has(job.targetId) && !job.batchId.startsWith(RECONCILE_PREFIX) && record && !record.quiet
+          ? [{ uid: job.targetId, version: record.version }] : [];
+      });
+      const deliveryBatch = batchId ?? [...new Set(jobs.map(job => job.batchId))].sort().join(',');
+      const pulled = safe.size ? await this.actions.pull(`resume:${deliveryBatch}`, targets, uids, history) : null;
       if (pulled?.message) notes.push(pulled.message);
       if (pulled?.failed) {
         const failedTargets = new Set(pulled.failedTargets ?? targets);

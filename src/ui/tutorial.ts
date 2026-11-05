@@ -91,17 +91,6 @@ const section = (d: Driver, from: number, to?: number) => d.all('.detail .sectio
 // GUI 상세 제목 줄의 배포 스위치
 const publishSwitch = (d: Driver) => d.q('.detail [data-action="include-selected"]')?.closest('label') ?? d.q('.detail [data-action="include-selected"]');
 const scrollTop = (el: Element | null) => { if (el) el.scrollTop = 0; };
-// UI 플립북 상세의 「히스토리」 창: 히스토리·상태·코멘트·확인 완료
-async function openHistory(d: Driver): Promise<void> {
-  await d.click('.detail [data-action="fb-history-open"]');
-  await d.until(() => d.q('.history-overlay:not([hidden]) .history-dialog'));
-}
-async function closeHistory(d: Driver): Promise<void> {
-  if (!d.q('.history-overlay:not([hidden])')) return;
-  await d.click('.history-overlay [data-action="fb-history-close"]');
-  await d.until(() => !d.q('.history-overlay:not([hidden])'));
-}
-
 const GUI_STEPS: Step[] = [
   {
     title: COPY.uiTutorial004, body: COPY.uiTutorial005,
@@ -300,30 +289,13 @@ const UI_STEPS: Step[] = [
     spots: d => [d.all('.list .group')],
   },
   {
-    title: COPY.uiTutorial054, body: COPY.uiTutorial055,
-    spots: d => [d.q('.list .list-filters')],
-  },
-  {
-    title: COPY.uiTutorial056, body: COPY.uiTutorial057,
-    async prepare(d) {
-      await d.click(() => d.all('.list .row').find(r => r.querySelector('.review-dot')));
-      await d.until(() => d.q('.detail .fb-identity'));
-    },
-    spots: d => [[d.q('.detail .title-head'), d.q('.detail .fb-identity')]],
-  },
-  {
     title: COPY.uiTutorial075, body: COPY.uiTutorial076,
+    async prepare(d) { await d.click('.list .row'); await d.until(() => d.q('.detail .fb-identity')); },
     spots: d => [d.q('.detail .fb-screens-head')],
-  },
-  {
-    title: COPY.uiTutorial058, body: COPY.uiTutorial059,
-    async prepare(d) { await openHistory(d); },
-    spots: d => [d.q('.history-overlay .history-dialog')],
   },
   {
     title: COPY.uiTutorial081, body: COPY.uiTutorial082,
     async prepare(d) {
-      await closeHistory(d);
       await d.click('.tabs [data-action="paste-open"]');
       await d.until(() => d.q('.paste-view .paste-screen'));
     },

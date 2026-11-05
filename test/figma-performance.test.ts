@@ -178,7 +178,7 @@ test('원본 프레임이 지워진 화면은 링크 없이 그리고 나머지 
 });
 
 // 이력 행(2026-11-02 이름 규칙을 없앤 뒤): 이력 행 컴포넌트의 인스턴스(컴포넌트의 'row' 표식을 이어받음)만 다루고 시스템 행은 둔다.
-test('플립북 최신 행 이동·정정·재시도에서 기존 이력과 시스템 행을 재사용한다', async () => {
+test('히스토리를 아래에 추가하고 재시도·정정·강제 반영에도 기존 행은 그대로 둔다', async () => {
   const m = mockFigma();
   const list = m.make('SLOT', 'List'), previous = m.make('FRAME', 'Previous');
   list.appendChild(previous);
@@ -202,20 +202,21 @@ test('플립북 최신 행 이동·정정·재시도에서 기존 이력과 시�
   const settings = { pageId: 'p', templateId: template.id };
   const sync = (rows: FlipbookRow[], force = false) => syncMarkedRows('test', list as unknown as SceneNode, previous as unknown as SceneNode, { ...settings, force }, rows, kit, new Set());
   await sync([data(1)]);
-  const first = list.children.find(n => n.type === 'INSTANCE' && n !== system)!, count = instances;
-  assert.equal(legacy.removed, true);
+  const first = list.children.find(n => n.getSharedPluginData('test', 'historyKey') === 'GUI:batch1')!, count = instances;
+  assert.equal(legacy.removed, false);
   await sync([data(1)]);
   assert.equal(instances, count);
   await sync([data(2), data(1)]);
   assert.equal(instances, count + 1);
-  assert.equal(previous.children[0], first);
+  assert.equal(previous.children.length, 0);
+  assert.equal(list.children[list.children.length - 1].getSharedPluginData('test', 'historyKey'), 'GUI:batch2');
   await sync([data(2), { ...data(1), description: 'corrected' }]);
   const comment = first.findOne(n => n.type === 'TEXT' && n.parent?.name === 'Comment')!;
-  assert.equal(comment.characters, 'corrected');
+  assert.equal(comment.characters, 'change 1');
   assert.equal(instances, count + 1);
   comment.characters = 'manual edit';
   await sync([data(2), { ...data(1), description: 'corrected' }], true);
-  assert.equal(comment.characters, 'corrected');
+  assert.equal(comment.characters, 'manual edit');
   assert.equal(system.removed, false);
   assert.equal(system.parent, list);
   assert.equal(m.fontLoads(), 1, 'same font loads only once in the session');

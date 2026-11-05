@@ -597,14 +597,14 @@ try {
     const description = app.locator('.detail .fb-description .rich-editor');
     await description.waitFor();
     const actions = () => app.locator('.detail .title-actions button').allInnerTexts();
-    assert.deepEqual(await actions(), ['히스토리', '목록에서 삭제'], '불러오기만 하면 히스토리·목록에서 삭제만 보인다');
+    assert.deepEqual(await actions(), ['목록에서 삭제'], '불러오기만 하면 히스토리·목록에서 삭제만 보인다');
     await description.click();
     await page.keyboard.type('Draft');
     assert.deepEqual(await actions(), ['취소', '적용하기'], 'Description을 고치면 취소·적용하기만 보인다');
     assert.equal(await app.locator('.detail .title-head .head-state:not([hidden])').innerText(), '수정 중', '제목 오른쪽에 수정 중 태그');
     await app.locator('.detail [data-action=fb-edit-cancel]').click();
     await page.waitForFunction(() => document.querySelector('#app .detail .fb-description .rich-editor')?.textContent === '');
-    assert.deepEqual(await actions(), ['히스토리', '목록에서 삭제'], '취소하면 고치기 전으로 돌아간다');
+    assert.deepEqual(await actions(), ['목록에서 삭제'], '취소하면 고치기 전으로 돌아간다');
     assert.equal(await app.locator('.detail .title-head .head-state:not([hidden])').count(), 0, '취소하면 제목 옆 수정 중 태그를 끈다');
     await page.waitForFunction(() => !document.querySelector('#app .list .row.selected .row-state'), null, { timeout: 3000 });
     await description.click();
@@ -625,7 +625,7 @@ try {
   assert.equal(await app.locator('[data-action=fb-edit-screens]').count(), 0, '플립북 상세에 화면 편집이 없다');
   assert.match(await app.locator('.detail .fb-screens-head').innerText(), /화면 1개/);
   // 제목 줄 오른쪽은 [히스토리] [목록에서 삭제] [적용하기]이고, 들어 있는 화면은 접은 목록이다. 상태·코멘트는 상세에 없다(2026-11-03 사용자 요청).
-  assert.deepEqual(await app.locator('.detail .title-actions button').allInnerTexts(), ['히스토리', '목록에서 삭제'], '고치지 않으면 적용하기·취소가 없다');
+  assert.deepEqual(await app.locator('.detail .title-actions button').allInnerTexts(), ['목록에서 삭제'], '고치지 않으면 적용하기·취소가 없다');
   assert.equal(await screensFold.evaluate(d => d.open), false, '들어 있는 화면은 처음에 접어 둔다(2026-11-05 사용자 요청)');
   await openScreens();
   assert.equal(await app.locator('.detail .fb-screen-list .fb-screen').count(), 1, '화면은 목록 줄로 보여 준다');
@@ -702,7 +702,7 @@ try {
   assert.equal(await app.locator('[data-action=scan]').count(), 0, 'UI Flipbook에는 변경사항 확인이 없다');
   assert.equal(await app.locator('[data-action=prepare]').count(), 0, 'UI Flipbook에는 배포 버튼이 없다');
   assert.equal(await app.locator('.list [data-action=include], .list [data-action=include-all]').count(), 0, 'UI Flipbook에는 배포 체크가 없다');
-  assert.match(await app.locator('.review-count').innerText(), /확인이 필요한 플립북 0개/);
+  assert.equal(await app.locator('.review-count').count(), 0);
   for (const head of await app.locator('.group-head').all())
     if (await head.getAttribute('aria-expanded') === 'false') await head.click();
   // 두 페이지에 만든 플립북 3개를 모두 보여 준다.
@@ -724,14 +724,8 @@ try {
   await page.waitForFunction(name => document.querySelector('#app .list .row.selected .name')?.textContent?.includes(name), initialName);
   assert.equal(await screensFold.evaluate(d => d.open), false, '같은 플립북으로 돌아와도 화면 목록은 접혀 있다');
   assert.equal(await app.locator('.detail [data-field=workerId]').count(), 0, '작업자 입력이 없다');
-  // 히스토리를 누르면 상태·코멘트 모달을 띄운다. 수정된 화면이 없어도 열리며, 상태는 기본 태그 「현행」이다.
-  await app.locator('.detail [data-action=fb-history-open]').click();
-  await app.locator('.history-overlay .history-dialog').waitFor();
-  assert.equal(await app.locator('.history-overlay .tag-picker summary .chip').innerText(), '현행');
-  assert.equal(await app.locator('.history-overlay [data-action=mark-reviewed]').isEnabled(), true);
+  assert.equal(await app.locator('[data-action=fb-history-open], .history-overlay').count(), 0);
   await shot('04-ui-list');
-  await page.keyboard.press('Escape');
-  await page.waitForFunction(() => document.querySelector('#app .history-overlay')?.hidden);
   // 목록 새로고침: 캔버스 선택만으로는 목록을 맞추지 않으므로 새로고침 아이콘으로 플립북 페이지를 다시 읽고 동기화 시각을 보여 준다.
   {
     await app.locator('.sync-status [data-action=refresh-list]').click();
@@ -1062,90 +1056,20 @@ try {
   }
 
   await mode('UI');
-  // 플립북에 「화면이 수정되었습니다」 빨간 점과 목록 위에 확인이 필요한 개수를 표시한다. 변경사항 확인을 누르지 않아도 보인다.
-  await app.locator('.review-count').waitFor();
-  assert.match(await app.locator('.review-count').innerText(), /확인이 필요한 플립북 1개/);
   for (const head of await app.locator('.group-head').all())
     if (await head.getAttribute('aria-expanded') === 'false') await head.click();
   await page.waitForFunction(() => document.querySelectorAll('#app .list .row').length === 3);
-  assert.equal(await app.locator('.row .review-dot').count(), 1);
-  assert.equal(await app.locator('.row .review-dot').getAttribute('title'), '화면이 수정되었습니다');
-  // 접힌 그룹에 확인이 필요한 플립북이 있으면 머리 맨 오른쪽에 빨간 점을 둔다. 개수는 그룹 이름 바로 오른쪽이다.
-  {
-    const pageKey = await app.locator('.list .group').filter({ has: page.locator('.row .review-dot') }).locator('.group-head').getAttribute('data-page');
-    const head = app.locator(`.list .group-head[data-page="${pageKey}"]`);
-    assert.equal(await head.locator('.review-dot').count(), 0, '펼친 그룹 머리에는 빨간 점이 없다');
-    await head.click();
-    await head.locator('.review-dot').waitFor({ timeout: 3000 });
-    assert.ok(await head.evaluate(el => {
-      const [name, count, dot, box] = [el.querySelector('.group-name'), el.querySelector('.count'), el.querySelector('.review-dot'), el].map(n => n.getBoundingClientRect());
-      return count.left - name.right < 12 && Math.abs(box.right - dot.right) < 12;
-    }), '개수는 이름 바로 오른쪽, 빨간 점은 맨 오른쪽에 있다');
-    await shot('05b-ui-group-flagged');
-    await head.click();
-    await page.waitForFunction(() => document.querySelectorAll('#app .list .row').length === 3);
-  }
-  await app.locator('[data-action=changed-only]').check();
-  assert.equal(await app.locator('[data-action=toggle-detail]').count(), 0);
-  assert.equal(await app.locator('.detail').isVisible(), true);
-  assert.equal(await app.locator('.pane-divider').isVisible(), true);
-  await page.waitForFunction(() => document.querySelectorAll('#app .list .row').length === 1);
-  await collapseWindow('ui-review');
-  await tutorial('06c-tutorial-ui');
-  assert.equal(await app.locator('.detail').isVisible(), true);
-  await app.locator('[data-action=new-add]').click();
-  assert.equal(await app.locator('.detail').isVisible(), true);
-  await app.locator('.list .new-row [data-action=new-remove]').click();
-  await newRows(0, 'Temporary flipbook removed');
-  // 업데이트된 화면만 보기는 확인이 필요한 플립북만 남긴다.
-  assert.equal(await app.locator('.list .switch span').innerText(), '업데이트된 화면만 보기');
-  await page.waitForFunction(() => document.querySelectorAll('#app .list .row').length === 1);
-  const flagged = app.locator('.row').filter({ has: page.locator('.review-dot') }).first();
-  await flagged.click();
-  // 확인이 필요한 플립북은 「히스토리」 버튼에 빨간 점이 붙는다.
-  await app.locator('.detail [data-action=fb-history-open] .review-dot').waitFor();
+  assert.equal(await app.locator('.review-count, [data-action=changed-only], [data-action=fb-history-open], .history-overlay').count(), 0);
+  await app.locator('.list .row').filter({ hasText: initialName }).first().click();
   await openScreens();
-  // 화면 줄의 상태: 가장 최근 GUI 배포의 태그(그 배포로 바뀐 화면에만)와 확인이 필요한 화면의 빨간 점
-  assert.equal(await app.locator('.detail .fb-screen-list .fb-screen .review-dot').count(), 1, '화면 줄에 수정된 화면을 표시한다');
-  assert.equal(await app.locator('.detail .fb-screen-list .fb-screen .chip').innerText(), '검토', '가장 최근 GUI 배포의 태그를 그 화면에 붙인다');
-  await shot('06a-ui-screen-state');
-  // 화면 줄 오른쪽 화살표 왼쪽에 「GUI 보기」를 쓰고, 누르면 그 화면의 GUI 원본 프레임으로 이동한다(2026-11-03 사용자 요청).
-  {
-    const row = app.locator('.detail .fb-screen-list .fb-screen').first();
-    assert.equal(await row.locator('.fb-screen-go').innerText(), 'GUI 보기');
-    assert.ok(await row.evaluate(el => el.querySelector('.fb-screen-go').getBoundingClientRect().right <= el.querySelector('svg').getBoundingClientRect().left), '「GUI 보기」는 화살표 왼쪽에 둔다');
-    const moves = await page.locator('#log div').filter({ hasText: '캔버스 이동' }).count();
-    await row.click();
-    await page.waitForFunction(n => [...document.querySelectorAll('#log div')].filter(x => x.textContent?.includes('캔버스 이동')).length > n, moves);
-    assert.equal(await app.locator('.track-list-overlay').count(), 0, '화면 사용처 팝업은 열지 않는다');
-  }
-  // 히스토리 모달에 수정된 화면을 보여 준다. 상태를 비우면 확인 완료를 막는다(필수). 다시 「현행」을 고르고 코멘트(선택)를 쓴다.
-  await app.locator('.detail [data-action=fb-history-open]').click();
-  const modal = app.locator('.history-overlay .history-dialog');
-  await modal.waitFor();
-  assert.equal(await modal.locator('.review-screens li').count(), 1, '모달에 수정된 화면을 보여 준다');
-  await modal.locator('.tag-picker summary').click();
-  await modal.locator('.tag-options [data-action=select-tag][data-id=""]').click();
-  assert.equal(await modal.locator('[data-action=mark-reviewed]').isDisabled(), true, '상태는 필수');
-  await modal.locator('.tag-picker summary').click();
-  await modal.locator('.tag-options [data-action=select-tag]').filter({ hasText: '현행' }).click();
-  await modal.locator('[data-field=description]').fill('콜아웃 위치 확인');
-  await shot('06-ui-review');
-  await modal.locator('[data-action=mark-reviewed]').click();
-  await page.waitForFunction(() => document.querySelector('#app .toast')?.textContent?.includes('확인 완료'));
-  await page.waitForFunction(() => document.querySelector('#app .review-count')?.textContent?.includes('확인이 필요한 플립북 0개'));
-  assert.equal(await app.locator('.history-overlay').isHidden(), true, '확인 완료하면 모달을 닫는다');
-  assert.equal(await app.locator('.detail [data-action=fb-history-open] .review-dot').count(), 0, '확인 완료하면 빨간 점이 풀린다');
-  // 확인 완료의 상태·코멘트는 플립북 히스토리에 남고, 코멘트 입력은 비운다.
-  await app.locator('.detail [data-action=fb-history-open]').click();
-  await page.waitForFunction(() => document.querySelector('#app .history-overlay .history')?.textContent?.includes('콜아웃 위치 확인'));
-  assert.equal(await app.locator('.history-overlay [data-field=description]').inputValue(), '', '코멘트를 비운다');
-  await app.locator('.history-overlay [data-action=fb-history-close]').click();
-  await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent?.includes('현행(Black)')));
-  await app.locator('[data-action=changed-only]').uncheck();
-  await page.waitForFunction(() => document.querySelectorAll('#app .list .row').length === 3);
-  assert.equal(await app.locator('.row .review-dot').count(), 0);
-  await shot('06-ui-reviewed');
+  assert.equal(await app.locator('.detail .fb-screen .review-dot').count(), 0);
+  const sourceRow = app.locator('.detail .fb-screen').first();
+  assert.equal(await sourceRow.locator('.fb-screen-go').innerText(), 'GUI 보기');
+  const moves = await page.locator('#log div').filter({ hasText: '캔버스 이동' }).count();
+  await sourceRow.click();
+  await page.waitForFunction(n => [...document.querySelectorAll('#log div')].filter(x => x.textContent?.includes('캔버스 이동')).length > n, moves);
+  await tutorial('06c-tutorial-ui');
+  await shot('06-ui-simplified');
   // 목록에서 삭제(2026-11-02): 프레임이 남은 플립북도 상세 제목 줄의 빨간 「목록에서 삭제」로 바로 뺀다. 캔버스와 기록은 남고 되살리는 방법을 알린다.
   {
     const removing = app.locator('.list .row:not(.new-row)').last();

@@ -10,6 +10,7 @@ import { FINGERPRINT_VERSION } from '../src/core/fingerprint.ts';
 import { keys, memoryKV, Store } from '../src/core/store.ts';
 import type { Delivery, Flipbook, GuiRecord, Screen } from '../src/core/types.ts';
 import { toUiWire, type ToUi } from '../src/core/wire.ts';
+import { guiAppendRows, type FlipbookRow } from '../src/core/flipbook.ts';
 import type { CopyUpdate, Host } from '../src/host.ts';
 
 const actor = { id: 'u', name: 'Designer' };
@@ -36,6 +37,7 @@ function fixture(confirmed = true) {
   }
   let failure = '', fingerprint = 'fp2', copyVersion = 1;
   let copies = 0, syncs = 0;
+  const appended = new Map<string, FlipbookRow>();
   const posted: ToUi[] = [];
   const hit = (stage: string) => { if (failure === stage) throw new Error(`interrupted ${stage}`); };
   const host = {
@@ -50,12 +52,37 @@ function fixture(confirmed = true) {
       return { updated: items.flatMap(item => item.copies.map(copy => ({ trackId: copy.trackId, nodeId: 'new-copy' }))), notes: [] };
     },
     inspectFlipbooks: async () => ({ found: new Map([['fb', 'frame']]), spots: {} }), templateIssues: async () => [],
-    syncFlipbook: async () => { hit('flipbook'); syncs++; return { nodeId: 'frame', notes: [], tracked: true }; },
+    syncFlipbook: async (_settings: Parameters<Host['syncFlipbook']>[0], view: Parameters<Host['syncFlipbook']>[1]) => { hit('flipbook'); syncs++; for (const row of view.rows) appended.set(row.key, row); return { nodeId: 'frame', notes: [], tracked: true }; },
     updateFlow: async () => { hit('flow'); return 1; },
     ensureDataPage: async () => 'data', renderData: async () => { hit('data'); },
   } as unknown as Host;
-  return { store, kv, host, before, after, record, posted, fail: (stage: string) => { failure = stage; }, changeSource: () => { fingerprint = 'unpublished edit'; }, counts: () => ({ copies, syncs }) };
+  return { store, kv, host, before, after, record, posted, appended, fail: (stage: string) => { failure = stage; }, changeSource: () => { fingerprint = 'unpublished edit'; }, counts: () => ({ copies, syncs }) };
 }
+
+test('GUI 배포만 히스토리 행을 전달하고 일반 동기화는 과거 행을 가져오지 않는다', async () => {
+  const f = fixture();
+  const rows: FlipbookRow[][] = [];
+  const sync = f.host.syncFlipbook;
+  f.host.syncFlipbook = async (settings, view) => { rows.push(view.rows); return sync(settings, view); };
+  const controller = new Controller(f.host);
+  await controller.handle({ type: 'retry' });
+  await controller.deliverFlipbooks({}, { targets: ['fb'], onlyTargets: true, force: true });
+  assert.deepEqual(rows.map(r => r.map(row => row.key)), [['GUI:b2'], []]);
+  assert.equal(controller.store.state.imported.size, 0);
+  assert.equal(controller.store.state.ui.size, 0);
+  assert.equal(controller.store.state.reviews.size, 0);
+  assert.ok([...controller.store.state.deliveries.values()].every(d => !d.history));
+});
+
+test('추가할 행은 GUI 원기록에서 배포별 한 줄로 묶고 오래된 배포부터 전달한다', () => {
+  const f = fixture();
+  f.store.put(keys.gui('s2', 2), { ...f.record, screenId: 's2' });
+  f.store.put(keys.gui('s1', 3), { ...f.record, version: 3, batchId: 'b3', committedAt: 2000 });
+  f.store.put(keys.gui('s1', 4), { ...f.record, version: 4, batchId: 'b4', committedAt: 3000, quiet: true });
+  assert.deepEqual(guiAppendRows(f.store.state, [
+    { uid: 's1', version: 4 }, { uid: 's1', version: 3 }, { uid: 's2', version: 2 }, { uid: 's1', version: 2 }, { uid: 'missing', version: 1 },
+  ]).map(row => row.key), ['GUI:b2', 'GUI:b3']);
+});
 
 for (const stage of ['copies', 'flipbook', 'flow', 'data', 'incomplete']) test(`GUI ${stage} 중단 후 재실행은 버전·이력을 중복하지 않고 미완료 반영을 마친다`, async () => {
   const f = fixture();
@@ -71,10 +98,12 @@ for (const stage of ['copies', 'flipbook', 'flow', 'data', 'incomplete']) test(`
   assert.equal(f.store.state.deliveries.get(keys.guiDelivery('b2', 's1'))?.state, 'done');
   assert.equal(retryableDeliveries(f.store.state).length, 0);
   assert.equal(f.store.state.gui.get('s1')?.length, 2);
-  assert.equal(f.store.state.imported.get('fb')?.length, 1);
+  assert.equal(f.store.state.imported.size, 0, '플립북 히스토리를 따로 저장하지 않는다');
+  assert.deepEqual([...f.appended.keys()], ['GUI:b2']);
   assert.equal(f.store.state.flipbooks.get('fb')?.screens[0].version, 2);
   assert.deepEqual(f.counts(), { copies: 1, syncs: 1 });
   assert.equal(f.store.state.deliveries.get(keys.guiDelivery('b2', 's1'))?.intent, undefined, 'completed jobs retain only a small summary');
+  assert.ok([...f.store.state.deliveries.values()].every(d => !d.history), '완료 후 임시 히스토리 참조도 지운다');
 });
 
 for (const cut of ['gv:s1:2', 'scr:s1', 'bat:b2']) test(`commitPlan이 ${cut} 기록 직전에 종료되어도 저장한 의도로 재시도한다`, async () => {
@@ -182,7 +211,7 @@ test('한 플립북의 이전 형식 오류는 다른 화면의 복구 완료를
   f.store.reload();
   assert.equal(f.store.state.deliveries.get(keys.guiDelivery('b2', 's1'))?.state, 'done');
   assert.equal(f.store.state.deliveries.get(keys.guiDelivery('b2', 's2'))?.state, 'failed');
-  assert.equal(f.store.state.deliveries.get(keys.delivery('resume:pending', 'legacy'))?.state, 'failed');
+  assert.equal(f.store.state.deliveries.get(keys.delivery('resume:b2', 'legacy'))?.state, 'failed');
 });
 
 test('같은 화면의 과거 복구 기록 여럿은 원본·복사본·플립북을 한 번만 읽어 완료한다', async () => {
@@ -304,7 +333,8 @@ test('화면 반영 건너뛰기로 확정한 화면은 붙인 화면의 레이�
   assert.deepEqual(retagged.map(item => [item.key, item.copies.map(c => c.nodeId)]), [['s1@2', ['copy']]]);
   assert.deepEqual(f.counts(), { copies: 0, syncs: 1 });
   assert.equal(f.store.state.flipbooks.get('fb')?.screens[0].version, 2);
-  assert.equal(f.store.state.imported.get('fb')?.length, 1, '히스토리는 남긴다');
+  assert.equal(f.store.state.imported.size, 0, '플립북 히스토리는 따로 저장하지 않는다');
+  assert.deepEqual([...f.appended.keys()], ['GUI:b2']);
 });
 
 test('화면 반영 건너뛰기여도 새 버전과 내용이 다른 버전의 복사본은 레이어를 새로 복사한다', async () => {

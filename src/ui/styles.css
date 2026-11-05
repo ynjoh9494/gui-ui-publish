@@ -436,28 +436,12 @@ button.apply-all { color: var(--brand); }
 /* 플립북: 화면이 수정되었습니다 */
 .review-dot { display: inline-block; flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--danger); }
 .review-dot.none { background: var(--border); }
-.review-count { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text); }
-.review-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 4px; }
 /* UI Flipbook 상세: 위(관리 정보)·아래(화면 N개) 두 영역이 각자 스크롤한다. 화면 N개는 GUI 상세의 History처럼 구분선 아래에 고정한다(2026-11-04 사용자 요청, 모양은 .detail-foot).
    상태·코멘트·확인 완료는 히스토리 모달에 있다(2026-11-03 사용자 요청). */
 .detail.flipbook-detail { display: flex; flex-direction: column; overflow: hidden; padding: 0; }
 .fb-top { flex: 1 1 auto; min-height: 80px; overflow: auto; padding: 0 10px 8px; display: flex; flex-direction: column; }
 .fb-top > * { flex: none; }
 /* 히스토리 모달: History 목록 → (수정된 화면) → 상태·코멘트 → 닫기·확인 완료 */
-.history-dialog { display: flex; flex-direction: column; max-width: 560px; }
-.history-dialog h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.history-dialog .history { flex: 0 1 auto; min-height: 0; max-height: 40vh; overflow: auto; }
-.history-dialog .history:empty { display: none; }
-.history-review { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); }
-.history-dialog .history:empty + .history-review { margin-top: 0; padding-top: 0; border-top: 0; }
-.history-review .review-title { display: flex; align-items: center; gap: 6px; margin: 0; }
-.history-review .review-title .template-help { margin-left: 2px; }
-.history-review .review-form { display: grid; gap: 2px; margin-top: 4px; }
-.history-review .review-form textarea { resize: vertical; }
-.review-screens { list-style: none; margin: 0 0 4px; padding: 0; }
-.review-screens li { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
-.review-screens .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.review-screens small { color: var(--muted); }
 /* 썸네일 */
 .thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
 .thumbs figure { margin: 0; width: 240px; max-width: 100%; }
@@ -532,7 +516,6 @@ button.apply-all { color: var(--brand); }
 .title-head .remove-text { flex: none; color: var(--danger); }
 /* 플립북 상세 제목 줄 오른쪽 버튼: 히스토리 · 목록에서 삭제 · 적용하기(2026-11-03 사용자 요청) */
 .title-actions { display: flex; flex: none; align-items: center; gap: 4px; }
-.history-button { display: inline-flex; align-items: center; gap: 5px; }
 /* 새 플립북 상세: 머리 「플립북 편집」, 그 아래 페이지·Section·제목을 한 줄씩, 아래 화면 선택이 남은 높이를 쓴다. */
 /* 좁으면 버튼을 제목 아래 줄로 내린다. 제목·설명이 한두 글자씩 접히지 않게 한다. */
 .edit-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }

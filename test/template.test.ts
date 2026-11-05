@@ -309,7 +309,7 @@ test('기존 GUI 영역 안에서 다시 고른 프레임으로 GUI 영역 연�
   assert.equal(flipbookParts(template as unknown as FrameNode).gui?.id, selected.id);
 });
 
-test('표식 템플릿의 이력은 이력 행 컴포넌트의 인스턴스만 다루고 머리 행은 두며, 둘째 기록부터 이전 이력 칸에 넣는다', async () => {
+test('GUI 히스토리는 아래에만 추가하고 기존 행·Previous·사용자 수정을 보존한다', async () => {
   const w = world();
   const label = text(w, 'Text', 'Tag');
   const row = w.role(w.component('Row', [
@@ -332,21 +332,28 @@ test('표식 템플릿의 이력은 이력 행 컴포넌트의 인스턴스만 �
   const settings = { pageId: 'p', templateId: 't' };
   const notes = new Set<string>();
   await syncMarkedRows(NS, list as unknown as SceneNode, previous as unknown as SceneNode, settings, [data(2, 'UI'), data(1)], kit, notes);
-  assert.equal(example.removed, true);
-  assert.deepEqual(list.children.map((n: Node) => n.name), ['Head', 'Row', 'Older']);
-  assert.equal(previous.children.length, 3);
-  assert.deepEqual(previous.children.slice(1), [system, backdrop], '이전 이력은 시스템 행과 배경 위에 넣는다');
-  const [latest] = list.children.filter((n: Node) => n.name === 'Row');
+  assert.equal(example.removed, false, '기존 예시와 사용자가 작성한 행을 지우지 않는다');
+  assert.deepEqual(list.children.map((n: Node) => n.name), ['Head', 'Row', 'Older', 'Row']);
+  assert.deepEqual(previous.children, [system, backdrop], 'Previous 영역은 옮기거나 수정하지 않는다');
+  const first = list.children[list.children.length - 1];
   const cell = (r: Node, name: string) => r.findOne((n: Node) => n.name === name)!.characters;
-  assert.deepEqual(['Comment', 'Team', 'Who', 'When', 'Text'].map(n => cell(latest, n)), ['change 2', 'UI', 'User', '10/22 12:00', 'tag 2']);
-  assert.equal(cell(previous.children[0], 'Team'), 'GUI');
-  assert.equal(latest.layoutSizingHorizontal, 'FILL');
-  assert.equal(previous.children[0].layoutSizingHorizontal, 'FIXED', 'rows in a frame without auto layout keep their width');
+  assert.deepEqual(['Comment', 'Team', 'Who', 'When', 'Text'].map(n => cell(first, n)), ['change 1', 'GUI', 'User', '10/21 12:00', 'tag 1']);
+  assert.equal(first.layoutSizingHorizontal, 'FILL');
+  assert.equal(made, 1, 'UI 히스토리는 추가하지 않는다');
+  first.findOne((n: Node) => n.name === 'Comment')!.characters = 'manual edit';
+  await syncMarkedRows(NS, list as unknown as SceneNode, previous as unknown as SceneNode, { ...settings, force: true }, [data(3), data(2, 'UI'), data(1)], kit, notes);
   assert.equal(made, 2);
-  await syncMarkedRows(NS, list as unknown as SceneNode, previous as unknown as SceneNode, settings, [data(3), data(2, 'UI'), data(1)], kit, notes);
-  assert.equal(made, 3, 'existing rows are reused');
-  assert.deepEqual(previous.children.slice(2), [system, backdrop]);
-  assert.deepEqual(previous.children.slice(0, 2).map((n: Node) => cell(n, 'Comment')), ['change 2', 'change 1']);
+  assert.equal(cell(first, 'Comment'), 'manual edit', '재시도와 강제 반영도 기존 행을 덮어쓰지 않는다');
+  assert.equal(cell(list.children[list.children.length - 1], 'Comment'), 'change 3');
+  assert.deepEqual(previous.children, [system, backdrop]);
+  const children = [...list.children];
+  await syncMarkedRows(NS, list as unknown as SceneNode, previous as unknown as SceneNode, settings, [], kit, notes);
+  assert.deepEqual(list.children, children, '일반 동기화는 히스토리를 건드리지 않는다');
+  list.layoutMode = 'NONE';
+  for (const [i, node] of list.children.entries()) { node.y = i * 30; node.height = 20; node.visible = true; }
+  const bottom = Math.max(...list.children.map((node: Node) => node.y + node.height));
+  await syncMarkedRows(NS, list as unknown as SceneNode, previous as unknown as SceneNode, settings, [data(4)], kit, notes);
+  assert.equal(list.children[list.children.length - 1].y, bottom, '오토 레이아웃이 없어도 새 행은 기존 내용 아래에 놓인다');
   assert.deepEqual([...notes], []);
 });
 
@@ -395,7 +402,7 @@ test('고른 이전 형식 플립북만 표식 형식으로 바꾸고, 만든 �
 
 // 이 모형의 인스턴스는 만들 때만 컴포넌트 표식을 복사한다. 변환 전에 놓인 이력 행은 컴포넌트에 나중에 단 표식을 보지 못하므로,
 // 변환이 그 행에 직접 표식을 달아야 기존 행으로 알아본다(못 알아보면 기록마다 새 행을 만들어 이력이 두 벌이 된다).
-test('변환한 이전 형식 플립북은 이미 놓인 이력 행을 다시 채우고 새 행을 만들지 않는다', async () => {
+test('변환한 이전 형식 플립북의 기존 히스토리를 보존하고 재시도해도 중복하지 않는다', async () => {
   const w = world();
   const t = namedTemplate(w);
   const a = legacyFlipbook(w, t, 'fb-a');
@@ -415,7 +422,7 @@ test('변환한 이전 형식 플립북은 이미 놓인 이력 행을 다시 �
   await syncMarkedRows(NS, p.list as unknown as SceneNode, p.previous as unknown as SceneNode, { pageId: 'p', templateId: t.template.id }, [data], kit, new Set());
   assert.equal(made, 0, '기존 행을 다시 쓴다');
   assert.deepEqual(a.frame.findAll((n: Node) => n.name === 'Update History'), [old], '이력이 두 벌이 되지 않는다');
-  assert.equal(old.findOne((n: Node) => n.type === 'TEXT' && n.parent?.name === 'Comment')!.characters, 'change 1', '기존 행의 칸도 표식으로 찾아 채운다');
+  assert.equal(old.findOne((n: Node) => n.type === 'TEXT' && n.parent?.name === 'Comment')!.characters, 'Text', '변환한 기존 행도 덮어쓰지 않는다');
 });
 
 test('이력 행이 없는 이전 형식 플립북은 첫 이전 형식 템플릿을, 맞는 템플릿이 없으면 자기 이력 행 컴포넌트만 이어받는다', async () => {

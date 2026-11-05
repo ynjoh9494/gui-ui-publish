@@ -634,7 +634,8 @@ export function setDeliveryState(store: Store, batchId: string, targetId: string
   const key = keys.delivery(batchId, targetId);
   const before = store.state.deliveries.get(key);
   if (!before) throw new Error(COPY.corePublish013);
-  const after: Delivery = { ...before, state: next, error, updatedAt: store.now() };
+  const { history, ...summary } = before;
+  const after: Delivery = { ...summary, ...(next !== 'done' && history ? { history } : {}), state: next, error, updatedAt: store.now() };
   store.put(key, after);
   return after;
 }

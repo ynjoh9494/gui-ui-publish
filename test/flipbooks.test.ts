@@ -472,8 +472,8 @@ test('같은 GUI를 쓰는 두 플립북에 새 GUI 기록을 각각 한 번만 
   assert.equal(defaultDraft('UI', store.state, uiEntries(store.state, new Map()).find(e => e.flipbookId === second.id)!).tagId, latestTag);
   // UI에는 확인하지 않은 기록만 보낸다.
   const wired = fromWire(toUiWire(store.state));
-  assert.deepEqual([wired.imported.get(first.id), wired.imported.get(second.id)?.map(r => r.version)], [[], [2]]);
-  assert.deepEqual([needsReview(wired, first.id), needsReview(wired, second.id)], [false, true]);
+  assert.deepEqual([wired.imported.get(first.id), wired.imported.get(second.id)?.map(r => r.version)], [undefined, undefined]);
+  assert.deepEqual([needsReview(wired, first.id), needsReview(wired, second.id)], [false, false]);
   // 확인 뒤 다시 배포되면 다시 표시한다. 배포한 PC의 시계가 확인한 PC보다 늦어도 버전으로 판단한다.
   const third = screen('a', 'STB_HO_001', 3);
   importGuiUpdates(store, first.id, new Map([['a', third]]), [...records, record('a', third.code, 3)]);
@@ -519,7 +519,7 @@ test('같은 배포에서 바뀐 여러 화면은 플립북 이력 한 줄이며
   assert.equal(rows.length, 1);
   assert.equal(rows[0].code, null);
   const view = flipbookView(store.state, fb.id);
-  assert.deepEqual(Object.keys(view.rows[0]).sort(), ['at', 'colorKey', 'description', 'key', 'tag', 'team', 'worker']);
+  assert.deepEqual(view.rows, [], '일반 반영은 저장된 과거 히스토리를 재구성하지 않는다');
   assert.deepEqual(view.gui.map(g => g.code), ['A', 'B']);
 });
 

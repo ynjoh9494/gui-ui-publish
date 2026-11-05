@@ -298,6 +298,7 @@ export interface ImportResult {
 
 // GUI 배포 상태를 플립북 기록에 반영한다. 새 버전의 기록은 이 플립북에 쌓고,
 // 이미 가진 버전은 정정된 설명만 맞춘다. 화면 ID·이름이 바뀌면 함께 바꾼다.
+// 구형 기록을 읽는 호환 경로. 현재 플러그인의 동기화는 syncGuiVersions만 사용한다.
 export function importGuiUpdates(store: Store, flipbookId: string, screens: Map<string, GuiScreenInfo>, records: GuiRecordInfo[], beforeChange?: () => void, onlyUids?: Set<string>): ImportResult {
   const before = store.state.flipbooks.get(flipbookId);
   if (!before) throw new Error(COPY.coreFlipbook002);
@@ -341,6 +342,30 @@ export function importGuiUpdates(store: Store, flipbookId: string, screens: Map<
   };
   store.put(keys.flipbook(flipbookId), after);
   return result;
+}
+
+// 화면 메타데이터만 따라간다. 플립북별 히스토리는 저장하거나 정정하지 않는다.
+export function syncGuiVersions(store: Store, flipbookId: string, screens: Map<string, GuiScreenInfo>, beforeChange?: () => void, onlyUids?: Set<string>): ImportResult {
+  const before = store.state.flipbooks.get(flipbookId);
+  if (!before) throw new Error(COPY.coreFlipbook002);
+  const missing: string[] = [];
+  const next = before.screens.map(fs => {
+    if (onlyUids && !onlyUids.has(fs.uid)) return fs;
+    const screen = screens.get(fs.uid);
+    if (!screen || screen.status !== 'active') {
+      if (screen?.status !== 'deleted') missing.push(fs.code);
+      return fs;
+    }
+    return { ...fs, version: Math.max(fs.version, screen.version), code: screen.code, name: screen.name };
+  });
+  const changed = next.some((fs, i) => fs.version !== before.screens[i].version || fs.code !== before.screens[i].code || fs.name !== before.screens[i].name);
+  if (changed) {
+    beforeChange?.();
+    const title = before.autoTitle ? defaultTitle(before.kind, next) : before.title;
+    store.put(keys.flipbook(flipbookId), { ...before, rev: before.rev + 1, screens: next, title,
+      titleNames: before.titleNames.includes(title) ? before.titleNames : [...before.titleNames, title] });
+  }
+  return { changed, added: 0, missing };
 }
 
 // 확인이 필요한 GUI 기록: 플립북을 만든 뒤 이 플립북에 쌓인 기록 중 마지막 확인 완료의 버전보다 새것.

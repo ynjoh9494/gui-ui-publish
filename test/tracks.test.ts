@@ -166,14 +166,14 @@ test('기본 태그 「최신」은 「현행」으로 바뀌고, 새 템플릿 
   assert.equal(flipbookView(store.state, 'fb').rows.length, 0, '작성 전 is a status, not a history row');
   assert.equal(screenTags(store.state, 'fb').size, 0);
   importGuiUpdates(store, 'fb', new Map([['s1', info('s1', 'STB_HO_001', 2)], ['s2', info('s2', 'STB_HO_002', 1)]]), [record('s1', 'STB_HO_001', 2)]);
-  assert.equal(flipbookView(store.state, 'fb').status?.tag.name, '변경');
+  assert.equal(flipbookView(store.state, 'fb').status?.tag.name, '작성 전');
   assert.deepEqual([...screenTags(store.state, 'fb')].map(([uid, t]) => [uid, t.name]), [['s1', '변경']], 'only the screen the latest publish changed');
   markReviewed(store, [{ flipbookId: 'fb', tagId: tag('latest').id, comment: '' }], actor, 'r1');
-  assert.equal(flipbookView(store.state, 'fb').status?.tag.name, '현행');
+  assert.equal(flipbookView(store.state, 'fb').status?.tag.name, '작성 전');
   assert.equal(screenTags(store.state, 'fb').size, 0, 'a UI status tag goes on no screen');
   // 이전 템플릿 플립북은 지금처럼 마지막 기록이다(기록이 없으면 비어 있다).
   store.put(keys.flipbook('old'), { ...flipbook('old', 'p1'), tracked: false });
-  assert.equal(flipbookView(store.state, 'old').status, null);
+  assert.equal(flipbookView(store.state, 'old').status?.tag.name, '작성 전');
 });
 
 test('사용 안 함이 된 화면이 든 새 템플릿 플립북은 그 화면을 빼고 알림을 켜며, 확인하면 알림을 지운다. 플립북을 고르면 그 페이지만 읽는다', async () => {

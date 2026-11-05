@@ -33,13 +33,13 @@ function setup() {
   return { controller: new Controller(host), calls, posted, store, host };
 }
 
-test('reviewing A never delivers unrelated moved or failed B', async () => {
+test('delivering A never delivers unrelated moved or failed B', async () => {
   const { controller, calls, store, host } = setup();
   host.inspectFlipbooks = async () => ({ found: new Map([['fb1', 'n1'], ['fb2', 'n2']]), spots: {
     n2: { pageId: 'ui', section: 'section:moved', sectionName: 'Moved', sectionIndex: 0, index: 0 },
   } });
   store.put(keys.delivery('old', 'fb2'), { batchId: 'old', kind: 'flipbook', team: 'UI', targetId: 'fb2', version: 0, state: 'failed', error: 'old failure', updatedAt: 0 });
-  await controller.handle({ type: 'markReviewed', requests: [{ flipbookId: 'fb1', tagId: systemTagId(store.state, 'latest')!, comment: '' }] });
+  await controller.deliverFlipbooks({}, { targets: ['fb1'], onlyTargets: true });
   assert.ok(calls.includes('full:fb1'), JSON.stringify(calls));
   assert.ok(!calls.includes('full:fb2'), JSON.stringify(calls));
   assert.equal(controller.store.state.flipbooks.get('fb2')?.category.key, store.state.flipbooks.get('fb2')?.category.key);
@@ -220,7 +220,7 @@ test('a tracked flipbook whose frame needs conversion goes back to legacy so the
   assert.equal(controller.store.state.flipbooks.get('fb1')?.tracked, false);
   assert.equal(controller.store.state.flipbooks.get('fb1')?.title, 'A');
   host.syncFlipbook = async () => { throw new Error(COPY.legacyNeedsConvert); };
-  await controller.handle({ type: 'markReviewed', requests: [{ flipbookId: 'fb2', tagId: systemTagId(store.state, 'latest')!, comment: '' }] });
+  await controller.deliverFlipbooks({}, { targets: ['fb2'], onlyTargets: true });
   controller.store.reload();
   assert.equal(controller.store.state.flipbooks.get('fb2')?.tracked, false);
 });

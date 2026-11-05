@@ -169,6 +169,8 @@ export interface Delivery {
   batchId: string; kind: DeliveryKind; targetId: string; team: Team; version: number;
   state: DeliveryState; error: string | null; updatedAt: number;
   intent?: { before: Screen | null; after: Screen; record: GuiRecord | null };
+  // 배포 행 추가가 끝날 때까지만 보관하는 GUI 원기록 참조. 완료하면 지운다.
+  history?: { uid: string; version: number }[];
 }
 
 // ── 플립북 ─────────────────────────────────────────────

@@ -5,12 +5,12 @@ import { planExistingFlipbooks } from './core/registerFlipbooks.ts';
 import { baseline, changeDetected, classify, ignoreBlock, uiEstimate, uncheckedEntries, uiEntries, UI_FINGERPRINT_VERSION, type Entry, type FlipbookSpot, type ScannedFrame, type UiScan } from './core/compare.ts';
 import { FINGERPRINT_VERSION, LEGACY_FINGERPRINT_VERSION } from './core/fingerprint.ts';
 import { dataModel } from './core/data.ts';
-import { chapterName, flipbookView, guiKey, isHistoryDateFormat, validGuiWidth } from './core/flipbook.ts';
-import { canvasSections, checkMoves, followCanvasSections, importGuiUpdates, markReviewed, moveFlipbooks, pageSections, pinPolicyIds, planFlipbooks, plannedFlipbookTitle, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookMove, type FlipbookRequest, type ReviewRequest } from './core/flipbooks.ts';
+import { chapterName, flipbookView, guiAppendRows, guiKey, isHistoryDateFormat, validGuiWidth } from './core/flipbook.ts';
+import { canvasSections, checkMoves, followCanvasSections, syncGuiVersions, moveFlipbooks, pageSections, pinPolicyIds, planFlipbooks, plannedFlipbookTitle, removeFlipbooks, renameFlipbook, retireFlipbooks, type FlipbookMove, type FlipbookRequest } from './core/flipbooks.ts';
 import type { Draft } from './core/drafts.ts';
 import { sameLayout, type SelectionWrite } from './core/description.ts';
 import { serializeRichText } from './core/richText.ts';
-import { flipbookHistoryRows, guiHistoryRows } from './core/history.ts';
+import { guiHistoryRows } from './core/history.ts';
 import { guiRecordInfos, guiScreens } from './core/guiScreens.ts';
 import { acknowledgeChange, addDelivery, upgradeBaseline, buildPlan, commitPlan, setDeliveryState, type BatchComment, unfinishedDeliveries, reusedThumb, type CommitInput, type Plan } from './core/publish.ts';
 import {
@@ -54,7 +54,7 @@ const DATA_OPS = new Set<AdminOp['op']>(['renameCategory', 'updateCategory', 'se
 // 오래 걸리는 요청. 처리하는 동안 UI에 진행 표시를 띄우고 중복 조작을 막는다.
 const BUSY_LABEL: Partial<Record<ToMain['type'], string>> = {
   prepare: COPY.controller001, commit: COPY.controller002, resetData: COPY.controller003, retry: COPY.recoveryRunning, refreshData: COPY.controller005,
-  registerFlipbooks: COPY.registerExisting, convertLegacyFlipbooks: COPY.legacyConverting, admin: COPY.controller006, createFlipbooks: COPY.controller038, markReviewed: COPY.controller066, removeFlipbooks: COPY.controller068,
+  registerFlipbooks: COPY.registerExisting, convertLegacyFlipbooks: COPY.legacyConverting, admin: COPY.controller006, createFlipbooks: COPY.controller038, removeFlipbooks: COPY.controller068,
   matchVersion: COPY.controller106, switchVersion: COPY.controller107, renameFlipbook: COPY.controller118,
   textApply: COPY.controller120, applyFlipbookEdits: COPY.flipbookApplying, createFlow: COPY.flow006, exportPdf: COPY.pdf005, pasteGui: COPY.track004, createThumbnailPage: COPY.adminThumbCreate,
 };
@@ -144,7 +144,7 @@ export class Controller {
     this.tracks = new TrackController(this.store, host);
     this.pdf = new PdfController(host, label => this.progress(label), label => this.busy(label));
     this.recovery = new GuiRecovery(this.store, host, this.tracks, this.flows, {
-      pull: (batchId, targets, uids) => this.pullGui(undefined, { deferData: true, batchId, targets, onlyTargets: true, uids }),
+      pull: (batchId, targets, uids, historyRecords) => this.pullGui(undefined, { deferData: true, batchId, targets, onlyTargets: true, uids, historyRecords }),
       data: async () => { await this.progress(COPY.controller005); return this.refreshData(); },
       progress: label => this.progress(label),
     });
@@ -242,7 +242,7 @@ export class Controller {
         case 'admin': await this.admin(msg.action); break;
         case 'resetData': await this.resetData(); break;
         case 'history': {
-          const rows = msg.team === 'GUI' ? guiHistoryRows(this.store.state, msg.id) : flipbookHistoryRows(this.store.state, msg.id);
+          const rows = msg.team === 'GUI' ? guiHistoryRows(this.store.state, msg.id) : [];
           this.host.post({ type: 'history', id: msg.id, rows });
           break;
         }
@@ -255,7 +255,6 @@ export class Controller {
         case 'createFlipbooks': await this.createFlipbooks(msg.request); break;
         case 'updateFlipbookIdentity': await this.renameFlipbook(msg.id, msg.title, msg.screenId, msg.rev); break;
         case 'renameFlipbook': await this.renameFlipbook(msg.id, msg.title); break;
-        case 'markReviewed': await this.markReviewed(msg.requests); break;
         case 'removeFlipbooks': await this.removeFlipbooks(msg.ids, !!msg.withFrames); break;
         case 'matchVersion': await this.matchVersion(msg.pageId); break;
         case 'switchVersion': await this.switchVersion(msg.pageId, msg.links); break;
@@ -759,14 +758,13 @@ export class Controller {
   // GUI 배포 기록을 그 화면을 쓰는 플립북마다 반영한다. GUI Publish 직후, UI 변경사항 확인, 관리 정정 뒤에 실행한다.
   // 이미 반영한 버전은 건너뛰므로 여러 번 실행해도 같은 결과가 된다.
   // deferData: 부른 쪽이 이어서 DATA 페이지를 갱신하고 상태를 보낸다(GUI Publish 확정). 여기서 하면 DATA를 두 번 그린다.
-  private async pullGui(isCurrent: () => boolean = () => true, { deferData = false, batchId = `gui:${randomId()}`, targets = [] as string[], onlyTargets = false, uids = undefined as Set<string> | undefined } = {}): Promise<{ message: string; failed: boolean; failedTargets: string[] } | null> {
+  private async pullGui(isCurrent: () => boolean = () => true, { deferData = false, batchId = `gui:${randomId()}`, targets = [] as string[], onlyTargets = false, uids = undefined as Set<string> | undefined, historyRecords = [] as { uid: string; version: number }[] } = {}): Promise<{ message: string; failed: boolean; failedTargets: string[] } | null> {
     const s = this.store;
     s.reload();
     const wanted = new Set(targets);
     const active = [...s.state.flipbooks.values()].filter(fb => fb.status === 'active' && fb.screens.length && (!onlyTargets || wanted.has(fb.id)));
     if ((!active.length && !targets.length) || !isCurrent()) return null;
     const screens = guiScreens(s.state);
-    const records = guiRecordInfos(s.state, new Set(active.flatMap(fb => fb.screens.map(x => x.uid))));
     const queue = (id: string, changed = false) => {
       const held = s.state.deliveries.get(keys.delivery(batchId, id));
       if (!held || changed && held.state === 'done') addDelivery(s, batchId, 'flipbook', 'GUI', id, 0);
@@ -775,7 +773,14 @@ export class Controller {
     let added = 0;
     const missing = new Set<string>();
     for (const fb of active) {
-      const result = importGuiUpdates(s, fb.id, screens, records, () => queue(fb.id, true), uids);
+      const result = syncGuiVersions(s, fb.id, screens, () => queue(fb.id, true), uids);
+      const refs = historyRecords.filter(ref => fb.screens.some(fs => fs.uid === ref.uid));
+      if (refs.length) {
+        const key = keys.delivery(batchId, fb.id);
+        if (!s.state.deliveries.has(key)) queue(fb.id);
+        const pending = s.state.deliveries.get(key)!;
+        if (pending.state !== 'done') s.put(key, { ...pending, history: refs });
+      }
       result.missing.forEach(code => missing.add(code));
       if (!result.changed) continue;
       added += result.added;
@@ -1699,20 +1704,6 @@ export class Controller {
     if (!quiet) this.host.post({ type: 'notice', message: `${COPY.controller119} ${fb.title}` });
   }
 
-  // 확인 완료: 상태·코멘트를 기록한 뒤 그 플립북의 Status와 이력 행을 맞춘다.
-  private async markReviewed(requests: ReviewRequest[]): Promise<void> {
-    const s = this.store;
-    s.reload();
-    const batchId = `review:${randomId()}`;
-    const ids = markReviewed(s, requests, this.host.actor, batchId);
-    for (const id of ids) addDelivery(s, batchId, 'flipbook', 'UI', id, s.state.uiStates.get(id)?.version ?? 0);
-    const report = ids.length ? await this.deliverFlipbooks({ batchId }) : emptyReport();
-    if (ids.length) await this.refreshData();
-    this.postState();
-    const message = [`${ids.length}${COPY.controller064}`, report.failed.length || report.notes.length || report.skipped ? deliveryMessage(report) : ''].filter(Boolean).join(' ');
-    this.host.post({ type: 'reviewed', ids, message });
-  }
-
   // 반영이 끝나지 않은 플립북을 현재 기록으로 맞춘다. 플립북 단위로 실패를 기록하고 나머지는 계속한다.
   // baseline: 새로 만든 플립북. 만든 직후의 UI 작성 영역을 첫 UI Publish 전 비교 기준으로 저장한다.
   // after: 새로 만들 플립북을 Section 안에 놓을 자리.
@@ -1754,6 +1745,8 @@ export class Controller {
         const fb = s.state.flipbooks.get(flipbookId)!;
         try {
           const view = flipbookView(s.state, flipbookId);
+          view.rows = guiAppendRows(s.state, pending.flatMap(d => d.history ?? []));
+          if (view.rows.length) view.status = view.rows[view.rows.length - 1];
           if (!view.pageId) throw new Error(COPY.controller063);
           if (options.after?.has(flipbookId)) view.after = options.after.get(flipbookId);
           if (options.create?.has(flipbookId)) view.create = true;

@@ -46,7 +46,7 @@ export interface FlipbookView {
   guiWidth: number;
   // 상단 Status: GUI·UI 구분 없이 마지막 기록의 태그. 새 템플릿 플립북은 만든 뒤 받은 기록이 없으면 「작성 전」이다.
   status: FlipbookRow | null;
-  // 최신순. 첫 행은 최신 영역, 나머지는 Previous 영역에 놓는다.
+  // 이번 GUI 배포에서 아래에 추가할 행만 전달한다. 과거 히스토리는 읽거나 재구성하지 않는다.
   rows: FlipbookRow[];
   // 새로 만들 때 Section 안에서 놓을 자리: 이 플립북 바로 다음(null이면 맨 앞, 없으면 맨 뒤)
   after?: string | null;
@@ -136,11 +136,6 @@ export function flipbookView(state: State, flipbookId: string): FlipbookView {
   if (!fb) throw new Error(COPY.coreFlipbook002);
   const offset = state.project.utcOffsetMinutes;
   const former = formerUids(state);
-  const history = flipbookHistoryRows(state, flipbookId);
-  const rows: FlipbookRow[] = history.map(r => ({
-    key: `${r.team}:${r.batchId}`, team: r.team, tag: r.tag, colorKey: r.tag.colorKey, description: r.description,
-    worker: r.worker, at: formatShort(r.committedAt, offset, state.project.historyDateFormat),
-  }));
   return {
     flipbookId, kind: fb.kind, name: fb.title, titleNames: [TEMPLATE_TITLE, ...fb.titleNames],
     category: fb.category, ...flipbookIdentity(state, fb), pageId: fb.pageId ?? state.project.flipbookPageId,
@@ -148,8 +143,20 @@ export function flipbookView(state: State, flipbookId: string): FlipbookView {
       uid: s.uid, code: s.code, name: state.screens.get(s.uid)?.name ?? s.code, version: s.version, key: guiKey(s.uid, s.version), sourceNodeId: state.screens.get(s.uid)?.source?.nodeId ?? null, scale: s.scale ?? fb.scale,
       ...(former.has(s.uid) ? { formerUids: former.get(s.uid) } : {}),
     })),
-    scale: fb.scale, guiWidth: state.project.guiWidth, status: fb.tracked && !latestRecord(fb, history) ? draftRow(state, fb, offset) ?? rows[0] ?? null : rows[0] ?? null, rows,
+    scale: fb.scale, guiWidth: state.project.guiWidth, status: draftRow(state, fb, offset), rows: [],
   };
+}
+
+export function guiAppendRows(state: State, refs: { uid: string; version: number }[]): FlipbookRow[] {
+  const records = refs.flatMap(ref => state.gui.get(ref.uid)?.filter(r => r.version === ref.version && !r.quiet) ?? []);
+  records.sort((a, b) => a.committedAt - b.committedAt || a.version - b.version);
+  const batches = new Map<string, FlipbookRow>();
+  for (const r of records) if (!batches.has(r.batchId)) batches.set(r.batchId, {
+    key: `GUI:${r.batchId}`, team: 'GUI', tag: r.tag, colorKey: r.tag.colorKey,
+    description: r.corrections[r.corrections.length - 1]?.description ?? r.description, worker: r.worker.name,
+    at: formatShort(r.committedAt, state.project.utcOffsetMinutes, state.project.historyDateFormat),
+  });
+  return [...batches.values()];
 }
 
 // 「작성 전」 상태(기록 없이 상단 Status에만 쓴다). 기본 태그가 없으면 null
