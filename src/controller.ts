@@ -1503,6 +1503,15 @@ export class Controller {
     if (done.length) this.host.post({ type: 'notice', message: `${COPY.legacyConverted} ${names(done)}` });
   }
 
+  // 기록은 새 형식(tracked)인데 프레임에 표식이 없어 반영·제목 변경이 「새 형식으로 변환」을 요구한 플립북은 이전 형식 플립북으로 되돌린다.
+  // 그래야 플립북 상세에 「새 형식으로 변환」이 보인다(2026-11-05 사용자 요청: 안내만 뜨고 변환 버튼이 없었다).
+  private reopenLegacy(id: string, error: unknown): void {
+    if (!(error instanceof Error) || error.message !== COPY.legacyNeedsConvert) return;
+    this.store.reload();
+    const fb = this.store.state.flipbooks.get(id);
+    if (fb?.tracked) this.store.put(keys.flipbook(id), { ...fb, rev: fb.rev + 1, tracked: false } satisfies Flipbook);
+  }
+
   private async createFlipbooks(request: FlipbookRequest): Promise<void> {
     const s = this.store;
     s.reload();
@@ -1675,7 +1684,7 @@ export class Controller {
         }
       }
       catch (error) { prepared.rollback(); throw error; }
-    } finally { s.reload(); this.postState(); }
+    } catch (error) { this.reopenLegacy(id, error); throw error; } finally { s.reload(); this.postState(); }
     if (!quiet) this.host.post({ type: 'notice', message: `${COPY.controller119} ${fb.title}` });
   }
 
@@ -1759,6 +1768,7 @@ export class Controller {
         } catch (e) {
           const message = e instanceof Error ? e.message : String(e);
           for (const d of pending) setDeliveryState(s, d.batchId, d.targetId, 'failed', message);
+          this.reopenLegacy(flipbookId, e);
           // 프레임이 지워진(연결 끊김) 플립북은 건너뛴다. 목록에 「연결 끊김」으로 보이므로 실패로 세거나 알리지 않는다(2026-11-04 사용자 요청).
           // 반영 대기는 남겨 프레임이 돌아오면 재시도로 반영한다.
           if (message === COPY.figmaFlipbook027) { report.screens--; continue; }

@@ -451,13 +451,26 @@ export async function flipbookSpots(ns: string, pageIds: string[]): Promise<Reco
   return spots;
 }
 
+// 반영·제목 변경이 쓸 플립북 칸. 연결 기록 없이 등록한 기존 프레임은 이전처럼 찾은 칸만 반영하고 GUI를 넣지 않으므로,
+// 보이는 동작이 같아 묻지 않고 표식을 단다(2026-10-30~11-02에 등록한 프레임은 기록만 새 형식이고 표식이 없다).
+// 이전 형식 플립북(연결 기록이 없는 프레임)은 칸을 찾지 않으므로 반영하지 않는다. 플립북 상세의 「새 형식으로 변환」으로
+// 표식 형식으로 바꾼 뒤 반영한다(2026-11-02 사용자 결정: 이름 규칙은 반영에 쓰지 않고, 변환은 플립북별로 한다).
+async function markedParts(frame: FrameNode, ns: string): Promise<Parts> {
+  let p = flipbookParts(frame, ns);
+  if (!p.links && frame.getSharedPluginData(ns, EXISTING_KEY) === 'true') {
+    await importNamedFrame(frame, null, ns);
+    p = flipbookParts(frame, ns);
+  }
+  if (!p.links) throw new Error(COPY.legacyNeedsConvert);
+  return p;
+}
+
 export async function prepareFlipbookTitle(ns: string, item: { flipbookId: string; pageId: string; nodeId?: string; title: string; frameName?: string; chapter?: string; screenId?: string }): Promise<{ apply(): void; rollback(): void }> {
   const known = item.nodeId ? await figma.getNodeByIdAsync(item.nodeId) : null;
   const frame = known?.type === 'FRAME' && known.getSharedPluginData(ns, FLIPBOOK_KEY) === item.flipbookId
     ? known : await findFlipbook(ns, item.pageId, item.flipbookId);
   if (!frame) throw new Error(COPY.figmaFlipbook027);
-  const parts = flipbookParts(frame, ns);
-  if (!parts.links) throw new Error(COPY.legacyNeedsConvert);
+  const parts = await markedParts(frame, ns);
   const beforeName = frame.name;
   const fields = parts.titles.map(node => ({ node, value: item.title, key: 'flipbookTitle' }));
   if (item.chapter !== undefined && parts.chapter) fields.push({ node: parts.chapter, value: item.chapter, key: CHAPTER_KEY });
@@ -1022,15 +1035,7 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
   const frame = existing ?? await createFlipbook(ns, page, kit.template, view);
   if (!existing) frame.setSharedPluginData(ns, TEMPLATE_KEY, kit.template.id);
   session.known.set(view.flipbookId, frame.id);
-  let p = flipbookParts(frame, ns);
-  if (!p.links && frame.getSharedPluginData(ns, EXISTING_KEY) === 'true') {
-    // 연결 기록 없이 등록한 기존 프레임은 이전처럼 찾은 칸만 반영하고 GUI를 넣지 않으므로, 보이는 동작이 같아 묻지 않고 표식을 단다.
-    await importNamedFrame(frame, null, ns);
-    p = flipbookParts(frame, ns);
-  }
-  // 이전 형식 플립북(연결 기록이 없는 프레임)은 칸을 찾지 않으므로 반영하지 않는다. 플립북 상세의 「새 형식으로 변환」으로
-  // 표식 형식으로 바꾼 뒤 반영한다(2026-11-02 사용자 결정: 이름 규칙은 반영에 쓰지 않고, 변환은 플립북별로 한다).
-  if (!p.links) throw new Error(COPY.legacyNeedsConvert);
+  const p = await markedParts(frame, ns);
   if (existing) kit = await deliveryKit(ns, frame, p, kit, settings.fallbackTemplateIds ?? [], session);
   // 꼭 있어야 하는 칸은 새로 만드는 플립북의 GUI 영역뿐이다. GUI는 만들 때만 놓고, 그 뒤로는 추적 GUI라 GUI 배포가 바꾼다.
   // 제목·Status·Screen ID·이력 칸은 없으면 그 칸만 건너뛰고 나머지를 반영한다(2026-11-02 사용자 결정).

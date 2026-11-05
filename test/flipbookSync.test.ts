@@ -4,7 +4,7 @@ import { deliveryMessage } from '../src/controller.ts';
 import { COPY } from '../src/core/copy.ts';
 import type { FlipbookView } from '../src/core/flipbook.ts';
 import { EXISTING_KEY } from '../src/core/registerFlipbooks.ts';
-import { deliveryKit, FLIPBOOK_KEY, flipbookSession, syncFlipbook, TEMPLATE_KEY } from '../src/figma/flipbook.ts';
+import { deliveryKit, FLIPBOOK_KEY, flipbookSession, prepareFlipbookTitle, syncFlipbook, TEMPLATE_KEY } from '../src/figma/flipbook.ts';
 import { LINKS_KEY } from '../src/core/templateParts.ts';
 import type { Parts, TagKit } from '../src/figma/template.ts';
 
@@ -76,6 +76,31 @@ test('연결 기록 없이 등록한 기존 프레임은 반영할 때 이름으
   assert.notEqual(frame.getSharedPluginData(NS, LINKS_KEY), '');
   assert.equal(gui!.getSharedPluginData(NS, 'templatePart'), 'gui');
   assert.equal(gui!.getSharedPluginData(NS, 'flipbookImage'), '', 'GUI는 넣지 않는다');
+});
+
+// 제목·ID 수정도 반영과 같이 등록한 기존 프레임에 표식을 단다(2026-11-05: 2026-10-30~11-02에 등록한 프레임은 기록만 새 형식이고 표식이 없어,
+// 수정하면 「새 형식으로 변환」 안내만 떴다).
+async function prepareTitle(frame: Node) {
+  const global = globalThis as unknown as { figma: PluginAPI };
+  const previous = global.figma;
+  global.figma = { getNodeByIdAsync: async () => frame, loadFontAsync: async () => {} } as unknown as PluginAPI;
+  try { return await prepareFlipbookTitle(NS, { flipbookId: 'fb', pageId: 'ui', nodeId: frame.id, title: 'New', frameName: 'New' }); }
+  finally { global.figma = previous; }
+}
+
+test('제목 수정도 연결 기록 없이 등록한 기존 프레임에는 표식을 달고 진행한다', async () => {
+  const { frame } = setup({ registered: true, gui: true });
+  const update = await prepareTitle(frame);
+  assert.notEqual(frame.getSharedPluginData(NS, LINKS_KEY), '');
+  update.apply();
+  assert.equal(frame.name, 'New');
+});
+
+test('제목 수정은 이전 형식 플립북을 바꾸지 않고 새 형식으로 변환하라고 알린다', async () => {
+  const { frame } = setup({ gui: true });
+  await assert.rejects(prepareTitle(frame), new Error(COPY.legacyNeedsConvert));
+  assert.equal(frame.getSharedPluginData(NS, LINKS_KEY), '');
+  assert.equal(frame.name, 'Home');
 });
 
 test('같은 이유로 실패한 플립북은 이유를 한 번만 쓰고 이름은 앞의 세 개와 나머지 개수로 줄인다', () => {

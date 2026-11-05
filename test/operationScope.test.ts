@@ -169,3 +169,28 @@ test('category names update matching Chapters without a full flipbook delivery',
   assert.deepEqual(calls, []);
   assert.equal(controller.store.state.categories.get('live')?.name, 'Live English');
 });
+
+// 기록은 새 형식(tracked)인데 프레임에 표식이 없는 플립북(2026-11-05 사용자 요청): 「새 형식으로 변환」 안내만 뜨고 버튼이 없었다.
+// 반영·제목 변경이 변환을 요구하면 이전 형식 플립북으로 되돌려 플립북 상세에 「새 형식으로 변환」이 보이게 한다.
+test('a tracked flipbook whose frame needs conversion goes back to legacy so the convert button shows', async () => {
+  const { controller, host, store } = setup();
+  for (const id of ['fb1', 'fb2']) { const fb = store.state.flipbooks.get(id)!; store.put(keys.flipbook(id), { ...fb, rev: fb.rev + 1, tracked: true }); }
+  host.prepareFlipbookTitle = async () => { throw new Error(COPY.legacyNeedsConvert); };
+  await controller.handle({ type: 'renameFlipbook', id: 'fb1', title: 'New title' });
+  controller.store.reload();
+  assert.equal(controller.store.state.flipbooks.get('fb1')?.tracked, false);
+  assert.equal(controller.store.state.flipbooks.get('fb1')?.title, 'A');
+  host.syncFlipbook = async () => { throw new Error(COPY.legacyNeedsConvert); };
+  await controller.handle({ type: 'markReviewed', requests: [{ flipbookId: 'fb2', tagId: systemTagId(store.state, 'latest')!, comment: '' }] });
+  controller.store.reload();
+  assert.equal(controller.store.state.flipbooks.get('fb2')?.tracked, false);
+});
+
+test('other failures keep a tracked flipbook tracked', async () => {
+  const { controller, store } = setup();
+  const fb = store.state.flipbooks.get('fb1')!;
+  store.put(keys.flipbook('fb1'), { ...fb, rev: fb.rev + 1, tracked: true });
+  await controller.handle({ type: 'renameFlipbook', id: 'fb1', title: 'New title' });
+  controller.store.reload();
+  assert.equal(controller.store.state.flipbooks.get('fb1')?.tracked, true);
+});
