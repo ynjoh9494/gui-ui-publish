@@ -436,8 +436,11 @@ button.apply-all { color: var(--brand); }
 /* 플립북: 화면이 수정되었습니다 */
 .review-dot { display: inline-block; flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--danger); }
 .review-dot.none { background: var(--border); }
+.review-count { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text); }
+.review-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 4px; }
+.fb-new-history { border-bottom: 1px solid var(--border); }
 /* UI Flipbook 상세: 위(관리 정보)·아래(화면 N개) 두 영역이 각자 스크롤한다. 화면 N개는 GUI 상세의 History처럼 구분선 아래에 고정한다(2026-11-04 사용자 요청, 모양은 .detail-foot).
-   상태·코멘트·확인 완료는 히스토리 모달에 있다(2026-11-03 사용자 요청). */
+   새 히스토리는 화면 목록 위에 표시한다. */
 .detail.flipbook-detail { display: flex; flex-direction: column; overflow: hidden; padding: 0; }
 .fb-top { flex: 1 1 auto; min-height: 80px; overflow: auto; padding: 0 10px 8px; display: flex; flex-direction: column; }
 .fb-top > * { flex: none; }

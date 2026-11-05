@@ -1,4 +1,5 @@
 import { COPY } from '../core/copy.ts';
+import { HISTORY_ADDED_AT, HISTORY_LATEST_AT } from '../core/historyNotices.ts';
 import { EXISTING_KEY } from '../core/registerFlipbooks.ts';
 import type { FlipbookSpot } from '../core/compare.ts';
 import { displayScale, FREE_MARGIN, freeGuiWidth, GUI_GAP, NO_SECTION_KEY, type FlipbookGui, type FlipbookRow, type FlipbookView } from '../core/flipbook.ts';
@@ -871,7 +872,15 @@ type Container = SceneNode & ChildrenMixin;
 export async function syncMarkedRows(ns: string, list: SceneNode, previous: SceneNode | null, _settings: FlipbookSettings, rows: FlipbookRow[], kit: TagKit, notes: Set<string>): Promise<void> {
   if (!rows.length || !('children' in list)) return;
   const box = list as Container;
-  const existing = [...box.children, ...(previous && 'children' in previous ? previous.children : [])].filter((n): n is InstanceNode => isMarkedRow(n, ns));
+  const existing: InstanceNode[] = [];
+  const collect = (parent: ChildrenMixin) => {
+    for (const child of parent.children) {
+      if (isMarkedRow(child, ns)) { if (!existing.includes(child)) existing.push(child); }
+      else if ('children' in child) collect(child);
+    }
+  };
+  collect(box);
+  if (previous && 'children' in previous) collect(previous);
   const held = new Set(existing.map(n => n.getSharedPluginData(ns, 'historyKey')).filter(Boolean));
   const component = kit.row ?? (existing[0] ? await existing[0].getMainComponentAsync() : null);
   if (!component) { notes.add(COPY.figmaTemplate023); return; }
@@ -890,6 +899,9 @@ export async function syncMarkedRows(ns: string, list: SceneNode, previous: Scen
       else if ('resizeWithoutConstraints' in box && typeof box.resizeWithoutConstraints === 'function')
         box.resizeWithoutConstraints(box.width, Math.max(box.height, row.y + row.height));
       row.setSharedPluginData(ns, 'historyKey', data.key);
+      const addedAt = Date.now();
+      row.setSharedPluginData(ns, HISTORY_ADDED_AT, String(addedAt));
+      box.setSharedPluginData(ns, HISTORY_LATEST_AT, String(Math.max(addedAt, Number(box.getSharedPluginData(ns, HISTORY_LATEST_AT)) || 0)));
       held.add(data.key);
     } catch (error) { row.remove(); throw error; }
   }

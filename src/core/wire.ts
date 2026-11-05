@@ -5,6 +5,7 @@ import type { Draft } from './drafts.ts';
 import { type FlipbookRequest } from './flipbooks.ts';
 import { retryableDeliveries } from './guiDelivery.ts';
 import type { HistoryRow } from './history.ts';
+import type { HistoryNotice } from './historyNotices.ts';
 import type { SelectionTarget, TextLayout } from './description.ts';
 import type { FlowRequest } from './flow.ts';
 import type { PdfPage, PdfSelection } from './pdf.ts';
@@ -49,7 +50,7 @@ export function toUiWire(state: State): WireState {
   return {
     project: state.project, categories: [...state.categories], workers: [...state.workers], tags: [...state.tags],
     screens: [...state.screens], gui: [...state.gui].map(([id, rows]) => [id, rows.slice(-1)]),
-    // 플립북의 「화면이 수정되었습니다」 표시에는 아직 확인하지 않은 GUI 기록만 있으면 된다.
+    // 과거 플립북 히스토리는 보내지 않는다. 새 알림은 캔버스에서 실행 구간만 읽는다.
     flipbooks: [...state.flipbooks],
     imported: [],
     uiStates: [...state.uiStates], uiBaselines: [...state.uiBaselines],
@@ -191,7 +192,6 @@ export type ToMain =
   // 플립북 제목 변경. 비우면 첫 화면 이름(자동 제목)으로 돌아간다.
   | { type: 'renameFlipbook'; id: string; title: string }
   | { type: 'updateFlipbookIdentity'; id: string; title: string; screenId: string; rev: number }
-  // 플립북 확인 완료: 상태·코멘트를 남기고 「화면이 수정되었습니다」 표시를 푼다.
   // 연결이 끊긴 플립북을 목록에서 삭제한다. 프레임이 남은 플립북은 건너뛴다.
   // 목록에서 삭제(기록은 사용 안 함으로 남긴다). withFrames: 캔버스에 프레임이 남은 플립북도 뺀다(상세 제목 줄, 2026-11-02 사용자 결정).
   // 없으면 연결이 끊긴 플립북만 뺀다(삭제 직전에 다시 찾아 프레임이 있으면 두기).
@@ -270,12 +270,12 @@ export type ToUi =
   // ok: 한 건 이상 확정했다. committed: 확정한 항목의 entryKey, conflicts: 확정하지 못한 항목과 이유
   | { type: 'committed'; ok: boolean; committed: string[]; conflicts: Blocker[]; batchId: string; pending: number; message: string }
   | { type: 'history'; id: string; rows: HistoryRow[] }
+  | { type: 'historyNotices'; items: [string, HistoryNotice[]][] }
   // counts: 화면별로 캔버스에 붙은 수(추적 GUI와 그 화면 썸네일이 든 플로우)
   | { type: 'guiScreens'; screens: GuiScreenInfo[]; counts: [string, number][] }
   | { type: 'trackList'; uid: string; items: TrackListItem[] }
   // 플립북을 만들었다. ids: 새 플립북 ID
   | { type: 'flipbooksCreated'; ids: string[]; moved?: string[]; message: string }
-  // 확인 완료를 기록했다. ids: 기록한 플립북 ID
   // 목록에서 삭제했다. ids: 삭제한 플립북 ID
   | { type: 'flipbooksRemoved'; ids: string[]; message: string }
   // 플립북 템플릿의 문제(없으면 빈 목록). UI Flipbook 목록 위에 경고로 보여 준다.

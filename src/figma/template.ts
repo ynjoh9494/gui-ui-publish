@@ -445,10 +445,9 @@ export function legacyUiParts(frame: FrameNode): { description: SceneNode | null
 // 이름으로 찾은 칸에 같은 역할 표식을 단다(템플릿·플립북 프레임 공통).
 function markNamedParts(root: FrameNode, ns: string): NamedParts {
   const p = namedParts(root);
-  const previous = p.list && 'findChild' in p.list ? (p.list as ChildrenMixin).findChild(n => n.type === 'FRAME' && n.name === 'Previous') : null;
   const marks: [BaseNode | null, string][] = [
     [p.titleText, 'title'], [p.page, 'title'], [p.chapter, 'chapter'], [p.status, 'status'], [p.ids, 'ids'], [p.gui, 'gui'],
-    [p.description, 'description'], [p.list, 'history'], [previous, 'previous'], [p.title, 'pdfHidden'], [p.history, 'pdfHidden'],
+    [p.description, 'description'], [p.list, 'history'], [p.title, 'pdfHidden'], [p.history, 'pdfHidden'],
   ];
   for (const [node, role] of marks) if (node) setRole(node, role, ns);
   return p;
@@ -606,8 +605,8 @@ export async function connectTemplateItem(templateId: string, key: TemplateItem,
     for (let n = node.parent; n && n.id !== template.id; n = n.parent) {
       const role = roleOf(n, ns);
       if (role === 'row') throw new Error(COPY.figmaTemplate022);
-      // 이력 목록·이전 이력칸만 Figma 슬롯 안의 레이어 연결을 허용한다. 그 밖의 불투명 영역은 계속 막는다.
-      const slotArea = key === 'history' || key === 'previous';
+      // 히스토리 목록만 Figma 슬롯 안의 레이어 연결을 허용한다. 그 밖의 불투명 영역은 계속 막는다.
+      const slotArea = key === 'history';
       const guiChild = key === 'gui' && role === 'gui';
       if ((OPAQUE.has(role) && !guiChild || (n.type === 'SLOT' && !slotArea)) || n.name === GUI_AREA && key !== 'gui') throw new Error(COPY.figmaTemplate016);
     }

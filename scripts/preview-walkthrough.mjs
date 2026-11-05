@@ -301,8 +301,9 @@ try {
   const sectionHeads = await app.locator('[data-form=template] .template-group').allInnerTexts();
   assert.deepEqual(sectionHeads.slice(-5), ['플립북 정보', 'GUI', 'Description', '히스토리', 'PDF 저장'], '묶음 머리글');
   const indents = Object.fromEntries(await app.locator('.template-item[data-key]').evaluateAll(items => items.map(item => [item.dataset.key, Math.round(item.querySelector('.template-state').getBoundingClientRect().left)])));
+  assert.equal(await app.locator('.template-item[data-key=previous]').count(), 0);
   const step = (child, parent) => indents[child] - indents[parent];
-  for (const [child, parent] of [['statusTag', 'status'], ['idTag', 'ids'], ['description', 'descriptionArea'], ['previous', 'history'], ['row', 'history'], ['rowComment', 'row'], ['rowStatusTag', 'rowStatus']])
+  for (const [child, parent] of [['statusTag', 'status'], ['idTag', 'ids'], ['description', 'descriptionArea'], ['row', 'history'], ['rowComment', 'row'], ['rowStatusTag', 'rowStatus']])
     assert.equal(step(child, parent), 17, `${child}는 ${parent} 아래로 들여쓴다`);
   assert.equal(step('chapter', 'title'), 0, '같은 단계는 같은 자리');
   assert.equal(rows.find(r => r.key === 'gui').disconnect, false, 'GUI 영역은 해제할 수 없다');
@@ -702,7 +703,7 @@ try {
   assert.equal(await app.locator('[data-action=scan]').count(), 0, 'UI Flipbook에는 변경사항 확인이 없다');
   assert.equal(await app.locator('[data-action=prepare]').count(), 0, 'UI Flipbook에는 배포 버튼이 없다');
   assert.equal(await app.locator('.list [data-action=include], .list [data-action=include-all]').count(), 0, 'UI Flipbook에는 배포 체크가 없다');
-  assert.equal(await app.locator('.review-count').count(), 0);
+  assert.match(await app.locator('.review-count').innerText(), /새 히스토리가 있는 플립북 0개/);
   for (const head of await app.locator('.group-head').all())
     if (await head.getAttribute('aria-expanded') === 'false') await head.click();
   // 두 페이지에 만든 플립북 3개를 모두 보여 준다.
@@ -1059,7 +1060,7 @@ try {
   for (const head of await app.locator('.group-head').all())
     if (await head.getAttribute('aria-expanded') === 'false') await head.click();
   await page.waitForFunction(() => document.querySelectorAll('#app .list .row').length === 3);
-  assert.equal(await app.locator('.review-count, [data-action=changed-only], [data-action=fb-history-open], .history-overlay').count(), 0);
+  assert.equal(await app.locator('[data-action=fb-history-open], .history-overlay').count(), 0);
   await app.locator('.list .row').filter({ hasText: initialName }).first().click();
   await openScreens();
   assert.equal(await app.locator('.detail .fb-screen .review-dot').count(), 0);

@@ -380,7 +380,7 @@ test('페이지 선택은 Figma 디바이더·자동 썸네일을 제외하고 �
   const namedLikeDivider = page('b', '---', false);
   const thumbnails = page('thumb', '자동 썸네일', false, 'thumbs');
   const ui = page('c', 'UI');
-  Object.assign(globalThis, { figma: { root: { children: [normal, separator, namedLikeDivider, thumbnails, ui] }, currentPage: ui, currentUser: null } });
+  Object.assign(globalThis, { figma: { root: { children: [normal, separator, namedLikeDivider, thumbnails, ui], getSharedPluginData: () => '', setSharedPluginData: () => {} }, currentPage: ui, currentUser: null, clientStorage: { getAsync: async () => undefined, setAsync: async () => {} } } });
   assert.deepEqual(figmaHost('UI').pages(), [{ id: 'a', name: 'GUI' }, { id: 'b', name: '---' }, { id: 'c', name: 'UI', current: true }]);
 });
 

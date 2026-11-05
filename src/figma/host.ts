@@ -3,7 +3,9 @@ import { managedPages, normalizeManagedPageNames } from './managedPages.ts';
 import { COPY } from '../core/copy.ts';
 import type { ScannedFrame } from '../core/compare.ts';
 import { canvasOrder } from '../core/screenCode.ts';
-import type { KV } from '../core/store.ts';
+import { randomId, type KV } from '../core/store.ts';
+import { beginHistoryWindow, HISTORY_DOCUMENT_ID } from '../core/historyNotices.ts';
+import { readHistoryNotices } from './historyNotices.ts';
 import { COLLAPSED_WINDOW, clampWindow } from '../core/wire.ts';
 import type { Host } from '../host.ts';
 import { ensureDataPage, renderDataPage } from './data.ts';
@@ -57,6 +59,10 @@ export function figmaHost(mode: Host['mode']): Host {
   };
   let deliverySession: FlipbookSession | undefined;
   const user = figma.currentUser;
+  let documentId: string | null = null;
+  try { const value = JSON.parse(root.getSharedPluginData(NS, HISTORY_DOCUMENT_ID)); if (typeof value === 'string') documentId = value; } catch { /* 처음 사용하는 파일 */ }
+  if (!documentId) { documentId = randomId(); root.setSharedPluginData(NS, HISTORY_DOCUMENT_ID, JSON.stringify(documentId)); }
+  const historyWindow = beginHistoryWindow(figma.clientStorage, `historyLaunch:${user?.id ?? 'unknown'}:${documentId}`, Date.now());
   let programmedSelection: string[] | null = null;
   let programmedUntil = 0;
 
@@ -71,6 +77,8 @@ export function figmaHost(mode: Host['mode']): Host {
     set mode(value) { mode = value; },
     actor: { id: user?.id ?? 'unknown', name: user?.name ?? COPY.figmaHost004 },
     post: message => figma.ui.postMessage(message),
+    historyWindow: () => historyWindow,
+    historyNotices: readHistoryNotices,
     resize(width, height, save, collapsed) {
       const size = collapsed ? COLLAPSED_WINDOW : clampWindow(mode, width, height);
       figma.ui.resize(size.width, size.height);

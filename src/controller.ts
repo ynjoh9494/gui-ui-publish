@@ -403,6 +403,7 @@ export class Controller {
   // UI Flipbook 시작: 텍스트 편집·PDF 대상을 알리고, 템플릿을 확인하며 플립북 페이지를 읽어 목록의 연결 상태·순서·Section을 맞춘다.
   // UI Flipbook으로 열 때와 GUI Publish에서 처음 UI Flipbook으로 바꿀 때 부른다.
   private uiStarted = false;
+  private historyNoticesAsked = false;
   private async startUi(): Promise<void> {
     this.uiStarted = true;
     if (this.textTabOpen) this.postTextTarget();
@@ -413,6 +414,18 @@ export class Controller {
     // 템플릿 페이지와 플립북 페이지는 서로 기다리지 않고 함께 불러온다.
     const [, canvas] = await Promise.all([this.checkTemplate(), this.linkFlipbooks()]);
     await this.syncCanvasSections(canvas);
+    if (!this.historyNoticesAsked) {
+      this.historyNoticesAsked = true;
+      const window = await this.host.historyWindow?.();
+      const active = new Set([...this.store.state.flipbooks.values()].filter(fb => fb.status === 'active').map(fb => fb.id));
+      const items = window ? await this.host.historyNotices?.([...(canvas?.found ?? new Map<string, string>())].filter(([id]) => active.has(id)), window) ?? [] : [];
+      const batches = new Map(items.flatMap(([, rows]) => rows.map(row => [row.key.slice(4), new Set<string>()] as const)));
+      if (batches.size) for (const [uid, records] of this.store.state.gui) for (const record of records) {
+        const ids = batches.get(record.batchId);
+        ids?.add(uid);
+      }
+      this.host.post({ type: 'historyNotices', items: items.map(([id, rows]) => [id, rows.map(row => ({ ...row, screenIds: [...(batches.get(row.key.slice(4)) ?? [])] }))]) });
+    }
   }
 
   // DATA 페이지가 새로 생길 수 있으므로 페이지 목록도 함께 보낸다.

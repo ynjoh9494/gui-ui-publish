@@ -46,10 +46,11 @@ test('대표가 아닌 템플릿은 반영에 쓰는 항목(화면 이름·Chapt
   for (const key of ['title', 'chapter', 'idTag', 'row', 'statusTag', 'rowStatusTag', 'rowStatus', 'rowComment', 'rowWorker', 'rowDate', 'rowTeam'] as TemplateItem[]) {
     assert.equal(templateForItem(project, 'old', key), 'old', key);
   }
-  for (const key of ['status', 'ids', 'gui', 'description', 'history', 'previous', 'pdfHidden'] as TemplateItem[]) {
+  for (const key of ['status', 'ids', 'gui', 'description', 'history', 'pdfHidden'] as TemplateItem[]) {
     assert.throws(() => templateForItem(project, 'old', key), new Error(COPY.templateItemNotUsed), key);
     assert.equal(templateForItem(project, 'cur', key), 'cur', `대표는 ${key}도 연결한다`);
   }
+  assert.throws(() => templateForItem(project, 'cur', 'previous'), new Error(COPY.templateItemNotUsed));
   assert.throws(() => templateForItem(project, 'nope', 'title'), new Error(COPY.templateNotListed));
   assert.throws(() => templateForItem(new Store(memoryKV()).state.project, 'cur', 'title'), new Error(COPY.controller053));
 });

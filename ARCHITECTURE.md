@@ -29,6 +29,8 @@ flowchart LR
 
 GUI 배포 히스토리는 GuiRecovery가 검증한 GUI 원기록 참조를 Delivery.history로 전달한다. Controller는 대기 중인 참조만 guiAppendRows()로 묶어 Figma에 전달하며, 반영 완료 시 참조를 지운다. syncMarkedRows()는 기존 행을 재작성·정렬·삭제하지 않고 목록 아래에 추가하며 캔버스의 배포 키로 재시도 중복만 막는다. 일반 동기화·생성은 과거 히스토리를 불러오지 않는다. 구형 파일 기록은 보존하되 플러그인 UI와 DATA에 플립북 히스토리를 전송·표시하지 않는다.
 
+새 히스토리 알림은 `core/historyNotices.ts`의 고정 실행 구간을 따른다. Figma Host 생성 시 사용자·문서 식별자로 clientStorage의 이전 실행 시각을 읽고 이번 시각을 저장한다. UI 모드를 처음 열 때 이미 찾은 플립북 프레임에서 이 구간에 실제 추가된 행만 읽어 `historyNotices`로 전달한다. 새 행의 캔버스 표식은 `historyAddedAt`, 목록의 마지막 추가 시각은 `historyLatestAt`이며, 추가가 없는 목록은 하위 행을 읽지 않는다. UI는 이 스냅샷으로 알림 점·필터·화면 목록 위의 새 히스토리 묶음을 표시하고 확인 완료 기록을 쓰지 않는다. Previous 표식은 구형 행 보존을 위해 읽을 수 있지만 새 연결 항목이나 자동 연결은 만들지 않는다.
+
 템플릿 날짜 형식은 `ProjectConfig.historyDateFormat`에 파일 공통으로 저장한다. `core/flipbook.ts`가 허용 형식과 프로젝트 시간대를 사용해 새 GUI 배포 행의 날짜를 만들고, Controller의 `setHistoryDateFormat`은 형식 검증·설정 저장·감사 기록만 수행한다. 기록의 타임스탬프와 플러그인·DATA의 전체 시각 표시는 유지한다.
 
 `src/ui/windowCollapse.ts`는 DOM을 유지해 접기 전 입력·선택을 보존하고, 접힌 동안 발생한 크기 변경을 펼칠 때 반영한다. `Host.resize`는 접힌 창의 크기를 Figma에 전달하되 다음 실행 크기로 저장하지 않는다.

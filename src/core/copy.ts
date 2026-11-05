@@ -1258,6 +1258,8 @@ export const COPY = {
   historyDateMenu: '히스토리 날짜',
   historyDateLabel: '날짜 형식',
   historyDateInvalid: '날짜 형식을 목록에서 선택하세요.',
+  newHistory: '새 히스토리',
+  newHistoryBooks: '새 히스토리가 있는 플립북',
 } as const;
 
 // 화면·안내·오류 문구. 원본 파일과 행은 추출 당시 위치다.

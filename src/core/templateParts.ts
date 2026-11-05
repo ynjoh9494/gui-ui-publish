@@ -48,7 +48,6 @@ export const TEMPLATE_ITEMS: readonly TemplateItemDef[] = [
   { key: 'descriptionArea', group: 'flipbook', section: 'description', kind: 'layers', label: COPY.coreTemplate044, hint: COPY.coreTemplate045 },
   { key: 'description', group: 'flipbook', section: 'description', parent: 'descriptionArea', kind: 'area', label: COPY.coreTemplate011, hint: COPY.coreTemplate012 },
   { key: 'history', group: 'flipbook', section: 'history', kind: 'area', label: COPY.coreTemplate013, hint: COPY.coreTemplate014 },
-  { key: 'previous', group: 'flipbook', section: 'history', parent: 'history', kind: 'area', label: COPY.coreTemplate015, hint: COPY.coreTemplate016 },
   { key: 'row', group: 'component', section: 'history', parent: 'history', kind: 'component', label: COPY.coreTemplate021, hint: COPY.coreTemplate022 },
   { key: 'rowStatus', group: 'row', section: 'history', parent: 'row', kind: 'tag', label: COPY.coreTemplate027, hint: COPY.coreTemplate028 },
   { key: 'rowStatusTag', group: 'component', section: 'history', parent: 'rowStatus', kind: 'component', label: COPY.coreTemplate025, hint: COPY.coreTemplate026 },

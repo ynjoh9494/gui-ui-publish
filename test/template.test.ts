@@ -10,6 +10,8 @@ import { convertLegacyFlipbooks } from '../src/figma/legacyConvert.ts';
 import { FLIPBOOK_KEY, NODE_KEY, TEMPLATE_KEY } from '../src/figma/flipbook.ts';
 import { COPY_KEY } from '../src/figma/layers.ts';
 import { scanCopies } from '../src/figma/tracked.ts';
+import { frameHistoryNotices } from '../src/figma/historyNotices.ts';
+import { HISTORY_ADDED_AT, HISTORY_LATEST_AT } from '../src/core/historyNotices.ts';
 
 // 템플릿 연결(2026-10-28): 표식 템플릿은 역할 표식으로 칸을 찾는다. 이름 규칙(이전 형식)은 반영에 쓰지 않고(2026-11-02),
 // 이전 형식 템플릿은 처음 쓸 때, 이전 형식 플립북은 플립북 상세의 「새 형식으로 변환」에서 표식으로 바꾼다.
@@ -188,7 +190,7 @@ test('이전 형식 템플릿은 처음 볼 때 이름으로 찾은 칸을 모�
   const links = parseLinks(t.template.getSharedPluginData(NS, LINKS_KEY));
   assert.deepEqual(links?.components, { statusTag: t.big.id, rowStatusTag: t.small.id, idTag: t.system.id, row: t.rowComponent.id });
   assert.deepEqual([t.titleText, t.page, t.chapter, t.status, t.ids, t.gui, t.list, t.previous, t.title, t.history].map(roleOf),
-    ['title', 'title', 'chapter', 'status', 'ids', 'gui', 'history', 'previous', 'pdfHidden', 'pdfHidden']);
+    ['title', 'title', 'chapter', 'status', 'ids', 'gui', 'history', '', 'pdfHidden', 'pdfHidden']);
   assert.equal(t.gui.getSharedPluginData(NS, GUI_EXAMPLE_KEY), 'clear', '이전처럼 플립북을 만들 때 GUI 영역 예시를 비운다');
   assert.equal(roleOf(t.rowComponent), 'row');
   const sample = t.list.children.find((n: Node) => n.name === 'Update History')!;
@@ -274,18 +276,11 @@ test('이력 목록과 이전 이력칸은 슬롯 또는 슬롯 안 프레임을
   w.page.appendChild(template);
   template.setSharedPluginData(NS, LINKS_KEY, '{"components":{}}');
 
-  w.select(previousLayer);
-  await connectTemplateItem(template.id, 'previous');
-  assert.equal(previousLayer.getSharedPluginData(NS, PART_KEY), 'previous');
-  w.select(previous);
-  await connectTemplateItem(template.id, 'previous');
-  assert.equal(previous.getSharedPluginData(NS, PART_KEY), 'previous', '슬롯 자체도 연결 가능');
-  w.select(previousLayer);
-  await connectTemplateItem(template.id, 'previous');
-
-  w.select(nestedFrame);
-  await connectTemplateItem(template.id, 'previous');
-  assert.equal(nestedFrame.getSharedPluginData(NS, PART_KEY), 'previous', '슬롯 안 인스턴스의 프레임도 연결 가능');
+  for (const layer of [previousLayer, previous, nestedFrame]) {
+    w.select(layer);
+    await assert.rejects(connectTemplateItem(template.id, 'previous'), { message: COPY.figmaTemplate013 });
+  }
+  assert.equal(itemDef('previous'), null);
 
   w.select(historyLayer);
   await connectTemplateItem(template.id, 'history');
@@ -357,6 +352,28 @@ test('GUI 히스토리는 아래에만 추가하고 기존 행·Previous·사용
   assert.deepEqual([...notes], []);
 });
 
+test('실제 히스토리 행에서 이전 실행 이후 추가분만 읽고 기존 행과 미래 행을 제외한다', () => {
+  const w = world();
+  const makeRow = (key: string, at: number) => {
+    const row = w.role(w.make('INSTANCE', key, [w.role(text(w, 'Comment', key), 'rowComment'), w.role(text(w, 'Date', '26.11.05'), 'rowDate'), w.role(text(w, 'Worker', 'Designer'), 'rowWorker')]), 'row');
+    row.setSharedPluginData(NS, 'historyKey', key);
+    if (at) row.setSharedPluginData(NS, HISTORY_ADDED_AT, String(at));
+    return row;
+  };
+  const rows = [makeRow('old', 100), makeRow('new', 150), makeRow('boundary', 200), makeRow('next-run', 201), makeRow('legacy', 0)];
+  const list = w.role(w.make('FRAME', 'History', [w.make('FRAME', 'Nested', rows)]), 'history');
+  list.setSharedPluginData(NS, HISTORY_LATEST_AT, '201');
+  const frame = w.make('FRAME', 'Book', [list]);
+  frame.setSharedPluginData(NS, LINKS_KEY, '{"components":{}}');
+  const before = rows.map(row => row.data.size);
+  const found = frameHistoryNotices(frame as unknown as FrameNode, { since: 100, until: 200 });
+  assert.deepEqual(found.map(row => [row.key, row.description, row.at, row.worker]), [['new', 'new', '26.11.05', 'Designer'], ['boundary', 'boundary', '26.11.05', 'Designer']]);
+  assert.deepEqual(rows.map(row => row.data.size), before, '알림을 읽을 때 Figma 행을 수정하지 않는다');
+  list.setSharedPluginData(NS, HISTORY_LATEST_AT, '100');
+  list.children = [poison()];
+  assert.deepEqual(frameHistoryNotices(frame as unknown as FrameNode, { since: 100, until: 200 }), [], '새 행이 없는 목록은 하위 노드를 읽지 않는다');
+});
+
 test('표식 템플릿에서 만든 플립북의 텍스트 편집 대상은 「Description 본문」에 연결한 칸이다', () => {
   const w = world();
   const copy = text(w, 'Description');
@@ -390,7 +407,7 @@ test('고른 이전 형식 플립북만 표식 형식으로 바꾸고, 만든 �
   assert.equal(p.ids?.name, 'input-cell-id');
   assert.equal(p.gui, a.gui);
   assert.equal(p.list?.name, 'List');
-  assert.equal(p.previous?.name, 'Previous');
+  assert.equal(p.previous, null, '변환할 때 Previous 연결을 새로 만들지 않는다');
   assert.equal(b.frame.getSharedPluginData(NS, LINKS_KEY), '', '고르지 않은 플립북은 그대로 둔다');
   assert.deepEqual(a.gui.children, [a.copy], 'GUI Image Slot의 화면은 그대로 둔다');
   const copies = await scanCopies(NS, [w.page.id]);

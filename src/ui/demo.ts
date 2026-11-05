@@ -140,8 +140,11 @@ export function createDemo(options: DemoOptions): Demo {
   }
 
   const kv = memoryKV();
+  const historyWindow = { since: null, until: Date.now() };
   const host: Host = {
     kv,
+    historyWindow: async () => historyWindow,
+    historyNotices: async () => [],
     mode: options.mode,
     actor: options.actor,
     post: message => deliver(message),

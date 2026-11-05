@@ -1,6 +1,7 @@
 import type { ChangeReason, DigestRequest } from './core/changeDigest.ts';
 import type { FlipbookSpot, ScannedFrame } from './core/compare.ts';
 import type { DataModel } from './core/data.ts';
+import type { HistoryNotice, HistoryWindow } from './core/historyNotices.ts';
 import type { FlipbookView } from './core/flipbook.ts';
 import type { CanvasPosition } from './core/screenCode.ts';
 import type { KV } from './core/store.ts';
@@ -34,6 +35,8 @@ export interface Host extends FingerprintReader {
   actor: Actor;
   mode: Team;
   post(message: ToUi): void;
+  historyWindow?(): Promise<HistoryWindow>;
+  historyNotices?(items: [string, string][], window: HistoryWindow): Promise<[string, HistoryNotice[]][]>;
   resize(width: number, height: number, save?: boolean, collapsed?: boolean): void;
   pages(): PageInfo[];
   managedPages?(): ManagedPageInfo[];
