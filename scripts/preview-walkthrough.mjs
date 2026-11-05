@@ -1128,7 +1128,17 @@ try {
   await page.locator(`#tools [data-edit="${initialNodeId}"]`).click();
   await scan();
   const noisy = app.locator('.row:has(.id-tag)').filter({ hasText: initialName }).first();
+  // UI Flipbook의 GUI 붙이기 탭을 연 채 GUI Publish로 돌아와도 History 썸네일이 도착하면 「불러오는 중」이 이미지로 바뀐다(2026-11-05 회귀).
+  // 플러그인 명령 전환으로 썸네일을 비운 뒤라 처음 펼칠 때 이미지를 새로 받는다.
+  await app.locator('[data-action=switch-mode]').click();
+  await app.locator('[data-action=paste-open]').click();
+  await app.locator('[data-action=switch-mode]').click();
+  await app.locator('.tabs [data-action=version-close]').waitFor();
   await noisy.click();
+  const noisyFold = app.locator('.detail details.history-fold');
+  await noisyFold.locator('summary').click();
+  await noisyFold.locator('.history-thumb img').waitFor({ timeout: 3000 });
+  await noisyFold.locator('summary').click();
   // 배포를 켜기 전에는 입력 영역이 없다.
   assert.equal(await app.locator('.detail [data-field=code]').count(), 0, 'inputs hidden until 배포 is checked');
   // 변경 사항: 보이는 차이는 상자에 한 줄씩 바로 보이고, 줄을 누르면 캔버스에서 고른다.
@@ -1311,9 +1321,16 @@ try {
   // 지난 배포 썸네일은 제목 없이 History 맨 위에 있고, 버전·시각을 캡션으로 단다.
   assert.match(await fold.locator('.history-thumb figcaption').innerText(), /^v\d+ · /);
   assert.equal(await fold.evaluate(node => node.querySelector('.history-thumb').compareDocumentPosition(node.querySelector('table')) & Node.DOCUMENT_POSITION_FOLLOWING), 4, 'the thumbnail sits above the history list');
-  // 다른 화면으로 옮기면 History는 접힌 채로 시작한다(2026-11-03 사용자 요청).
+  // 앞에서 GUI 붙이기 탭을 연 채 GUI Publish로 돌아왔고 이 화면의 썸네일은 새로 받는다. 도착하면 「불러오는 중」이 이미지로 바뀐다(2026-11-05 회귀).
+  await fold.locator('.history-thumb img').waitFor({ timeout: 3000 });
+  // 다른 화면으로 옮기면 History는 접힌 채로 시작하고, 같은 화면으로 돌아와도 펼친 상태를 기억하지 않는다(2026-11-05 사용자 요청).
   await wrong.click();
-  await page.waitForFunction(() => document.querySelector('#app .detail details.history-fold')?.open === false);
+  await page.waitForFunction(() => document.querySelector('#app .detail [data-field=code]') && document.querySelector('#app .detail details.history-fold')?.open === false);
+  await keep.click();
+  await page.waitForFunction(() => !document.querySelector('#app .detail [data-field=code]') && document.querySelector('#app .detail details.history-fold'));
+  assert.equal(await fold.evaluate(node => node.open), false, 'returning to the same screen starts folded');
+  await wrong.click();
+  await page.waitForFunction(() => document.querySelector('#app .detail [data-field=code]'));
   // 교체는 신규 후보의 교체처럼 태그를 고른다.
   await app.locator('.tag-picker summary[aria-label="태그 선택"]').click();
   await app.locator('.tag-options [data-action=select-tag]').filter({ hasText: '검토' }).click();

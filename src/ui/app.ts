@@ -340,14 +340,19 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let pasteOpen = false;
   // 화면 목록을 캔버스에서 읽은 마지막 플립북(상세를 다시 그릴 때마다 읽지 않게)
   let followed: string | null = null;
-  const listTabOpen = () => !textOpen && !flowOpen && !pdfOpen && !pasteOpen;
+  // 텍스트·플로우·PDF·붙이기 탭은 UI Flipbook에만 있다. GUI Publish에서는 그 탭을 열어 둔 채 넘어와도 목록 화면이 열려 있다
+  // (2026-11-05 회귀: GUI 붙이기 탭을 연 채 GUI Publish로 바꾸면 History 썸네일이 「불러오는 중」에서 바뀌지 않았다).
+  const listTabOpen = () => mode !== 'UI' || (!textOpen && !flowOpen && !pdfOpen && !pasteOpen);
   let pdfTabSent = false;
   // PDF를 합쳐 저장하는 동안의 진행 표시. 본체의 진행 표시(busyLabel)가 끝난 뒤에도 이어서 보여 준다.
   let pdfBusy: string | null = null;
   // 플러그인에 마지막으로 알린 텍스트 편집 탭 표시 여부
   let textTabSent = false;
-  // History를 펼친 화면·플립북 ID. 다른 화면으로 옮기면 접힌 채로 시작한다(2026-11-03 사용자 요청).
+  // History를 펼친 화면 ID. 보고 있는 화면이 바뀌면 잊어서, 다른 화면이나 관리·UI Flipbook에 갔다가 같은 화면으로 돌아와도 접힌 채로 시작한다
+  // (2026-11-05 사용자 요청: 펼친 상태를 기억하지 않는다). 같은 화면을 다시 그릴 때(히스토리 도착 등)는 펼친 채로 둔다.
   let historyOpenId: string | null = null;
+  let historyShownId: string | null = null;
+  const forgetHistoryFold = () => { historyOpenId = null; historyShownId = null; };
   // UI Flipbook 상세의 「화면 N개」 펼침(처음에는 펼침, 접으면 다른 플립북을 골라도 접힌 채로, 플러그인을 닫으면 처음으로)과 히스토리 모달 표시(2026-11-03 사용자 요청)
   let fbScreensOpen = true;
   let historyModal = false;
@@ -1540,8 +1545,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     }
     $('.detail').classList.toggle('locked', tab !== 'ADMIN' && detailLocked(team()));
     $('.detail').classList.remove('flipbook-detail', 'new-flipbook-detail');
-    if (tab === 'ADMIN') { renderAdmin(); return; }
-    if (team() === 'UI') { if (currentNew()) renderNewDetail(); else renderFlipbookDetail(); return; }
+    if (tab === 'ADMIN') { forgetHistoryFold(); renderAdmin(); return; }
+    if (team() === 'UI') { forgetHistoryFold(); if (currentNew()) renderNewDetail(); else renderFlipbookDetail(); return; }
     const t = team();
     // 변경사항 확인 전에는 안내 문구만 가운데에 보여 주고 입력은 숨긴다. 고른 배포 화면의 History는 아래에서 볼 수 있다(2026-11-03 사용자 요청).
     if (state && locked(t)) {
@@ -2028,7 +2033,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const box = root.querySelector(team() === 'UI' ? '.history-overlay .history' : '.detail .history');
     const entry = current();
     const id = team() === 'GUI' ? entry?.screenId : entry?.flipbookId;
-    if (!box || !entry || !id) return;
+    if (!box || !entry || !id) { forgetHistoryFold(); return; }
+    if (team() === 'GUI' && historyShownId !== id) { historyOpenId = null; historyShownId = id; }
     // 히스토리를 아직 받지 않았으면 여기서 요청한다. 목록 클릭뿐 아니라 캔버스에서 골라 선택이 바뀐 때도 보이게 한다(2026-11-03 회귀).
     // 같은 화면은 한 번만 요청하고, 받기 전에도 GUI는 지난 배포 썸네일로 History를 보여 준다.
     if (history?.id !== id && historyAsked !== id) { historyAsked = id; bridge.send({ type: 'history', team: team(), id }); }
