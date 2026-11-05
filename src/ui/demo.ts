@@ -348,17 +348,21 @@ export function createDemo(options: DemoOptions): Demo {
       log(`${COPY.flow001}: ${plan.title} / ${[...at.values()].join(' ')} / ${plan.links.map(l => `${at.get(l.from)}.${l.fromSide}→${at.get(l.to)}.${l.toSide}`).join(' ')}`);
       return { nodeId, pageId: DEMO_FLIPBOOK_PAGE.id, notes: [] };
     },
-    async updateFlow(flow, latest) {
-      const versions = flows.get(flow.nodeId);
-      if (!versions) return null;
-      let n = 0;
-      for (const t of latest) if (versions.has(t.uid) && versions.get(t.uid)! < t.version) { versions.set(t.uid, t.version); n++; }
-      if (n) log(`${COPY.flow001} ${flow.title}: ${n}`);
-      return n;
+    // 플로우 칸: 만든 플로우마다 화면 칸 하나씩(노드 ID 플로우/화면). 가짜 캔버스에서는 플로우를 고치지 않는다.
+    async flowCells() {
+      return [...flows].flatMap(([nodeId, versions]) => [...versions.keys()].map(uid => ({
+        nodeId: `${nodeId}/${uid}`, pageId: DEMO_FLIPBOOK_PAGE.id, flowId: nodeId.slice('flow:'.length), uid, cardId: `${nodeId}/${uid}`, rootId: nodeId, title: null,
+      })));
     },
-    async flowNode(flow, uid) {
-      if (!flows.has(flow.nodeId)) return null;
-      return uid ? `${flow.nodeId}/${uid}` : flow.nodeId;
+    async updateFlowCells(cellIds, latest) {
+      let n = 0;
+      for (const id of cellIds) {
+        const [nodeId, uid] = id.split('/');
+        const versions = flows.get(nodeId), next = latest.find(t => t.uid === uid);
+        if (versions && next && versions.get(uid)! < next.version) { versions.set(uid, next.version); n++; }
+      }
+      if (n) log(`${COPY.flow001}: ${n}`);
+      return n;
     },
     // GUI 붙이기: 붙인 화면·크기·자리(창 밖에 놓은 좌표, 없으면 보고 있는 화면 가운데)를 알린다. 원본 프레임이 없으면 실패한다.
     async pasteGui(item, at) {

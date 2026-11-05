@@ -1,6 +1,7 @@
 import { COPY } from './copy.ts';
 import { formerUids, guiScreenInfo } from './guiScreens.ts';
 import { keys, type State, type Store } from './store.ts';
+import { successorOf } from './tracks.ts';
 import type { Actor, FlowRecord, GuiThumb } from './types.ts';
 
 // 플로우(2026-10-23 사용자 결정): 배포된 화면을 놓고 꺾인 화살표로 잇는 독립 그룹. UI Flipbook의 부가 기능이다.
@@ -9,6 +10,7 @@ import type { Actor, FlowRecord, GuiThumb } from './types.ts';
 // 화면은 레이어 복사본이 아니라 GUI 배포 때 만든 1/4 썸네일 이미지이고, 다시 배포되면 그 이미지만 바꾼다.
 // 제목·설명·조건은 빨간 더미 글자 칸만 만들고 플러그인은 만든 뒤 내용을 고치지 않는다. 이력 행은 남기지 않고,
 // 썸네일을 맞추고 있는 플로우는 플로우 목록(2026-10-23 사용자 요청)으로 보여 준다. 캔버스에서 지운 플로우는 묻지 않고 기록에서 뺀다.
+// 2026-11-05 사용자 결정: 플로우는 만든 뒤 얼마든지 고치므로 그룹이 아니라 화면 칸의 표식으로 기억한다(reconcileFlows).
 
 export type FlowSide = 'top' | 'right' | 'bottom' | 'left';
 // key: 플러그인 창에서 썸네일을 구분하는 값(같은 화면을 여러 번 놓을 수 있다). x·y: 썸네일 왼쪽 위(캔버스 단위 = 1/4 썸네일 px)
@@ -315,6 +317,53 @@ export function flowUpdates(state: State, uids: Set<string>): { flows: FlowRecor
   }
   const wanted = new Set(thumbs.map(t => t.uid));
   return { flows: [...state.flows.values()].filter(f => f.uids.some(uid => wanted.has(uid))), thumbs };
+}
+
+// ── 캔버스의 화면 칸 ───────────────────────────────────
+
+// 캔버스에서 찾은 플로우 화면 칸(썸네일 사각형). 그룹 구조와 관계없이 칸의 표식으로 찾는다(2026-11-05 사용자 결정: 플로우는 만든 뒤
+// 그룹을 풀거나 다시 묶거나 옮기는 등 얼마든지 고친다). cardId: 그 칸 하나만 품은 화면 그룹(없으면 사각형),
+// rootId: 같은 플로우 표식이 있는 바깥 그룹(그룹을 풀었으면 null), title: 그 그룹 이름
+export interface FoundFlowCell { nodeId: string; pageId: string; flowId: string; uid: string; cardId: string; rootId: string | null; title: string | null }
+
+export const flowPages = (flow: FlowRecord): string[] => flow.pageIds?.length ? flow.pageIds : [flow.pageId];
+
+const sameSet = (a: string[], b: string[]) => a.length === b.length && new Set([...a, ...b]).size === a.length;
+
+// 찾은 칸으로 플로우 기록을 맞춘다. 기록의 화면·페이지는 찾은 칸을 따르고(교체로 이어진 옛 화면은 이어받은 화면으로 적는다),
+// 기록이 없는 플로우의 칸은 기록을 되살린다(그룹 노드 ID로 찾던 때 잘못 빠진 플로우 포함). checked 중 칸을 하나도 찾지 못한 플로우는
+// 캔버스에서 지운 것으로 보고 묻지 않고 뺀다. partial이면(새로 생긴 노드만 읽었을 때) 기록에 더하기만 한다. 바꾼 기록 수를 돌려준다.
+export function reconcileFlows(store: Store, cells: FoundFlowCell[], checked: FlowRecord[], actor: Actor, partial = false): { byFlow: Map<string, FoundFlowCell[]>; changed: number } {
+  const live = successorOf(store.state);
+  const byFlow = new Map<string, FoundFlowCell[]>();
+  const seen = new Set<string>();
+  for (const cell of cells) {
+    if (seen.has(cell.nodeId)) continue;
+    seen.add(cell.nodeId);
+    byFlow.set(cell.flowId, [...(byFlow.get(cell.flowId) ?? []), cell]);
+  }
+  let changed = 0;
+  for (const [id, found] of byFlow) {
+    const before = store.state.flows.get(id);
+    const uids = [...new Set([...(partial && before ? before.uids : []), ...found.map(c => live(c.uid))])];
+    const pageIds = [...new Set([...(partial && before ? flowPages(before) : []), ...found.map(c => c.pageId)])];
+    const root = found.find(c => c.rootId)?.rootId ?? null;
+    if (!before) {
+      const record: FlowRecord = { id, nodeId: root ?? found[0].nodeId, pageId: pageIds[0], pageIds, title: found.find(c => c.title)?.title || FLOW_DEFAULT_TITLE, uids, createdAt: store.now(), actor };
+      store.put(keys.flow(id), record);
+      store.audit(actor, 'flow.restore', id, null, { title: record.title, pageId: record.pageId, screens: uids });
+      changed++;
+    } else if (!sameSet(before.uids, uids) || !sameSet(flowPages(before), pageIds)) {
+      store.put(keys.flow(id), { ...before, pageId: pageIds[0], pageIds, uids, ...(root ? { nodeId: root } : {}) } satisfies FlowRecord);
+      changed++;
+    }
+  }
+  const gone = partial ? [] : checked.filter(f => !byFlow.has(f.id) && store.state.flows.has(f.id));
+  if (gone.length) {
+    store.remove(...gone.map(f => keys.flow(f.id)));
+    for (const flow of gone) store.audit(actor, 'flow.remove', flow.id, { title: flow.title, pageId: flow.pageId }, null);
+  }
+  return { byFlow, changed: changed + gone.length };
 }
 
 // 배포 화면 from의 원본으로 화면 to를 교체했을 때 from이 든 플로우 기록을 to로 바꾼다(2026-10-27 사용자 결정).
