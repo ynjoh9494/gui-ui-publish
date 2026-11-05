@@ -55,6 +55,12 @@ const scan = async () => {
 };
 // 플러그인 메뉴에서 다른 명령을 실행한 것처럼 바꾼다(미리보기 도구 버튼).
 // 목록은 다음 프레임에 다시 그린다. 새 플립북 행이 기대한 상태가 될 때까지 잠시 기다린 뒤 확인한다.
+// UI Flipbook 상세의 「화면 N개」. 기본은 접혀 있어 화면 줄을 보려면 펼친다(2026-11-05 사용자 요청).
+const screensFold = app.locator('.detail details[data-fold=screens]');
+const openScreens = async () => {
+  if (!await screensFold.evaluate(d => d.open)) await screensFold.locator('summary').click();
+  assert.equal(await screensFold.evaluate(d => d.open), true, '제목 줄을 누르면 화면 목록을 펼친다');
+};
 const newRows = async (count, message) => {
   await page.waitForFunction(n => document.querySelectorAll('#app .list .new-row').length === n, count, { timeout: 3000 }).catch(() => {});
   assert.equal(await app.locator('.list .new-row').count(), count, message);
@@ -604,9 +610,10 @@ try {
   // 화면 편집은 없다(2026-10-29 사용자 결정: 화면은 캔버스·GUI 목록에서 넣고 뺀다). 상세에는 들어 있는 화면 수만 보인다.
   assert.equal(await app.locator('[data-action=fb-edit-screens]').count(), 0, '플립북 상세에 화면 편집이 없다');
   assert.match(await app.locator('.detail .fb-screens-head').innerText(), /화면 1개/);
-  // 제목 줄 오른쪽은 [히스토리] [목록에서 삭제] [적용하기]이고, 들어 있는 화면은 펼친 목록이다. 상태·코멘트는 상세에 없다(2026-11-03 사용자 요청).
+  // 제목 줄 오른쪽은 [히스토리] [목록에서 삭제] [적용하기]이고, 들어 있는 화면은 접은 목록이다. 상태·코멘트는 상세에 없다(2026-11-03 사용자 요청).
   assert.deepEqual(await app.locator('.detail .title-actions button').allInnerTexts(), ['히스토리', '목록에서 삭제'], '고치지 않으면 적용하기·취소가 없다');
-  assert.equal(await app.locator('.detail details[data-fold=screens]').evaluate(d => d.open), true, '들어 있는 화면은 펼쳐 둔다');
+  assert.equal(await screensFold.evaluate(d => d.open), false, '들어 있는 화면은 처음에 접어 둔다(2026-11-05 사용자 요청)');
+  await openScreens();
   assert.equal(await app.locator('.detail .fb-screen-list .fb-screen').count(), 1, '화면은 목록 줄로 보여 준다');
   assert.equal(await app.locator('.detail [data-field=description]').count(), 0, '상세에 코멘트 입력이 없다');
   // 기존 플립북도 드래그해 다른 Section으로 옮긴다(2026-10-22). 만들기 전까지는 목록에서만 옮기고, 캔버스 배치에 반영할지 묻는다.
@@ -688,11 +695,20 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('#app .list .row').length === 3);
   const groupNames = await app.locator('.group-head').allInnerTexts();
   assert.ok(['UI 플립북', 'UI 두 번째 페이지'].every(page => groupNames.some(name => name.includes(page))), '페이지별로 묶는다');
-  await app.locator('.row').filter({ hasText: initialName }).first().click();
-  // 플립북을 고르면 들어 있는 화면 목록을 보여 주고, 줄에 마우스를 올리면 GUI 썸네일을 띄운다.
+  const initialRow = app.locator('.row').filter({ hasText: initialName }).first();
+  await initialRow.click();
+  await page.waitForFunction(() => document.querySelector('#app .detail details[data-fold=screens]')?.open === false);
+  // 플립북을 고르면 들어 있는 화면 목록을 펼쳐 볼 수 있고, 줄에 마우스를 올리면 GUI 썸네일을 띄운다.
+  await openScreens();
   await app.locator('.detail .fb-screen-list .fb-screen').first().hover();
   await app.locator('.thumb-hover img').waitFor();
   await app.locator('.detail h2').hover();
+  // 펼친 상태는 기억하지 않는다: 다른 플립북에 갔다가 돌아오면 다시 접혀 있다(2026-11-05 사용자 요청).
+  await app.locator('.list .row:not(.selected)').filter({ hasNotText: initialName }).first().click();
+  await page.waitForFunction(name => !document.querySelector('#app .list .row.selected .name')?.textContent?.includes(name), initialName);
+  await initialRow.click();
+  await page.waitForFunction(name => document.querySelector('#app .list .row.selected .name')?.textContent?.includes(name), initialName);
+  assert.equal(await screensFold.evaluate(d => d.open), false, '같은 플립북으로 돌아와도 화면 목록은 접혀 있다');
   assert.equal(await app.locator('.detail [data-field=workerId]').count(), 0, '작업자 입력이 없다');
   // 히스토리를 누르면 상태·코멘트 모달을 띄운다. 수정된 화면이 없어도 열리며, 상태는 기본 태그 「현행」이다.
   await app.locator('.detail [data-action=fb-history-open]').click();
@@ -1074,6 +1090,7 @@ try {
   await flagged.click();
   // 확인이 필요한 플립북은 「히스토리」 버튼에 빨간 점이 붙는다.
   await app.locator('.detail [data-action=fb-history-open] .review-dot').waitFor();
+  await openScreens();
   // 화면 줄의 상태: 가장 최근 GUI 배포의 태그(그 배포로 바뀐 화면에만)와 확인이 필요한 화면의 빨간 점
   assert.equal(await app.locator('.detail .fb-screen-list .fb-screen .review-dot').count(), 1, '화면 줄에 수정된 화면을 표시한다');
   assert.equal(await app.locator('.detail .fb-screen-list .fb-screen .chip').innerText(), '검토', '가장 최근 GUI 배포의 태그를 그 화면에 붙인다');

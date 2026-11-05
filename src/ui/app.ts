@@ -357,8 +357,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let historyOpenId: string | null = null;
   let historyShownId: string | null = null;
   const forgetHistoryFold = () => { historyOpenId = null; historyShownId = null; };
-  // UI Flipbook 상세의 「화면 N개」 펼침(처음에는 펼침, 접으면 다른 플립북을 골라도 접힌 채로, 플러그인을 닫으면 처음으로)과 히스토리 모달 표시(2026-11-03 사용자 요청)
-  let fbScreensOpen = true;
+  // UI Flipbook 상세의 「화면 N개」 펼침. 기본은 접힘이고 펼친 상태는 기억하지 않는다(2026-11-05 사용자 요청): 다른 플립북이나 관리·GUI·새 플립북·
+  // 다른 탭에 갔다가 돌아오면 접힌 채로 시작한다. 같은 플립북을 다시 그릴 때(상태 갱신 등)는 펼친 채로 둔다.
+  let fbScreensOpen = false;
+  let fbScreensShownId: string | null = null;
+  const forgetScreensFold = () => { fbScreensOpen = false; fbScreensShownId = null; };
+  // 히스토리 모달 표시(2026-11-03 사용자 요청)
   let historyModal = false;
   // 마지막으로 히스토리를 요청한 화면·플립북 ID. 같은 ID를 거듭 요청하지 않는다.
   let historyAsked: string | null = null;
@@ -1576,6 +1580,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       leaveDescription();
       for (const id of identityDrafts.keys()) if (!identityEdited(id)) identityDrafts.delete(id);
     }
+    if (tab === 'ADMIN' || team() !== 'UI' || currentNew() || !listTabOpen()) forgetScreensFold();
     $('.detail').classList.toggle('locked', tab !== 'ADMIN' && detailLocked(team()));
     $('.detail').classList.remove('flipbook-detail', 'new-flipbook-detail');
     if (tab === 'ADMIN') { forgetHistoryFold(); renderAdmin(); return; }
@@ -1860,6 +1865,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const entry = current();
     detail.classList.toggle('flipbook-detail', !!state && !!entry?.flipbookId && !!chosen.length);
     if (!state || !entry?.flipbookId || !chosen.length) {
+      forgetScreensFold();
       leaveDescription();
       for (const id of identityDrafts.keys()) if (!identityEdited(id)) identityDrafts.delete(id);
       detail.innerHTML = `<p class="empty">${COPY.uiApp217}</p>`; renderHistoryModal(); return;
@@ -1919,10 +1925,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (unlinked.length) {
       top += `<div class="unlinked">${unlinkedBadge()}<p class="note">${multi ? `${COPY.uiApp238} <b>${unlinked.length}</b>${COPY.uiApp015}` : COPY.uiApp236}</p><button class="danger" data-action="remove-flipbooks">${COPY.uiApp237}</button></div>`;
     }
-    // 들어 있는 화면 목록은 처음에 펼쳐 둔다(2026-11-03 사용자 요청). 접으면 다른 플립북을 골라도 접힌 채로 둔다.
+    // 들어 있는 화면 목록은 처음에 접어 두고, 보이는 플립북이 바뀌면 다시 접는다(2026-11-05 사용자 요청).
     // GUI 상세의 History처럼 아래쪽에 따로 고정한 영역에 두고, 위(관리 정보)와 각자 스크롤한다(2026-11-04 사용자 요청).
     let foot = '';
-    if (!multi && fb && entry.estimate !== 'missing') {
+    if (multi || !fb || entry.estimate === 'missing') forgetScreensFold();
+    else {
+      if (fbScreensShownId !== fb.id) { fbScreensOpen = false; fbScreensShownId = fb.id; }
       const dot = changed.size ? `<span class="review-dot" role="img" title="${COPY.uiApp193}" aria-label="${COPY.uiApp193}"></span>` : '';
       foot = `<details class="history-fold fb-fold" data-fold="screens"${fbScreensOpen ? ' open' : ''}><summary class="fb-screens-head"><span class="dropdown-caret" aria-hidden="true"></span><span>${COPY.uiApp205} ${fb.screens.length}${COPY.uiApp015}</span>${dot}</summary>
         ${fb.screens.length ? flipbookScreenList(entry.flipbookId, changed) : `<p class="note">${COPY.uiApp221}</p>`}</details>`;
