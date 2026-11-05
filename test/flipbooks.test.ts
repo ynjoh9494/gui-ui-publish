@@ -415,10 +415,22 @@ test('플립북 만들기 표의 행마다 플립북을 만든다. 화면을 비
   assert.deepEqual([made[0].title, made[1].title, made[2].title], ['화면 b', '화면 b', '정책']);
   const blank = planFlipbooks({ pageId: 'p', rows: [row([])] }, screens, actor, 100, next)[0];
   assert.deepEqual([blank.title, blank.autoTitle, blank.category.name], ['새 플립북', true, '미분류']);
-  assert.throws(() => planFlipbooks({ pageId: 'p', rows: [row(['a', 'a'], true)] }, screens, actor, 100, next), /두 번/);
+  // 같은 화면을 여러 번 넣으면 넣은 순서·횟수대로 들어간다.
+  const twice = planFlipbooks({ pageId: 'p', rows: [row(['a', 'b', 'a'], true)] }, screens, actor, 100, next)[0];
+  assert.deepEqual(twice.screens.map(s => s.uid), ['a', 'b', 'a']);
   // GUI 원본 프레임이 없는 화면으로는 만들 수 없다.
   const noSource = new Map([['a', { ...screen('a', 'A'), sourceNodeId: null }]]);
   assert.throws(() => planFlipbooks({ pageId: 'p', rows: [row(['a'])] }, noSource, actor, 100, next), /원본/);
+});
+
+test('같은 화면이 한 플립북에 여러 번 들어 있으면 새 GUI 기록은 한 번만 세고 모든 자리의 버전을 올린다', () => {
+  const store = new Store(memoryKV(), () => 100, () => 'id');
+  const fb = planFlipbooks({ pageId: 'p', rows: [row(['a', 'b', 'a'], true)] }, new Map([screen('a', 'A'), screen('b', 'B')].map(s => [s.uid, s])), actor, 100, () => 'fb1')[0];
+  store.put(keys.flipbook(fb.id), fb);
+  const latest = screen('a', 'A', 2);
+  const result = importGuiUpdates(store, fb.id, new Map([['a', latest], ['b', screen('b', 'B')]]), [record('a', 'A', 2)]);
+  assert.deepEqual([result.added, store.state.imported.get(fb.id)?.length], [1, 1]);
+  assert.deepEqual(store.state.flipbooks.get(fb.id)?.screens.map(s => [s.uid, s.version]), [['a', 2], ['b', 1], ['a', 2]]);
 });
 
 test('같은 GUI를 쓰는 두 플립북에 새 GUI 기록을 각각 한 번만 쌓고, 확인 완료 전까지 화면 수정 표시를 한다', () => {

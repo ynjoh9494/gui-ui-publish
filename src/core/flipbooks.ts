@@ -5,7 +5,7 @@ import { defaultTitle, NO_CATEGORY_KEY, NO_SECTION_KEY } from './flipbook.ts';
 import { unsavedPolicy, unsavedPolicyIds } from './flipbookIdentity.ts';
 import { importedRecord, recordsToImport, type GuiRecordInfo, type GuiScreenInfo } from './guiScreens.ts';
 import { keys, type State, type Store } from './store.ts';
-import type { Actor, Flipbook, FlipbookKind, FlipbookReview, FlipbookScale, ImportedGuiRecord, TagSnapshot, UiRecord, UiState } from './types.ts';
+import type { Actor, Flipbook, FlipbookKind, FlipbookScreen,FlipbookReview, FlipbookScale, ImportedGuiRecord, TagSnapshot, UiRecord, UiState } from './types.ts';
 
 // 플립북을 놓는 Section(2026-10-21 사용자 요청: 페이지 안에서 섹션을 나눈다). 기본은 첫 화면의 GUI 카테고리이고,
 // 페이지의 다른 Section이나 새 이름의 Section을 고를 수 있다. 큰 제목 위 Chapter에도 이 이름을 쓴다.
@@ -101,7 +101,7 @@ function planRow(row: FlipbookRowRequest, pageId: string, screens: Map<string, G
     return s;
   });
   if (kind === 'single' && chosen.length !== 1) throw new Error(COPY.coreFlipbooks005);
-  if (new Set(chosen.map(s => s.uid)).size !== chosen.length) throw new Error(COPY.coreFlipbooks006);
+  // 같은 화면을 한 플립북에 여러 번 넣을 수 있다(2026-11-05 사용자 요청). 넣은 순서·횟수대로 GUI 영역에 놓는다.
   const scale = kind === 'multi' ? row.scale : 1;
   if (!SCALES.includes(scale)) throw new Error(COPY.coreFlipbooks007);
   for (const s of chosen) if (!SCALES.includes(row.scales?.[s.uid] ?? scale)) throw new Error(COPY.coreFlipbooks007);
@@ -305,11 +305,18 @@ export function importGuiUpdates(store: Store, flipbookId: string, screens: Map<
   let queued = false;
   const queue = () => { if (!queued) { beforeChange?.(); queued = true; } };
   const held = store.state.imported.get(flipbookId) ?? [];
+  // 같은 화면이 여러 번 들어 있으면 기록·알림은 처음 자리에서 한 번만 만들고 나머지 자리는 같은 값을 쓴다.
+  const done = new Map<string, FlipbookScreen>();
   const next = before.screens.map(fs => {
     if (onlyUids && !onlyUids.has(fs.uid)) return fs;
+    const same = done.get(fs.uid);
+    if (same) {
+      if (same.version !== fs.version || same.code !== fs.code || same.name !== fs.name) result.changed = true;
+      return { ...fs, code: same.code, name: same.name, version: same.version };
+    }
     const s = screens.get(fs.uid);
     // 삭제로 배포한 화면은 마지막 GUI를 그대로 두고 알리지 않는다. 화면이 모두 삭제된 플립북은 retireFlipbooks가 사용 안 함으로 바꾼다.
-    if (!s || s.status !== 'active') { if (s?.status !== 'deleted') result.missing.push(fs.code); return fs; }
+    if (!s || s.status !== 'active') { if (s?.status !== 'deleted') result.missing.push(fs.code); done.set(fs.uid, fs); return fs; }
     const mine = new Map<number, ImportedGuiRecord>(held.filter(r => r.uid === fs.uid).map(r => [r.version, r]));
     // 조용한 배포는 화면 버전과 GUI 복사본만 따라간다. 재시도·나중 동기화에서도 이력과 확인 알림을 만들지 않는다.
     const { add, update } = recordsToImport(mine, fs.version, records.filter(r => r.uid === fs.uid && !r.quiet));
@@ -321,7 +328,9 @@ export function importGuiUpdates(store: Store, flipbookId: string, screens: Map<
     }
     result.added += add.filter(r => r.version <= version).length;
     if (version !== fs.version || s.code !== fs.code || s.name !== fs.name) result.changed = true;
-    return { ...fs, code: s.code, name: s.name, version };
+    const updated = { ...fs, code: s.code, name: s.name, version };
+    done.set(fs.uid, updated);
+    return updated;
   });
   if (!result.changed) return result;
   queue();

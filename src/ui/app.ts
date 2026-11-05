@@ -224,8 +224,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     return newIdentities().get(n.key) ?? { screenId: '', chapter: '-', frameName: newTitle(n) };
   }
 
-  // 「선택된 화면」에서 드래그 중인 화면
-  let draggingScreen: string | null = null;
+  // 「선택된 화면」에서 드래그 중인 화면의 자리(같은 화면이 여러 번 들어갈 수 있어 화면이 아니라 자리로 구분한다)
+  let draggingScreen: number | null = null;
   let floatSeq = 0;
   // 새 플립북 확인 모달: 캔버스 배치 반영 여부(arrange), 만들기 취소 확인(cancel)
   let newDialog: 'arrange' | 'cancel' | null = null;
@@ -618,9 +618,16 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   const placeable = (g: ArrangedGroup) => onFlipbookPage(g) && g.section.key !== NO_SECTION_KEY;
   const activeScreens = () => createScreens.filter(x => x.status === 'active' && x.sourceNodeId);
   const currentNew = (): NewFlipbook | null => newFlipbooks.find(n => n.key === selectedNew) ?? null;
-  function newScreens(n: NewFlipbook): GuiScreenInfo[] {
+  // 선택된 화면과 그 자리(n.uids 안의 번호). 같은 화면을 여러 번 넣을 수 있으므로 빼기·옮기기는 자리로 한다.
+  function newPicks(n: NewFlipbook): { screen: GuiScreenInfo; at: number }[] {
     const screens = activeScreens();
-    return n.uids.map(uid => screens.find(screen => screen.uid === uid)).filter((screen): screen is GuiScreenInfo => !!screen);
+    return n.uids.flatMap((uid, at) => {
+      const screen = screens.find(s => s.uid === uid);
+      return screen ? [{ screen, at }] : [];
+    });
+  }
+  function newScreens(n: NewFlipbook): GuiScreenInfo[] {
+    return newPicks(n).map(p => p.screen);
   }
   const newKind = (n: NewFlipbook) => rowKind({ uids: n.uids, multi: n.uids.length > 1, scale: 1 });
   const newByKey = (key: string | undefined): NewFlipbook | undefined => newFlipbooks.find(n => n.key === key);
@@ -2107,9 +2114,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const used = new Set([...state!.flipbooks.values()].filter(fb => fb.status === 'active').flatMap(fb => fb.screens.map(screen => screen.uid)));
     const planned = new Set(newFlipbooks.flatMap(item => item.uids));
     const screens = activeScreens();
-    const selectedScreens = newScreens(row);
+    const picks = newPicks(row);
     const available = screens.filter(screen => !createUncreatedOnly || !used.has(screen.uid) && !planned.has(screen.uid));
-    // 선택한 화면도 후보 목록에 남겨 여러 플립북에서 반복해서 고를 수 있다.
+    // 선택한 화면도 후보 목록에 남겨 같은 플립북·여러 플립북에서 반복해서 고를 수 있다.
     const cats = screenCategories(screens);
     if (createCategory !== ALL_CATEGORIES && !cats.some(([key]) => key === createCategory)) createCategory = ALL_CATEGORIES;
     const select = root.querySelector<HTMLSelectElement>('.new-flipbook-detail [data-create="category"]');
@@ -2138,17 +2145,17 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       </div>`;
     };
     const selectedScroll = selectedList.scrollLeft;
-    selectedList.innerHTML = selectedScreens.map((screen, index) => {
+    selectedList.innerHTML = picks.map(({ screen, at }, index) => {
       const hash = screen.thumb?.hash;
       const url = hash ? thumbUrls.get(hash) ?? null : null;
-      return `<div class="create-selected-card create-screen-option" data-uid="${esc(screen.uid)}" draggable="true" tabindex="0" title="${esc(COPY.uiApp349)}" aria-label="${index + 1}. ${esc(screen.name)}">
-        <span class="paste-thumb">${thumbnailImage(hash, url, hash && !failedPreviews.has(hash) ? '' : COPY.flow005, 'paste-thumb-empty')}<span class="id-tag picker-thumb-id">${esc(screen.code)}</span><button class="icon-button create-remove" data-action="create-screen-remove" data-uid="${esc(screen.uid)}" title="${COPY.uiApp105}" aria-label="${esc(screen.name)} ${COPY.uiApp105}" draggable="false">${X_ICON}</button></span>
-        <span class="create-selected-name">${index + 1}. ${esc(screen.name)}</span>
+      return `<div class="create-selected-card create-screen-option" data-uid="${esc(screen.uid)}" data-index="${at}" draggable="true" tabindex="0" title="${esc(COPY.uiApp349)}" aria-label="${index + 1}. ${esc(screen.name)}">
+        <span class="paste-thumb">${thumbnailImage(hash, url, hash && !failedPreviews.has(hash) ? '' : COPY.flow005, 'paste-thumb-empty')}<span class="id-tag picker-thumb-id">${esc(screen.code)}</span><button class="icon-button create-remove" data-action="create-screen-remove" data-index="${at}" title="${COPY.uiApp105}" aria-label="${esc(screen.name)} ${COPY.uiApp105}" draggable="false">${X_ICON}</button></span>
+        <span class="create-selected-name"><span class="create-selected-order">${index + 1}</span><span class="name">${esc(screen.name)}</span></span>
       </div>`;
     }).join('') || '<p class="note">선택된 화면이 없습니다.</p>';
     selectedList.scrollLeft = selectedScroll;
     const count = root.querySelector<HTMLElement>('.new-flipbook-detail .create-selected-count');
-    if (count) count.textContent = String(selectedScreens.length);
+    if (count) count.textContent = String(picks.length);
     const scrollTop = list.scrollTop;
     list.innerHTML = !available.length ? `<p class="note">${COPY.uiApp190}</p>`
       : shown.length ? shown.map(candidate).join('') : screenPickerEmpty('create', createCategory, createQuery);
@@ -3271,13 +3278,19 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'create-layout': createLayout = el.dataset.layout === 'grid' ? 'grid' : 'list'; renderCreateScreenList(); break;
       case 'create-search-all': createCategory = ALL_CATEGORIES; renderCreateScreenList(); break;
       case 'create-uncreated-only': createUncreatedOnly = (el as HTMLInputElement).checked; renderCreateScreenList(); break;
-      case 'create-screen-add':
-      case 'create-screen-remove': {
+      // 같은 화면을 다시 누르면 한 번 더 넣는다(2026-11-05 사용자 요청). 빼기는 그 자리 하나만 뺀다.
+      case 'create-screen-add': {
         const row = currentNew();
         const uid = el.dataset.uid;
         if (!row || !uid) break;
-        const add = action === 'create-screen-add';
-        screensChanged(row, () => { row.uids = add ? (row.uids.includes(uid) ? row.uids : [...row.uids, uid]) : row.uids.filter(value => value !== uid); });
+        screensChanged(row, () => { row.uids = [...row.uids, uid]; });
+        break;
+      }
+      case 'create-screen-remove': {
+        const row = currentNew();
+        const at = Number(el.dataset.index);
+        if (!row || !Number.isInteger(at) || at < 0 || at >= row.uids.length) break;
+        screensChanged(row, () => { row.uids = row.uids.filter((_, i) => i !== at); });
         break;
       }
       // 기존 플립북 상세의 「취소」: 이 플립북의 제목·ID·Description 수정을 버린다.
@@ -3764,13 +3777,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     return { node, groupKey, to: ev.clientY < rect.top + rect.height / 2 ? { before: key } : { after: key } };
   };
   // 「선택된 화면」은 가로로 놓이므로 카드의 왼쪽·오른쪽 절반으로 앞·뒤를 정한다.
-  const screenDrop = (ev: DragEvent): { node: HTMLElement; uid: string; before: boolean } | null => {
-    if (!draggingScreen) return null;
-    const node = (ev.target as HTMLElement).closest<HTMLElement>('.create-selected-list .create-screen-option[data-uid]');
-    if (!node || node.dataset.uid === draggingScreen) return null;
+  const screenDrop = (ev: DragEvent): { node: HTMLElement; at: number; before: boolean } | null => {
+    if (draggingScreen === null) return null;
+    const node = (ev.target as HTMLElement).closest<HTMLElement>('.create-selected-list .create-screen-option[data-index]');
+    if (!node || Number(node.dataset.index) === draggingScreen) return null;
     const rect = node.getBoundingClientRect();
     const before = ev.clientX < rect.left + rect.width / 2;
-    return { node, uid: node.dataset.uid!, before };
+    return { node, at: Number(node.dataset.index), before };
   };
   // GUI 목록의 카테고리 묶음 옮기기: 묶음 머리의 위쪽 절반이면 그 묶음 앞, 아래쪽 절반이나 그 묶음의 화면 행이면 뒤에 놓는다.
   const categoryDrop = (ev: DragEvent): { node: HTMLElement; id: string; before: boolean } | null => {
@@ -3791,15 +3804,20 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (rest.every((value, i) => value === ids[i])) return;
     admin({ op: 'reorderCategories', ids: rest });
   }
-  function moveScreen(uid: string, to: { uid: string; before: boolean } | { step: -1 | 1 }) {
+  // 선택된 화면의 from 자리를 옮기고 옮긴 뒤의 자리를 돌려준다(못 옮기면 null). 같은 화면이 여러 번 있어도 그 자리 하나만 옮긴다.
+  function moveScreen(from: number, to: { at: number; before: boolean } | { step: -1 | 1 }): number | null {
     const row = currentNew();
-    if (!row || !row.uids.includes(uid)) return;
+    if (!row || from < 0 || from >= row.uids.length) return null;
+    const uid = row.uids[from];
+    const rest = row.uids.filter((_, i) => i !== from);
+    const at = 'step' in to ? Math.max(0, Math.min(rest.length, from + to.step))
+      : (to.at > from ? to.at - 1 : to.at) + (to.before ? 0 : 1);
+    if (at === from) return from;
     screensChanged(row, () => {
-      const rest = row.uids.filter(value => value !== uid);
-      const at = 'step' in to ? Math.max(0, Math.min(rest.length, row.uids.indexOf(uid) + to.step)) : rest.indexOf(to.uid) + (to.before ? 0 : 1);
       rest.splice(at, 0, uid);
       row.uids = rest;
     });
+    return at;
   }
   on('dragstart', ev => {
     const category = (ev.target as HTMLElement).closest<HTMLElement>('.list-box .group-bar[draggable="true"]')?.closest<HTMLElement>('.group[data-category]');
@@ -3811,11 +3829,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       category.classList.add('dragging');
       return;
     }
-    const option = (ev.target as HTMLElement).closest<HTMLElement>('.create-selected-list .create-screen-option[data-uid]');
+    const option = (ev.target as HTMLElement).closest<HTMLElement>('.create-selected-list .create-screen-option[data-index]');
     if (option) {
       if (busyLabel || newSubmitting) { ev.preventDefault(); return; }
-      draggingScreen = option.dataset.uid!;
-      ev.dataTransfer?.setData('text/plain', draggingScreen);
+      draggingScreen = Number(option.dataset.index);
+      ev.dataTransfer?.setData('text/plain', option.dataset.uid ?? '');
       if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
       option.classList.add('dragging');
       return;
@@ -3837,7 +3855,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       drop.node.classList.add(drop.before ? 'drop-before' : 'drop-after');
       return;
     }
-    if (draggingScreen) {
+    if (draggingScreen !== null) {
       const drop = screenDrop(ev);
       clearDrop();
       if (!drop) return;
@@ -3864,14 +3882,14 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       moveCategory(id, drop);
       return;
     }
-    if (draggingScreen) {
+    if (draggingScreen !== null) {
       const drop = screenDrop(ev);
-      const uid = draggingScreen;
+      const from = draggingScreen;
       draggingScreen = null;
       clearDrop();
       if (!drop) return;
       ev.preventDefault();
-      moveScreen(uid, drop);
+      moveScreen(from, drop);
       return;
     }
     const target = dropTarget(ev);
@@ -3951,13 +3969,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       return;
     }
     // 「선택된 화면」: 행에서 Alt+↑↓로 순서를 바꾸고 Delete로 뺀다. 「화면 선택」 행은 Enter·Space로 더한다.
-    if (el.matches('.create-selected-list .create-screen-option[data-uid]')) {
-      const uid = el.dataset.uid!;
+    if (el.matches('.create-selected-list .create-screen-option[data-index]')) {
+      const from = Number(el.dataset.index);
       if (ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown')) {
         ev.preventDefault();
         if (busyLabel || newSubmitting) return;
-        moveScreen(uid, { step: ev.key === 'ArrowUp' ? -1 : 1 });
-        root.querySelector<HTMLElement>(`.create-selected-list .create-screen-option[data-uid="${CSS.escape(uid)}"]`)?.focus();
+        const at = moveScreen(from, { step: ev.key === 'ArrowUp' ? -1 : 1 });
+        if (at !== null) root.querySelector<HTMLElement>(`.create-selected-list .create-screen-option[data-index="${at}"]`)?.focus();
         return;
       }
       if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); el.querySelector<HTMLElement>('[data-action="create-screen-remove"]')?.click(); return; }

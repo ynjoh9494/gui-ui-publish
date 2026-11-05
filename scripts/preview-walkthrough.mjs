@@ -447,7 +447,7 @@ try {
   assert.ok(await app.locator('.create-selected-list .create-screen-option').first().evaluate(row => {
     const x = row.querySelector('[data-action=create-screen-remove]').getBoundingClientRect();
     const thumb = row.querySelector('.paste-thumb').getBoundingClientRect();
-    return x.right <= thumb.right && x.top >= thumb.top && getComputedStyle(row.querySelector('[data-action=create-screen-remove]')).borderRadius === '50%' && row.querySelector('.create-selected-name').textContent.startsWith('1. ');
+    return x.right <= thumb.right && x.top >= thumb.top && getComputedStyle(row.querySelector('[data-action=create-screen-remove]')).borderRadius === '50%' && row.querySelector('.create-selected-order').textContent === '1' && !row.querySelector('.create-selected-name .name').textContent.startsWith('1');
   }), '선택된 화면에 번호·썸네일 안의 원형 X를 둔다');
   assert.ok(await app.locator('.create-selected-list').evaluate(list => {
     const card = list.querySelector('.create-selected-card');
@@ -457,6 +457,14 @@ try {
     copies.forEach(copy => copy.remove());
     return horizontal;
   }), '선택한 화면이 많아도 영역 높이와 너비는 유지하고 가로 스크롤한다');
+  // 같은 화면을 다시 누르면 한 번 더 들어가고, X는 그 자리 하나만 뺀다.
+  await option.click();
+  const repeated = app.locator('.create-selected-list .create-selected-card');
+  assert.equal(await repeated.count(), 2, '같은 화면을 한 플립북에 두 번 넣을 수 있다');
+  assert.equal(await repeated.nth(0).getAttribute('data-uid'), await repeated.nth(1).getAttribute('data-uid'), '두 자리 모두 같은 화면');
+  assert.equal(await app.locator('.create-selected-count').innerText(), '2', '선택된 화면 수는 넣은 횟수');
+  await repeated.nth(1).locator('[data-action=create-screen-remove]').click();
+  assert.equal(await repeated.count(), 1, 'X는 그 자리 하나만 뺀다');
   assert.equal(await app.locator('.detail .create-plan-ids, .detail .id-tag:not(.create-screen-option .id-tag)').count(), 0, '선택된 화면 위에 ID를 따로 표시하지 않는다');
   assert.equal(await app.locator('.detail .title-head h2 .head-name').innerText(), await app.locator('.detail [data-input=new-title]').inputValue(), '머리 제목은 지금 입력한 Page title이다');
   assert.equal(await app.locator('.detail .title-head h2 .head-state').innerText(), '새 플립북', '제목 오른쪽에 새 플립북 태그');
