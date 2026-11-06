@@ -185,8 +185,6 @@ export type ToMain =
   | { type: 'registerFlipbooks' }
   // 플립북 상세: 고른 이전 형식(이름 규칙) 플립북을 표식 형식으로 바꾼다(2026-11-02 사용자 결정: 플립북별로).
   | { type: 'convertLegacyFlipbooks'; ids: string[] }
-  | { type: 'findTemplateMigrations' }
-  | { type: 'migrateFlipbookTemplates'; ids: string[]; templateId: string }
   // 플립북 제목 변경. 비우면 첫 화면 이름(자동 제목)으로 돌아간다.
   | { type: 'renameFlipbook'; id: string; title: string }
   | { type: 'updateFlipbookIdentity'; id: string; title: string; screenId: string; rev: number }
@@ -280,8 +278,6 @@ export type ToUi =
   // 관리의 템플릿에 보여 줄 한 템플릿의 항목별 연결 상태. 목록이 비었으면 null
   | { type: 'templateInfo'; info: TemplateInfo | null }
   // 플립북 페이지를 다시 읽어 목록을 맞춘 시각
-  | { type: 'templateMigrations'; templateId: string; candidates: import('./templateMigration.ts').TemplateMigrationCandidate[] }
-  | { type: 'templateMigrationsDone'; result: import('./templateMigration.ts').TemplateMigrationResult }
   | { type: 'listSynced'; at: number }
   // 새 버전 페이지 비교 결과. 전환했거나 비교 결과가 맞지 않게 되면 null
   | { type: 'versionMatch'; match: VersionMatchView | null }

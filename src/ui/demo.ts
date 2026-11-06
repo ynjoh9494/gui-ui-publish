@@ -235,8 +235,6 @@ export function createDemo(options: DemoOptions): Demo {
       const screenId = [...flipbooks].find(([, id]) => id === nodeId)?.[0];
       return { fingerprint: sha256(`ui:${uiEdits.get(screenId ?? '') ?? 0}`), error: null };
     },
-    async findTemplateMigrations() { return []; },
-    async migrateFlipbookTemplate(item) { return { nodeId: item.nodeId, pageId: item.pageId }; },
     async templateFromSelection() { return { id: 'tpl', name: 'Flipbook-Template' }; },
     async describeTemplate(id) {
       const items = TEMPLATE_ITEMS.map(d => {

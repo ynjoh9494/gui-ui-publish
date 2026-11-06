@@ -1,4 +1,3 @@
-import { TemplateMigrationController } from './templateMigrationController.ts';
 import { digestFingerprint, NO_RECORD, UNKNOWN, type ChangeReason, type DigestRequest, type PreviousReason } from './core/changeDigest.ts';
 import { flipbookIdentity, unsavedPolicy, unsavedPolicyIds, withFlipbookId } from './core/flipbookIdentity.ts';
 import { COPY } from './core/copy.ts';
@@ -52,7 +51,6 @@ function carried(frame: ScannedFrame, before: ScannedFrame): ScannedFrame {
 }
 // 오래 걸리는 요청. 처리하는 동안 UI에 진행 표시를 띄우고 중복 조작을 막는다.
 const BUSY_LABEL: Partial<Record<ToMain['type'], string>> = {
-  findTemplateMigrations: COPY.templateMigrationScanning, migrateFlipbookTemplates: COPY.templateMigrationRunning,
   prepare: COPY.controller001, commit: COPY.controller002, resetData: COPY.controller003, retry: COPY.recoveryRunning,
   registerFlipbooks: COPY.registerExisting, convertLegacyFlipbooks: COPY.legacyConverting, admin: COPY.controller006, createFlipbooks: COPY.controller038, removeFlipbooks: COPY.controller068,
   matchVersion: COPY.controller106, switchVersion: COPY.controller107, renameFlipbook: COPY.controller118,
@@ -81,7 +79,6 @@ export interface DeliveryReport { screens: number; done: number; failed: Deliver
 const emptyReport = (): DeliveryReport => ({ screens: 0, done: 0, failed: [], notes: [], skipped: null });
 
 export class Controller {
-  private templateMigration?: TemplateMigrationController;
   readonly host: Host;
   readonly store: Store;
   entries: Entry[] = [];
@@ -242,24 +239,6 @@ export class Controller {
           this.postGuiScreens();
           break;
         case 'registerFlipbooks': await this.registerFlipbooks(); break;
-        case 'findTemplateMigrations': {
-          this.templateMigration ??= new TemplateMigrationController(this.host, this.store);
-          const canvas = await this.inspectFlipbooks(this.flipbookPages(), true);
-          await this.templateMigration.find(canvas.found);
-          break;
-        }
-        case 'migrateFlipbookTemplates': {
-          this.templateMigration ??= new TemplateMigrationController(this.host, this.store);
-          const result = await this.templateMigration.convert(msg.ids, msg.templateId);
-          try {
-            if (result.converted.length) {
-              for (const pageId of new Set(result.converted.map(c => c.pageId))) await this.tracks.refreshPage(pageId);
-              await this.linkFlipbooks();
-              this.postState();
-            }
-          } finally { this.host.post({ type: 'templateMigrationsDone', result }); }
-          break;
-        }
         case 'convertLegacyFlipbooks': await this.convertLegacyFlipbooks(msg.ids); break;
         case 'createFlipbooks': await this.createFlipbooks(msg.request); break;
         case 'updateFlipbookIdentity': await this.renameFlipbook(msg.id, msg.title, msg.screenId, msg.rev); break;
