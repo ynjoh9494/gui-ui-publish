@@ -12,7 +12,7 @@ import { createFingerprintReader } from './fingerprints.ts';
 import { selectedFlipbooks, markExistingFlipbooks } from './registerFlipbooks.ts';
 import { FLIPBOOK_KEY, NS, prepareFlipbookTitle, findFlipbook, flipbookSpots, inspectFlipbooks, listFlipbooks, loadPages, moveFlipbookFrame, syncChapters, syncFlipbook, templateFromSelection, templateIssues, flipbookSession, type FlipbookSession } from './flipbook.ts';
 import { addTextFrame, fillDescription, flipbookDescriptionRoot, readDescription, readDescriptionLayout, readTextNodeLayout, selectedDescriptionRoot, selectedFrame, selectionTarget } from './description.ts';
-import { createFlow, flowNode, updateFlow } from './flow.ts';
+import { createFlow, createdFlowCells, scanFlowCells, updateFlowCells } from './flow.ts';
 import { SCREEN_KEY } from './layers.ts';
 import { exportPdfPages, pdfSelection } from './pdf.ts';
 import { readRichText, selectedTextNode, writeRichText } from './richText.ts';
@@ -312,8 +312,9 @@ export function figmaHost(mode: Host['mode']): Host {
       if (area.visible !== shown) area.visible = shown;
     },
     createFlow: plan => createFlow(NS, plan),
-    updateFlow: (flow, thumbs) => updateFlow(NS, flow, thumbs),
-    flowNode: (flow, uid) => flowNode(NS, flow, uid),
+    flowCells: pageIds => scanFlowCells(NS, pageIds),
+    createdFlowCells: nodeIds => createdFlowCells(NS, nodeIds),
+    updateFlowCells: (cellIds, thumbs) => updateFlowCells(NS, cellIds, thumbs),
     pdfSelection,
     async exportPdf(progress) {
       const pageName = figma.currentPage.name;

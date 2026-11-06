@@ -240,7 +240,9 @@ export interface FlipbookReview { flipbookId: string; versions: Record<string, n
 // 노드에는 복사본 표식(guiCopy: 화면@버전)과 이 기록의 ID(trackOf)를 둔다. 캔버스에서 복제한 복사본은 같은 trackOf를 가지므로 노드 ID가 다르면 새 기록으로 받는다.
 export interface TrackRecord { id: string; uid: string; nodeId: string; pageId: string; createdAt: number; actor: Actor }
 
-export interface FlowRecord { id: string; nodeId: string; pageId: string; title: string; uids: string[]; createdAt: number; actor: Actor }
+// 플로우는 그룹이 아니라 화면 칸(썸네일 사각형의 flowOf·flowScreen 표식)으로 찾는다(2026-11-05 사용자 결정: 만든 뒤 얼마든지 고친다).
+// pageIds: 칸이 있는 페이지(이 변경 전 기록은 pageId 하나), uids: 칸의 화면. nodeId: 처음 만든(또는 찾은) 플로우 그룹으로 찾는 데 쓰지 않는다.
+export interface FlowRecord { id: string; nodeId: string; pageId: string; pageIds?: string[]; title: string; uids: string[]; createdAt: number; actor: Actor }
 
 export interface Exclusion { id: string; nodeId: string; name: string; reason: string; createdAt: number; active: boolean }
 

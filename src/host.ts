@@ -4,7 +4,7 @@ import type { HistoryNotice, HistoryWindow } from './core/historyNotices.ts';
 import type { FlipbookView } from './core/flipbook.ts';
 import type { CanvasPosition } from './core/screenCode.ts';
 import type { KV } from './core/store.ts';
-import type { FlowPlan, FlowThumb } from './core/flow.ts';
+import type { FlowPlan, FlowThumb, FoundFlowCell } from './core/flow.ts';
 import type { Actor, FlipbookScale, FlowRecord, GuiThumb, Team } from './core/types.ts';
 import type { SelectionTarget, SelectionWrite, TextLayout } from './core/description.ts';
 import type { RichParagraph } from './core/richText.ts';
@@ -111,10 +111,12 @@ export interface Host extends FingerprintReader {
   setFlipbookDescriptionShown(item: { flipbookId: string; pageId: string; nodeId?: string }, shown: boolean): Promise<void>;
   // 플로우: 지금 보고 있는 페이지에 그룹을 만든다. notes: 썸네일을 찾지 못한 화면 등 알릴 내용
   createFlow?(plan: FlowPlan): Promise<{ nodeId: string; pageId: string; notes: string[] }>;
-  // 다시 배포된 화면의 썸네일만 바꾼다. 플로우 그룹을 찾지 못하면 null
-  updateFlow?(flow: FlowRecord, thumbs: FlowThumb[]): Promise<number | null>;
-  // 플로우 그룹(uid가 있으면 그 화면 칸, 없으면 그룹)의 노드 ID. 그룹을 찾지 못하면 null
-  flowNode?(flow: FlowRecord, uid?: string): Promise<string | null>;
+  // 플로우 화면 칸: 그 페이지들(null이면 모든 페이지)에서 칸의 표식으로 찾는다. 그룹 구조와는 관계없다(2026-11-05 사용자 결정).
+  flowCells?(pageIds: string[] | null): Promise<FoundFlowCell[]>;
+  // 캔버스에서 새로 생긴 노드(붙여 넣기·복제) 안의 플로우 칸
+  createdFlowCells?(nodeIds: string[]): Promise<FoundFlowCell[]>;
+  // 다시 배포된 화면의 칸 썸네일만 바꾼다. 바꾼 칸 수
+  updateFlowCells?(cellIds: string[], thumbs: FlowThumb[]): Promise<number>;
   // PDF 저장: 보고 있는 페이지의 선택에서 저장할 프레임 수
   pdfSelection?(): PdfSelection;
   // 고른 프레임을 캔버스 순서대로 내보낸 쪽. pageName: 보고 있는 페이지 이름(파일 이름에 쓴다).

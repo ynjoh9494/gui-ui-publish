@@ -1,12 +1,13 @@
 import { COPY } from '../core/copy.ts';
-import { FLOW_LAYOUT, layoutFlow, type FlowPlan, type FlowThumb } from '../core/flow.ts';
+import { FLOW_LAYOUT, layoutFlow, type FlowPlan, type FlowThumb, type FoundFlowCell } from '../core/flow.ts';
 import { formatFrameName } from '../core/screenName.ts';
-import type { FlowRecord } from '../core/types.ts';
+import { loadPages } from './flipbook.ts';
 import { loadThumbnailPage } from './thumbs.ts';
 
 // 플로우(2026-10-23 사용자 결정). 썸네일은 GUI 배포 때 만든 이미지를 그대로 채우고, 다시 배포되면 그 채움만 바꾼다.
 // 예시의 레이어 구조를 따른다: 플로우·화면·Connector 모두 그룹이고(배경 없음, 크기를 바꾸면 화살표도 함께 늘어난다),
-// Inter 글자를 쓴다. 플러그인은 만든 뒤 내용을 고치지 않는다.
+// Inter 글자를 쓴다. 플러그인은 만든 뒤 내용을 고치지 않는다. 사용자는 만든 뒤 그룹을 풀거나 옮기는 등 얼마든지 고치므로
+// 그 뒤로는 그룹이 아니라 썸네일 칸의 표식(flowOf·flowScreen)으로 찾는다(2026-11-05 사용자 결정).
 
 const FLOW_KEY = 'flowOf';
 const SCREEN_KEY = 'flowScreen';
@@ -100,6 +101,8 @@ export async function createFlow(ns: string, plan: FlowPlan): Promise<{ nodeId: 
       rect.strokes = gray(0.475);
       rect.strokeWeight = 1;
       rect.setSharedPluginData(ns, SCREEN_KEY, cell.uid);
+      // 칸이 제 플로우를 기억한다. 그룹을 풀거나 옮겨도 칸으로 찾는다(2026-11-05 사용자 결정).
+      rect.setSharedPluginData(ns, FLOW_KEY, plan.id);
       parts.push(rect);
       const thumb = thumbs[i];
       if (thumb) {
@@ -158,32 +161,82 @@ function pageOf(node: BaseNode): PageNode | null {
   return current as PageNode | null;
 }
 
-// 기록의 플로우 그룹. 표식이 다르면(지운 뒤 다른 노드가 같은 ID를 얻은 경우 등) 없는 것으로 본다. 복제한 플로우는 기록의 노드 ID가 아니므로 찾지 않는다.
-async function findFlow(ns: string, flow: FlowRecord): Promise<GroupNode | FrameNode | null> {
-  const node = await figma.getNodeByIdAsync(flow.nodeId);
-  // 이 변경 전에 만든 플로우는 프레임이다.
-  if (!node || node.removed || (node.type !== 'GROUP' && node.type !== 'FRAME') || node.getSharedPluginData(ns, FLOW_KEY) !== flow.id) return null;
-  return node;
+const CELL_CRITERIA = (ns: string) => ({ types: ['RECTANGLE'] as 'RECTANGLE'[], sharedPluginData: { namespace: ns, keys: [SCREEN_KEY] } });
+
+// 칸 하나만 품은 화면 그룹(제목·이미지·설명). 그룹을 풀었거나 여러 칸을 함께 묶었으면 null
+function cardOf(ns: string, rect: SceneNode, root: BaseNode | null): GroupNode | null {
+  const parent = rect.parent;
+  return parent && parent !== root && parent.type === 'GROUP' && parent.findAllWithCriteria(CELL_CRITERIA(ns)).length === 1 ? parent : null;
 }
 
-// 다시 배포된 화면의 썸네일만 바꾼다. 플로우 그룹을 찾지 못하면 null(기록을 지운다), 아니면 바꾼 썸네일 수.
-// 칸 크기와 화살표는 그대로 두고, 비율이 바뀐 이미지는 칸 안에 맞춘다(FIT).
-export async function updateFlow(ns: string, flow: FlowRecord, thumbs: FlowThumb[]): Promise<number | null> {
-  const node = await findFlow(ns, flow);
-  if (!node) return null;
-  await pageOf(node)?.loadAsync();
+// 칸 하나를 읽는다(2026-11-05 사용자 결정: 플로우는 그룹이 아니라 칸으로 기억한다). 칸에 플로우 ID가 없으면(이 변경 전에 만든 플로우)
+// 그 칸을 품은 플로우 그룹의 표식을 칸에 옮겨 적는다. 그 뒤에는 그룹을 풀거나 다시 묶거나 옮겨도 칸이 제 플로우를 기억한다.
+// 플로우를 알 수 없는 칸은 null이다.
+function readCell(ns: string, rect: SceneNode, page: PageNode): FoundFlowCell | null {
+  const uid = rect.getSharedPluginData(ns, SCREEN_KEY);
+  const own = rect.getSharedPluginData(ns, FLOW_KEY);
+  let flowId = own;
+  let root: BaseNode | null = null;
+  for (let n = rect.parent; n && n.type !== 'PAGE'; n = n.parent) {
+    const mark = n.getSharedPluginData(ns, FLOW_KEY);
+    if (mark && (!flowId || mark === flowId)) { flowId = mark; root = n; break; }
+  }
+  if (!uid || !flowId) return null;
+  if (!own) rect.setSharedPluginData(ns, FLOW_KEY, flowId);
+  return { nodeId: rect.id, pageId: page.id, flowId, uid, cardId: (cardOf(ns, rect, root) ?? rect).id, rootId: root?.id ?? null, title: root && 'name' in root ? root.name : null };
+}
+
+// 페이지들(null이면 모든 페이지)에서 플로우 화면 칸을 찾는다.
+export async function scanFlowCells(ns: string, pageIds: string[] | null): Promise<FoundFlowCell[]> {
+  const ids = pageIds ?? figma.root.children.filter(page => !page.isPageDivider).map(page => page.id);
+  const out: FoundFlowCell[] = [];
+  for (const page of await loadPages(ids)) {
+    for (const rect of page.findAllWithCriteria(CELL_CRITERIA(ns))) {
+      const cell = readCell(ns, rect, page);
+      if (cell) out.push(cell);
+    }
+  }
+  return out;
+}
+
+// 캔버스에서 새로 생긴 노드(붙여 넣기·복제) 안의 플로우 칸. 부모와 그 안의 노드가 함께 와도 칸은 한 번씩만 읽는다.
+export async function createdFlowCells(ns: string, nodeIds: string[]): Promise<FoundFlowCell[]> {
+  const nodes = await Promise.all([...new Set(nodeIds)].map(id => figma.getNodeByIdAsync(id)));
+  const out: FoundFlowCell[] = [];
+  const seen = new Set<string>();
+  for (const node of nodes) {
+    if (!node || node.removed || node.type === 'PAGE' || node.type === 'DOCUMENT') continue;
+    const page = pageOf(node);
+    if (!page) continue;
+    const rects = node.type === 'RECTANGLE' ? [node] : 'findAllWithCriteria' in node ? node.findAllWithCriteria(CELL_CRITERIA(ns)) : [];
+    for (const rect of rects) {
+      if (seen.has(rect.id)) continue;
+      seen.add(rect.id);
+      const cell = readCell(ns, rect, page);
+      if (cell) out.push(cell);
+    }
+  }
+  return out;
+}
+
+// 「썸네일 없음」 글자: 그 글자가 가리던 사각형 ID로 찾는다. 잘라 붙여 사각형 ID가 바뀌었어도 그 칸 하나만 품은 화면 그룹 안의 글자는 그 칸의 것이다.
+function emptyNotes(ns: string, rect: SceneNode): SceneNode[] {
+  const parent = rect.parent;
+  if (!parent || !('findAllWithCriteria' in parent)) return [];
+  const card = !!cardOf(ns, rect, null);
+  return parent.findAllWithCriteria({ types: ['TEXT'], sharedPluginData: { namespace: ns, keys: [EMPTY_KEY] } })
+    .filter(note => card || note.getSharedPluginData(ns, EMPTY_KEY) === rect.id);
+}
+
+// 다시 배포된 화면의 칸(cellIds) 썸네일만 바꾼다. 바꾼 칸 수. 칸 크기와 화살표는 그대로 두고, 비율이 바뀐 이미지는 칸 안에 맞춘다(FIT).
+export async function updateFlowCells(ns: string, cellIds: string[], thumbs: FlowThumb[]): Promise<number> {
   await loadThumbnailPage(ns);
   const latest = new Map(thumbs.map(t => [t.uid, t]));
   // 교체해 사용 안 함이 된 화면의 칸은 이어받은 화면으로 읽는다. 버전은 화면마다 따로 매기므로 옛 칸은 처음 넣는 것으로 본다.
   for (const t of thumbs) for (const uid of t.formerUids ?? []) if (!latest.has(uid)) latest.set(uid, t);
-  // 「썸네일 없음」 글자는 그 글자가 가리던 사각형 ID로 찾는다. 사각형마다 플로우 전체를 다시 찾지 않는다.
-  const notes = new Map<string, TextNode[]>();
-  for (const note of node.findAllWithCriteria({ types: ['TEXT'], sharedPluginData: { namespace: ns, keys: [EMPTY_KEY] } })) {
-    const rectId = note.getSharedPluginData(ns, EMPTY_KEY);
-    notes.set(rectId, [...(notes.get(rectId) ?? []), note]);
-  }
   let changed = 0;
-  for (const rect of node.findAllWithCriteria({ types: ['RECTANGLE'], sharedPluginData: { namespace: ns, keys: [SCREEN_KEY] } })) {
+  for (const rect of await Promise.all(cellIds.map(id => figma.getNodeByIdAsync(id)))) {
+    if (!rect || rect.removed || rect.type !== 'RECTANGLE') continue;
     const uid = rect.getSharedPluginData(ns, SCREEN_KEY);
     const next = latest.get(uid);
     const former = !!next && next.uid !== uid;
@@ -191,19 +244,8 @@ export async function updateFlow(ns: string, flow: FlowRecord, thumbs: FlowThumb
     rect.fills = imageFill(next.thumb.hash);
     if (former) rect.setSharedPluginData(ns, SCREEN_KEY, next.uid);
     rect.setSharedPluginData(ns, VERSION_KEY, String(next.version));
-    for (const note of notes.get(rect.id) ?? []) note.remove();
+    for (const note of emptyNotes(ns, rect)) note.remove();
     changed++;
   }
   return changed;
-}
-
-// 플로우 목록에서 누른 플로우(uid가 있으면 그 화면 칸)의 노드 ID. 화면 칸을 캔버스에서 지웠으면 플로우 그룹으로 간다.
-export async function flowNode(ns: string, flow: FlowRecord, uid?: string): Promise<string | null> {
-  const node = await findFlow(ns, flow);
-  if (!node) return null;
-  if (!uid) return node.id;
-  await pageOf(node)?.loadAsync();
-  const rect = node.findOne(n => n.type === 'RECTANGLE' && n.getSharedPluginData(ns, SCREEN_KEY) === uid);
-  // 칸은 제목·이미지·설명을 묶은 그룹이다.
-  return (rect?.parent && rect.parent !== node ? rect.parent.id : rect?.id) ?? node.id;
 }

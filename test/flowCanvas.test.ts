@@ -1,13 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createFlow, flowNode, updateFlow } from '../src/figma/flow.ts';
+import { createdFlowCells, createFlow, scanFlowCells, updateFlowCells } from '../src/figma/flow.ts';
 import type { FlowPlan } from '../src/core/flow.ts';
-import type { FlowRecord } from '../src/core/types.ts';
 
-// 플로우 그룹의 생성·실패 정리·썸네일 교체·찾기를 Figma 노드 모의 객체로 확인한다. 글자 크기·그룹 경계 계산은 실제 Figma에서 확인한다.
+// 플로우 그룹의 생성·실패 정리, 칸 찾기(그룹을 풀거나 잘라 붙여도)·썸네일 교체를 Figma 노드 모의 객체로 확인한다. 글자 크기·그룹 경계 계산은 실제 Figma에서 확인한다.
 
 const NS = 'test';
-const actor = { id: 'u', name: 'Designer' };
 
 class Node {
   [key: string]: any;
@@ -84,7 +82,9 @@ const plan: FlowPlan = {
   links: [{ from: 'a', fromSide: 'right', to: 'b', toSide: 'left' }],
 };
 
-test('플로우 그룹을 만들고, 다시 배포된 화면만 썸네일을 바꾸며 「썸네일 없음」 글자를 지운다', async () => {
+const thumbs = [{ uid: 's2', version: 2, thumb: { hash: 'h2', width: 480, height: 270 } }, { uid: 's1', version: 1, thumb: { hash: 'h1', width: 480, height: 270 } }];
+
+test('플로우 그룹을 만들고 칸마다 플로우 표식을 적으며, 다시 배포된 화면의 칸만 썸네일을 바꾸고 「썸네일 없음」 글자를 지운다', async () => {
   const m = mockFigma();
   m.images.add('h1');
   const placed = await createFlow(NS, plan);
@@ -93,29 +93,68 @@ test('플로우 그룹을 만들고, 다시 배포된 화면만 썸네일을 바
   assert.equal(root.type, 'GROUP');
   assert.equal(root.getSharedPluginData(NS, 'flowOf'), 'f1');
   const rect = (uid: string) => root.findOne(n => n.type === 'RECTANGLE' && n.getSharedPluginData(NS, 'flowScreen') === uid)!;
+  assert.deepEqual([rect('s1').getSharedPluginData(NS, 'flowOf'), rect('s2').getSharedPluginData(NS, 'flowOf')], ['f1', 'f1']);
   assert.equal(root.findAll(n => n.getSharedPluginData(NS, 'flowEmpty') === rect('s2').id).length, 1);
   // 판의 자리를 그대로 옮기고 화면마다 제 썸네일 크기를 쓴다(이미지를 찾지 못해도 기록된 크기).
   assert.deepEqual([rect('s2').x - rect('s1').x, rect('s2').y - rect('s1').y], [560, 40]);
   assert.deepEqual([rect('s1').width, rect('s1').height, rect('s2').width, rect('s2').height], [480, 270, 480, 800]);
 
-  const record: FlowRecord = { id: 'f1', nodeId: placed.nodeId, pageId: placed.pageId, title: plan.title, uids: ['s1', 's2'], createdAt: 1, actor };
+  const cells = await scanFlowCells(NS, [m.page.id]);
+  assert.deepEqual(cells.map(c => [c.flowId, c.uid, c.pageId, c.cardId, c.rootId, c.title]), [
+    ['f1', 's1', m.page.id, rect('s1').parent!.id, root.id, '홈 진입'],
+    ['f1', 's2', m.page.id, rect('s2').parent!.id, root.id, '홈 진입'],
+  ]);
   m.images.add('h2');
-  const thumbs = [{ uid: 's2', version: 2, thumb: { hash: 'h2', width: 480, height: 270 } }, { uid: 's1', version: 1, thumb: { hash: 'h1', width: 480, height: 270 } }];
-  assert.equal(await updateFlow(NS, record, thumbs), 1, 'only the newer version is replaced');
+  const ids = cells.map(c => c.nodeId);
+  assert.equal(await updateFlowCells(NS, ids, thumbs), 1, 'only the newer version is replaced');
   assert.deepEqual(rect('s2').fills, [{ type: 'IMAGE', imageHash: 'h2', scaleMode: 'FIT' }]);
   assert.equal(root.findAll(n => !!n.getSharedPluginData(NS, 'flowEmpty')).length, 0);
-  assert.equal(await updateFlow(NS, record, thumbs), 0, 'running again changes nothing');
+  assert.equal(await updateFlowCells(NS, ids, thumbs), 0, 'running again changes nothing');
+});
 
-  assert.equal(await flowNode(NS, record), root.id);
-  assert.equal(await flowNode(NS, record, 's2'), rect('s2').parent!.id, 'a screen opens its card group');
-  // 복제했거나 같은 ID를 다른 노드가 얻었으면(표식이 다르면) 그 플로우로 보지 않는다.
-  const copy = m.make('GROUP');
-  m.page.appendChild(copy);
-  copy.setSharedPluginData(NS, 'flowOf', 'other');
-  assert.equal(await flowNode(NS, { ...record, nodeId: copy.id }), null);
+test('이 변경 전에 만든 플로우는 읽을 때 그룹 표식을 칸에 옮겨 적어, 그 뒤 그룹을 풀어도 칸으로 찾는다', async () => {
+  const m = mockFigma();
+  m.images.add('h1');
+  const placed = await createFlow(NS, plan);
+  const root = m.page.children.find(n => n.id === placed.nodeId)!;
+  const rects = root.findAll(n => n.type === 'RECTANGLE');
+  for (const r of rects) r.data.delete('flowOf');
+  assert.equal((await scanFlowCells(NS, null)).length, 2);
+  assert.deepEqual(rects.map(r => r.getSharedPluginData(NS, 'flowOf')), ['f1', 'f1']);
+
+  // 그룹을 풀었다: 화면 그룹은 페이지로 나오고 플로우 그룹은 사라진다.
+  for (const card of root.children.filter(n => n.type === 'GROUP' && n.findAll(c => c.type === 'RECTANGLE').length)) m.page.appendChild(card);
   root.remove();
-  assert.equal(await updateFlow(NS, record, thumbs), null);
-  assert.equal(await flowNode(NS, record), null);
+  const cells = await scanFlowCells(NS, null);
+  assert.deepEqual(cells.map(c => [c.flowId, c.uid, c.rootId, c.title, c.cardId]), [
+    ['f1', 's1', null, null, rects[0].parent!.id],
+    ['f1', 's2', null, null, rects[1].parent!.id],
+  ]);
+  // 표식이 없는 사각형(플로우를 알 수 없음)은 칸으로 보지 않는다.
+  const stray = m.make('RECTANGLE');
+  m.page.appendChild(stray);
+  stray.setSharedPluginData(NS, 'flowScreen', 's1');
+  assert.equal((await scanFlowCells(NS, null)).length, 2);
+});
+
+test('잘라 붙여 사각형 ID가 바뀐 칸도 그 화면 그룹의 「썸네일 없음」 글자를 지우고, 새로 생긴 노드 안의 칸은 한 번씩 읽는다', async () => {
+  const m = mockFigma();
+  m.images.add('h1');
+  const placed = await createFlow(NS, plan);
+  const root = m.page.children.find(n => n.id === placed.nodeId)!;
+  const old = root.findOne(n => n.type === 'RECTANGLE' && n.getSharedPluginData(NS, 'flowScreen') === 's2')!;
+  const card = old.parent!;
+  // 잘라 붙이기: 같은 표식의 새 사각형(새 ID)이 되고 글자는 옛 사각형 ID를 가리킨다.
+  const pasted = m.make('RECTANGLE');
+  for (const [k, v] of old.data) pasted.data.set(k, v);
+  card.appendChild(pasted);
+  old.remove();
+  const found = await createdFlowCells(NS, [root.id, card.id, pasted.id]);
+  assert.deepEqual(found.map(c => [c.uid, c.flowId]), [['s1', 'f1'], ['s2', 'f1']], 'parent and child created together are read once');
+  assert.equal(found[1].nodeId, pasted.id);
+  m.images.add('h2');
+  assert.equal(await updateFlowCells(NS, [pasted.id], thumbs), 1);
+  assert.equal(card.findAll(n => !!n.getSharedPluginData(NS, 'flowEmpty')).length, 0);
 });
 
 test('교체로 사용 안 함이 된 화면의 칸은 이어받은 화면의 썸네일로 바꾸고 칸의 표식도 그 화면으로 바꾼다', async () => {
@@ -124,16 +163,14 @@ test('교체로 사용 안 함이 된 화면의 칸은 이어받은 화면의 �
   const placed = await createFlow(NS, plan);
   const root = m.page.children.find(n => n.id === placed.nodeId)!;
   const rect = (uid: string) => root.findOne(n => n.type === 'RECTANGLE' && n.getSharedPluginData(NS, 'flowScreen') === uid);
-  // 기록은 확정 때 이미 s9로 바뀌었고, 캔버스의 s1 칸은 다음 업데이트 때 s9로 읽는다.
-  const record: FlowRecord = { id: 'f1', nodeId: placed.nodeId, pageId: placed.pageId, title: plan.title, uids: ['s9', 's2'], createdAt: 1, actor };
+  const ids = (await scanFlowCells(NS, [m.page.id])).map(c => c.nodeId);
   m.images.add('h9');
   // 버전은 화면마다 따로 매기므로 s9가 버전 1이어도 옛 칸은 새로 넣는 것으로 본다.
-  const thumbs = [{ uid: 's9', version: 1, thumb: { hash: 'h9', width: 480, height: 270 }, formerUids: ['s1'] }];
-  assert.equal(await updateFlow(NS, record, thumbs), 1);
+  const next = [{ uid: 's9', version: 1, thumb: { hash: 'h9', width: 480, height: 270 }, formerUids: ['s1'] }];
+  assert.equal(await updateFlowCells(NS, ids, next), 1);
   assert.equal(rect('s1'), null);
   assert.deepEqual([rect('s9')!.fills, rect('s9')!.getSharedPluginData(NS, 'flowVersion')], [[{ type: 'IMAGE', imageHash: 'h9', scaleMode: 'FIT' }], '1']);
-  assert.equal(await updateFlow(NS, record, thumbs), 0, 'running again changes nothing');
-  assert.equal(await flowNode(NS, record, 's9'), rect('s9')!.parent!.id);
+  assert.equal(await updateFlowCells(NS, ids, next), 0, 'running again changes nothing');
 });
 
 test('플로우를 그리다 실패하면 만든 노드를 모두 지운다', async () => {
