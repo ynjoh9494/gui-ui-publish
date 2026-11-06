@@ -817,17 +817,23 @@ try {
     const [download] = await Promise.all([page.waitForEvent('download'), exportButton.click()]);
     assert.match(download.suggestedFilename(), /\.pdf$/, '고른 프레임을 한 PDF로 내려받는다');
     await page.locator('#tools [data-pick-flipbooks]').click();
-    // 관리에 있다가 캔버스에서 플립북을 고르면 관리를 닫고 목록과 상세를 함께 보여 준다(관리 배치가 남아 상세만 보이던 문제, 2026-11-02).
+    // 관리 중 캔버스 선택은 관리 화면을 유지한다. 사용자가 관리를 닫은 뒤에는 목록·상세와 일반 선택 동작이 돌아온다.
     await app.locator('.tabs [data-action=text-close]').click();
     await app.locator('.list').waitFor();
     await app.locator('[data-action=settings]').click();
     await app.locator('.admin-panels').waitFor();
     assert.equal(await app.locator('.list').isVisible(), false, '관리에서는 목록 칸이 숨는다');
     await page.locator('#tools [data-pick-flipbooks]').click();
-    await page.waitForFunction(() => !document.querySelector('#app .admin-panels') && document.querySelector('#app .list .row.selected'));
-    assert.equal(await app.locator('.list').isVisible(), true, '캔버스에서 고르면 목록 칸이 다시 보인다');
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(await app.evaluate(root => root.classList.contains('admin-mode')), true, '캔버스에서 골라도 관리를 유지한다');
+    assert.equal(await app.locator('.list').isVisible(), false);
+    await app.locator('[data-action=settings]').click();
+    assert.equal(await app.locator('.list').isVisible(), true, '사용자가 관리를 닫으면 목록 칸이 다시 보인다');
     assert.equal(await app.locator('.detail').isVisible(), true);
     assert.equal(await app.evaluate(root => root.classList.contains('admin-mode')), false, '관리 배치가 남지 않는다');
+    await page.locator('#tools [data-pick-flipbooks]').click();
+    await page.locator('#tools [data-pick-flipbooks]').click();
+    await page.waitForFunction(() => document.querySelector('#app .list .row.selected'));
     await page.locator('#tools [data-pick-flipbooks]').click();
     // 이전 형식 플립북(2026-11-02 사용자 결정: 이름 규칙을 없애고 플립북별로 변환): 상세 맨 위에 안내와 「새 형식으로 변환」이 있다.
     // 여러 개를 고르면 그중 이전 형식 플립북 수를 보여 주고, 하나를 골라 변환하면 그 플립북만 바뀌어 안내가 사라진다.
