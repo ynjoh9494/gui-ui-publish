@@ -285,7 +285,7 @@ function pushSectionsBelow(ns: string, section: SectionNode, before: number): vo
 }
 
 // 복제한 템플릿 안의 컴포넌트(복제로 새로 생긴 메인 컴포넌트)를 원래 컴포넌트의 인스턴스로 바꾼다.
-function instantiate(original: ChildrenMixin, copy: ChildrenMixin): void {
+export function instantiate(original: ChildrenMixin, copy: ChildrenMixin): void {
   const sources = [...original.children];
   const targets = [...copy.children];
   for (let i = 0; i < sources.length && i < targets.length; i++) {
