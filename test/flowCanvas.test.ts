@@ -82,17 +82,18 @@ const plan: FlowPlan = {
   links: [{ from: 'a', fromSide: 'right', to: 'b', toSide: 'left' }],
 };
 
-const thumbs = [{ uid: 's2', version: 2, thumb: { hash: 'h2', width: 480, height: 270 } }, { uid: 's1', version: 1, thumb: { hash: 'h1', width: 480, height: 270 } }];
+const thumbs = [{ uid: 's2', code: 'STB_HO_002', name: '상세', version: 2, thumb: { hash: 'h2', width: 480, height: 270 } }, { uid: 's1', code: 'STB_HO_001', name: '홈', version: 1, thumb: { hash: 'h1', width: 480, height: 270 } }];
 
 test('플로우 그룹을 만들고 칸마다 플로우 표식을 적으며, 다시 배포된 화면의 칸만 썸네일을 바꾸고 「썸네일 없음」 글자를 지운다', async () => {
   const m = mockFigma();
   m.images.add('h1');
   const placed = await createFlow(NS, plan);
   assert.deepEqual(placed.notes, ['썸네일 이미지를 파일에서 찾지 못한 화면: STB_HO_002']);
-  const root = m.page.children.find(n => n.id === placed.nodeId)!;
+  const root = m.page.children.find(n => n.type === 'GROUP' && n.name === plan.title)!;
   assert.equal(root.type, 'GROUP');
-  assert.equal(root.getSharedPluginData(NS, 'flowOf'), 'f1');
+  assert.equal(root.getSharedPluginData(NS, 'flowOf'), '', 'new groups have no flow connection mark');
   const rect = (uid: string) => root.findOne(n => n.type === 'RECTANGLE' && n.getSharedPluginData(NS, 'flowScreen') === uid)!;
+  assert.equal(rect('s1').name, '🔗 STB_HO_001 · 홈');
   assert.deepEqual([rect('s1').getSharedPluginData(NS, 'flowOf'), rect('s2').getSharedPluginData(NS, 'flowOf')], ['f1', 'f1']);
   assert.equal(root.findAll(n => n.getSharedPluginData(NS, 'flowEmpty') === rect('s2').id).length, 1);
   // 판의 자리를 그대로 옮기고 화면마다 제 썸네일 크기를 쓴다(이미지를 찾지 못해도 기록된 크기).
@@ -100,9 +101,9 @@ test('플로우 그룹을 만들고 칸마다 플로우 표식을 적으며, 다
   assert.deepEqual([rect('s1').width, rect('s1').height, rect('s2').width, rect('s2').height], [480, 270, 480, 800]);
 
   const cells = await scanFlowCells(NS, [m.page.id]);
-  assert.deepEqual(cells.map(c => [c.flowId, c.uid, c.pageId, c.cardId, c.rootId, c.title]), [
-    ['f1', 's1', m.page.id, rect('s1').parent!.id, root.id, '홈 진입'],
-    ['f1', 's2', m.page.id, rect('s2').parent!.id, root.id, '홈 진입'],
+  assert.deepEqual(cells.map(c => [c.flowId, c.uid, c.pageId, c.rootId, c.title]), [
+    ['f1', 's1', m.page.id, null, null],
+    ['f1', 's2', m.page.id, null, null],
   ]);
   m.images.add('h2');
   const ids = cells.map(c => c.nodeId);
@@ -110,13 +111,19 @@ test('플로우 그룹을 만들고 칸마다 플로우 표식을 적으며, 다
   assert.deepEqual(rect('s2').fills, [{ type: 'IMAGE', imageHash: 'h2', scaleMode: 'FIT' }]);
   assert.equal(root.findAll(n => !!n.getSharedPluginData(NS, 'flowEmpty')).length, 0);
   assert.equal(await updateFlowCells(NS, ids, thumbs), 0, 'running again changes nothing');
+  rect('s1').name = 'IMAGE';
+  const oldFills = rect('s1').fills;
+  assert.equal(await updateFlowCells(NS, [rect('s1').id], thumbs), 1, 'an old layer name is corrected even when its thumbnail version is current');
+  assert.equal(rect('s1').name, '🔗 STB_HO_001 · 홈');
+  assert.deepEqual(rect('s1').fills, oldFills);
 });
 
 test('이 변경 전에 만든 플로우는 읽을 때 그룹 표식을 칸에 옮겨 적어, 그 뒤 그룹을 풀어도 칸으로 찾는다', async () => {
   const m = mockFigma();
   m.images.add('h1');
   const placed = await createFlow(NS, plan);
-  const root = m.page.children.find(n => n.id === placed.nodeId)!;
+  const root = m.page.children.find(n => n.type === 'GROUP' && n.name === plan.title)!;
+  root.setSharedPluginData(NS, 'flowOf', plan.id);
   const rects = root.findAll(n => n.type === 'RECTANGLE');
   for (const r of rects) r.data.delete('flowOf');
   assert.equal((await scanFlowCells(NS, null)).length, 2);
@@ -126,9 +133,9 @@ test('이 변경 전에 만든 플로우는 읽을 때 그룹 표식을 칸에 �
   for (const card of root.children.filter(n => n.type === 'GROUP' && n.findAll(c => c.type === 'RECTANGLE').length)) m.page.appendChild(card);
   root.remove();
   const cells = await scanFlowCells(NS, null);
-  assert.deepEqual(cells.map(c => [c.flowId, c.uid, c.rootId, c.title, c.cardId]), [
-    ['f1', 's1', null, null, rects[0].parent!.id],
-    ['f1', 's2', null, null, rects[1].parent!.id],
+  assert.deepEqual(cells.map(c => [c.flowId, c.uid, c.rootId, c.title]), [
+    ['f1', 's1', null, null],
+    ['f1', 's2', null, null],
   ]);
   // 표식이 없는 사각형(플로우를 알 수 없음)은 칸으로 보지 않는다.
   const stray = m.make('RECTANGLE');
@@ -141,7 +148,7 @@ test('잘라 붙여 사각형 ID가 바뀐 칸도 그 화면 그룹의 「썸네
   const m = mockFigma();
   m.images.add('h1');
   const placed = await createFlow(NS, plan);
-  const root = m.page.children.find(n => n.id === placed.nodeId)!;
+  const root = m.page.children.find(n => n.type === 'GROUP' && n.name === plan.title)!;
   const old = root.findOne(n => n.type === 'RECTANGLE' && n.getSharedPluginData(NS, 'flowScreen') === 's2')!;
   const card = old.parent!;
   // 잘라 붙이기: 같은 표식의 새 사각형(새 ID)이 되고 글자는 옛 사각형 ID를 가리킨다.
@@ -161,14 +168,15 @@ test('교체로 사용 안 함이 된 화면의 칸은 이어받은 화면의 �
   const m = mockFigma();
   m.images.add('h1');
   const placed = await createFlow(NS, plan);
-  const root = m.page.children.find(n => n.id === placed.nodeId)!;
+  const root = m.page.children.find(n => n.type === 'GROUP' && n.name === plan.title)!;
   const rect = (uid: string) => root.findOne(n => n.type === 'RECTANGLE' && n.getSharedPluginData(NS, 'flowScreen') === uid);
   const ids = (await scanFlowCells(NS, [m.page.id])).map(c => c.nodeId);
   m.images.add('h9');
   // 버전은 화면마다 따로 매기므로 s9가 버전 1이어도 옛 칸은 새로 넣는 것으로 본다.
-  const next = [{ uid: 's9', version: 1, thumb: { hash: 'h9', width: 480, height: 270 }, formerUids: ['s1'] }];
+  const next = [{ uid: 's9', code: 'STB_HO_009', name: '신규', version: 1, thumb: { hash: 'h9', width: 480, height: 270 }, formerUids: ['s1'] }];
   assert.equal(await updateFlowCells(NS, ids, next), 1);
   assert.equal(rect('s1'), null);
+  assert.equal(rect('s9')!.name, '🔗 STB_HO_009 · 신규');
   assert.deepEqual([rect('s9')!.fills, rect('s9')!.getSharedPluginData(NS, 'flowVersion')], [[{ type: 'IMAGE', imageHash: 'h9', scaleMode: 'FIT' }], '1']);
   assert.equal(await updateFlowCells(NS, ids, next), 0, 'running again changes nothing');
 });

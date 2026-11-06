@@ -26,7 +26,7 @@ function fixture() {
     flowRepairCells: async () => cells,
     restoreFlowImage: async (item: FlowRepairImage, uid: string, flowId: string, _thumb: FlowThumb, current: () => boolean) => {
       assert.ok(current()); restored.push(item.nodeId);
-      cells.push({ nodeId: item.nodeId, uid, flowId, pageId: 'p', cardId: item.nodeId, rootId: null, title: null });
+      cells.push({ nodeId: item.nodeId, uid, flowId, pageId: 'p', rootId: null, title: null });
     },
   } as unknown as Host;
   const controller = new FlowRepairController(host, store);
@@ -62,7 +62,7 @@ test('오래된 확인 결과와 임의 노드는 거절하고 썸네일 없는 
 });
 test('개별 실패는 보존하고 성공한 이미지만 기록하며 선택하지 않은 칸도 플로우 화면 목록에 유지한다', async () => {
   const f = fixture(); await f.controller.find();
-  f.cells.push({ nodeId: 'other', uid: 's2', flowId: 'f', pageId: 'p', cardId: 'other', rootId: null, title: null });
+  f.cells.push({ nodeId: 'other', uid: 's2', flowId: 'f', pageId: 'p', rootId: null, title: null });
   const restore = f.host.restoreFlowImage!;
   f.host.restoreFlowImage = async (...args) => { if (args[0].nodeId === 'b') throw new Error('locked'); await restore(...args); };
   const result = await f.controller.restore(f.scan().token, [{ nodeId: 'a', uid: 's1' }, { nodeId: 'b', uid: 's2' }]);
@@ -99,7 +99,7 @@ function canvas() {
   Object.assign(globalThis, { figma: { currentPage: page, root: { children: [page] }, getNodeByIdAsync: async (id: string) => all.find(n => n.id === id) ?? null, getImageByHash: (hash: string) => images.has(hash) ? {} : null } });
   return { page, group, rect, other, images };
 }
-const thumb: FlowThumb = { uid: 's1', version: 2, thumb: { hash: 'latest', width: 480, height: 270 } };
+const thumb: FlowThumb = { uid: 's1', code: 'ST_VP_001', name: 'Player', version: 2, thumb: { hash: 'latest', width: 480, height: 270 } };
 test('실제 Host 경계: 확인은 쓰지 않고 적용은 같은 버전도 동기화하며 위치·크기·주변 칸을 보존한다', async () => {
   const w = canvas(); const items = await selectedFlowRepairImages();
   assert.equal(items[0].flowId, 'f'); assert.equal(w.rect.data.has('flowOf'), false);
@@ -107,6 +107,7 @@ test('실제 Host 경계: 확인은 쓰지 않고 적용은 같은 버전도 동
   await restoreFlowImage(items[0], 's1', 'f', thumb, () => true);
   assert.deepEqual(w.rect.fills, [{ type: 'IMAGE', imageHash: 'latest', scaleMode: 'FIT' }]);
   assert.equal(w.rect.data.get('flowOf'), 'f'); assert.equal(w.rect.data.get('flowVersion'), '2');
+  assert.equal(w.rect.name, '🔗 ST_VP_001 · Player');
   assert.deepEqual([w.rect.x, w.rect.y, w.rect.width, w.rect.height], [10, 20, 400, 225]);
   assert.equal(w.other.data.size, 0); assert.equal(w.other.fills[0].imageHash, 'old');
 });

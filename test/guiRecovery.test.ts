@@ -53,7 +53,7 @@ function fixture(confirmed = true) {
     },
     inspectFlipbooks: async () => ({ found: new Map([['fb', 'frame']]), spots: {} }), templateIssues: async () => [],
     syncFlipbook: async (_settings: Parameters<Host['syncFlipbook']>[0], view: Parameters<Host['syncFlipbook']>[1]) => { hit('flipbook'); syncs++; for (const row of view.rows) appended.set(row.key, row); return { nodeId: 'frame', notes: [], tracked: true }; },
-    flowCells: async () => [{ nodeId: 'flow-cell', pageId: 'ui', flowId: 'flow', uid: 's1', cardId: 'flow-card', rootId: 'flow-node', title: 'Flow' }],
+    flowCells: async () => [{ nodeId: 'flow-cell', pageId: 'ui', flowId: 'flow', uid: 's1', rootId: 'flow-node', title: 'Flow' }],
     updateFlowCells: async () => { hit('flow'); return 1; },
   } as unknown as Host;
   return { store, kv, host, before, after, record, posted, appended, fail: (stage: string) => { failure = stage; }, changeSource: () => { fingerprint = 'unpublished edit'; }, counts: () => ({ copies, syncs }) };

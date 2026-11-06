@@ -939,6 +939,7 @@ export const COPY = {
   flow014: '조건',
   flow015: 'Arrow',
   flow016: 'IMAGE',
+  flowImagePrefix: '🔗',
   flow020: '플로우 편집기',
   flow021: '배포된 화면',
   flow022: '화면 검색',

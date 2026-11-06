@@ -1052,7 +1052,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     renderDetail();
   }) : null;
   const flowRepair = typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__ ? new FlowRepairDialog($('.flow-repair-overlay'), msg => bridge.send(msg), (field, uid, disabled) =>
-    screenPicker(field, registeredItems(id => state?.screens.get(id)?.status === 'active'), uid, FLOW_REPAIR_COPY.screen, { disabled, hideCanvas: true })) : null;
+    screenPicker(field, registeredItems(id => state?.screens.get(id)?.status === 'active'), uid, FLOW_REPAIR_COPY.screen, { disabled, hideCanvas: true, thumbs: new Map([...state!.screens.keys()].map(id => [id, thumbOf(id)])) })) : null;
   function renderNewDialog() {
     const overlay = $('.arrange-overlay');
     if (!newDialog) { overlay.hidden = true; overlay.innerHTML = ''; return; }
@@ -1529,7 +1529,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const head = chosen ? screenLabel(chosen, chosen === top) : `<span class="placeholder">${esc(opts.mixed ? COPY.uiApp175 : placeholder)}</span>`;
     return `<div class="screen-picker-control"><details class="tag-picker screen-picker${opts.disabled ? ' disabled' : ''}"><summary aria-label="${esc(placeholder)}" data-required-field="${esc(field)}">${head}<span class="dropdown-caret" aria-hidden="true"></span></summary>
       <input type="search" class="picker-search" placeholder="${COPY.uiApp358}" aria-label="${COPY.uiApp358}" autocomplete="off">
-      <div class="tag-options">${sorted.length ? sorted.map(i => `<button data-action="pick" data-field="${field}" data-value="${esc(i.value)}" data-entry-key="${esc(i.entryKey ?? i.value)}" data-search="${esc(`${i.code} ${i.name}`.toLowerCase())}" class="tag-option" aria-pressed="${i.value === selectedValue}"${opts.thumbs?.get(i.value) ? ` data-thumb="${esc(opts.thumbs.get(i.value)!)}"` : ''}>${screenLabel(i, i === top)}</button>`).join('') + `<p class="note picker-empty" hidden>${COPY.uiApp028}</p>` : `<p class="note">${COPY.uiApp190}</p>`}</div></details>
+      <div class="tag-options"${opts.hideCanvas ? ' style="right:0"' : ''}>${sorted.length ? sorted.map(i => `<button data-action="pick" data-field="${field}" data-value="${esc(i.value)}" data-entry-key="${esc(i.entryKey ?? i.value)}" data-search="${esc(`${i.code} ${i.name}`.toLowerCase())}" class="tag-option" aria-pressed="${i.value === selectedValue}"${opts.thumbs?.get(i.value) ? ` data-thumb="${esc(opts.thumbs.get(i.value)!)}"` : ''}>${screenLabel(i, i === top)}</button>`).join('') + `<p class="note picker-empty" hidden>${COPY.uiApp028}</p>` : `<p class="note">${COPY.uiApp190}</p>`}</div></details>
       ${opts.hideCanvas ? '' : `<button class="icon-button canvas-pick" data-action="canvas-pick" data-field="${esc(field)}" aria-label="${COPY.canvasPickScreen}" aria-pressed="${!opts.disabled && canvasPick?.field === field}"${opts.disabled ? ' disabled' : ''}>${CURSOR_ICON}</button>`}</div>`;
   }
   function filterScreenPicker(picker: HTMLElement, query: string) {
@@ -3257,6 +3257,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (!el) return;
     const action = el.dataset.action!;
     if ((busyLabel || pdfBusy) && !WHILE_BUSY.has(action)) return;
+    if (action === 'pick') { hoverThumb = null; showHoverThumb(); }
     if (action.startsWith('flow-') && flows.handle(action, el)) return;
     if (action.startsWith('paste-') && paste.handle(action, el)) return;
     if (action.startsWith('track-') && trackList.handle(action, el)) return;
@@ -3789,7 +3790,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   }
   on('pointerover', ev => {
     const target = ev.target as HTMLElement;
-    const el = target.closest('button, [role="button"]') ? null : target.closest<HTMLElement>('[data-thumb]');
+    const option = target.closest<HTMLElement>('.screen-picker .tag-option[data-thumb]');
+    const el = option ?? (target.closest('button, [role="button"]') ? null : target.closest<HTMLElement>('[data-thumb]'));
     const hash = el?.dataset.thumb;
     if (!hash) { if (hoverThumb) { hoverThumb = null; showHoverThumb(); } return; }
     const r = root.getBoundingClientRect();
@@ -4553,8 +4555,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         if (msg.nav === navSeq && (!msg.ok || msg.message)) notify(msg.ok ? 'info' : 'error', msg.message);
         break;
       case 'canvasSelection': {
-        // 실행한 명령과 다른 목록의 선택으로는 화면을 바꾸지 않는다.
-        if (!state || msg.team !== mode) break;
+        // 관리 중에는 캔버스 선택으로 화면·입력·열린 도구를 바꾸지 않는다.
+        if (!state || msg.team !== mode || tab === 'ADMIN') break;
         if (canvasPick && msg.team === 'GUI') {
           // 후보 목록의 허용 범위를 그대로 사용한다. 검색어로 숨은 후보도 캔버스로 고를 수 있다.
           const button = root.querySelector<HTMLButtonElement>('.canvas-pick[aria-pressed="true"]');
@@ -4572,13 +4574,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
           excludedPick = msg.excludedIds;
           unexcludedNodes.clear();
           if (!excludedPick.length) { if (tab === 'GUI' && listTabOpen()) renderDetail(); break; }
-          const fromAdmin = tab === 'ADMIN';
           tab = 'GUI';
           selection.GUI = new Set();
           selected.GUI = null;
           addMode = null;
           editMode = null;
-          if (fromAdmin) { renderAll(); break; }
           if (!listTabOpen()) break;
           renderTabs(); renderToolbar(); renderList(); renderDetail(); renderFooter();
           break;
@@ -4589,7 +4589,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
             !query[msg.team] && !changedOnly[msg.team] &&
             selected[msg.team] === msg.lastKey && selection[msg.team].size === msg.entryKeys.length &&
             msg.entryKeys.every(key => selection[msg.team].has(key))) break;
-        const fromAdmin = tab === 'ADMIN';
         tab = msg.team;
         if (msg.team === 'UI') { selectedNew = null; editingTitle = null; addingSection = false; }
         selection[msg.team] = new Set(msg.entryKeys);
@@ -4598,9 +4597,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         showSelectedRows(msg.team);
         addMode = null;
         editMode = null;
-        // 관리에서 나오면 화면 틀(관리 전용 배치, 플로우·PDF·붙이기 탭)까지 다시 그린다. 일부만 그리면 관리 배치가 남아
-        // 목록 칸이 숨은 채 상세만 보인다.
-        if (fromAdmin) { renderAll(); break; }
         if (!listTabOpen()) break;
         renderTabs(); renderToolbar(); renderList(); renderDetail(); renderFooter();
         break;

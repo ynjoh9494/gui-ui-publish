@@ -145,7 +145,20 @@ const listPosted = (posted: ToUi[]) => last(posted.filter((m): m is Extract<ToUi
 // 가짜 캔버스: 플로우 화면 칸 목록. 칸을 옮기거나 지우거나 더해 캔버스에서 플로우를 고친 것을 흉내 낸다.
 // root가 null이면 그룹을 푼 칸이다.
 const cell = (flowId: string, uid: string, pageId = 'p', root: string | null = `g-${flowId}`): FoundFlowCell =>
-  ({ nodeId: `${flowId}/${uid}/${pageId}`, pageId, flowId, uid, cardId: `card-${flowId}/${uid}/${pageId}`, rootId: root, title: root ? `T-${flowId}` : null });
+  ({ nodeId: `${flowId}/${uid}/${pageId}`, pageId, flowId, uid, rootId: root, title: root ? `T-${flowId}` : null });
+
+test('화면 사용처의 이동 대상은 그룹을 풀거나 다시 묶어도 이미지 자체다', async () => {
+  const s = seed([{ id: '1', version: 1 }]);
+  s.put(keys.flow('a'), { id: 'a', nodeId: 'old-group', pageId: 'p', title: 'A', uids: ['1'], createdAt: 1, actor });
+  const cells = [cell('a', '1')];
+  const { host } = flowHost(s, cells);
+  const flows = new FlowController(s, host);
+  for (const root of ['group', null, 'regrouped']) {
+    cells[0].rootId = root;
+    assert.equal(await flows.find('a', '1'), cells[0].nodeId);
+    assert.equal(s.state.flows.get('a')?.nodeId, cells[0].nodeId);
+  }
+});
 
 function flowHost(store: Store, cells: FoundFlowCell[]) {
   const posted: ToUi[] = [];
@@ -183,21 +196,22 @@ test('추적 목록은 그 화면이 든 플로우를 경로와 함께 보여 �
   await controller.handle({ type: 'trackList', uid: '2' });
   assert.deepEqual(listPosted(posted), { type: 'trackList', uid: '2', items: [{ kind: 'flow', id: 'a', path: ['Live', 'Home', 'A'] }, { kind: 'flow', id: 'b', path: ['Live', 'Home', 'B'] }] });
   await controller.handle({ type: 'revealFlow', nav: 1, flowId: 'a', uid: '2' });
-  assert.deepEqual([revealed, selected], [['card-a/2/p'], ['card-a/2/p']], 'goes to and selects that screen card in the flow');
+  assert.deepEqual([revealed, selected], [['a/2/p'], ['a/2/p']], 'selects the image itself even while it is grouped');
   cells.splice(cells.findIndex(c => c.flowId === 'b'), 1);
   await controller.handle({ type: 'trackList', uid: '2' });
   assert.deepEqual(listPosted(posted).items.map(i => i.id), ['a']);
   assert.equal(controller.store.state.flows.has('b'), false);
   assert.ok(controller.store.state.audit.some(e => e.action === 'flow.remove' && e.target === 'b'));
 
-  // 그 화면 칸만 지웠으면 플로우로 간다.
+  // 요청한 이미지가 사라졌으면 다른 화면이나 그룹으로 대신 가지 않는다.
   cells.splice(cells.findIndex(c => c.uid === '2'), 1);
   await controller.handle({ type: 'revealFlow', nav: 2, flowId: 'a', uid: '2' });
-  assert.equal(last(revealed), 'g-a');
+  assert.equal(revealed.length, 1);
+  assert.deepEqual(last(posted.filter(m => m.type === 'nav')), { type: 'nav', nav: 2, ok: false, message: COPY.flow048 });
   cells.length = 0;
   await controller.handle({ type: 'revealFlow', nav: 3, flowId: 'a', uid: '2' });
   assert.equal(controller.store.state.flows.size, 0);
-  assert.equal(revealed.length, 2, 'a deleted flow is not revealed');
+  assert.equal(revealed.length, 1, 'a deleted flow is not revealed');
   assert.deepEqual(last(posted.filter(m => m.type === 'nav')), { type: 'nav', nav: 3, ok: false, message: COPY.flow048 });
   assert.deepEqual(listPosted(posted).items, [], 'the open list is sent again without it');
 });
@@ -231,7 +245,7 @@ test('기록이 없는 플로우의 칸을 읽으면 기록을 되살린다(그�
   await controller.handle({ type: 'trackList', uid: '1' });
   assert.deepEqual(listPosted(posted).items.map(i => i.id), ['a', 'z']);
   const z = controller.store.state.flows.get('z')!;
-  assert.deepEqual([z.title, z.uids, z.pageIds, z.nodeId], ['T-z', ['1', '2'], ['p'], 'g-z']);
+  assert.deepEqual([z.title, z.uids, z.pageIds, z.nodeId], ['T-z', ['1', '2'], ['p'], 'z/1/p']);
   assert.ok(controller.store.state.audit.some(e => e.action === 'flow.restore' && e.target === 'z'));
 });
 

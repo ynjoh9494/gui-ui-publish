@@ -61,7 +61,7 @@ export class FlowController {
     return { items: picks.flatMap(({ flow }, i) => places[i] ? [{ kind: 'flow' as const, id: flow.id, path: [...placePath(s.state, places[i]!), flow.title] }] : []), changed };
   }
 
-  // 플로우(uid가 있으면 그 화면 칸)의 노드 ID. 그 화면 칸이 없으면 플로우로 간다. 칸을 하나도 찾지 못하면 기록에서 빼고 null
+  // 이동 대상은 항상 이미지 자체다. 요청한 화면 이미지가 없으면 다른 그룹이나 화면으로 대신 가지 않는다.
   async find(flowId: string, uid?: string): Promise<string | null> {
     this.store.reload();
     const flow = this.store.state.flows.get(flowId);
@@ -69,8 +69,7 @@ export class FlowController {
     const cells = (await this.locate([flow])).byFlow.get(flowId) ?? [];
     const live = successorOf(this.store.state);
     const cell = uid ? cells.find(c => live(c.uid) === uid) : undefined;
-    if (cell) return cell.cardId;
-    return cells.length ? cells.find(c => c.rootId)?.rootId ?? cells[0].cardId : null;
+    return uid ? cell?.nodeId ?? null : cells[0]?.nodeId ?? null;
   }
 
   // GUI를 다시 배포하면 그 화면의 칸 썸네일만 바꾼다(2026-10-23 사용자 결정). 칸은 플로우 기록이 있는 모든 페이지에서 찾으므로

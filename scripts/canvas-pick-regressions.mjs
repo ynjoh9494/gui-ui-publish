@@ -4,6 +4,7 @@ import { mkdirSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { Store, memoryKV } from '../src/core/store.ts';
 import { toUiWire } from '../src/core/wire.ts';
+import { COPY } from '../src/core/copy.ts';
 
 const store = new Store(memoryKV());
 store.saveProject({ ...store.state.project, scopePageIds: ['p'], screenIdPrefix: 'ST' });
@@ -182,6 +183,26 @@ try {
   await page.waitForFunction(() => document.querySelector('.list .row:last-child') !== null && [...document.querySelectorAll('.list .group')].at(-1)?.querySelectorAll('.row').length === 1);
   assert.equal(await page.locator('.list .row').last().getAttribute('data-key'), 'a');
   await page.screenshot({ path: 'tmp/walkthrough/gui-bottom-rows.png' });
+  for (const mode of ['GUI', 'UI']) {
+    await page.goto(pathToFileURL('tmp/build/ui.html').href);
+    await send({ type: 'init', mode, actor: { id: 'u', name: 'User' }, pages: [{ id: 'p', name: 'Page' }], issues: [], state: toUiWire(store.state) });
+    await send({ type: 'startupReady' });
+    await page.locator('[data-action=settings]').click();
+    await page.locator('.admin-nav-item').filter({ hasText: COPY.uiApp162 }).click();
+    const input = page.locator('[data-form=screen-id-prefix] input[data-f=prefix]');
+    await input.fill('KEEP');
+    await page.evaluate(() => { window.adminInput = document.querySelector('[data-form=screen-id-prefix] input[data-f=prefix]'); });
+    for (const selection of [
+      { entryKeys: ['b'], lastKey: 'b', excludedIds: [] },
+      { entryKeys: [], lastKey: null, excludedIds: ['hidden'] },
+      { entryKeys: [], lastKey: null, excludedIds: [] },
+    ]) {
+      await send({ type: 'canvasSelection', team: mode, ...selection });
+      assert.equal(await page.locator('#app').evaluate(el => el.classList.contains('admin-mode')), true, `${mode} keeps management open`);
+      assert.equal(await input.inputValue(), 'KEEP', `${mode} preserves unsaved management input`);
+      assert.equal(await page.evaluate(() => window.adminInput === document.querySelector('[data-form=screen-id-prefix] input[data-f=prefix]')), true, 'canvas selection does not rebuild the panel');
+    }
+  }
   assert.deepEqual(errors, []);
   console.log('Canvas picker: replacement directions, relationships, bulk edit, candidate validation, active styles and cancellation passed');
 } finally { await browser.close(); }

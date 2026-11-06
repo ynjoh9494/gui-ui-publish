@@ -241,7 +241,7 @@ export interface FlipbookReview { flipbookId: string; versions: Record<string, n
 export interface TrackRecord { id: string; uid: string; nodeId: string; pageId: string; createdAt: number; actor: Actor }
 
 // 플로우는 그룹이 아니라 화면 칸(썸네일 사각형의 flowOf·flowScreen 표식)으로 찾는다(2026-11-05 사용자 결정: 만든 뒤 얼마든지 고친다).
-// pageIds: 칸이 있는 페이지(이 변경 전 기록은 pageId 하나), uids: 칸의 화면. nodeId: 처음 만든(또는 찾은) 플로우 그룹으로 찾는 데 쓰지 않는다.
+// pageIds: 칸이 있는 페이지(이 변경 전 기록은 pageId 하나), uids: 칸의 화면. nodeId: 대표 이미지(옛 그룹 ID는 칸을 찾을 때 이미지 ID로 맞춘다).
 export interface FlowRecord { id: string; nodeId: string; pageId: string; pageIds?: string[]; title: string; uids: string[]; createdAt: number; actor: Actor }
 
 export interface Exclusion { id: string; nodeId: string; name: string; reason: string; createdAt: number; active: boolean }

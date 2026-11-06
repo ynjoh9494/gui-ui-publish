@@ -138,6 +138,8 @@ UI Flipbook의 현재 화면 흐름은 **플립북 만들기, GUI 갱신 알림,
 
 개발 전용 플로우 복구는 `flowRepairController.ts`가 선택 확인·화면 배정 검증·부분 성공·플로우 기록 맞춤을 조정하고, `figma/flowRepair.ts`가 선택한 이미지의 표식 판독·변경 검사·썸네일과 표식 적용을 맡는다. `ui/flowRepair.ts`는 GUI 배포의 화면 드롭다운을 재사용한다. 전용 타입·문구는 `core/flowRepair.ts`·`flowRepairCopy.ts`에 두고 `__PLUGIN_RELEASE__` 조건으로 구현·UI·문구를 배포에서 제외한다.
 
+플로우의 이동 대상과 대표 `nodeId`는 이미지 사각형이다. `FlowController.find()`는 화면 이미지가 없으면 그룹이나 다른 화면으로 대체하지 않는다. 생성·복구·갱신은 `core/flow.flowImageName()`으로 이미지 레이어 이름을 맞춘다. `rootId`는 옛 그룹 표식 판독과 기존 플로우 제목 읽기에만 사용한다.
+
 ## 로컬 확인
 
 `npm run check`는 타입 검사, 현재 `test/*.test.ts` 테스트, Figma·미리보기 빌드를 실행한다. `npm run walkthrough`는 브라우저 미리보기에서 주요 흐름을 조작하고, `npm run benchmark`는 Node 측 성능을 측정한다. 미리보기는 Figma API를 대체하므로 레이어 복사, 변수 모드, JPG 내보내기, 실제 큰 파일의 시간·메모리는 Figma 시험 파일에서 확인해야 한다.

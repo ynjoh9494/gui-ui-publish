@@ -40,9 +40,16 @@ try {
   await app.locator('.list .row.selected').waitFor();
   assert.equal(await app.locator('.excluded-hint').count(), 0, '목록 화면을 고르면 안내를 거둔다');
 
-  // 관리를 보던 중에 골라도 목록 화면으로 돌아와 안내를 보이고, 다시 표시하면 신규 후보로 돌아와 선택된다.
+  // 관리 중에는 숨긴 프레임을 골라도 관리 화면을 유지한다. 목록으로 돌아간 뒤 고르면 안내를 보인다.
   await app.locator('[data-action=settings]').click();
   await page.locator('.admin-nav').waitFor();
+  await pick(nodeId);
+  await page.waitForTimeout(150);
+  assert.equal(await app.evaluate(el => el.classList.contains('admin-mode')), true);
+  assert.equal(await app.locator('.excluded-hint').count(), 0);
+  await app.locator('[data-action=settings]').click();
+  await pick(other);
+  await app.locator('.list .row.selected').waitFor();
   await pick(nodeId);
   await app.locator('.excluded-hint').waitFor();
   await app.locator('[data-action=excluded-unexclude]').click();

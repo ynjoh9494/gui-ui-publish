@@ -306,14 +306,15 @@ export function layoutFlow(cells: { key: string; x: number; y: number; w: number
 
 // 플로우 썸네일을 바꿀 화면: 마지막 배포에 썸네일이 있는 화면만. 사용 안 함이 된 화면은 마지막 이미지를 그대로 둔다.
 // formerUids: 이 화면이 이어받은(교체해 사용 안 함이 된) 화면. 캔버스 칸에 그 표식이 남아 있으면 이 화면으로 바꿔 읽는다.
-export interface FlowThumb { uid: string; version: number; thumb: GuiThumb; formerUids?: string[] }
+export interface FlowThumb { uid: string; code: string; name: string; version: number; thumb: GuiThumb; formerUids?: string[] }
+export const flowImageName = (code: string, name: string): string => `${COPY.flowImagePrefix} ${[code.trim(), name.trim()].filter(Boolean).join(' · ')}`;
 export function flowUpdates(state: State, uids: Set<string>): { flows: FlowRecord[]; thumbs: FlowThumb[] } {
   const thumbs: FlowThumb[] = [];
   const former = formerUids(state);
   for (const uid of uids) {
     const screen = state.screens.get(uid);
     const info = screen && guiScreenInfo(state, screen);
-    if (info && info.status === 'active' && info.thumb) thumbs.push({ uid, version: info.version, thumb: info.thumb, ...(former.has(uid) ? { formerUids: former.get(uid) } : {}) });
+    if (info && info.status === 'active' && info.thumb) thumbs.push({ uid, code: info.code, name: info.name, version: info.version, thumb: info.thumb, ...(former.has(uid) ? { formerUids: former.get(uid) } : {}) });
   }
   const wanted = new Set(thumbs.map(t => t.uid));
   return { flows: [...state.flows.values()].filter(f => f.uids.some(uid => wanted.has(uid))), thumbs };
@@ -322,9 +323,9 @@ export function flowUpdates(state: State, uids: Set<string>): { flows: FlowRecor
 // ── 캔버스의 화면 칸 ───────────────────────────────────
 
 // 캔버스에서 찾은 플로우 화면 칸(썸네일 사각형). 그룹 구조와 관계없이 칸의 표식으로 찾는다(2026-11-05 사용자 결정: 플로우는 만든 뒤
-// 그룹을 풀거나 다시 묶거나 옮기는 등 얼마든지 고친다). cardId: 그 칸 하나만 품은 화면 그룹(없으면 사각형),
+// 그룹을 풀거나 다시 묶거나 옮기는 등 얼마든지 고친다). nodeId: 이동·연결 대상인 이미지 자체,
 // rootId: 같은 플로우 표식이 있는 바깥 그룹(그룹을 풀었으면 null), title: 그 그룹 이름
-export interface FoundFlowCell { nodeId: string; pageId: string; flowId: string; uid: string; cardId: string; rootId: string | null; title: string | null }
+export interface FoundFlowCell { nodeId: string; pageId: string; flowId: string; uid: string; rootId: string | null; title: string | null }
 
 export const flowPages = (flow: FlowRecord): string[] => flow.pageIds?.length ? flow.pageIds : [flow.pageId];
 
@@ -347,14 +348,14 @@ export function reconcileFlows(store: Store, cells: FoundFlowCell[], checked: Fl
     const before = store.state.flows.get(id);
     const uids = [...new Set([...(partial && before ? before.uids : []), ...found.map(c => live(c.uid))])];
     const pageIds = [...new Set([...(partial && before ? flowPages(before) : []), ...found.map(c => c.pageId)])];
-    const root = found.find(c => c.rootId)?.rootId ?? null;
+    const nodeId = found.find(c => c.nodeId === before?.nodeId)?.nodeId ?? found[0].nodeId;
     if (!before) {
-      const record: FlowRecord = { id, nodeId: root ?? found[0].nodeId, pageId: pageIds[0], pageIds, title: found.find(c => c.title)?.title || FLOW_DEFAULT_TITLE, uids, createdAt: store.now(), actor };
+      const record: FlowRecord = { id, nodeId, pageId: pageIds[0], pageIds, title: found.find(c => c.title)?.title || FLOW_DEFAULT_TITLE, uids, createdAt: store.now(), actor };
       store.put(keys.flow(id), record);
       store.audit(actor, 'flow.restore', id, null, { title: record.title, pageId: record.pageId, screens: uids });
       changed++;
-    } else if (!sameSet(before.uids, uids) || !sameSet(flowPages(before), pageIds)) {
-      store.put(keys.flow(id), { ...before, pageId: pageIds[0], pageIds, uids, ...(root ? { nodeId: root } : {}) } satisfies FlowRecord);
+    } else if (before.nodeId !== nodeId || !sameSet(before.uids, uids) || !sameSet(flowPages(before), pageIds)) {
+      store.put(keys.flow(id), { ...before, nodeId, pageId: pageIds[0], pageIds, uids } satisfies FlowRecord);
       changed++;
     }
   }

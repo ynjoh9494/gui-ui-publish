@@ -358,7 +358,7 @@ export function createDemo(options: DemoOptions): Demo {
     // 플로우 칸: 만든 플로우마다 화면 칸 하나씩(노드 ID 플로우/화면). 가짜 캔버스에서는 플로우를 고치지 않는다.
     async flowCells() {
       return [...flows].flatMap(([nodeId, versions]) => [...versions.keys()].map(uid => ({
-        nodeId: `${nodeId}/${uid}`, pageId: DEMO_FLIPBOOK_PAGE.id, flowId: nodeId.slice('flow:'.length), uid, cardId: `${nodeId}/${uid}`, rootId: nodeId, title: null,
+        nodeId: `${nodeId}/${uid}`, pageId: DEMO_FLIPBOOK_PAGE.id, flowId: nodeId.slice('flow:'.length), uid, rootId: nodeId, title: null,
       })));
     },
     async updateFlowCells(cellIds, latest) {

@@ -1,6 +1,6 @@
 import { FLOW_REPAIR_COPY as COPY } from '../core/flowRepairCopy.ts';
 import type { FlowRepairImage } from '../core/flowRepair.ts';
-import type { FlowThumb, FoundFlowCell } from '../core/flow.ts';
+import { flowImageName, type FlowThumb, type FoundFlowCell } from '../core/flow.ts';
 import { loadPages } from './flipbook.ts';
 import { loadThumbnailPage } from './thumbs.ts';
 import { NS } from './template.ts';
@@ -18,14 +18,13 @@ function cellOf(rect: RectangleNode): FoundFlowCell | null {
     if (mark && (!flowId || mark === flowId)) { flowId = mark; root = p; break; }
   }
   if (!page) return null;
-  return { nodeId: rect.id, pageId: page.id, flowId, uid: rect.getSharedPluginData(NS, 'flowScreen'), cardId: rect.id, rootId: root?.id ?? null, title: root?.name ?? null };
+  return { nodeId: rect.id, pageId: page.id, flowId, uid: rect.getSharedPluginData(NS, 'flowScreen'), rootId: root?.id ?? null, title: root?.name ?? null };
 }
 function imageOf(rect: RectangleNode): FlowRepairImage {
   const cell = cellOf(rect);
   if (!cell) throw new Error(COPY.missing);
-  const paint = Array.isArray(rect.fills) ? rect.fills.find(p => p.type === 'IMAGE') : undefined;
-  return { nodeId: rect.id, pageId: cell.pageId, name: rect.name, flowId: cell.flowId, uid: cell.uid, ...(paint?.type === 'IMAGE' && paint.imageHash ? { imageHash: paint.imageHash } : {}),
-    stamp: JSON.stringify([cell.pageId, rect.parent?.id, cell.flowId, cell.uid, rect.getSharedPluginData(NS, 'flowVersion'), rect.fills]) };
+  return { nodeId: rect.id, pageId: cell.pageId, name: rect.name, flowId: cell.flowId, uid: cell.uid,
+    stamp: JSON.stringify([cell.pageId, rect.parent?.id, rect.name, cell.flowId, cell.uid, rect.getSharedPluginData(NS, 'flowVersion'), rect.fills]) };
 }
 export async function selectedFlowRepairImages(): Promise<FlowRepairImage[]> {
   return figma.currentPage.selection.filter((n): n is RectangleNode => n.type === 'RECTANGLE' && Array.isArray(n.fills) && n.fills.some(p => p.type === 'IMAGE')).map(imageOf);
@@ -46,15 +45,18 @@ export async function restoreFlowImage(item: FlowRepairImage, uid: string, flowI
   if (imageOf(node).stamp !== item.stamp || !isCurrent()) throw new Error(COPY.changed);
   if (!figma.getImageByHash(thumb.thumb.hash)) throw new Error(COPY.unavailable);
   const oldFills = node.fills;
+  const oldName = node.name;
   const keys = ['flowOf', 'flowScreen', 'flowVersion'];
   const oldMarks = keys.map(k => node.getSharedPluginData(NS, k));
   try {
     node.fills = [{ type: 'IMAGE', imageHash: thumb.thumb.hash, scaleMode: 'FIT' }];
+    node.name = flowImageName(thumb.code, thumb.name);
     node.setSharedPluginData(NS, 'flowOf', flowId);
     node.setSharedPluginData(NS, 'flowScreen', uid);
     node.setSharedPluginData(NS, 'flowVersion', String(thumb.version));
   } catch (error) {
     node.fills = oldFills;
+    node.name = oldName;
     keys.forEach((k, i) => node.setSharedPluginData(NS, k, oldMarks[i]));
     throw error;
   }

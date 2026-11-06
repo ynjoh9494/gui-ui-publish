@@ -1,5 +1,5 @@
 import { COPY } from '../core/copy.ts';
-import { FLOW_LAYOUT, layoutFlow, type FlowPlan, type FlowThumb, type FoundFlowCell } from '../core/flow.ts';
+import { FLOW_LAYOUT, flowImageName, layoutFlow, type FlowPlan, type FlowThumb, type FoundFlowCell } from '../core/flow.ts';
 import { formatFrameName } from '../core/screenName.ts';
 import { loadPages } from './flipbook.ts';
 import { loadThumbnailPage } from './thumbs.ts';
@@ -74,6 +74,7 @@ export async function createFlow(ns: string, plan: FlowPlan): Promise<{ nodeId: 
   // 그룹은 자식이 있어야 만들 수 있으므로 페이지에 절대 위치로 놓은 뒤 화면·Connector·플로우 순서로 묶는다.
   // 레이어 순서도 예시와 같게 위에서부터 Connector, 화면, 플로우 제목이다(나중에 만든 노드가 위).
   const made: SceneNode[] = [];
+  let firstImageId = '';
   let root: GroupNode | null = null;
   try {
     const layout = layoutFlow(plan.cells, plan.links);
@@ -93,8 +94,9 @@ export async function createFlow(ns: string, plan: FlowPlan): Promise<{ nodeId: 
       title.y = y - L.cellTitle;
       parts.push(title);
       const rect = figma.createRectangle();
+      if (!firstImageId) firstImageId = rect.id;
       page.appendChild(rect);
-      rect.name = COPY.flow016;
+      rect.name = flowImageName(cell.code, cell.name);
       rect.resize(image.w, image.h);
       rect.x = x;
       rect.y = y;
@@ -144,7 +146,6 @@ export async function createFlow(ns: string, plan: FlowPlan): Promise<{ nodeId: 
     }
     root = figma.group([heading, ...cards, ...connectors], page);
     root.name = plan.title;
-    root.setSharedPluginData(ns, FLOW_KEY, plan.id);
   } catch (e) {
     if (root && !root.removed) root.remove();
     for (const node of made) if (!node.removed) node.remove();
@@ -152,7 +153,7 @@ export async function createFlow(ns: string, plan: FlowPlan): Promise<{ nodeId: 
   }
   figma.currentPage.selection = [root];
   figma.viewport.scrollAndZoomIntoView([root]);
-  return { nodeId: root.id, pageId: page.id, notes: missing.length ? [`${COPY.flow011} ${missing.join(', ')}`] : [] };
+  return { nodeId: firstImageId, pageId: page.id, notes: missing.length ? [`${COPY.flow011} ${missing.join(', ')}`] : [] };
 }
 
 function pageOf(node: BaseNode): PageNode | null {
@@ -183,7 +184,7 @@ function readCell(ns: string, rect: SceneNode, page: PageNode): FoundFlowCell | 
   }
   if (!uid || !flowId) return null;
   if (!own) rect.setSharedPluginData(ns, FLOW_KEY, flowId);
-  return { nodeId: rect.id, pageId: page.id, flowId, uid, cardId: (cardOf(ns, rect, root) ?? rect).id, rootId: root?.id ?? null, title: root && 'name' in root ? root.name : null };
+  return { nodeId: rect.id, pageId: page.id, flowId, uid, rootId: root?.id ?? null, title: root && 'name' in root ? root.name : null };
 }
 
 // 페이지들(null이면 모든 페이지)에서 플로우 화면 칸을 찾는다.
@@ -240,7 +241,11 @@ export async function updateFlowCells(ns: string, cellIds: string[], thumbs: Flo
     const uid = rect.getSharedPluginData(ns, SCREEN_KEY);
     const next = latest.get(uid);
     const former = !!next && next.uid !== uid;
-    if (!next || (!former && Number(rect.getSharedPluginData(ns, VERSION_KEY) || 0) >= next.version) || !figma.getImageByHash(next.thumb.hash)) continue;
+    if (!next || !figma.getImageByHash(next.thumb.hash)) continue;
+    const name = flowImageName(next.code, next.name);
+    const renamed = rect.name !== name;
+    if (renamed) rect.name = name;
+    if (!former && Number(rect.getSharedPluginData(ns, VERSION_KEY) || 0) >= next.version) { if (renamed) changed++; continue; }
     rect.fills = imageFill(next.thumb.hash);
     if (former) rect.setSharedPluginData(ns, SCREEN_KEY, next.uid);
     rect.setSharedPluginData(ns, VERSION_KEY, String(next.version));
