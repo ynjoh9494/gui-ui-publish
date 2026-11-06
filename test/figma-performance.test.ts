@@ -145,30 +145,30 @@ test('DATA 증분 갱신은 같은 행을 유지하고 변경·삭제·수동 �
   assert.equal(table().children[2].characters, '기록 없음');
 });
 
-test('구형 DATA 표는 설치되지 않은 글꼴을 수정하지 않고 Inter로 교체한다', async () => {
+test('DATA 글꼴 변경 전후 표를 재생성하지 않고 기존 행을 유지한다', async () => {
   const m = mockFigma(), ns = 'test';
-  for (const role of ['data-summary', 'data-history']) {
-    const old = m.make('FRAME');
-    old.setSharedPluginData(ns, 'role', role);
-    old.setSharedPluginData(ns, 'tableVersion', '1');
-    const text = m.make('TEXT');
-    text.fontName = { family: 'Pretendard', style: 'Regular' };
-    Object.defineProperty(text, 'characters', {
-      get: () => 'old', set: () => { throw new Error('unloaded Pretendard'); },
-    });
-    old.appendChild(text); m.page.appendChild(old);
-  }
-  const oldTables = [...m.page.children];
   const model: DataModel = { generatedAt: 'now', actor: { id: 'u', name: 'User' }, screens: [], history: [] };
   await renderDataPage(ns, m.page.id, model);
-  assert.ok(oldTables.every(n => n.removed));
-  assert.equal(m.page.children.length, 2);
-  const texts = m.page.findAll(n => n.type === 'TEXT');
-  assert.ok(texts.length > 0);
-  assert.ok(texts.every(n => n.fontName.family === 'Inter'));
   const tables = [...m.page.children];
+  tables[0].setSharedPluginData(ns, 'tableVersion', '1');
+  tables[1].setSharedPluginData(ns, 'tableVersion', '2');
+  const rows = tables.map(t => t.children[2]);
+  const note = tables[0].children[0].children[1];
+  note.fontName = { family: 'Pretendard', style: 'Regular' };
+  let value = note.characters;
+  Object.defineProperty(note, 'characters', {
+    get: () => value,
+    set: (next: string) => {
+      assert.equal(note.fontName.family, 'Inter', 'load Inter before updating the note');
+      value = next;
+    },
+  });
+  const count = m.all.length;
   await renderDataPage(ns, m.page.id, { ...model, generatedAt: 'later' });
-  assert.deepEqual(m.page.children, tables, 'later refreshes reuse Inter tables');
+  assert.deepEqual(m.page.children, tables);
+  assert.deepEqual(tables.map(t => t.children[2]), rows);
+  assert.equal(m.all.length, count);
+  assert.ok(tables.every(t => !t.removed));
 });
 
 test('원본 프레임이 지워진 화면은 링크 없이 그리고 나머지 행은 링크를 건다', async () => {

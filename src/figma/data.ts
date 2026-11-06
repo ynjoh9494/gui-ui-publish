@@ -21,7 +21,6 @@ const WHITE = { r: 1, g: 1, b: 1 };
 export interface Fonts { regular: FontName; bold: FontName }
 
 // 자동 관리 표는 PC에 설치된 글꼴과 관계없이 Inter로 만든다.
-const TABLE_VERSION = '2';
 let fontCache: Promise<Fonts> | null = null;
 
 export function loadFonts(): Promise<Fonts> {
@@ -153,11 +152,11 @@ interface DataRowSpec { key: string; value: unknown; cells: () => SceneNode[] }
 // 일치하는 이력 행마다 SHA-256을 다시 계산하지 않으며, 프레임이 교체되면 캐시는 함께 버려진다.
 const rowSignatures = new WeakMap<FrameNode, Map<string, { raw: string; signature: string }>>();
 
-// 원기록이 같은 행은 그대로 둔다. 구형 표는 기존 글꼴을 수정하지 않고 Inter로 재생성한다.
+// 원기록이 같은 행은 그대로 둔다. 수동 복구와 구형 표는 전체 재생성한다.
 function syncTable(ns: string, page: PageNode, role: FrameRole, fonts: Fonts, title: string, note: string,
   columns: Column[], specs: DataRowSpec[], rebuild: boolean): FrameNode {
   const old = roleFrames(ns, page, role);
-  const existing = !rebuild && old.find(f => f.getSharedPluginData(ns, 'tableVersion') === TABLE_VERSION);
+  const existing = !rebuild && old.find(f => ['1', '2'].includes(f.getSharedPluginData(ns, 'tableVersion')));
   const frame = existing || table(fonts, title, note, columns, []);
   const rows = new Map<string, SceneNode>();
   if (existing) for (const child of frame.children) {
@@ -203,9 +202,12 @@ function syncTable(ns: string, page: PageNode, role: FrameRole, fonts: Fonts, ti
   desired.forEach((row, i) => { if (frame.children[i + 2] !== row) frame.insertChild(i + 2, row); });
   const heading = frame.children[0];
   const noteNode = heading && 'children' in heading ? heading.children[1] : null;
-  if (noteNode?.type === 'TEXT' && noteNode.characters !== note) noteNode.characters = note;
+  if (noteNode?.type === 'TEXT' && noteNode.characters !== note) {
+    noteNode.fontName = fonts.regular;
+    noteNode.characters = note;
+  }
   frame.setSharedPluginData(ns, ROLE_KEY, role);
-  frame.setSharedPluginData(ns, 'tableVersion', TABLE_VERSION);
+  frame.setSharedPluginData(ns, 'tableVersion', '1');
   rowSignatures.set(frame, nextSignatures);
   if (frame.parent !== page) page.appendChild(frame);
   for (const node of old) if (node !== frame) node.remove();
