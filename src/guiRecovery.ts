@@ -8,7 +8,6 @@ import type { FlowController } from './flowController.ts';
 
 interface RecoveryActions {
   pull(batchId: string, targets: string[], uids: Set<string>, history: { uid: string; version: number }[]): Promise<{ message: string; failed: boolean; failedTargets?: string[] } | null>;
-  data(): Promise<boolean>;
   progress?(label: string): Promise<void>;
 }
 
@@ -165,7 +164,6 @@ export class GuiRecovery {
         for (const uid of safe) if (targets.some(id => failedTargets.has(id) &&
           (alerted.includes(id) || s.state.flipbooks.get(id)?.screens.some(screen => screen.uid === uid)))) reject(uid, pulled.message);
       }
-      if (eligible().size && !await this.actions.data()) throw new Error(s.state.dataStatus?.error ?? COPY.controller022);
       for (const job of jobs) if (!blocked.has(job.targetId)) setGuiDeliveryState(s, job, 'done');
     } catch (error) {
       for (const uid of eligible()) reject(uid, error instanceof Error ? error.message : String(error));

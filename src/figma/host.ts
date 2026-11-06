@@ -8,7 +8,6 @@ import { beginHistoryWindow, HISTORY_DOCUMENT_ID } from '../core/historyNotices.
 import { readHistoryNotices } from './historyNotices.ts';
 import { COLLAPSED_WINDOW, clampWindow } from '../core/wire.ts';
 import type { Host } from '../host.ts';
-import { ensureDataPage, renderDataPage } from './data.ts';
 import { createFingerprintReader } from './fingerprints.ts';
 import { selectedFlipbooks, markExistingFlipbooks } from './registerFlipbooks.ts';
 import { FLIPBOOK_KEY, NS, prepareFlipbookTitle, findFlipbook, flipbookSpots, inspectFlipbooks, listFlipbooks, loadPages, moveFlipbookFrame, syncChapters, syncFlipbook, templateFromSelection, templateIssues, flipbookSession, type FlipbookSession } from './flipbook.ts';
@@ -192,7 +191,6 @@ export function figmaHost(mode: Host['mode']): Host {
       return out;
     },
 
-    ensureDataPage: pageId => ensureDataPage(NS, pageId),
 
     // 모든 페이지를 읽어 이 플러그인의 표식을 지운다. 노드 자체는 남긴다.
     async clearMarkers() {
@@ -209,7 +207,6 @@ export function figmaHost(mode: Host['mode']): Host {
       }
       return count;
     },
-    renderData: (pageId, model, rebuild) => renderDataPage(NS, pageId, model, rebuild),
 
     async tagSource(nodeId, screenId, expectedScreenId) {
       const node = await sceneNode(nodeId);

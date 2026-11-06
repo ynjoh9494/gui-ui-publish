@@ -33,7 +33,6 @@ test('고른 이전 형식 플립북만 변환해 추적 GUI 플립북으로 바
     inspectFlipbooks: async () => ({ found: new Map([['fb-A', '1:1'], ['fb-B', '1:2']]), spots: {} }),
     listFlipbooks: async () => new Map(),
     syncFlipbook: async (_s: unknown, view: { flipbookId: string }) => { synced.push(view.flipbookId); return { nodeId: '1:1', notes: [], tracked: true }; },
-    ensureDataPage: async () => 'data', renderData: async () => {},
   } as unknown as Host;
   const controller = new Controller(host);
   const refreshed: string[] = [];

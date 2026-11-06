@@ -10,7 +10,7 @@ export function managedPages(ns: string): ManagedPageInfo[] {
 export function normalizeManagedPageNames(ns: string): void {
   for (const page of figma.root.children) {
     const role = page.getSharedPluginData(ns, 'role');
-    const name = role === 'data' ? COPY.figmaData001 : role === 'thumbs' ? COPY.figmaLayers001 : null;
+    const name = role === 'thumbs' ? COPY.figmaLayers001 : null;
     if (name && page.name !== name) page.name = name;
   }
 }

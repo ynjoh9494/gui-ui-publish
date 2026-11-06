@@ -1410,16 +1410,13 @@ try {
   assert.equal(await app.locator('details[data-form=maintenance][open] :is([data-form=pending], [data-form=audit], [data-form=reset])').count(), 3);
   assert.equal(await app.locator('[data-action=admin-nav][aria-current=true]').textContent(), '관리자');
   await app.locator('[data-action=admin-nav][data-key="자동 관리 페이지"]').click();
-  assert.deepEqual(await app.locator('.managed-page-card > h4').allTextContents(), ['DATA', 'GUI 썸네일']);
+  assert.deepEqual(await app.locator('.managed-page-card > h4').allTextContents(), ['GUI 썸네일']);
   await app.locator('[data-action=thumb-page-create]').click();
   await app.locator('.managed-page-name').waitFor();
   assert.equal(await app.locator('.managed-page-name').textContent(), '[자동 관리] GUI 썸네일');
   assert.equal(await app.locator('[data-action=thumb-page-create]').count(), 0);
   await app.locator('[data-form=thumbnails] [data-action=managed-page-open]').click();
   await page.waitForFunction(() => [...document.querySelectorAll('#log div')].some(x => x.textContent.includes('0:thumbs')));
-  await app.locator('[data-action=data-refresh]').click();
-  await app.locator('[data-form=data] [data-action=managed-page-open]').waitFor();
-  assert.ok((await app.locator('[data-form=data]').textContent()).includes('[자동 관리] DATA'));
   await shot('13-automatic-pages');
   await app.locator('[data-action=settings]').click();
   await scan();

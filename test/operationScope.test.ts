@@ -26,7 +26,6 @@ function setup() {
     templateIssues: async () => [],
     syncFlipbook: async (_s: unknown, view: { flipbookId: string }) => { calls.push(`full:${view.flipbookId}`); return { nodeId: `n:${view.flipbookId}`, notes: [] }; },
     syncChapters: async () => { calls.push('chapters'); },
-    ensureDataPage: async () => 'data', renderData: async () => { calls.push('data'); },
     moveFlipbook: async () => true,
     prepareFlipbookTitle: async () => { throw new Error('font unavailable'); },
   } as unknown as Host;

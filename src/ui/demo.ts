@@ -22,7 +22,6 @@ export const DEMO_FLIPBOOK_PAGE: PageInfo = { id: '0:2', name: COPY.uiPreview014
 const SECOND_UI_PAGE: PageInfo = { id: '0:3', name: 'UI 두 번째 페이지' };
 // 다른 파일에서 페이지째 붙여 넣은 것처럼 만드는 새 버전 페이지
 export const DEMO_VERSION_PAGE: PageInfo = { id: '0:5', name: 'GUI 새 버전' };
-const DATA_PAGE: PageInfo = { id: '0:4', name: COPY.figmaData001 };
 
 export interface DemoOptions {
   mode: Team;
@@ -88,7 +87,6 @@ export function createDemo(options: DemoOptions): Demo {
     ['10:6', COPY.uiPreview007], ['10:7', COPY.uiPreview008], ['10:8', COPY.uiPreview009], ['10:9', COPY.uiPreview010], ['10:10', COPY.uiPreview011],
   ].map(([nodeId, name]) => ({ nodeId, pageId: DEMO_PAGE.id, name, content: 'v1', body: name, tag: null }));
   let versionPageMade = false;
-  let dataPageMade = false;
   let thumbPageMade = false;
   // 썸네일 해시 → JPG 바이트
   const thumbs = new Map<string, Uint8Array>();
@@ -149,8 +147,8 @@ export function createDemo(options: DemoOptions): Demo {
     actor: options.actor,
     post: message => deliver(message),
     resize(width, height) { options.resize?.(width, height); },
-    pages: () => [DEMO_PAGE, DEMO_FLIPBOOK_PAGE, SECOND_UI_PAGE, ...(versionPageMade ? [DEMO_VERSION_PAGE] : []), ...(dataPageMade ? [DATA_PAGE] : [])],
-    managedPages: () => [...(dataPageMade ? [{ id: DATA_PAGE.id, name: COPY.figmaData001, kind: 'data' as const }] : []), ...(thumbPageMade ? [{ id: '0:thumbs', name: COPY.figmaLayers001, kind: 'thumbs' as const }] : [])],
+    pages: () => [DEMO_PAGE, DEMO_FLIPBOOK_PAGE, SECOND_UI_PAGE, ...(versionPageMade ? [DEMO_VERSION_PAGE] : [])],
+    managedPages: () => [...(thumbPageMade ? [{ id: '0:thumbs', name: COPY.figmaLayers001, kind: 'thumbs' as const }] : [])],
     async ensureThumbnailPage() { thumbPageMade = true; return '0:thumbs'; },
     async placeThumbnails() { thumbPageMade = true; },
     async selectNodes(nodeIds) { log(`프레임 선택: ${nodeIds.join(', ')}`); },
@@ -205,23 +203,14 @@ export function createDemo(options: DemoOptions): Demo {
       return new Map(frames.flatMap((f, i) => wanted.has(f.nodeId) ? [[f.nodeId, { page: 0, x: 0, y: i * 100, height: 50 }] as const] : []));
     },
     async clearMarkers() {
-      const n = frames.filter(f => f.tag).length + flipbooks.size + (dataPageMade ? 1 : 0);
+      const n = frames.filter(f => f.tag).length + flipbooks.size;
       frames.forEach(f => (f.tag = null));
       flipbooks.clear();
       placed.length = 0;
-      dataPageMade = false;
       thumbPageMade = false;
       changed();
       log(`${COPY.uiPreview017} ${n}${COPY.uiPreview018}`);
       return n;
-    },
-    async ensureDataPage(pageId) {
-      if (pageId && pageId === DATA_PAGE.id && dataPageMade) return pageId;
-      if (!dataPageMade) { dataPageMade = true; log(COPY.uiPreview019); }
-      return DATA_PAGE.id;
-    },
-    async renderData(_pageId, model) {
-      log(`${COPY.uiPreview020} ${model.screens.length}${COPY.uiPreview021} ${model.history.length}`);
     },
     async tagSource(nodeId, screenId, expectedScreenId) {
       const f = frames.find(x => x.nodeId === nodeId);

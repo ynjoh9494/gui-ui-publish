@@ -24,8 +24,8 @@ for (const type of ['followFlipbook', 'refreshList', 'scanUi'] as const) {
       kv: store.kv, mode: 'UI', actor, post: (m: ToUi) => messages.push(m), pages: () => [{ id: 'p1', name: 'UI' }], templateIssues: async () => [],
       inspectFlipbooks: async () => ({ found: new Map([['fb', 'frame']]), spots: {} }),
       scanCopies: async () => [{ nodeId: 'copy', pageId: 'p1', uid: 's1', version: 1, trackId: '', flipbookId: 'fb' }], markTracked: async () => {},
-      uiFingerprint: async () => ({ fingerprint: 'fp', error: null }), ensureDataPage: async () => 'data', renderData: async () => {},
       beginDelivery: (frames: Map<string, string>) => { known = frames; },
+      uiFingerprint: async () => ({ fingerprint: 'fp', error: null }),
       syncFlipbook: async () => { syncs++; if (fail) throw new Error('font unavailable'); return { nodeId: 'frame', notes: [], tracked: true }; },
     } as unknown as Host;
     const controller = new Controller(host);

@@ -27,13 +27,13 @@ flowchart LR
 
 ## 코드 경계
 
-플립북 생성·이동 뒤의 위치 조회는 Controller의 `inspectFlipbookPages`가 영향을 받은 페이지로 제한하고, 조회하지 않은 페이지의 연결·위치는 기존 `uiScans`에서 유지한다. 부분 조회는 원본 표식만 인정해 읽지 않은 페이지의 원본 대신 복사본을 채택하지 않는다. 목록에서 삭제는 저장된 플립북 상태와 UI 목록만 바꾸며 캔버스 조회·추적 GUI 재스캔·DATA 렌더를 하지 않는다. 이후 추적 작업의 `trackable` 필터가 삭제한 플립북 안의 GUI를 제외한다.
+플립북 생성·이동 뒤의 위치 조회는 Controller의 `inspectFlipbookPages`가 영향을 받은 페이지로 제한하고, 조회하지 않은 페이지의 연결·위치는 기존 `uiScans`에서 유지한다. 부분 조회는 원본 표식만 인정해 읽지 않은 페이지의 원본 대신 복사본을 채택하지 않는다. 목록에서 삭제는 저장된 플립북 상태와 UI 목록만 바꾸며 캔버스 조회·추적 GUI 재스캔을 하지 않는다. 이후 추적 작업의 `trackable` 필터가 삭제한 플립북 안의 GUI를 제외한다.
 
-GUI 배포 히스토리는 GuiRecovery가 검증한 GUI 원기록 참조를 Delivery.history로 전달한다. Controller는 대기 중인 참조만 guiAppendRows()로 묶어 Figma에 전달하며, 반영 완료 시 참조를 지운다. syncMarkedRows()는 기존 행을 재작성·정렬·삭제하지 않고 목록 아래에 추가하며 캔버스의 배포 키로 재시도 중복만 막는다. 일반 동기화·생성은 과거 히스토리를 불러오지 않는다. 구형 파일 기록은 보존하되 플러그인 UI와 DATA에 플립북 히스토리를 전송·표시하지 않는다.
+GUI 배포 히스토리는 GuiRecovery가 검증한 GUI 원기록 참조를 Delivery.history로 전달한다. Controller는 대기 중인 참조만 guiAppendRows()로 묶어 Figma에 전달하며, 반영 완료 시 참조를 지운다. syncMarkedRows()는 기존 행을 재작성·정렬·삭제하지 않고 목록 아래에 추가하며 캔버스의 배포 키로 재시도 중복만 막는다. 일반 동기화·생성은 과거 히스토리를 불러오지 않는다. 구형 파일 기록은 보존하되 플러그인 UI에 플립북 히스토리를 전송·표시하지 않는다.
 
 새 히스토리 알림은 `core/historyNotices.ts`의 고정 실행 구간을 따른다. Figma Host 생성 시 사용자·문서 식별자로 clientStorage의 이전 실행 시각을 읽고 이번 시각을 저장한다. UI 모드를 처음 열 때 이미 찾은 플립북 프레임에서 이 구간에 실제 추가된 행만 읽어 `historyNotices`로 전달한다. 새 행의 캔버스 표식은 `historyAddedAt`, 목록의 마지막 추가 시각은 `historyLatestAt`이며, 추가가 없는 목록은 하위 행을 읽지 않는다. UI는 이 스냅샷으로 알림 점·필터·화면 목록 위의 새 히스토리 묶음을 표시하고 확인 완료 기록을 쓰지 않는다. Previous 표식은 구형 행 보존을 위해 읽을 수 있지만 새 연결 항목이나 자동 연결은 만들지 않는다.
 
-템플릿 날짜 형식은 `ProjectConfig.historyDateFormat`에 파일 공통으로 저장한다. `core/flipbook.ts`가 허용 형식과 프로젝트 시간대를 사용해 새 GUI 배포 행의 날짜를 만들고, Controller의 `setHistoryDateFormat`은 형식 검증·설정 저장·감사 기록만 수행한다. 기록의 타임스탬프와 플러그인·DATA의 전체 시각 표시는 유지한다.
+템플릿 날짜 형식은 `ProjectConfig.historyDateFormat`에 파일 공통으로 저장한다. `core/flipbook.ts`가 허용 형식과 프로젝트 시간대를 사용해 새 GUI 배포 행의 날짜를 만들고, Controller의 `setHistoryDateFormat`은 형식 검증·설정 저장·감사 기록만 수행한다. 기록의 타임스탬프와 플러그인의 전체 시각 표시는 유지한다.
 
 `src/ui/windowCollapse.ts`는 DOM을 유지해 접기 전 입력·선택을 보존하고, 접힌 동안 발생한 크기 변경을 펼칠 때 반영한다. `Host.resize`는 접힌 창의 크기를 Figma에 전달하되 다음 실행 크기로 저장하지 않는다.
 
@@ -49,7 +49,7 @@ GUI 배포 히스토리는 GuiRecovery가 검증한 GUI 원기록 참조를 Deli
 | `src/core/templateParts.ts` | 템플릿 연결 항목 정의(관리 화면의 의미 묶음 `section`과 들여쓰기 부모 `parent`, 연결·검사가 쓰는 위치 `group`(플립북 칸·컴포넌트·이력 행 안의 칸), 종류·필수·여러 개, 대표가 아닌 템플릿이 다루는 반영용 항목 `isFallbackItem`), 레이어 표식 키(`templatePart`)와 템플릿 프레임의 연결 기록(`templateLinks`, 컴포넌트 노드 ID) 형식, UI에 보내는 연결 상태(`TemplateInfo`) |
 | `src/core/templateList.ts` | 템플릿 목록(대표 지정) 규칙: 화면에 보일 목록(`templateEntries`, 대표가 맨 위), 대표를 바꾸면 이전 대표를 대표 바로 아래에 남김(`setCurrentTemplate`·`setRepresentativeTemplate`), 더하기(비었으면 대표)·빼기(대표는 못 뺌), 항목을 다룰 템플릿 검증(`templateForItem`: 대표가 아니면 `isFallbackItem` 항목만), 등록에서 뺄 템플릿 노드. 저장은 `templateNodeId`(대표)·`previousTemplates`(나머지) |
 | `src/core/richText.ts` | 텍스트 편집 탭의 문서 모델(문단·목록 단계·굵은 범위), 편집 동작(줄 나누기·합치기·붙여 넣기·굵게·목록 단계), 붙여 넣기·복사용 텍스트 형식 |
-| `src/core/flipbooks.ts`, `flipbook.ts`, `guiScreens.ts`, `history.ts`, `data.ts` | 플립북 기록·확인 상태, 캔버스 반영용 뷰(새 템플릿 플립북은 만든 뒤 기록이 없으면 「작성 전」), 화면 목록의 상태 태그(`screenTags`: 가장 최근 GUI 배포로 바뀐 화면에만), 화면 목록·이력·DATA 모델 |
+| `src/core/flipbooks.ts`, `flipbook.ts`, `guiScreens.ts`, `history.ts` | 플립북 기록·확인 상태, 캔버스 반영용 뷰(새 템플릿 플립북은 만든 뒤 기록이 없으면 「작성 전」), 화면 목록의 상태 태그(`screenTags`: 가장 최근 GUI 배포로 바뀐 화면에만), 화면 목록·이력 모델 |
 | `src/core/tracks.ts` | 추적 GUI 규칙: 추적할 복사본(`trackable`: 사용 중인 화면, 목록에서 삭제한 플립북 안은 뺌), 찾은 복사본과 기록(`trk:`) 맞추기(복제본은 새 기록, 못 찾은 기록은 뺌), 읽을 페이지(기록 페이지·새 템플릿 플립북 페이지), 새 템플릿 플립북의 화면 목록을 캔버스 소속으로 맞추기(`followMembers`, 읽은 페이지의 플립북만, Screen ID 이름순·자동 제목, 새로 든 화면의 `addedAt`), 사용 안 함이 된 화면의 추적 중지와 「삭제된 화면」 알림, 화면별 붙인 수(추적 GUI + 플로우), 추적 목록 경로 |
 | `src/controller.ts` | 메시지 처리, 스캔·배포·플립북·관리 작업의 순서와 실패 보고 |
 | `src/flowController.ts`, `pdfController.ts`, `trackController.ts` | UI Flipbook의 독립 흐름 조정: 플로우 만들기·이동·추적 목록의 플로우 자리·다시 배포된 썸네일 교체(지운 그룹은 기록에서 뺌), PDF 저장 탭 상태·선택 프레임 수·내보내기·취소, 추적 GUI(배포 때 새 버전으로 바꾸기 `publish`, 목록 새로고침·플립북 선택 때 화면 목록 읽기 `refresh`·`refreshPage`, GUI 붙이기 `paste`, 추적 목록 `places`·`find`, 열려 있는 동안 복제 찾기 `adopt`). Controller는 메시지만 넘기고 바뀐 플립북을 반영한다 |
@@ -63,7 +63,7 @@ GUI 배포 히스토리는 GuiRecovery가 검증한 GUI 원기록 참조를 Deli
 | `src/figma/template.ts` | 템플릿 구조: 플립북·템플릿 프레임의 칸 찾기(`flipbookParts`: 역할 표식으로만, 연결 기록이 없으면 칸 없음. GUI 영역·Description 본문·Screen ID 칸·이력 행 안으로는 내려가지 않음), 이력 행 안의 칸, PDF에서 숨길 레이어, 태그 컴포넌트 묶음(`tagKit`), 항목별 연결 상태·검사(`describeTemplate`·`templateIssues`), 캔버스 선택을 항목에 연결·해제. 이전 형식 가져오기(이름 규칙은 여기서만 읽음): 이전 형식 템플릿을 처음 쓸 때 표식으로 바꾸기(`importNamedTemplate`), 이전 형식 플립북·등록 프레임 표식 달기(`importNamedFrame`), 변환 전 UI 수정 지문용 읽기(`legacyUiParts`) |
 | `src/figma/legacyConvert.ts` | 이전 형식 플립북 변환: 고른 플립북 프레임에 표식을 달고 만든 템플릿(적어 둔 템플릿 → 같은 이력 행 컴포넌트 → 이력 행이 없으면 첫 이전 형식 템플릿)의 연결 기록을 이어받기. 템플릿 목록의 이전 형식 템플릿도 바꿈 |
 | `src/figma/templateDefault.ts` | 새 페이지에 기본 템플릿(템플릿 프레임과 태그·Screen ID 태그·이력 행 컴포넌트, 모든 칸 연결)을 만듦 |
-| `src/figma/flipbook.ts`, `layers.ts`, `thumbs.ts`, `data.ts` | 템플릿 복제(연결 기록과 만든 템플릿 `flipbookTemplate`도 적음)와 연결한 칸 반영(제목·Chapter·상태·Screen ID·GUI·이력 행, 없는 칸은 건너뜀). 이미 있는 플립북은 만든 템플릿 기록이나 구조(연결 컴포넌트)가 맞는 대표·나머지 템플릿의 키트로 반영(`deliveryKit`, 나머지 템플릿 키트는 반영 한 번에 한 번 읽음). GUI는 새 플립북을 만들 때만 GUI 영역 안에 GUI 붙이기와 같은 화면 정보 묶음(`labeled.ts`)으로 감싸 행 배치(`syncGui`, 그 뒤로는 추적 GUI. `syncFreeGui`는 2026-10-29부터 쓰지 않는 이전 배치), GUI 레이어 복사·배치, JPG 썸네일, DATA 페이지 렌더링 |
+| `src/figma/flipbook.ts`, `layers.ts`, `thumbs.ts` | 템플릿 복제(연결 기록과 만든 템플릿 `flipbookTemplate`도 적음)와 연결한 칸 반영(제목·Chapter·상태·Screen ID·GUI·이력 행, 없는 칸은 건너뜀). 이미 있는 플립북은 만든 템플릿 기록이나 구조(연결 컴포넌트)가 맞는 대표·나머지 템플릿의 키트로 반영(`deliveryKit`, 나머지 템플릿 키트는 반영 한 번에 한 번 읽음). GUI는 새 플립북을 만들 때만 GUI 영역 안에 GUI 붙이기와 같은 화면 정보 묶음(`labeled.ts`)으로 감싸 행 배치(`syncGui`, 그 뒤로는 추적 GUI. `syncFreeGui`는 2026-10-29부터 쓰지 않는 이전 배치), GUI 레이어 복사·배치, JPG 썸네일 |
 | `src/figma/labeled.ts` | 추적 GUI의 `🔗 GUI · 자동 업데이트` 묶음(화면 정보 `Label` + GUI를 담은 `Screen`)을 만드는 `labeledCopy`와 그 표식(`pasteLayout`·`pasteScreen`·`pasteGui`). GUI 붙이기(`tracked.ts`)와 새 플립북 GUI 배치(`flipbook.ts`)가 함께 쓴다 |
 | `src/figma/tracked.ts` | 추적 GUI의 캔버스 쪽: 페이지에서 복사본 표식(`guiCopy`) 찾기와 품은 플립북 판정(이전 템플릿 플립북이 넣은 복사본은 뺌), 새 버전으로 바꾸기(원본은 화면마다 한 번, 폭별 준비본은 임시 프레임 안에서 복제), GUI 목록에서 붙인 `🔗 GUI · 자동 업데이트` 프레임은 그대로 두고 `pasteGui` 표식의 안쪽 GUI만 교체해 화면명·표시 상태 보존, 이전 단일 GUI 복사본은 자리·순서·이름·잠금·폭 유지, 추적 기록 ID(`trackOf`)는 바깥 프레임에 적음, 노드 자리(페이지 › Section › 플립북), 새로 생긴 노드 안의 추적 GUI |
 | `src/figma/flow.ts` | 플로우 그리기(플로우·화면·Connector 모두 그룹: 화면별 Title·IMAGE·Caption, Connector 안의 Arrow·Action, 도착점에 `ARROW_EQUILATERAL`을 둔 Figma 벡터 연결선)와 다시 배포된 화면의 썸네일 채움 교체, 추적 목록에서 누른 플로우·화면 칸 찾기(`flowNode`, 기록의 노드 ID와 `flowOf` 표식이 모두 맞을 때만). 썸네일 이미지는 썸네일 페이지를 불러와 해시로 찾음 |
@@ -88,7 +88,7 @@ GUI 배포 히스토리는 GuiRecovery가 검증한 GUI 원기록 참조를 Deli
 | `fb:{id}`, `fgv:{flipbookId}:{screenId}:{version}` | 플립북 상태와 플립북에 가져온 GUI 이력 |
 | `sui:{id}`, `uv:{id}:{version}`, `rv:{id}` | UI 상태·이력과 플립북 확인 완료 시점의 화면별 GUI 버전 |
 | `bat:{id}`, `dlv:{batchId}:{targetId}` | 확정 묶음과 후속 플립북 반영 상태 |
-| `cat:`, `wrk:`, `tag:`, `exc:`, `aud:`, `data` | 관리 항목, 제외, 감사 기록, DATA 렌더 상태 |
+| `cat:`, `wrk:`, `tag:`, `exc:`, `aud:`, `data` | 관리 항목, 제외, 감사 기록, 구형 DATA 렌더 상태(읽기 호환만 유지) |
 | `fpd:{screenId}` | 화면의 변경 근거(`core/changeDigest.ts`, 약 2.6KB). 비교 기준 하나만 덮어쓰고 기준 지문을 함께 적어 맞을 때만 쓴다. `State`에 넣지 않으며 `Store.reload()`는 이 키를 읽지 않는다 |
 | `trk:{id}` | 추적 GUI의 위치(화면·노드·페이지)와 만든 사람·시각. 노드에는 같은 ID를 `trackOf` 표식으로 적는다(복제본은 같은 값을 가지므로 노드 ID가 기록과 다르면 새 기록을 만든다). 이력 행은 없다. 캔버스에서 찾지 못하면 배포·목록 새로고침·추적 목록 때 지운다 |
 | `flw:{id}` | 플로우 그룹의 위치(페이지·노드)와 들어 있는 화면. 다시 배포된 화면의 썸네일을 바꾸려고 찾고 추적 목록에 보여 주며 이력 행은 없다(만들기·삭제는 `audit:`에만 남는다). 캔버스에서 그룹이 지워졌으면 업데이트·추적 목록 열기·이동 때 지운다. 썸네일마다의 화면·버전은 그룹 안 사각형의 `flowScreen`·`flowVersion` 표식에 둔다 |
@@ -97,7 +97,7 @@ GUI 배포 히스토리는 GuiRecovery가 검증한 GUI 원기록 참조를 Deli
 
 키를 화면·플립북·버전별로 나눠 관련 없는 화면의 쓰기가 같은 키를 덮어쓰지 않게 했다. `Store.reload()`는 원시 값이 바뀌었을 때 상태를 다시 만들고, 확정 직전의 충돌 검사는 `readFresh()`로 해당 키를 직접 읽는다. GUI 확정은 `Screen.rev`, 남아 있는 UI Publish 경로는 `UiState.rev`로 동시 변경을 검사한다. 이 설계는 파일 전체의 원자적 트랜잭션을 제공하지 않으므로, 아래의 배포 기록과 캔버스 반영을 별도 단계로 다룬다.
 
-`[자동 관리] GUI 썸네일` 페이지는 썸네일 이미지 보관·조회에, `[자동 관리] DATA` 페이지는 파일 내부 기록의 읽기용 투영에 사용한다. 둘 다 업무 기록의 원본 저장소는 아니다. `figma/managedPages.ts`는 역할 표식으로 두 페이지를 찾고 기존 ID·내용을 유지한 채 이름을 통일한다. Host의 `managedPages`를 init/state/pages 메시지에 실어 관리 화면에 전달하며 썸네일 페이지의 생성·열기를 지원한다. `data` 키에는 마지막 DATA 렌더 성공·실패 상태를 남긴다.
+`[자동 관리] GUI 썸네일` 페이지는 썸네일 이미지 보관·조회에 사용한다. 업무 기록은 `sharedPluginData`에 저장하며 별도 DATA 표를 생성·갱신하지 않는다. 구형 DATA 페이지와 저장된 연결·갱신 상태는 호환을 위해 보존하고 자동 수정·정리하지 않는다.
 
 ## GUI 변경 확인과 Publish
 
@@ -106,7 +106,7 @@ GUI 배포 히스토리는 GuiRecovery가 검증한 GUI 원기록 참조를 Deli
    배포 화면은 `Controller.readFrame()`이 저장된 근거(`fpd:`)를 함께 넘기고, 판독기가 `changeDigest()`로 정한 화면만 같은 스냅샷에 레이어 이름·ID를 붙여(`attachNames()`) 근거를 계산한다. 변경사항 확인은 `defer`로 넘겨 새로 계산할 근거를 미루고(`deferred`, 지난 근거를 다시 쓸 수 있으면 미루지 않음), 목록을 보낸 뒤 `startDigests()`가 미룬 화면을 다시 읽어 계산한다(상세에서 고른 화면 `needReason` → 변경 감지 → 근거 채우기 순). 계산하는 동안 `ScannedFrame.reasonPending`이고, 끝나면 `changeReason` 메시지로 그 프레임만 갱신한다. 다시 읽은 지문이 확인 때와 다르면 「찾지 못함」이다. 확인을 다시 시작하거나 기록을 지우면 `digestSeq`로 멈추고, 변경 무시는 고른 화면의 미룬 근거를 먼저 계산한다. 기준과 다르면 `ScannedFrame.reason`에 다른 레이어·묶음을 담고, 현재 상태의 근거는 「변경 무시」에 쓰려고 Controller가 노드별로 들고 있는다. 변경 감지된 화면의 근거는 비교 기준·저장 근거와 함께 기억해 다음 확인에 `previous`로 넘기고, 지문과 레이어 이름·ID 요약값이 같으면 다시 계산하지 않는다. 1 규칙 비교 기준과 다른 화면은 근거 없이 「근거 기록 없음」이다. 기준과 같은데 근거가 없거나 맞지 않으면 미룬 근거 계산을 마친 뒤 `recordDigests()`가 채우고, 사용 안 함이 된 화면의 근거를 지운다(기록에 아직 없는 화면의 근거는 둔다). 배포 확정은 확정 지문과 같은 스냅샷의 근거를 기록한다(실패해도 확정과 별개).
 3. UI 입력 초안을 `buildPlan()`이 검증해 최종 확인용 계획을 만든다. `drafts.pendingScreens()`는 배포를 켠 미배포 화면을 임시 항목 키로 제공해 케이스 기본 화면 선택·검증에 사용한다. `buildPlan()`이 임시 참조를 같은 배포의 실제 Screen ID로 바꾼다. 확정 시 `Controller.commit()`은 대상 원본 지문을 다시 계산하고 필요한 JPG 썸네일을 만든다. `commitPlan()`은 저장된 `rev`, 지문, Screen ID 충돌 등을 재검사한다.
 4. 통과한 화면마다 GUI 버전·화면 상태를 저장하고 묶음 기록을 남긴다. 같은 배포의 신규 기본 화면을 먼저 기록한 뒤 케이스를 저장해 기본 화면 스냅샷도 남긴다. 기본 화면이 충돌로 빠지면 의존하는 케이스도 보류한다. 일부 화면이 충돌하면 나머지만 확정하고 충돌 항목은 다시 입력할 수 있게 돌려준다. 원본 프레임에는 연결 표식만 남긴다. 배포 화면의 원본으로 다른 화면을 교체한 항목(`PlanItem.mergeFrom`)은 모든 화면을 기록한 뒤 교체에 쓴 화면을 사용 안 함으로 바꾸고 `Screen.mergedInto`를 남기며, 그 화면의 케이스·플립북(`followMergedFlipbooks()`)·플로우(`followMergedFlows()`) 기록을 교체한 화면으로 옮긴다. 배포 취소(`Plan.unpublished`)는 화면을 사용 안 함으로 바꾸고 원본 연결을 끊으며, Controller가 원본의 화면 표식을 지운다.
-5. 확정 뒤 썸네일을 캔버스에 놓고, 사용 안 함이 된 화면의 추적을 멈추고(그 화면이 든 새 템플릿 플립북은 화면 목록에서 빼고 `deletedAlert`), 배포한 화면의 추적 GUI를 새 버전으로 바꾸며 그 순간의 소속으로 새 템플릿 플립북의 화면 목록을 맞춘 뒤(`TrackController.publish()`), 그 화면을 쓰는 플립북에 새 GUI 이력을 가져와 반영하고, 그 화면이 든 플로우의 썸네일 채움을 바꾼 다음(`updateFlows()`, 그룹이 없으면 `flw:` 기록 삭제) DATA 페이지를 갱신한다. 썸네일·플립북·플로우·DATA 실패는 확정 기록과 구분해 보고한다.
+5. 확정 뒤 썸네일을 캔버스에 놓고, 사용 안 함이 된 화면의 추적을 멈추고(그 화면이 든 새 템플릿 플립북은 화면 목록에서 빼고 `deletedAlert`), 배포한 화면의 추적 GUI를 새 버전으로 바꾸며 그 순간의 소속으로 새 템플릿 플립북의 화면 목록을 맞춘 뒤(`TrackController.publish()`), 그 화면을 쓰는 플립북에 새 GUI 이력을 가져와 반영하고, 그 화면이 든 플로우의 썸네일 채움을 바꾼 다음(`updateFlows()`, 그룹이 없으면 `flw:` 기록 삭제) 작업을 마친다. 썸네일·플립북·플로우 실패는 확정 기록과 구분해 보고한다.
 
 새 버전 페이지에서는 `versionMatch.ts`가 새 프레임의 지문·텍스트·이미지·레이어 특징과 기존 원본을 비교해 연결을 제안한다. 사용자가 확인한 연결로 `Screen.source`와 GUI 범위를 옮긴다. 이 작업 자체는 GUI 버전을 만들지 않는다.
 
@@ -124,7 +124,7 @@ UI Flipbook의 현재 화면 흐름은 **플립북 만들기, GUI 갱신 알림,
 
 6. 새 템플릿 플립북(`Flipbook.tracked`)의 화면 목록은 캔버스가 원본이다. 만들 때 놓은 GUI 복사본은 추적 GUI로 기록하고(`register`), 그 뒤 `syncFlipbook()`은 GUI를 다시 놓지 않는다. `TrackController`가 페이지의 복사본 표식을 읽어(`scanCopies`) 기록과 맞추고 `followMembers()`로 `Flipbook.screens`를 소속으로 바꾸면, Controller가 바뀐 플립북을 `deliverFlipbooks()`로 다시 반영해 Screen ID 칸·자동 제목을 맞춘다. 새로 든 화면은 `addedAt`을 받아, `unreviewed()`는 지금 든 화면의 기록 중 `max(확인 기준 시각, addedAt)` 뒤의 것만 확인할 것으로 본다. 화면 편집(이전 `editFlipbookScreens`)은 없앴다.
 
-플립북 반영은 `dlv:`의 `pending → applying → done/failed` 상태로 추적한다. GUI 배포에는 화면별 `gdl:` 작업을 GUI 이력·Screen 저장보다 먼저 기록한다. 대기 중에는 확정 전·후 Screen과 GUI 기록의 의도를 보관하고, 완료하면 작은 상태 요약만 유지한다. `GuiRecovery`가 추적 GUI·플립북·플로우·DATA를 조정하며 모든 단계가 끝나야 GUI 작업을 완료한다. 반영 대상 기록은 GUI 이력을 가져오기 전에 남기므로 가져오기 직후 중단돼도 다음 재시도 대상을 잃지 않는다. Screen 기록이 중간에 끊기면 저장한 의도로 이어 쓰되 이후 다른 사용자의 변경은 덮어쓰지 않는다. 재시도 시 실제 복사할 원본 지문을 확정 기록과 비교한다. 목록에는 `retryableDeliveries()`의 실행 가능한 작업만 보내고 의도 스냅샷은 보내지 않는다. 추적 GUI 교체 후 노드 ID 저장 전에 중단되면 전체 페이지 재조회로 기존 추적 ID·시각을 새 노드에 다시 연결한다. GUI 복사본의 원천은 GUI 원본 프레임이며 외부 서버를 거치지 않는다.
+플립북 반영은 `dlv:`의 `pending → applying → done/failed` 상태로 추적한다. GUI 배포에는 화면별 `gdl:` 작업을 GUI 이력·Screen 저장보다 먼저 기록한다. 대기 중에는 확정 전·후 Screen과 GUI 기록의 의도를 보관하고, 완료하면 작은 상태 요약만 유지한다. `GuiRecovery`가 추적 GUI·플립북·플로우를 조정하며 모든 단계가 끝나야 GUI 작업을 완료한다. 반영 대상 기록은 GUI 이력을 가져오기 전에 남기므로 가져오기 직후 중단돼도 다음 재시도 대상을 잃지 않는다. Screen 기록이 중간에 끊기면 저장한 의도로 이어 쓰되 이후 다른 사용자의 변경은 덮어쓰지 않는다. 재시도 시 실제 복사할 원본 지문을 확정 기록과 비교한다. 목록에는 `retryableDeliveries()`의 실행 가능한 작업만 보내고 의도 스냅샷은 보내지 않는다. 추적 GUI 교체 후 노드 ID 저장 전에 중단되면 전체 페이지 재조회로 기존 추적 ID·시각을 새 노드에 다시 연결한다. GUI 복사본의 원천은 GUI 원본 프레임이며 외부 서버를 거치지 않는다.
 
 ## 응답성 및 변경 시 유의점
 
@@ -134,7 +134,7 @@ UI Flipbook의 현재 화면 흐름은 **플립북 만들기, GUI 갱신 알림,
 - `startApp()`은 종료 함수를 반환한다. 종료 시 이벤트 리스너·ResizeObserver·예약 타이머·미리보기 URL을 정리하고 뒤늦게 온 메시지는 무시한다. 튜토리얼은 예시 앱을 닫을 때 이 함수를 호출한다. `Bridge.listen()`은 구독 해제 함수를 반환할 수 있다.
 - 진행 표시를 보내는 요청은 최상위 `Controller.handle()`에서 종료한다. 처음부터 진행 문구가 있는 요청뿐 아니라 내부 자동 반영이 가능한 `scanUi`·`refreshList`·`followFlipbook`도 성공·실패·취소 후 해제한다. 목록 새로고침에서 이미 읽은 프레임 맵은 이어지는 반영 세션에 전달하고 Host가 노드·페이지·표식을 재검사한 뒤 사용한다.
 - 화면 지문 규칙을 바꾸면 `FINGERPRINT_VERSION`과 구형 기준 비교 경로를 함께 검토한다. 템플릿의 플러그인 관리 영역을 바꾸면 `figma/template.ts`의 표식 탐색과 이전 형식 가져오기(`importNamedTemplate`·`importNamedFrame`), `figma/flipbook.ts`의 동기화와 UI 작성 영역 제외 규칙을 함께 확인한다.
-- `sharedPluginData` 키나 모델을 바꿀 때 `store.ts`의 로딩·호환 경로, `wire.ts`의 UI 직렬화, DATA 모델, 미리보기 Host를 함께 확인한다. 기존 데이터는 전체 자동 마이그레이션하지 않는다.
+- `sharedPluginData` 키나 모델을 바꿀 때 `store.ts`의 로딩·호환 경로, `wire.ts`의 UI 직렬화, 미리보기 Host를 함께 확인한다. 기존 데이터는 전체 자동 마이그레이션하지 않는다.
 
 ## 로컬 확인
 
@@ -144,7 +144,7 @@ GUI 붙이기와 플로우 편집기의 화면 목록은 `src/ui/screenPicker.ts
 
 ### 제목 변경 전용 경로
 
-`core/flipbooks.plannedFlipbookTitle`은 저장 없이 제목 변경을 계산한다. Controller는 `Host.prepareFlipbookTitle`로 대상·글꼴을 준비한 뒤 기록의 최신 rev를 확인한다. 준비 결과의 동기 `apply`로 제목 칸·프레임 이름을 바꾸고 이름 기록을 저장한다. 준비 실패는 기록을 바꾸지 않으며, 제목 쓰기 실패는 스냅샷으로 복원한다. 전체 `deliverFlipbooks`와 DATA 렌더는 실행하지 않는다.
+`core/flipbooks.plannedFlipbookTitle`은 저장 없이 제목 변경을 계산한다. Controller는 `Host.prepareFlipbookTitle`로 대상·글꼴을 준비한 뒤 기록의 최신 rev를 확인한다. 준비 결과의 동기 `apply`로 제목 칸·프레임 이름을 바꾸고 이름 기록을 저장한다. 준비 실패는 기록을 바꾸지 않으며, 제목 쓰기 실패는 스냅샷으로 복원한다. 전체 `deliverFlipbooks`는 실행하지 않는다.
 
 ### 요청별 반영 범위
 

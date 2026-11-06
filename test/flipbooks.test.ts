@@ -8,7 +8,6 @@ import { chapterName, flipbookView } from '../src/core/flipbook.ts';
 import { flipbookHistoryRows } from '../src/core/history.ts';
 import { acknowledgeChange, buildPlan, commitPlan } from '../src/core/publish.ts';
 import { keys, memoryKV, Store } from '../src/core/store.ts';
-import { dataModel } from '../src/core/data.ts';
 import { arrangeFlipbooks, buildList } from '../src/core/list.ts';
 import { changeDetected, classify, entryName, ignoreBlock, uncheckedEntries, uiEntries, type Entry } from '../src/core/compare.ts';
 import { clearAutoCaseCode, clearFill, defaultDraft, draftCode, draftName, fillCaseCode, fillFromScreen, isPrevious, isUnpublish, mergesInto, suggestedCaseCode, validateDraft, type Draft } from '../src/core/drafts.ts';
@@ -397,12 +396,11 @@ test('관리에서 지정한 UI 페이지만 플립북 만들기 요청을 받�
   assert.deepEqual(controller.store.state.project.flipbookPageIds, ['ui-a', 'ui-b']);
 });
 
-test('이전 버전의 Screen ID 없는 저장 데이터도 실행 목록과 DATA 페이지에 표시한다', () => {
+test('이전 버전의 Screen ID 없는 저장 데이터도 실행 목록에 표시한다', () => {
   const old = { id: 'old', name: '이전 화면', categoryId: null, status: 'active', source: { nodeId: '1:1', pageId: '0:1' }, guiVersion: 0, guiTag: null };
   const other = { ...old, id: 'other', name: '다른 화면', source: { nodeId: '1:2', pageId: '0:1' } };
   const store = new Store(memoryKV({ 'scr:old': JSON.stringify(old), 'scr:other': JSON.stringify(other) }));
   assert.deepEqual(uncheckedEntries(store.state).map(x => x.frame?.name), ['이전 화면', '다른 화면']);
-  assert.deepEqual(dataModel(store.state, actor, 0).screens.map(x => x.name).sort(), ['다른 화면', '이전 화면']);
 });
 
 test('플립북 만들기 표의 행마다 플립북을 만든다. 화면을 비워도 만들고(제목 기본값 「새 플립북」, Section 기본값 미분류), 여러 화면은 선택 순서와 크기대로', () => {
@@ -1111,8 +1109,6 @@ test('플립북 만들기에서 새 행이 잘못되면 기존 플립북도 옮�
       moved.push(move.flipbookId);
       return true;
     },
-    ensureDataPage: async () => 'data',
-    renderData: async () => {},
   } as unknown as Host;
   const controller = new Controller(host);
   const section = { key: 'custom', name: '새 Section', order: 1 };
@@ -1166,7 +1162,6 @@ test('캔버스에서 다른 Section·페이지로 옮긴 플립북은 기록이
     syncChapters: async (items: { flipbookId: string; pageId: string; name: string }[]) => {
       for (const item of items) synced.push([item.flipbookId, item.pageId, store.readFresh<Flipbook>(keys.flipbook(item.flipbookId))!.category.key, item.name]);
     },
-    ensureDataPage: async () => 'data', renderData: async () => {},
   } as unknown as Host;
   const controller = new Controller(host);
   await controller.handle({ type: 'ready' });
@@ -1212,7 +1207,6 @@ test('플립북을 반영할 때 플립북 페이지는 한 번만 읽고 찾은
     listFlipbooks: async () => new Map(),
     beginDelivery: (map?: Map<string, string>) => { known.push(map); },
     syncFlipbook: async () => ({ nodeId: '1:1', notes: [] }),
-    ensureDataPage: async () => 'data', renderData: async () => {},
   } as unknown as Host;
   const controller = new Controller(host);
   await controller.deliverFlipbooks({}, { targets: ['fb1'], onlyTargets: true });
@@ -1264,7 +1258,7 @@ test('GUI Publish의 반영은 반영할 플립북이 기록된 페이지만 읽
   }
 });
 
-test('GUI 확정은 플립북을 반영한 뒤 「DATA 페이지 갱신 중」을 띄우고 DATA 페이지를 한 번만 그린다', async () => {
+test('GUI 확정은 DATA 페이지 갱신 없이 플립북 반영을 마친다', async () => {
   const { store, screenId, frame } = seeded();
   store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['0:2'], dataPageId: 'data' });
   const [fb] = planFlipbooks({ pageId: '0:2', rows: [row([screenId])] }, guiScreens(store.state), actor, 2000, () => 'fb1');
@@ -1286,8 +1280,6 @@ test('GUI 확정은 플립북을 반영한 뒤 「DATA 페이지 갱신 중」�
     inspectFlipbooks: async () => ({ found: new Map([['fb1', '2:1']]), spots: {} }),
     listFlipbooks: async () => new Map(),
     syncFlipbook: async () => { steps.push('sync'); return { nodeId: '2:1', notes: [] }; },
-    ensureDataPage: async () => 'data',
-    renderData: async () => { steps.push('data'); },
   } as unknown as Host;
   const controller = new Controller(host);
   await controller.handle({ type: 'scan' });
@@ -1298,10 +1290,8 @@ test('GUI 확정은 플립북을 반영한 뒤 「DATA 페이지 갱신 중」�
   steps.length = 0;
   await controller.handle({ type: 'commit', batchId: plan.batchId });
   assert.deepEqual(posted.filter(m => m.type === 'error'), []);
-  assert.equal(steps.filter(step => step === 'data').length, 1, 'DATA 페이지는 확정 마지막에 한 번만 그린다');
-  const sync = steps.indexOf('sync');
-  const label = steps.indexOf(COPY.controller005);
-  assert.ok(sync >= 0 && label > sync && steps.indexOf('data') > label, `플립북 반영 → 「DATA 페이지 갱신 중」 → DATA: ${steps.join(' / ')}`);
+  assert.ok(steps.includes('sync'));
+  assert.ok(!steps.includes(COPY.controller005), 'no DATA rendering stage');
   assert.equal(controller.store.state.flipbooks.get('fb1')?.screens[0].version, 2, '플립북은 새 버전을 받는다');
 });
 
@@ -1326,7 +1316,6 @@ test('캔버스 선택으로는 목록을 다시 읽지 않고, 새로고침으�
     listFlipbooks: async () => new Map(),
     syncFlipbook: async (_: unknown, view: { flipbookId: string }) => { synced.push(view.flipbookId); return { nodeId: '1:1', notes: [] }; },
     syncChapters: async (items: unknown[]) => { chapters.push(...items); },
-    ensureDataPage: async () => 'data', renderData: async () => {},
   } as unknown as Host;
   const controller = new Controller(host);
   await controller.handle({ type: 'ready' });
@@ -1370,8 +1359,6 @@ test('캔버스에서 바꾼 Section 이름을 플러그인을 열 때 그 Secti
     listFlipbooks: async () => new Map([['fb1', '1:1'], ['fb2', '1:2']]),
     syncFlipbook: async () => { throw new Error('Section rename must not deliver full books'); },
     syncChapters: async (items: { flipbookId: string; name: string }[]) => { chapters.push(...items.map(item => [item.flipbookId, item.name] as [string, string])); },
-    ensureDataPage: async () => 'data',
-    renderData: async () => {},
   } as unknown as Host;
   const controller = new Controller(host);
   await controller.handle({ type: 'ready' });

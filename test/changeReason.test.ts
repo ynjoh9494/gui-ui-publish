@@ -65,8 +65,6 @@ function setup(initial = snapshot(), legacyBase?: string) {
     tagSource: async () => {},
     listFlipbooks: async () => new Map(),
     inspectFlipbooks: async () => ({ found: new Map(), spots: {} }),
-    ensureDataPage: async () => 'data',
-    renderData: async () => {},
   } as unknown as Host;
   const controller = new Controller(host);
   // UI처럼 마지막 목록에 그 뒤에 온 변경 근거를 붙인다.

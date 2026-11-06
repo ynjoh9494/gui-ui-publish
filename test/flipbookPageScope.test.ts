@@ -37,7 +37,6 @@ async function setup(pageCount = 3) {
       frames.get(move.flipbookId)!.spot = { pageId: move.pageId, section: move.category.key, sectionIndex: 0, index: 1 };
       return true;
     },
-    ensureDataPage: async () => 'data', renderData: async () => { writes.push('data'); },
   } as unknown as Host;
   const controller = new Controller(host);
   await controller.handle({ type: 'ready' });

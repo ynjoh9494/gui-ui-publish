@@ -54,7 +54,6 @@ function fixture(confirmed = true) {
     inspectFlipbooks: async () => ({ found: new Map([['fb', 'frame']]), spots: {} }), templateIssues: async () => [],
     syncFlipbook: async (_settings: Parameters<Host['syncFlipbook']>[0], view: Parameters<Host['syncFlipbook']>[1]) => { hit('flipbook'); syncs++; for (const row of view.rows) appended.set(row.key, row); return { nodeId: 'frame', notes: [], tracked: true }; },
     updateFlow: async () => { hit('flow'); return 1; },
-    ensureDataPage: async () => 'data', renderData: async () => { hit('data'); },
   } as unknown as Host;
   return { store, kv, host, before, after, record, posted, appended, fail: (stage: string) => { failure = stage; }, changeSource: () => { fingerprint = 'unpublished edit'; }, counts: () => ({ copies, syncs }) };
 }
@@ -84,7 +83,7 @@ test('추가할 행은 GUI 원기록에서 배포별 한 줄로 묶고 오래된
   ]).map(row => row.key), ['GUI:b2', 'GUI:b3']);
 });
 
-for (const stage of ['copies', 'flipbook', 'flow', 'data', 'incomplete']) test(`GUI ${stage} 중단 후 재실행은 버전·이력을 중복하지 않고 미완료 반영을 마친다`, async () => {
+for (const stage of ['copies', 'flipbook', 'flow', 'incomplete']) test(`GUI ${stage} 중단 후 재실행은 버전·이력을 중복하지 않고 미완료 반영을 마친다`, async () => {
   const f = fixture();
   f.fail(stage);
   await new Controller(f.host).handle({ type: 'retry' });
@@ -300,7 +299,8 @@ test('미반영 재시도는 원본 확인 개수와 단계를 진행 표시로 
   await new Controller(f.host).handle({ type: 'retry' });
   const labels = f.posted.filter(m => m.type === 'busy').map(m => (m as { label: string | null }).label);
   assert.equal(labels[0], COPY.recoveryRunning);
-  for (const label of [`${COPY.recoveryChecking} 1/1`, COPY.recoveryCopies, COPY.recoveryFlows, COPY.controller005]) assert.ok(labels.includes(label), label);
+  for (const label of [`${COPY.recoveryChecking} 1/1`, COPY.recoveryCopies, COPY.recoveryFlows]) assert.ok(labels.includes(label), label);
+  assert.ok(!labels.includes(COPY.controller005), 'DATA rendering is no longer part of recovery');
 });
 
 test('미완료 목록은 같은 대상의 기록을 한 줄로 묶고 최근 상태를 이유로 쓴다', () => {

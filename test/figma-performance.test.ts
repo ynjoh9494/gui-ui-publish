@@ -3,9 +3,7 @@ import { test } from 'node:test';
 import { figmaHost } from '../src/figma/host.ts';
 import { Snapshotter } from '../src/figma/snapshot.ts';
 import { createFingerprintReader } from '../src/figma/fingerprints.ts';
-import { renderDataPage } from '../src/figma/data.ts';
 import { fitSection, makeRoom, placeFrame, recolorTagFills, syncMarkedRows, templateProblems, type TagKit } from '../src/figma/flipbook.ts';
-import type { DataModel } from '../src/core/data.ts';
 import type { FlipbookRow } from '../src/core/flipbook.ts';
 import { Store, memoryKV } from '../src/core/store.ts';
 import { managedPages, normalizeManagedPageNames } from '../src/figma/managedPages.ts';
@@ -114,93 +112,6 @@ test('원기록이 그대로면 저장소 상태를 재구축하지 않고 외�
   store.reload();
   assert.notEqual(store.state, afterPut);
   assert.equal(store.state.categories.get('b')?.name, 'B');
-});
-
-test('DATA 증분 갱신은 같은 행을 유지하고 변경·삭제·수동 재생성을 반영한다', async () => {
-  const m = mockFigma();
-  const ns = 'test';
-  const model: DataModel = {
-    generatedAt: 'now', actor: { id: 'u', name: 'User' }, history: [],
-    screens: ['a', 'b'].map(id => ({ id, name: id, category: 'Category', base: '', status: '사용', sourceNodeId: null,
-      gui: 'GUI v1', guiTag: null, ui: '-', uiTag: null, delivery: '-' })),
-  };
-  await renderDataPage(ns, m.page.id, model);
-  const table = () => m.page.children.find(n => n.getSharedPluginData(ns, 'role') === 'data-summary')!;
-  const a = table().children[2], b = table().children[3];
-  const count = m.all.length;
-  await renderDataPage(ns, m.page.id, { ...model, generatedAt: 'later' });
-  assert.equal(m.all.length, count, 'unchanged refresh creates no nodes');
-  assert.equal(table().children[2], a);
-  assert.equal(m.searches(), 0, 'DATA refresh does not search for preserved images');
-  const changed = { ...model, screens: [{ ...model.screens[0], name: 'renamed' }] };
-  await renderDataPage(ns, m.page.id, changed);
-  assert.equal(a.removed, true);
-  assert.equal(b.removed, true);
-  assert.equal(table().children.length, 3);
-  const before = table();
-  await renderDataPage(ns, m.page.id, changed, true);
-  assert.equal(before.removed, true);
-  assert.notEqual(table(), before);
-  await renderDataPage(ns, m.page.id, { ...model, screens: [] });
-  assert.equal(table().children[2].characters, '기록 없음');
-});
-
-test('DATA 글꼴 변경 전후 표를 재생성하지 않고 기존 행을 유지한다', async () => {
-  const m = mockFigma(), ns = 'test';
-  const model: DataModel = { generatedAt: 'now', actor: { id: 'u', name: 'User' }, screens: [], history: [] };
-  await renderDataPage(ns, m.page.id, model);
-  const tables = [...m.page.children];
-  tables[0].setSharedPluginData(ns, 'tableVersion', '1');
-  tables[1].setSharedPluginData(ns, 'tableVersion', '2');
-  const rows = tables.map(t => t.children[2]);
-  const note = tables[0].children[0].children[1];
-  note.fontName = { family: 'Pretendard', style: 'Regular' };
-  let value = note.characters;
-  Object.defineProperty(note, 'characters', {
-    get: () => value,
-    set: (next: string) => {
-      assert.equal(note.fontName.family, 'Inter', 'load Inter before updating the note');
-      value = next;
-    },
-  });
-  const count = m.all.length;
-  await renderDataPage(ns, m.page.id, { ...model, generatedAt: 'later' });
-  assert.deepEqual(m.page.children, tables);
-  assert.deepEqual(tables.map(t => t.children[2]), rows);
-  assert.equal(m.all.length, count);
-  assert.ok(tables.every(t => !t.removed));
-});
-
-test('원본 프레임이 지워진 화면은 링크 없이 그리고 나머지 행은 링크를 건다', async () => {
-  const m = mockFigma();
-  const ns = 'test';
-  const source = m.make('FRAME', 'source');
-  const linked: string[] = [];
-  const live = (id: string) => m.all.find(n => n.id === id && !n.removed) ?? null;
-  // 원본 노드를 미리 찾으면 dynamic-page에서 원본 페이지를 모두 불러오므로 DATA 페이지 외에는 찾지 않는다.
-  const lookups: string[] = [];
-  Object.assign((globalThis as unknown as { figma: object }).figma, { getNodeByIdAsync: async (id: string) => { lookups.push(id); return live(id); } });
-  // 실제 Figma처럼 없는 노드에 링크를 걸면 예외를 던진다.
-  Node.prototype.setRangeHyperlink = (_s: number, _e: number, link: { value: string }) => {
-    if (!live(link.value)) throw new Error('in setRangeHyperlink: Invalid hyperlink target node specified');
-    linked.push(link.value);
-  };
-  try {
-    const model: DataModel = {
-      generatedAt: 'now', actor: { id: 'u', name: 'User' }, history: [],
-      screens: [['kept', source.id], ['gone', '999:1']].map(([id, nodeId]) => ({ id, name: id, category: 'Category', base: '', status: '사용',
-        sourceNodeId: nodeId, gui: 'GUI v1', guiTag: null, ui: '-', uiTag: null, delivery: '-' })),
-    };
-    await renderDataPage(ns, m.page.id, model);
-    assert.deepEqual(linked, [source.id]);
-    assert.deepEqual(lookups.filter(id => id !== m.page.id), [], 'source frames are not looked up');
-    const table = m.page.children.find(n => n.getSharedPluginData(ns, 'role') === 'data-summary')!;
-    assert.equal(table.children.length, 4);
-    const history = m.page.children.find(n => n.getSharedPluginData(ns, 'role') === 'data-history')!;
-    assert.deepEqual([history.x, history.y], [table.width + 120, 0], 'history sits beside the summary');
-  } finally {
-    Node.prototype.setRangeHyperlink = () => {};
-  }
 });
 
 // 이력 행(2026-11-02 이름 규칙을 없앤 뒤): 이력 행 컴포넌트의 인스턴스(컴포넌트의 'row' 표식을 이어받음)만 다루고 시스템 행은 둔다.
@@ -420,7 +331,7 @@ test('자동 관리 페이지는 역할 표식으로만 이름을 통일하고 I
   normalizeManagedPageNames('test');
   assert.equal(ordinary.name, 'DATA');
   assert.deepEqual(managedPages('test'), [
-    { id: 'data-id', name: COPY.figmaData001, kind: 'data' },
+    { id: 'data-id', name: 'DATA', kind: 'data' },
     { id: 'thumb-id', name: COPY.figmaLayers001, kind: 'thumbs' },
   ]);
 });

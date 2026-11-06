@@ -111,7 +111,6 @@ export type AdminOp =
   | { op: 'exclude'; nodeId: string; name: string; reason: string }
   | { op: 'unexclude'; id: string }
   | { op: 'setScope'; pageIds: string[] }
-  | { op: 'setDataPage'; pageId: string; reason: string }
   | { op: 'setFlipbookPage'; pageId: string }
   | { op: 'setFlipbookPages'; pageIds: string[] }
   // 템플릿 목록(대표 지정): 새 페이지에 기본 템플릿을 만들어 대표로 두고, 캔버스에서 고른 프레임을 목록에 더하고, 대표를 바꾸거나 목록에서 뺀다.
@@ -172,7 +171,6 @@ export type ToMain =
   | { type: 'commit'; batchId: string; quiet?: boolean; skipLayers?: boolean }
   | { type: 'cancelPlan'; batchId: string }
   | { type: 'retry'; batchId?: string; reconcile?: boolean }
-  | { type: 'refreshData' }
   | { type: 'createThumbnailPage' }
   // 플러그인 데이터 전체 초기화(관리 탭 Danger Zone)
   | { type: 'resetData' }

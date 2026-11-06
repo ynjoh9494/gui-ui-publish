@@ -2381,7 +2381,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         <div class="inline"><input type="number" data-f="width" data-input="admin-gui-width" min="${GUI_WIDTH_MIN}" max="${GUI_WIDTH_MAX}" step="1" value="${s.project.guiWidth}" aria-label="${COPY.uiApp226}"><button data-action="admin-gui-width">${COPY.uiApp110}</button></div>
         <p class="note gui-width-sizes">${guiWidthSizes(s.project.guiWidth)}</p>
         <p class="note">${COPY.uiApp227} ${COPY.uiApp228}</p></section>
-      ${renderDataSection(s)}
+      ${renderAutomaticPages()}
       ${renderUpdateSection()}
       <section class="admin" data-form="exclusions"><h3>${COPY.uiApp120}</h3>
         ${exclusions.length ? exclusions.map(e => `<div class="inline" data-form="exc" data-id="${e.id}"><span>${esc(e.name)}</span><small>${esc(e.reason)}</small><button data-action="admin-unexclude">${COPY.uiApp121}</button></div>`).join('') : `<p class="note">${COPY.uiApp122}</p>`}</section>
@@ -2895,24 +2895,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     row.classList.toggle('dirty', !!c && (name.value.trim() !== c.name || code.value.trim() !== (c.code ?? '')));
   }
 
-  // 공유 DATA 페이지 연결과 표시 갱신 상태. 갱신 실패는 확정 기록과 별개로 표시한다.
-  function renderDataSection(s: State): string {
-    const pageId = s.project.dataPageId;
-    const status = s.dataStatus;
-    const offset = s.project.utcOffsetMinutes;
-    const name = pageId ? pages.find(p => p.id === pageId)?.name ?? `${COPY.uiApp134} ${pageId}` : null;
-    const failed = status?.error && (!status.renderedAt || (status.failedAt ?? 0) > status.renderedAt);
-    const lines = [
-      name ? `${COPY.uiApp135} ${esc(name)}` : COPY.uiApp136,
-      status?.renderedAt ? `${COPY.uiApp137} ${esc(formatTime(status.renderedAt, offset))} · ${esc(status.actor.name)}` : '',
-      failed ? `<span class="bad">${COPY.uiApp138} ${esc(formatTime(status!.failedAt!, offset))}: ${esc(status!.error)}</span>` : '',
-    ].filter(Boolean);
-    return `<section class="admin" data-form="automatic-pages"><h3>${COPY.adminAutoPages}</h3><p class="note">${COPY.adminAutoHint}</p><div class="managed-page-card" data-form="data"><h4>${COPY.adminDataTitle}</h4>
-      ${lines.map(l => `<p class="note">${l}</p>`).join('')}
-      <button data-action="data-refresh">${pageId ? COPY.uiApp142 : COPY.uiApp143}</button>
-      <div class="inline"><select data-f="page" aria-label="${COPY.uiApp144}">${pages.map(p => option(p.id, p.name, p.id === pageId)).join('')}</select>
-        <button data-action="admin-data-connect">${COPY.uiApp145}</button></div>
-      <p class="note">${COPY.uiApp146}</p>${pageId ? `<button data-action="managed-page-open" data-id="${esc(pageId)}">${COPY.adminPageOpen}</button>` : ''}</div>
+  // GUI 썸네일 보관 페이지를 만들거나 연다.
+  function renderAutomaticPages(): string {
+    return `<section class="admin" data-form="automatic-pages"><h3>${COPY.adminAutoPages}</h3>
       <div class="managed-page-card" data-form="thumbnails"><h4>${COPY.adminThumbTitle}</h4><p class="note">${COPY.adminThumbHint}</p>
       ${(() => { const page = managedPages.find(p => p.kind === 'thumbs'); return page ? `<p class="managed-page-name">${esc(page.name)}</p><button data-action="managed-page-open" data-id="${esc(page.id)}">${COPY.adminPageOpen}</button>` : `<p class="note">${COPY.adminNotCreated}</p><button data-action="thumb-page-create">${COPY.adminThumbCreate}</button>`; })()}</div></section>`;
   }
@@ -3533,7 +3518,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'recovery-toggle': recoveryOpen = !recoveryOpen; renderRecovery(); break;
       case 'managed-page-open': if (el.dataset.id) bridge.send({ type: 'revealNode', nav: ++navSeq, nodeId: el.dataset.id }); break;
       case 'thumb-page-create': bridge.send({ type: 'createThumbnailPage' }); break;
-      case 'data-refresh': bridge.send({ type: 'refreshData' }); break;
       case 'reset-data':
         if (!resetArmed) { resetArmed = true; renderDetail(); break; }
         resetArmed = false;
@@ -3698,11 +3682,6 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         }
         deleteArmed = null;
         admin({ op: 'setCategoryActive', id, active: false });
-        break;
-      }
-      case 'admin-data-connect': {
-        const pageId = formValue(el, 'page');
-        if (pageId && pageId !== state?.project.dataPageId) admin({ op: 'setDataPage', pageId, reason: COPY.uiApp171 });
         break;
       }
       case 'admin-scope-remove': {

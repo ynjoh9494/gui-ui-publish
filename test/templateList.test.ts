@@ -79,7 +79,6 @@ test('관리에서 템플릿을 더하고 대표를 바꾸고 빼면 저장하�
     inspectFlipbooks: async () => ({ found: new Map([['fb1', '1:1']]), spots: { '1:1': { pageId: 'ui', section: 'home', sectionName: '홈', sectionIndex: 0, index: 0 } } }),
     listFlipbooks: async () => new Map(),
     syncFlipbook: async (s: { templateId: string; fallbackTemplateIds?: string[] }) => { settings.push(s); return { nodeId: '1:1', notes: [] }; },
-    ensureDataPage: async () => 'data', renderData: async () => {},
   } as unknown as Host;
   const controller = new Controller(host);
   const lastInfo = () => (posted.filter(m => m.type === 'templateInfo').slice(-1)[0] as Extract<ToUi, { type: 'templateInfo' }> | undefined)?.info?.id;

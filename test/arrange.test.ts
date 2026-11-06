@@ -112,7 +112,6 @@ test('항목마다 페이지·Section·자리를 정해 만들고, 같은 요청
       return { nodeId: `n:${view.flipbookId}`, notes: [] };
     },
     uiFingerprint: async () => ({ fingerprint: null, error: null }),
-    ensureDataPage: async () => 'data', renderData: async () => {},
   } as unknown as Host;
   const controller = new Controller(host);
   const policy = { key: POLICY_CATEGORY_KEY, name: '정책', order: 1 };
@@ -141,8 +140,6 @@ test('항목마다 페이지·Section·자리를 정해 만들고, 같은 요청
   host.templateIssues = unexpected;
   host.listFlipbooks = unexpected;
   host.flipbookSpots = unexpected;
-  host.renderData = unexpected;
-  host.ensureDataPage = unexpected;
   await controller.handle({ type: 'renameFlipbook', id: made[0].id, title: '첫 정책' });
   assert.deepEqual(views, []);
   assert.deepEqual(renamed.map(v => [v.flipbookId, v.title, v.nodeId]), [[made[0].id, '첫 정책', `n:${made[0].id}`]]);
@@ -176,7 +173,6 @@ test('목록에서 옮긴 기존 플립북을 목록 순서대로 캔버스에�
     syncFlipbook: async () => { throw new Error('move must not deliver a full flipbook'); },
     syncChapters: async (items: { flipbookId: string }[]) => { synced.push(...items.map(item => item.flipbookId)); },
     uiFingerprint: async () => ({ fingerprint: null, error: null }),
-    ensureDataPage: async () => 'data', renderData: async () => {},
   } as unknown as Host;
   const controller = new Controller(host);
   // 다른 페이지로 옮기는 요청에 플립북 페이지가 아닌 페이지가 있으면 아무것도 옮기지 않는다.
