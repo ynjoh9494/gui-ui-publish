@@ -53,10 +53,11 @@ class Node {
   clone(): Node {
     const copy = new Node(this.type, this.name);
     Object.assign(copy, { x: this.x, y: this.y, width: this.width, height: this.height, visible: this.visible, locked: this.locked, explicitVariableModes: { ...this.explicitVariableModes } });
-    for (const key of ['layoutSizingHorizontal', 'layoutSizingVertical', 'stuck', 'characters', 'fontName']) if (key in this) copy[key] = this[key];
+    for (const key of ['layoutSizingHorizontal', 'layoutSizingVertical', 'stuck', 'characters', 'fontName', 'layoutMode', 'layoutPositioning', 'constraints', 'resetAbsoluteOnClone', 'resetAbsoluteOnDetach']) if (key in this) copy[key] = this[key];
     this.data.forEach((v, k) => copy.data.set(k, v));
     this.children.forEach(c => copy.appendChild(c.clone()));
     (this.parent ?? page).appendChild(copy);
+    if (this.resetAbsoluteOnClone) for (const n of copy.all()) if (n.layoutPositioning === 'ABSOLUTE') { n.layoutPositioning = 'AUTO'; n.x = 17; n.y = 29; n.width += 20; n.height += 20; }
     return copy;
   }
   detachInstance(): Node {
@@ -65,6 +66,17 @@ class Node {
     for (let p = this.parent; p; p = p.parent) if (p.type === 'INSTANCE') throw new Error('nested instance');
     detached.push(this.name);
     detachedModes.push({ name: this.name, modes: { ...this.explicitVariableModes } });
+    if (this.resetAbsoluteOnDetach) {
+      // 분리 후 하위 ID·객체가 바뀌고 중첩 인스턴스의 절대 위치가 풀리는 경우.
+      const replacement = this.clone();
+      this.parent!.insertChild(this.parent!.children.indexOf(this), replacement);
+      this.remove();
+      replacement.type = 'FRAME';
+      for (const n of [replacement, ...replacement.all()]) if (n.layoutPositioning === 'ABSOLUTE') {
+        n.layoutPositioning = 'AUTO'; n.x = 17; n.y = 29; n.width += 20; n.height += 20;
+      }
+      return replacement;
+    }
     this.type = 'FRAME';
     return this;
   }
@@ -592,4 +604,76 @@ test('오토 레이아웃 부모 아래 절대 위치 레이어는 줄인 뒤에
   root.rescale = () => { root.width = 200; root.height = 100; badge.layoutPositioning = 'AUTO'; badge.width = 20; badge.height = 10; };
   await rescaleExact(root as unknown as FrameNode, 0.5);
   assert.deepEqual([badge.layoutPositioning, badge.x, badge.y], ['ABSOLUTE', 50, 5]);
+});
+
+// The reported structure: Frame > Thumbnail Item (vertical instance) > Interaction (absolute instance).
+for (const stage of ['clone', 'detach', 'both']) for (const type of ['FRAME', 'INSTANCE', 'COMPONENT']) for (const scale of [1, 0.49]) {
+  test(`Interaction survives clone/detach with new IDs: ${stage}, ${type}, scale=${scale}`, async () => {
+    setup();
+    const interaction = Object.assign(new Node('INSTANCE', 'Interaction'), {
+      width: 220, height: 220, x: 0, y: 0, layoutMode: 'NONE', layoutPositioning: 'ABSOLUTE',
+      layoutSizingHorizontal: 'FIXED', layoutSizingVertical: 'FIXED',
+      constraints: { horizontal: 'STRETCH', vertical: 'STRETCH' }, resetAbsoluteOnDetach: stage !== 'clone',
+    });
+    const thumbnail = Object.assign(new Node('INSTANCE', 'Thumbnail Item'), {
+      width: 220, height: 220, layoutMode: 'VERTICAL', resetAbsoluteOnDetach: stage !== 'clone',
+    }).add(new Node('TEXT', 'Content'), interaction);
+    const source = Object.assign(new Node(type, 'Screen'), {
+      width: 220, height: 220, layoutMode: 'NONE', resetAbsoluteOnClone: stage !== 'detach', resetAbsoluteOnDetach: stage !== 'clone',
+    }).add(thumbnail);
+    page.appendChild(source);
+    const before = [interaction.id, interaction.layoutPositioning, interaction.width, interaction.height, interaction.x, interaction.y];
+    const holder = new Node('FRAME', 'Staging');
+    const copy = await copyLayers('ns', source as unknown as SceneNode, holder as unknown as FrameNode, 's@1', 'GUI') as unknown as Node;
+    if (scale !== 1) await rescaleExact(copy as unknown as FrameNode, scale);
+    const result = copy.all().find(n => n.name === 'Interaction')!;
+    assert.notEqual(result.id, interaction.id);
+    assert.deepEqual([result.type, result.layoutPositioning, result.width, result.height, result.x, result.y],
+      ['FRAME', 'ABSOLUTE', 220 * scale, 220 * scale, 0, 0]);
+    assert.deepEqual(result.constraints, interaction.constraints);
+    assert.deepEqual([interaction.id, interaction.layoutPositioning, interaction.width, interaction.height, interaction.x, interaction.y], before);
+    assert.equal(copy.all().filter(n => n.type === 'INSTANCE').length, 0);
+    assert.equal(source.parent, page);
+  });
+}
+
+test('restore all absolute siblings before HUG parent reflows their STRETCH geometry', async () => {
+  setup();
+  const root = Object.assign(new Node('FRAME', 'Screen'), { layoutMode: 'VERTICAL', width: 220, height: 220 });
+  const siblings = ['Interaction', 'Overlay'].map(name => Object.assign(new Node('FRAME', name), {
+    layoutPositioning: 'ABSOLUTE', width: 220, height: 220, x: 0, y: 0,
+  }));
+  root.add(...siblings);
+  root.rescale = () => {
+    for (const sibling of siblings) {
+      let positioning = 'AUTO';
+      Object.defineProperty(sibling, 'layoutPositioning', {
+        get: () => positioning,
+        set: (next: string) => {
+          positioning = next;
+          // Removing a later AUTO sibling resizes the HUG parent and earlier STRETCH layers.
+          for (const peer of siblings) { peer.width = 17; peer.height = 29; peer.x = 3; peer.y = 5; }
+        },
+      });
+    }
+  };
+  await rescaleExact(root as unknown as FrameNode, 0.5);
+  for (const sibling of siblings)
+    assert.deepEqual([sibling.layoutPositioning, sibling.width, sibling.height, sibling.x, sibling.y], ['ABSOLUTE', 110, 110, 0, 0]);
+});
+
+test('copy preserves stale absolute geometry under a non-auto-layout parent without setting ABSOLUTE', async () => {
+  setup();
+  const badge = Object.assign(new Node('FRAME', 'Badge'), { layoutPositioning: 'ABSOLUTE', width: 40, height: 20, x: 100, y: 10 });
+  const source = Object.assign(new Node('FRAME', 'Screen'), { layoutMode: 'NONE' }).add(badge);
+  page.appendChild(source);
+  const clone = source.clone.bind(source);
+  source.clone = () => {
+    const result = clone();
+    figmaPositioning(result.children[0]);
+    return result;
+  };
+  const copy = await copyLayers('ns', source as unknown as SceneNode, new Node('FRAME') as unknown as FrameNode, 's@1', 'GUI') as unknown as Node;
+  assert.deepEqual([copy.children[0].layoutPositioning, copy.children[0].width, copy.children[0].height, copy.children[0].x, copy.children[0].y],
+    ['ABSOLUTE', 40, 20, 100, 10]);
 });

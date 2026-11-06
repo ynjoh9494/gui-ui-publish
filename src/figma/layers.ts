@@ -60,6 +60,39 @@ export const inAutoLayout = (node: SceneNode) => {
   return !!parent && 'layoutMode' in parent && parent.layoutMode !== 'NONE';
 };
 
+type AbsoluteGeometry = { node: SceneNode; x: number; y: number; width: number; height: number };
+type AbsoluteLayout = Omit<AbsoluteGeometry, 'node'> & { path: number[] };
+
+// 복제·인스턴스 생성·분리 전 원본을 기준으로 기록한다. 분리하면 ID가 바뀌므로 자식 순서 경로로 찾는다.
+// 루트 배치는 호출하는 쪽에서 정하므로 화면 내부만 기록한다.
+function absoluteLayout(root: SceneNode): AbsoluteLayout[] {
+  const result: AbsoluteLayout[] = [];
+  const visit = (parent: SceneNode, path: number[]) => {
+    if (!('children' in parent)) return;
+    parent.children.forEach((child, index) => {
+      path.push(index);
+      if ('layoutPositioning' in child && child.layoutPositioning === 'ABSOLUTE')
+        result.push({ path: [...path], x: child.x, y: child.y, width: child.width, height: child.height });
+      visit(child, path);
+      path.pop();
+    });
+  };
+  visit(root, []);
+  return result;
+}
+
+function restoreAbsolute(saved: AbsoluteGeometry[]): void {
+  // 모든 위치 방식을 먼저 복원한다. 뒤의 형제가 AUTO에서 빠지며 HUG 부모가 줄어도 앞의 STRETCH 복원이 흔들리지 않는다.
+  for (const { node } of saved)
+    if ('layoutPositioning' in node && inAutoLayout(node) && node.layoutPositioning !== 'ABSOLUTE') node.layoutPositioning = 'ABSOLUTE';
+  for (const { node, x, y, width, height } of saved) {
+    if (width >= 0.01 && height >= 0.01 && 'resizeWithoutConstraints' in node &&
+        (Math.abs(node.width - width) > 0.01 || Math.abs(node.height - height) > 0.01)) node.resizeWithoutConstraints(width, height);
+    node.x = x;
+    node.y = y;
+  }
+}
+
 const fixedSize = (n: SceneNode) => n.type !== 'TEXT' && n.type !== 'GROUP' && n.type !== 'BOOLEAN_OPERATION' && 'resizeWithoutConstraints' in n;
 
 // rescale은 고정 크기 오토레이아웃 프레임(안쪽 여백과 내용이 프레임보다 큰 경우 등)의 크기를 원본 비율과 다르게 다시 계산한다.
@@ -83,19 +116,14 @@ export async function rescaleExact(root: FrameNode, scale: number): Promise<stri
     const height = original.fixedHeight && Math.abs(n.height - original.height) > 0.01 ? original.height : n.height;
     if ((width !== n.width || height !== n.height) && width >= 0.01 && height >= 0.01) n.resizeWithoutConstraints(width, height);
   }
-  for (const { node, x, y, width, height } of absolute) {
-    // 오토 레이아웃이 꺼진 부모 아래 레이어는 위치 방식을 두고 크기·위치만 되돌린다.
-    if ('layoutPositioning' in node && inAutoLayout(node)) node.layoutPositioning = 'ABSOLUTE';
-    if (width >= 0.01 && height >= 0.01 && 'resizeWithoutConstraints' in node &&
-        (Math.abs(node.width - width) > 0.01 || Math.abs(node.height - height) > 0.01)) node.resizeWithoutConstraints(width, height);
-    node.x = x;
-    node.y = y;
-  }
+  // 오토 레이아웃이 꺼진 부모 아래 레이어는 위치 방식을 두고 크기·위치만 되돌린다.
+  restoreAbsolute(absolute);
   return missing;
 }
 
 // 원본을 복제해 holder에 넣고 컴포넌트 연결을 끊는다. 실패하면 만든 노드를 지운다.
 export async function copyLayers(ns: string, source: SceneNode, holder: FrameNode, key: string, name: string): Promise<FrameNode> {
+  const absolute = absoluteLayout(source);
   let current: SceneNode;
   if (source.type === 'COMPONENT') current = source.createInstance();
   else if (source.type === 'FRAME' || source.type === 'INSTANCE') current = source.clone();
@@ -107,6 +135,11 @@ export async function copyLayers(ns: string, source: SceneNode, holder: FrameNod
     if (current.type === 'INSTANCE') current = current.detachInstance();
     const copy = current as FrameNode;
     detachAll(copy);
+    // 축소하지 않는 복사도 복원한다. 부모부터 맞춰 STRETCH 자식의 크기 보정이 덮어쓰이지 않게 한다.
+    restoreAbsolute(absolute.map(saved => {
+      const node = saved.path.reduce<SceneNode>((parent, index) => (parent as SceneNode & ChildrenMixin).children[index], copy);
+      return { ...saved, node };
+    }));
     clearMarkers(ns, copy);
     await keepModes(source, copy);
     copy.name = name;
