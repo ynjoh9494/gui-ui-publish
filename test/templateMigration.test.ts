@@ -1,3 +1,4 @@
+import { sortTemplateMigrations } from '../src/core/templateMigration.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { findTemplateMigrations, migrateFlipbookTemplate } from '../src/figma/templateMigration.ts';
@@ -155,4 +156,11 @@ test('controller requires a fresh scan and checks template and revision, convert
   assert.equal(store.state.flipbooks.get('a')?.tracked, undefined);
   store.saveProject({ ...store.state.project, templateNodeId: 'other' });
   await assert.rejects(controller.convert(['a'], 'new'));
+});
+
+test('migration candidates sort by Screen ID with numeric order and unidentified items last', () => {
+  const item = (id: string, screenId?: string) => ({ id, screenId, nodeId: id, pageId: 'p', title: id, rev: 1, templateId: 'old' });
+  const input = [item('missing'), item('ten', 'ST_SE_010'), item('other', 'ST_VD_001'), item('two', 'ST_SE_002'), item('lower', 'st_se_003')];
+  assert.deepEqual(sortTemplateMigrations(input).map(i => i.id), ['two', 'lower', 'ten', 'other', 'missing']);
+  assert.equal(input[0].id, 'missing');
 });

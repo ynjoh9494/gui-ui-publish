@@ -1,3 +1,5 @@
+import { flipbookIdentity, unsavedPolicyIds } from './core/flipbookIdentity.ts';
+import { sortTemplateMigrations } from './core/templateMigration.ts';
 import { COPY } from './core/copy.ts';
 import { keys, type Store } from './core/store.ts';
 import type { TemplateMigrationCandidate, TemplateMigrationResult } from './core/templateMigration.ts';
@@ -13,10 +15,11 @@ export class TemplateMigrationController {
     this.store.reload();
     const { project, flipbooks } = this.store.state;
     if (!project.templateNodeId) throw new Error(COPY.controller053);
+    const policies = unsavedPolicyIds(this.store.state);
     const items = [...flipbooks.values()].filter(f => f.status === 'active' && found.has(f.id) && !!f.pageId)
-      .map(f => ({ id: f.id, title: f.title, rev: f.rev, nodeId: found.get(f.id)!, pageId: f.pageId! }));
+      .map(f => ({ id: f.id, title: f.title, screenId: flipbookIdentity(this.store.state, f, policies).screenId, rev: f.rev, nodeId: found.get(f.id)!, pageId: f.pageId! }));
     const candidates = await this.host.findTemplateMigrations?.(items, project.templateNodeId) ?? [];
-    this.scan = { templateId: project.templateNodeId, candidates };
+    this.scan = { templateId: project.templateNodeId, candidates: sortTemplateMigrations(candidates) };
     this.host.post({ type: 'templateMigrations', ...this.scan });
   }
   async convert(ids: string[], templateId: string): Promise<TemplateMigrationResult> {
