@@ -1,4 +1,5 @@
 import { findTemplateMigrations, migrateFlipbookTemplate } from './templateMigration.ts';
+import { selectedFlowRepairImages, flowRepairCells, restoreFlowImage } from './flowRepair.ts';
 import { thumbPage } from './thumbs.ts';
 import { managedPages, normalizeManagedPageNames } from './managedPages.ts';
 import { COPY } from '../core/copy.ts';
@@ -229,6 +230,7 @@ export function figmaHost(mode: Host['mode']): Host {
     templateItemNodes: (id, key) => templateItemNodes(id, key, NS),
     createDefaultTemplate: maxWidth => createDefaultTemplate(maxWidth, NS),
     ...(typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__ ? { findTemplateMigrations, migrateFlipbookTemplate } : {}),
+    ...(typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__ ? { selectedFlowRepairImages, flowRepairCells, restoreFlowImage } : {}),
     convertLegacyFlipbooks: input => convertLegacyFlipbooks(input, NS),
     scanCopies: (pageIds, uids) => scanCopies(NS, pageIds, uids),
     updateCopies: items => updateCopies(NS, items),

@@ -1,4 +1,6 @@
 import { TemplateMigrationController } from './templateMigrationController.ts';
+import { FlowRepairController } from './flowRepairController.ts';
+import { FLOW_REPAIR_COPY } from './core/flowRepairCopy.ts';
 import { TEMPLATE_MIGRATION_COPY } from './core/templateMigrationCopy.ts';
 import { digestFingerprint, NO_RECORD, UNKNOWN, type ChangeReason, type DigestRequest, type PreviousReason } from './core/changeDigest.ts';
 import { flipbookIdentity, unsavedPolicy, unsavedPolicyIds, withFlipbookId } from './core/flipbookIdentity.ts';
@@ -53,6 +55,7 @@ function carried(frame: ScannedFrame, before: ScannedFrame): ScannedFrame {
 }
 // 오래 걸리는 요청. 처리하는 동안 UI에 진행 표시를 띄우고 중복 조작을 막는다.
 const BUSY_LABEL: Partial<Record<ToMain['type'], string>> = {
+  ...(typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__ ? { findFlowRepairs: FLOW_REPAIR_COPY.scanning, restoreFlowImages: FLOW_REPAIR_COPY.running } : {}),
   ...(typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__ ? { findTemplateMigrations: TEMPLATE_MIGRATION_COPY.templateMigrationScanning, migrateFlipbookTemplates: TEMPLATE_MIGRATION_COPY.templateMigrationRunning } : {}),
   prepare: COPY.controller001, commit: COPY.controller002, resetData: COPY.controller003, retry: COPY.recoveryRunning,
   registerFlipbooks: COPY.registerExisting, convertLegacyFlipbooks: COPY.legacyConverting, admin: COPY.controller006, createFlipbooks: COPY.controller038, removeFlipbooks: COPY.controller068,
@@ -83,6 +86,7 @@ const emptyReport = (): DeliveryReport => ({ screens: 0, done: 0, failed: [], no
 
 export class Controller {
   private templateMigration?: TemplateMigrationController;
+  private flowRepair?: FlowRepairController;
   readonly host: Host;
   readonly store: Store;
   entries: Entry[] = [];
@@ -243,6 +247,23 @@ export class Controller {
           this.postGuiScreens();
           break;
         case 'registerFlipbooks': await this.registerFlipbooks(); break;
+        case 'findFlowRepairs': {
+          if (typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__) {
+            this.flowRepair ??= new FlowRepairController(this.host, this.store);
+            await this.flowRepair.find();
+          }
+          break;
+        }
+        case 'restoreFlowImages': {
+          if (typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__) {
+            this.flowRepair ??= new FlowRepairController(this.host, this.store);
+            const result = await this.flowRepair.restore(msg.token, msg.assignments);
+            this.postState();
+            this.host.post({ type: 'flowRepairDone', result });
+            if (result.restored.length) this.host.post({ type: 'notice', message: `${FLOW_REPAIR_COPY.done} ${result.restored.length}` });
+          }
+          break;
+        }
         case 'findTemplateMigrations': {
           if (typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__) {
             this.templateMigration ??= new TemplateMigrationController(this.host, this.store);

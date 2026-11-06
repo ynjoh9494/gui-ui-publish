@@ -117,6 +117,9 @@ export interface Host extends FingerprintReader {
   flowCells?(pageIds: string[] | null): Promise<FoundFlowCell[]>;
   // 캔버스에서 새로 생긴 노드(붙여 넣기·복제) 안의 플로우 칸
   createdFlowCells?(nodeIds: string[]): Promise<FoundFlowCell[]>;
+  selectedFlowRepairImages?(): Promise<import('./core/flowRepair.ts').FlowRepairImage[]>;
+  flowRepairCells?(pageIds: string[]): Promise<FoundFlowCell[]>;
+  restoreFlowImage?(item: import('./core/flowRepair.ts').FlowRepairImage, uid: string, flowId: string, thumb: FlowThumb, isCurrent: () => boolean): Promise<void>;
   // 다시 배포된 화면의 칸 썸네일만 바꾼다. 바꾼 칸 수
   updateFlowCells?(cellIds: string[], thumbs: FlowThumb[]): Promise<number>;
   // PDF 저장: 보고 있는 페이지의 선택에서 저장할 프레임 수

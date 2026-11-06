@@ -1,4 +1,6 @@
 import { TemplateMigrationDialog } from './templateMigration.ts';
+import { FlowRepairDialog } from './flowRepair.ts';
+import { FLOW_REPAIR_COPY } from '../core/flowRepairCopy.ts';
 import { TEMPLATE_MIGRATION_COPY } from '../core/templateMigrationCopy.ts';
 import { flipbookIdentity, unsavedPolicyIds, withFlipbookId } from '../core/flipbookIdentity.ts';
 import { windowCollapse } from './windowCollapse.ts';
@@ -403,6 +405,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     <div class="toast" role="status" aria-live="polite"></div>
     <div class="overlay" hidden></div>
     ${typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__ ? '<div class="overlay template-migration-overlay" hidden></div>' : ''}
+    ${typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__ ? '<div class="overlay flow-repair-overlay" hidden></div>' : ''}
     <div class="overlay bulk-overlay" hidden></div>
     <div class="overlay arrange-overlay" hidden></div>
     <div class="resize-handle" title="${COPY.uiApp208}" aria-label="${COPY.uiApp208}"></div>`;
@@ -1048,6 +1051,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     descriptionViewed = null; descEditorFor = null;
     renderDetail();
   }) : null;
+  const flowRepair = typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__ ? new FlowRepairDialog($('.flow-repair-overlay'), msg => bridge.send(msg), (field, uid, disabled) =>
+    screenPicker(field, registeredItems(id => state?.screens.get(id)?.status === 'active'), uid, FLOW_REPAIR_COPY.screen, { disabled, hideCanvas: true })) : null;
   function renderNewDialog() {
     const overlay = $('.arrange-overlay');
     if (!newDialog) { overlay.hidden = true; overlay.innerHTML = ''; return; }
@@ -1516,7 +1521,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   function screenLabel(item: { code: string; name: string }, suggested = false): string {
     return `<span class="screen-option">${item.code ? `<span class="id-tag">${esc(item.code)}</span>` : ''}<span class="label">${esc(item.name)}</span>${suggested ? `<span class="suggest-tag">${COPY.uiApp419}</span>` : ''}</span>`;
   }
-  function screenPicker(field: string, items: ScreenItem[], selectedValue: string | undefined, placeholder: string, opts: { disabled?: boolean; mixed?: boolean; thumbs?: Map<string, string | null>; preferredCategoryId?: string; suggested?: string | null } = {}): string {
+  function screenPicker(field: string, items: ScreenItem[], selectedValue: string | undefined, placeholder: string, opts: { disabled?: boolean; mixed?: boolean; thumbs?: Map<string, string | null>; preferredCategoryId?: string; suggested?: string | null; hideCanvas?: boolean } = {}): string {
     const ordered = sortScreenItems(items, opts.preferredCategoryId);
     const top = opts.suggested ? ordered.find(i => i.value === opts.suggested) : undefined;
     const sorted = top ? [top, ...ordered.filter(i => i !== top)] : ordered;
@@ -1525,7 +1530,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     return `<div class="screen-picker-control"><details class="tag-picker screen-picker${opts.disabled ? ' disabled' : ''}"><summary aria-label="${esc(placeholder)}" data-required-field="${esc(field)}">${head}<span class="dropdown-caret" aria-hidden="true"></span></summary>
       <input type="search" class="picker-search" placeholder="${COPY.uiApp358}" aria-label="${COPY.uiApp358}" autocomplete="off">
       <div class="tag-options">${sorted.length ? sorted.map(i => `<button data-action="pick" data-field="${field}" data-value="${esc(i.value)}" data-entry-key="${esc(i.entryKey ?? i.value)}" data-search="${esc(`${i.code} ${i.name}`.toLowerCase())}" class="tag-option" aria-pressed="${i.value === selectedValue}"${opts.thumbs?.get(i.value) ? ` data-thumb="${esc(opts.thumbs.get(i.value)!)}"` : ''}>${screenLabel(i, i === top)}</button>`).join('') + `<p class="note picker-empty" hidden>${COPY.uiApp028}</p>` : `<p class="note">${COPY.uiApp190}</p>`}</div></details>
-      <button class="icon-button canvas-pick" data-action="canvas-pick" data-field="${esc(field)}" aria-label="${COPY.canvasPickScreen}" aria-pressed="${!opts.disabled && canvasPick?.field === field}"${opts.disabled ? ' disabled' : ''}>${CURSOR_ICON}</button></div>`;
+      ${opts.hideCanvas ? '' : `<button class="icon-button canvas-pick" data-action="canvas-pick" data-field="${esc(field)}" aria-label="${COPY.canvasPickScreen}" aria-pressed="${!opts.disabled && canvasPick?.field === field}"${opts.disabled ? ' disabled' : ''}>${CURSOR_ICON}</button>`}</div>`;
   }
   function filterScreenPicker(picker: HTMLElement, query: string) {
     const q = query.trim().toLowerCase();
@@ -2418,6 +2423,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       tools.className = 'admin'; tools.dataset.form = 'template-migration';
       tools.innerHTML = `<h3>${TEMPLATE_MIGRATION_COPY.templateMigrationTitle}</h3><button data-action="template-migration-find">${TEMPLATE_MIGRATION_COPY.templateMigrationFind}</button>`;
       maintenance.insertBefore(tools, maintenance.children[1] ?? null);
+      const repair = document.createElement('section');
+      repair.className = 'admin'; repair.dataset.form = 'flow-repair';
+      repair.innerHTML = `<h3>${FLOW_REPAIR_COPY.title}</h3><p class="note">${FLOW_REPAIR_COPY.hint}</p><button data-action="flow-repair-find">${FLOW_REPAIR_COPY.find}</button>`;
+      maintenance.insertBefore(repair, tools.nextSibling);
     }
     // 묶음 이름이 null이면 이름 없이 구분선으로 나눈다(2026-11-03 사용자 요청: 작업 환경·템플릿·시스템, 구분선 아래 관리자).
     const groups: [string | null, HTMLElement[]][] = [
@@ -3255,6 +3264,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (locked(t) && !BEFORE_CHECK.has(action)) { ev.preventDefault(); return; }
     if (canvasPick && action !== 'canvas-pick' && action !== 'pick') cancelCanvasPick();
     if ((typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__) && templateMigration?.action(action, el)) return;
+    if ((typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__) && flowRepair?.action(action, el)) return;
     switch (action) {
       case 'switch-mode':
         closeVersion(false);
@@ -4001,6 +4011,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       return;
     }
     if ((typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__) && ev.key === 'Escape' && templateMigration?.close()) { ev.preventDefault(); return; }
+    if ((typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__) && ev.key === 'Escape' && !el.closest('.screen-picker[open]') && flowRepair?.close()) { ev.preventDefault(); return; }
     if (bulk && ev.key === 'Escape' && !bulk.submitting) { ev.preventDefault(); bulk = null; renderBulk(); return; }
     if (newDialog && ev.key === 'Escape') { ev.preventDefault(); newDialog = null; renderNewDialog(); return; }
     // 관리의 템플릿: 연결된 항목 줄은 Enter·Space로도 연결된 레이어를 보여 준다.
@@ -4359,6 +4370,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (disposed) return;
     if ('managedPages' in msg && msg.managedPages) managedPages = msg.managedPages;
     if (typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__) templateMigration?.message(msg);
+    if (typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__) flowRepair?.message(msg);
     switch (msg.type) {
       case 'init':
         newHistory.clear();
