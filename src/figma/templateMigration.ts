@@ -41,9 +41,9 @@ export async function migrateFlipbookTemplate(item: TemplateMigrationItem, templ
   const old = await original(item);
   if (old.getSharedPluginData(NS, TEMPLATE_KEY) === templateId) return { nodeId: old.id, pageId: item.pageId };
   const source = sourceParts(old);
-  if (!source.gui) throw new Error(COPY.templateMigrationUnsupported);
+  if (!source.gui) throw new Error(COPY.templateMigrationSourceGuiMissing);
   const kit = await tagKit(templateId);
-  if (inside(kit.template, old) || inside(old, kit.template)) throw new Error(COPY.templateMigrationUnsupported);
+  if (inside(kit.template, old) || inside(old, kit.template)) throw new Error(COPY.templateMigrationContainsTemplate);
   let next: FrameNode | null = null;
   const moves: Move[] = [];
   try {
@@ -53,28 +53,32 @@ export async function migrateFlipbookTemplate(item: TemplateMigrationItem, templ
     // A staging clone must never be discovered as a second live flipbook.
     next.setSharedPluginData(NS, FLIPBOOK_KEY, '');
     const target = flipbookParts(next);
-    if (!target.gui) throw new Error(COPY.templateMigrationUnsupported);
+    if (!target.gui) throw new Error(COPY.templateMigrationTargetGuiMissing);
     target.gui.visible = source.gui.visible;
     if (source.description && target.description) target.description.visible = source.description.visible;
     if (source.list && target.list) target.list.visible = source.list.visible;
-    const plans: { from: Box; to: Box; absolute: boolean }[] = [];
-    for (const [from, to, absolute] of [
-      [source.gui, target.gui, true], [source.description, target.description, false],
-      [source.ids, target.ids, false], [source.list, target.list, false],
-      [source.previous, target.previous ?? target.list, false],
+    const plans: { from: Box; to: Box; absolute: boolean; label: string }[] = [];
+    // Previous can be nested in History. Moving History already transfers that
+    // entire subtree, including its row keys, so never schedule it a second time.
+    const previousInList = !!source.previous && !!source.list && inside(source.previous, source.list);
+    const previousTarget = target.previous && (!target.list || !inside(target.previous, target.list)) ? target.previous : target.list;
+    for (const [from, to, absolute, label] of [
+      [source.gui, target.gui, true, COPY.coreTemplate009], [source.description, target.description, false, COPY.coreTemplate011],
+      [source.ids, target.ids, false, COPY.coreTemplate007], [source.list, target.list, false, COPY.coreTemplate013],
+      [previousInList ? null : source.previous, previousTarget, false, source.previous?.name ?? COPY.coreTemplate013],
     ] as const) {
       const a = box(from);
       if (!a?.children.length) continue;
       const b = box(to);
-      if (!b) throw new Error(COPY.templateMigrationUnsupported);
-      plans.push({ from: a, to: b, absolute });
+      if (!b) throw new Error(`${COPY.templateMigrationTargetAreaMissing} ${label} (${from!.name})`);
+      plans.push({ from: a, to: b, absolute, label });
     }
     for (const a of plans) for (const b of plans) if (a !== b && (inside(a.from, b.from) || (a.to !== b.to && inside(a.to, b.to))))
-      throw new Error(COPY.templateMigrationUnsupported);
+      throw new Error(`${COPY.templateMigrationOverlappingAreas} ${a.label} · ${b.label}`);
     const fonts = new Map<string, Promise<void>>();
     const write = async (to: TextNode | null, from: TextNode | null, key: string) => {
       if (!from) return;
-      if (!to) throw new Error(COPY.templateMigrationUnsupported);
+      if (!to) throw new Error(`${COPY.templateMigrationTargetTextMissing} ${from.name}`);
       for (const font of (to.characters.length ? to.getRangeAllFontNames(0, to.characters.length) : [to.fontName as FontName])) {
         const id = JSON.stringify(font);
         if (!fonts.has(id)) fonts.set(id, figma.loadFontAsync(font));
@@ -89,7 +93,7 @@ export async function migrateFlipbookTemplate(item: TemplateMigrationItem, templ
     // Instance children cannot be replaced freely. Keep the destination node
     // and transfer its source component, properties and text overrides instead.
     if (source.status) {
-      if (!target.status) throw new Error(COPY.templateMigrationUnsupported);
+      if (!target.status) throw new Error(`${COPY.templateMigrationTargetAreaMissing} ${COPY.coreTemplate005}`);
       const from = source.status, to = target.status;
       if (from.type === 'INSTANCE' && to.type === 'INSTANCE') {
         const main = await from.getMainComponentAsync();
@@ -117,7 +121,15 @@ export async function migrateFlipbookTemplate(item: TemplateMigrationItem, templ
     const collect = (root: ChildrenMixin) => {
       for (const child of root.children) {
         if (terminals.includes(child)) continue;
-        if (terminals.some(n => inside(n, child))) { if ('children' in child) collect(child); }
+        const contained = terminals.filter(n => inside(n, child));
+        if (contained.length) {
+          // These instance children are immutable template chrome; the editable
+          // slots inside them have already been scheduled in plans above.
+          if (child.type === 'INSTANCE') continue;
+          const information = [source.chapter, source.status, source.ids, ...source.titles];
+          if (contained.every(n => information.includes(n))) continue;
+          if ('children' in child) collect(child);
+        }
         else extras.push(child);
       }
     };
@@ -127,7 +139,7 @@ export async function migrateFlipbookTemplate(item: TemplateMigrationItem, templ
     await original(item);
     if (!isCurrent()) throw new Error(COPY.templateMigrationChanged);
     const parent = old.parent;
-    if (!parent || !('insertChild' in parent)) throw new Error(COPY.templateMigrationUnsupported);
+    if (!parent || !('insertChild' in parent)) throw new Error(COPY.templateMigrationParentMissing);
     const index = parent.children.indexOf(old);
     parent.insertChild(index, next);
     next.name = old.name;
@@ -135,7 +147,7 @@ export async function migrateFlipbookTemplate(item: TemplateMigrationItem, templ
     if ('layoutPositioning' in old) next.layoutPositioning = old.layoutPositioning;
     const move = (node: SceneNode, to: Box, absolute: boolean, transform = node.relativeTransform) => {
       const parent = node.parent;
-      if (!parent || !('insertChild' in parent)) throw new Error(COPY.templateMigrationUnsupported);
+      if (!parent || !('insertChild' in parent)) throw new Error(COPY.templateMigrationParentMissing);
       const size = { width: node.width, height: node.height };
       moves.push({ node, parent, ...size, index: parent.children.indexOf(node), transform: node.relativeTransform,
         positioning: 'layoutPositioning' in node ? node.layoutPositioning : undefined,
@@ -158,13 +170,13 @@ export async function migrateFlipbookTemplate(item: TemplateMigrationItem, templ
     }
     // Empty source regions must not retain template sample content.
     for (const area of [target.description, target.list, target.previous, target.ids, target.gui]) {
-      const b = box(area);
+      const b = area?.removed ? null : box(area);
       if (b && !cleared.has(b)) for (const child of [...b.children]) child.remove();
     }
     for (const node of extras) {
       const a = extraTransforms.get(node)!, g = guiTransform;
       const det = g[0][0] * g[1][1] - g[0][1] * g[1][0];
-      if (Math.abs(det) < 1e-8) throw new Error(COPY.templateMigrationUnsupported);
+      if (Math.abs(det) < 1e-8) throw new Error(COPY.templateMigrationInvalidTransform);
       const x = a[0][2] - g[0][2], y = a[1][2] - g[1][2];
       move(node, target.gui, true, [
         [(g[1][1]*a[0][0]-g[0][1]*a[1][0])/det, (g[1][1]*a[0][1]-g[0][1]*a[1][1])/det, (g[1][1]*x-g[0][1]*y)/det],

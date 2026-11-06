@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { findTemplateMigrations, migrateFlipbookTemplate } from '../src/figma/templateMigration.ts';
 import { flipbookParts, NS } from '../src/figma/template.ts';
 import { TemplateMigrationController } from '../src/templateMigrationController.ts';
+import { COPY } from '../src/core/copy.ts';
 import { keys, memoryKV, Store } from '../src/core/store.ts';
 import { planFlipbooks } from '../src/core/flipbooks.ts';
 import type { Host } from '../src/host.ts';
@@ -167,4 +168,60 @@ test('empty source areas clear template samples and keep destination layout sett
   assert.equal((p.description as any).children.length, 0);
   assert.equal((p.list as any).children.length, 0);
   assert.equal(p.gui?.layoutMode, w.template.gui.layoutMode);
+});
+
+test('History containing Previous moves once and retains the wrapper, rows, background and node IDs', async () => {
+  const w = world();
+  const first = w.make('INSTANCE', 'First row'), second = w.make('INSTANCE', 'Second row'), bg = w.make('RECTANGLE', 'Background');
+  const previous = w.make('FRAME', 'previous', [first, second, bg]);
+  w.source.list.appendChild(previous);
+  const result = await migrateFlipbookTemplate(w.item, w.template.root.id);
+  const p = flipbookParts(w.nodes.get(result.nodeId));
+  assert.deepEqual((p.list as any).children, [previous]);
+  assert.equal(p.previous, previous);
+  assert.deepEqual(previous.children, [first, second, bg]);
+  assert.equal(w.source.root.removed, true);
+});
+
+test('fixed instance labels in Header, Description and History are not moved into GUI', async () => {
+  const w = world();
+  const p = flipbookParts(w.source.root);
+  const headerLabel = w.make('FRAME', 'Fixed Header Label');
+  const header = w.make('INSTANCE', 'Header', [headerLabel, ...p.titles, p.chapter, p.status, p.ids]);
+  w.source.root.appendChild(header);
+  w.source.area.setSharedPluginData(NS, 'templatePart', '');
+  const descLabel = w.make('FRAME', 'Fixed Description Label');
+  const descHead = w.make('INSTANCE', 'Description Head', [descLabel, w.source.description]);
+  w.source.area.appendChild(descHead);
+  const historyLabel = w.make('FRAME', 'Fixed History Label');
+  const history = w.make('INSTANCE', 'History Head', [historyLabel, w.source.list]);
+  w.source.root.appendChild(history);
+  const body = w.make('TEXT', 'User body'); w.source.description.appendChild(body);
+  const row = w.make('INSTANCE', 'User history'); w.source.list.appendChild(row);
+  const result = await migrateFlipbookTemplate(w.item, w.template.root.id);
+  const after = flipbookParts(w.nodes.get(result.nodeId));
+  assert.deepEqual(after.gui?.children, []);
+  assert.equal(headerLabel.parent, header);
+  assert.equal(descLabel.parent, descHead);
+  assert.equal(historyLabel.parent, history);
+  assert.equal((after.description as any).children[0], body);
+  assert.equal((after.list as any).children[0], row);
+});
+
+test('a separate Previous targets History when the template Previous sample is inside History', async () => {
+  const w = world();
+  const current = w.make('INSTANCE', 'Current row'); w.source.list.appendChild(current);
+  const archived = w.make('INSTANCE', 'Archived row');
+  w.source.root.appendChild(w.make('FRAME', 'previous', [archived]));
+  const sample = w.make('FRAME', 'previous', [w.make('INSTANCE', 'Sample')]); w.template.list.appendChild(sample);
+  const result = await migrateFlipbookTemplate(w.item, w.template.root.id);
+  const p = flipbookParts(w.nodes.get(result.nodeId));
+  assert.deepEqual((p.list as any).children, [current, archived]);
+});
+
+test('missing destination reports the affected area and preserves the original', async () => {
+  const w = world(); w.source.description.appendChild(w.make('TEXT', 'Body')); w.template.description.remove();
+  await assert.rejects(migrateFlipbookTemplate(w.item, w.template.root.id), error =>
+    error instanceof Error && error.message.includes(COPY.templateMigrationTargetAreaMissing) && error.message.includes(COPY.coreTemplate011));
+  assert.equal(w.source.root.removed, false);
 });
