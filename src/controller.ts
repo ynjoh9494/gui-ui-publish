@@ -251,11 +251,13 @@ export class Controller {
         case 'migrateFlipbookTemplates': {
           this.templateMigration ??= new TemplateMigrationController(this.host, this.store);
           const result = await this.templateMigration.convert(msg.ids, msg.templateId);
-          if (result.converted.length) {
-            for (const pageId of new Set(result.converted.map(c => c.pageId))) await this.tracks.refreshPage(pageId);
-            await this.linkFlipbooks();
-            this.postState();
-          }
+          try {
+            if (result.converted.length) {
+              for (const pageId of new Set(result.converted.map(c => c.pageId))) await this.tracks.refreshPage(pageId);
+              await this.linkFlipbooks();
+              this.postState();
+            }
+          } finally { this.host.post({ type: 'templateMigrationsDone', result }); }
           break;
         }
         case 'convertLegacyFlipbooks': await this.convertLegacyFlipbooks(msg.ids); break;

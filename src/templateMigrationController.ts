@@ -1,4 +1,3 @@
-import { TEMPLATE_MIGRATION_ENABLED } from './core/templateMigration.ts';
 import { COPY } from './core/copy.ts';
 import { keys, type Store } from './core/store.ts';
 import type { TemplateMigrationCandidate, TemplateMigrationResult } from './core/templateMigration.ts';
@@ -21,7 +20,6 @@ export class TemplateMigrationController {
     this.host.post({ type: 'templateMigrations', ...this.scan });
   }
   async convert(ids: string[], templateId: string): Promise<TemplateMigrationResult> {
-    if (!TEMPLATE_MIGRATION_ENABLED) throw new Error(COPY.templateMigrationPaused);
     const scan = this.scan;
     this.store.reload();
     if (!scan || scan.templateId !== templateId || this.store.state.project.templateNodeId !== templateId)
@@ -54,7 +52,6 @@ export class TemplateMigrationController {
     const done = new Set(result.converted.map(c => c.id));
     scan.candidates = scan.candidates.filter(c => !done.has(c.id));
     if (result.converted.length) this.host.post({ type: 'notice', message: `${COPY.templateMigrationDone} ${result.converted.map(c => this.store.state.flipbooks.get(c.id)?.title ?? c.id).join(', ')}` });
-    this.host.post({ type: 'templateMigrationsDone', result });
     return result;
   }
 }
