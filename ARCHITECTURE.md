@@ -152,4 +152,4 @@ Section 변경은 캔버스 새로고침과 목록 이동 모두 `Controller.syn
 
 `deliverFlipbooks`는 `targets`를 지정하면 그 대상만, 지정하지 않으면 배치로 선택한 미완료 작업만 처리한다. 캔버스 위치 기록도 그 대상에 한정해 맞추며, 같은 페이지에서 발견한 다른 플립북을 반영 대상에 추가하지 않는다. 명시적 재시도는 배치·대상 제한 없이 미완료 작업을 선택한다.
 
-- 대표 템플릿 변환: `templateMigrationController.ts`가 검색 결과·리비전 검증·항목별 실행을 조정하고, `figma/templateMigration.ts`가 새 구조 준비·기존 레이어 이동·실패 복구를 담당한다. `ui/templateMigration.ts`는 목록에서 여는 선택 대화상자를 담당하며, `core/templateMigration.ts`의 계약으로 Host와 연결한다.
+- 대표 템플릿 변환: `templateMigrationController.ts`가 검색 결과·리비전 검증·항목별 실행을 조정하고, `figma/templateMigration.ts`는 현재 원본 레이어 이동 구현을 제거하고 변환 호출을 거절한다. 인스턴스 슬롯 이동 중 노드 참조가 무효화되어 원본 복구에 실패한 뒤 실행을 차단한 상태다. `ui/templateMigration.ts`는 목록에서 여는 선택 대화상자를 담당하며, `core/templateMigration.ts`의 계약으로 Host와 연결한다.

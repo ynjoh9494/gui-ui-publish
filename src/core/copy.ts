@@ -1224,6 +1224,7 @@ export const COPY = {
   templateRemoveRepresentative: '대표 템플릿은 삭제할 수 없습니다. 다른 템플릿을 대표로 지정한 뒤 삭제하세요.',
   templateItemNotUsed: '대표가 아닌 템플릿에서는 이 항목을 쓰지 않습니다. 대표로 지정한 뒤 연결하세요.',
   // 이전 형식(이름 규칙) 플립북 변환 — src/ui/app.ts 플립북 상세, src/figma/legacyConvert.ts
+  templateMigrationPaused: '내용 손실 오류로 템플릿 변환을 중지했습니다. 원본을 유지한 복사 방식의 검증이 끝난 뒤 다시 제공합니다.',
   templateMigrationFind: '다른 템플릿 찾기',
   templateMigrationTitle: '대표 템플릿으로 변환',
   templateMigrationScanning: '플립북 템플릿 확인 중',

@@ -1,3 +1,4 @@
+import { TEMPLATE_MIGRATION_ENABLED } from '../core/templateMigration.ts';
 import { COPY } from '../core/copy.ts';
 import type { TemplateMigrationCandidate } from '../core/templateMigration.ts';
 import type { ToMain, ToUi } from '../core/wire.ts';
@@ -25,8 +26,8 @@ export class TemplateMigrationDialog {
       const id = el.dataset.id!;
       if ((el as HTMLInputElement).checked) this.selected.add(id); else this.selected.delete(id);
       const button = this.overlay.querySelector<HTMLButtonElement>('[data-action="template-migration-submit"]');
-      if (button) { button.disabled = !this.selected.size; button.textContent = `${COPY.templateMigrationSelected} (${this.selected.size})`; }
-    } else if (action === 'template-migration-submit' && this.selected.size) {
+      if (button) { button.disabled = !TEMPLATE_MIGRATION_ENABLED || !this.selected.size; button.textContent = `${COPY.templateMigrationSelected} (${this.selected.size})`; }
+    } else if (action === 'template-migration-submit' && TEMPLATE_MIGRATION_ENABLED && this.selected.size) {
       this.running = true; this.failures.clear(); this.render();
       this.send({ type: 'migrateFlipbookTemplates', ids: [...this.selected], templateId: this.templateId });
     }
@@ -63,8 +64,9 @@ export class TemplateMigrationDialog {
       <div class="bulk-screen-list create-screen-list">${this.candidates === null ? `<p role="status">${COPY.templateMigrationScanning}</p>` :
       this.candidates.map(c => `<label class="create-screen-option"><input type="checkbox" data-action="template-migration-toggle" data-id="${esc(c.id)}" ${this.selected.has(c.id) ? 'checked' : ''} ${this.running ? 'disabled' : ''}><span class="name">${esc(c.title)}</span>${!c.templateId ? `<span class="note">${COPY.templateMigrationUnknown}</span>` : ''}</label>${this.failures.has(c.id) ? `<p class="bad" role="alert">${esc(this.failures.get(c.id)!)}</p>` : ''}`).join('') || `<p>${COPY.templateMigrationEmpty}</p>`}</div>
       ${this.failures.has('') ? `<p class="bad" role="alert">${esc(this.failures.get('')!)}</p>` : ''}
+      ${!TEMPLATE_MIGRATION_ENABLED ? `<p class="bad" role="alert">${COPY.templateMigrationPaused}</p>` : ''}
       <div class="dialog-actions"><button data-action="template-migration-close" ${this.running ? 'disabled' : ''}>${COPY.templateMigrationClose}</button>
-      <button class="primary" data-action="template-migration-submit" ${!this.selected.size || this.running ? 'disabled' : ''}>${this.running ? COPY.templateMigrationRunning : `${COPY.templateMigrationSelected} (${this.selected.size})`}</button></div></div>`;
+      <button class="primary" data-action="template-migration-submit" ${!TEMPLATE_MIGRATION_ENABLED || !this.selected.size || this.running ? 'disabled' : ''}>${this.running ? COPY.templateMigrationRunning : `${COPY.templateMigrationSelected} (${this.selected.size})`}</button></div></div>`;
     if (wasHidden || focusInside) this.overlay.querySelector<HTMLButtonElement>('[data-action=template-migration-close]')?.focus();
   }
 }
