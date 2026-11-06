@@ -1,3 +1,4 @@
+import { findTemplateMigrations, migrateFlipbookTemplate } from './templateMigration.ts';
 import { thumbPage } from './thumbs.ts';
 import { managedPages, normalizeManagedPageNames } from './managedPages.ts';
 import { COPY } from '../core/copy.ts';
@@ -227,6 +228,7 @@ export function figmaHost(mode: Host['mode']): Host {
     disconnectTemplateItem: (id, key) => disconnectTemplateItem(id, key, NS),
     templateItemNodes: (id, key) => templateItemNodes(id, key, NS),
     createDefaultTemplate: maxWidth => createDefaultTemplate(maxWidth, NS),
+    ...(typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__ ? { findTemplateMigrations, migrateFlipbookTemplate } : {}),
     convertLegacyFlipbooks: input => convertLegacyFlipbooks(input, NS),
     scanCopies: (pageIds, uids) => scanCopies(NS, pageIds, uids),
     updateCopies: items => updateCopies(NS, items),

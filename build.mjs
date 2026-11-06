@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 
 // Validation builds never touch the manifest's live dist directory.
-const outDir = 'tmp/build';
+const outDir = process.env.PLUGIN_BUILD_DIR ?? 'tmp/build';
 
 // 플러그인 버전(관리 → 업데이트). 배포본은 scripts/release.mjs가 태그(v1.2.3)를 PLUGIN_VERSION으로 넘긴다.
 // 그 밖의 빌드는 개발 빌드이며 git describe 값(v1.2.0-5-g9d5d360)을 쓰고 업데이트 알림을 띄우지 않는다.
@@ -22,7 +22,7 @@ function git(args) {
 }
 
 const common = {
-  bundle: true, write: false, target: 'es2017', charset: 'utf8', logLevel: 'warning',
+  bundle: true, write: false, minifySyntax: true, target: 'es2017', charset: 'utf8', logLevel: 'warning',
   define: { __PLUGIN_VERSION__: JSON.stringify(version), __PLUGIN_RELEASE__: String(release), __PLUGIN_BASE__: JSON.stringify(base) },
 };
 
@@ -67,4 +67,4 @@ await writeFile(join(outDir, 'preview.html'), page('GUI·UI Publish 미리보기
 const hashes = {};
 for (const file of ['code.js', 'ui.html', 'preview.html']) hashes[file] = createHash('sha256').update(await readFile(join(outDir, file))).digest('hex');
 await writeFile(join(outDir, 'build.json'), JSON.stringify({ builtAt: new Date().toISOString(), hashes }, null, 2));
-console.log(`Validation build (${version}${release ? '' : ', development'}): tmp/build/code.js, ui.html, preview.html (live dist unchanged)`);
+console.log(`Validation build (${version}${release ? '' : ', development'}): ${outDir}/code.js, ui.html, preview.html (live dist unchanged)`);

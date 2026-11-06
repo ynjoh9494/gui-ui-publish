@@ -151,3 +151,5 @@ GUI 붙이기와 플로우 편집기의 화면 목록은 `src/ui/screenPicker.ts
 Section 변경은 캔버스 새로고침과 목록 이동 모두 `Controller.syncChapters` → `Host.syncChapters`를 사용한다. Chapter 전용 API가 없을 때 전체 동기화로 대체하는 경로는 없다.
 
 `deliverFlipbooks`는 `targets`를 지정하면 그 대상만, 지정하지 않으면 배치로 선택한 미완료 작업만 처리한다. 캔버스 위치 기록도 그 대상에 한정해 맞추며, 같은 페이지에서 발견한 다른 플립북을 반영 대상에 추가하지 않는다. 명시적 재시도는 배치·대상 제한 없이 미완료 작업을 선택한다.
+
+- 관리자 개발 도구인 대표 템플릿 변환은 `templateMigrationController.ts`, `figma/templateMigration.ts`, `ui/templateMigration.ts`에 분리한다. 전용 문구는 `core/templateMigrationCopy.ts`에 둔다. `__PLUGIN_RELEASE__` 조건과 esbuild의 구문 최적화로 배포 번들에서는 구현·UI·문구가 제거되며 `scripts/template-migration-release-regressions.mjs`로 확인한다. 배포 검증 빌드는 `PLUGIN_BUILD_DIR`로 별도 경로를 사용한다.

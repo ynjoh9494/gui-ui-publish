@@ -1,3 +1,5 @@
+import { TemplateMigrationDialog } from './templateMigration.ts';
+import { TEMPLATE_MIGRATION_COPY } from '../core/templateMigrationCopy.ts';
 import { flipbookIdentity, unsavedPolicyIds, withFlipbookId } from '../core/flipbookIdentity.ts';
 import { windowCollapse } from './windowCollapse.ts';
 import { headerTab } from './headerTab.ts';
@@ -66,7 +68,7 @@ const ADMIN_MODE_PANELS: Record<Team, [form: string, title: string][]> = {
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색
 const WHILE_BUSY = new Set(['recovery-toggle', 'tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel', 'update-download', 'update-go', 'update-close']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
-const BEFORE_CHECK = new Set([...WHILE_BUSY, 'switch-mode', 'scan', 'scan-selected', 'excluded-unexclude','nav', 'nav-suggested', 'create-page-manage', 'category-manage', 'new-add', 'new-remove', 'new-select', 'new-create-one', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'fb-identity-save', 'create-layout', 'create-search-all', 'create-screen-add', 'create-screen-remove', 'fb-edit-cancel', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
+const BEFORE_CHECK = new Set([...(typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__ ? ['template-migration-find', 'template-migration-close', 'template-migration-toggle', 'template-migration-submit'] : []), ...WHILE_BUSY, 'switch-mode', 'scan', 'scan-selected', 'excluded-unexclude','nav', 'nav-suggested', 'create-page-manage', 'category-manage', 'new-add', 'new-remove', 'new-select', 'new-create-one', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'fb-identity-save', 'create-layout', 'create-search-all', 'create-screen-add', 'create-screen-remove', 'fb-edit-cancel', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'version-open', 'version-close', 'version-match', 'version-select', 'version-review-only', 'version-reveal', 'version-switch', 'version-cancel']);
 
 import { WORK_LABEL } from '../core/copy.ts';
@@ -400,6 +402,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     <footer class="footer"></footer>
     <div class="toast" role="status" aria-live="polite"></div>
     <div class="overlay" hidden></div>
+    ${typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__ ? '<div class="overlay template-migration-overlay" hidden></div>' : ''}
     <div class="overlay bulk-overlay" hidden></div>
     <div class="overlay arrange-overlay" hidden></div>
     <div class="resize-handle" title="${COPY.uiApp208}" aria-label="${COPY.uiApp208}"></div>`;
@@ -1040,6 +1043,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   }
   // 새 플립북 확인 모달. 배치 반영 여부는 「반영하지 않음」·「반영함」, 만들기 취소는 「계속 편집」·「모두 취소」 두 버튼이다.
   // 두 번 눌러 실행하는 버튼은 누적 데이터 삭제처럼 중요한 동작에만 쓰고, 만들기 중 취소는 모달로 확인한다(2026-10-22 사용자 요청).
+  const templateMigration = typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__ ? new TemplateMigrationDialog($('.template-migration-overlay'), msg => bridge.send(msg), ids => {
+    for (const id of ids) if (!editedIds().has(id)) descDrafts.delete(id);
+    descriptionViewed = null; descEditorFor = null;
+    renderDetail();
+  }) : null;
   function renderNewDialog() {
     const overlay = $('.arrange-overlay');
     if (!newDialog) { overlay.hidden = true; overlay.innerHTML = ''; return; }
@@ -2405,6 +2413,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const maintenanceHeading = document.createElement('h3');
     maintenanceHeading.textContent = COPY.adminMaintenance;
     maintenance.append(maintenanceHeading, ...pick(['pending', 'audit', 'issues', 'reset']));
+    if (typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__) {
+      const tools = document.createElement('section');
+      tools.className = 'admin'; tools.dataset.form = 'template-migration';
+      tools.innerHTML = `<h3>${TEMPLATE_MIGRATION_COPY.templateMigrationTitle}</h3><button data-action="template-migration-find">${TEMPLATE_MIGRATION_COPY.templateMigrationFind}</button>`;
+      maintenance.insertBefore(tools, maintenance.children[1] ?? null);
+    }
     // 묶음 이름이 null이면 이름 없이 구분선으로 나눈다(2026-11-03 사용자 요청: 작업 환경·템플릿·시스템, 구분선 아래 관리자).
     const groups: [string | null, HTMLElement[]][] = [
       [COPY.adminWorkSetup, pick(['scope', 'flipbook', 'screen-id-prefix'])],
@@ -3240,6 +3254,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const t = team();
     if (locked(t) && !BEFORE_CHECK.has(action)) { ev.preventDefault(); return; }
     if (canvasPick && action !== 'canvas-pick' && action !== 'pick') cancelCanvasPick();
+    if ((typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__) && templateMigration?.action(action, el)) return;
     switch (action) {
       case 'switch-mode':
         closeVersion(false);
@@ -3985,6 +4000,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       cancelCanvasPick();
       return;
     }
+    if ((typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__) && ev.key === 'Escape' && templateMigration?.close()) { ev.preventDefault(); return; }
     if (bulk && ev.key === 'Escape' && !bulk.submitting) { ev.preventDefault(); bulk = null; renderBulk(); return; }
     if (newDialog && ev.key === 'Escape') { ev.preventDefault(); newDialog = null; renderNewDialog(); return; }
     // 관리의 템플릿: 연결된 항목 줄은 Enter·Space로도 연결된 레이어를 보여 준다.
@@ -4342,6 +4358,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   const unlisten = bridge.listen(msg => {
     if (disposed) return;
     if ('managedPages' in msg && msg.managedPages) managedPages = msg.managedPages;
+    if (typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__) templateMigration?.message(msg);
     switch (msg.type) {
       case 'init':
         newHistory.clear();

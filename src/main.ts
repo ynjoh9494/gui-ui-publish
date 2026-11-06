@@ -12,6 +12,7 @@ figma.showUI(__html__, { width: WINDOW.width, height: WINDOW.height, themeColors
 const controller = new Controller(figmaHost(mode));
 // 같은 파일을 바꾸는 요청은 순서대로 실행한다. 스캔·취소·탐색은 최신 요청이 앞선 요청을 중단할 수 있게 둔다.
 const writes = new Set<ToMain['type']>([
+  ...(typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__ ? ['findTemplateMigrations', 'migrateFlipbookTemplates'] as const : []),
   'switchMode', 'ready', 'prepare', 'commit', 'cancelPlan', 'retry', 'createThumbnailPage', 'resetData', 'admin', 'ignoreChanges',
   'convertLegacyFlipbooks', 'registerFlipbooks', 'refreshList', 'pasteGui', 'createFlipbooks', 'renameFlipbook', 'updateFlipbookIdentity', 'removeFlipbooks', 'switchVersion', 'textApply', 'createFlow', 'trackList', 'revealTrack', 'revealFlow', 'dismissDeletedAlert', 'followFlipbook', 'trackCreated', 'exportPdf',
 ]);

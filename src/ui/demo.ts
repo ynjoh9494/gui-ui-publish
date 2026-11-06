@@ -235,6 +235,7 @@ export function createDemo(options: DemoOptions): Demo {
       const screenId = [...flipbooks].find(([, id]) => id === nodeId)?.[0];
       return { fingerprint: sha256(`ui:${uiEdits.get(screenId ?? '') ?? 0}`), error: null };
     },
+    ...(typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__ ? { findTemplateMigrations: async () => [], migrateFlipbookTemplate: async (item: import('../core/templateMigration.ts').TemplateMigrationItem) => ({ nodeId: item.nodeId, pageId: item.pageId }) } : {}),
     async templateFromSelection() { return { id: 'tpl', name: 'Flipbook-Template' }; },
     async describeTemplate(id) {
       const items = TEMPLATE_ITEMS.map(d => {
