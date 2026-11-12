@@ -5,7 +5,8 @@ import { HISTORY_LATEST_AT } from '../core/historyNotices.ts';
 import type { TemplateMigrationCandidate, TemplateMigrationItem } from '../core/templateMigration.ts';
 import { FLIPBOOK_KEY, NODE_KEY, TEMPLATE_KEY, instantiate } from './flipbook.ts';
 import { keepModes } from './layers.ts';
-import { flipbookParts, linksOf, namedParts, NS, pageOf, tagKit, type Parts } from './template.ts';
+import { flipbookParts, namedParts, NS, pageOf, tagKit, type Parts } from './template.ts';
+import { migrationSource } from './templateMigrationSource.ts';
 
 type Box = (FrameNode | SlotNode);
 type Area = 'gui' | 'description' | 'ids' | 'list' | 'previous';
@@ -32,13 +33,6 @@ export async function findTemplateMigrations(items: TemplateMigrationItem[], tem
   }
   return out;
 }
-function sourceParts(frame: FrameNode): Parts {
-  if (linksOf(frame)) return flipbookParts(frame);
-  const p = namedParts(frame);
-  return { links: null, titles: [p.titleText, p.page].filter((n): n is TextNode => !!n), chapter: p.chapter,
-    status: p.status, ids: p.ids, gui: p.gui, descriptionArea: null, description: p.description, list: p.list, previous: null };
-}
-
 // A clone must retain all authored text (including rich spans), style, hierarchy,
 // component/track metadata and visibility. Root placement is checked separately:
 // the destination layout is allowed to resize a flow item.
@@ -104,17 +98,19 @@ function removeTemporary(node: FrameNode | null): void {
   if (node && !node.removed) node.remove();
 }
 
-export async function migrateFlipbookTemplate(item: TemplateMigrationItem, templateId: string, isCurrent: () => boolean = () => true): Promise<{ nodeId: string; pageId: string }> {
+export async function migrateFlipbookTemplate(item: TemplateMigrationItem, templateId: string, isCurrent: () => boolean = () => true, sourceTemplateIds: string[] = []): Promise<{ nodeId: string; pageId: string }> {
   const skip = figma.skipInvisibleInstanceChildren;
   figma.skipInvisibleInstanceChildren = false;
-  try { return await prepareMigration(item, templateId, isCurrent); }
+  try { return await prepareMigration(item, templateId, isCurrent, sourceTemplateIds); }
   finally { figma.skipInvisibleInstanceChildren = skip; }
 }
-async function prepareMigration(item: TemplateMigrationItem, templateId: string, isCurrent: () => boolean): Promise<{ nodeId: string; pageId: string }> {
+async function prepareMigration(item: TemplateMigrationItem, templateId: string, isCurrent: () => boolean, sourceTemplateIds: string[]): Promise<{ nodeId: string; pageId: string }> {
   const old = await original(item);
   if (old.getSharedPluginData(NS, TEMPLATE_KEY) === templateId) return { nodeId: old.id, pageId: item.pageId };
-  const source = sourceParts(old);
+  const resolved = await migrationSource(old, sourceTemplateIds.filter(id => id !== templateId));
+  const source = resolved.parts;
   if (!source.gui) throw new Error(TEMPLATE_MIGRATION_COPY.templateMigrationSourceGuiMissing);
+  const templateBefore = resolved.template ? signature(resolved.template, true) : null;
   const before = signature(old, true);
   const kit = await tagKit(templateId);
   if (inside(kit.template, old) || inside(old, kit.template)) throw new Error(TEMPLATE_MIGRATION_COPY.templateMigrationContainsTemplate);
@@ -244,6 +240,8 @@ async function prepareMigration(item: TemplateMigrationItem, templateId: string,
     if (target.list) target.list.visible = source.list?.visible ?? true;
     await original(item); check();
     if (signature(old, true) !== before) throw new Error(TEMPLATE_MIGRATION_COPY.templateMigrationChanged);
+    if (resolved.template && (resolved.template.removed || signature(resolved.template, true) !== templateBefore))
+      throw new Error(TEMPLATE_MIGRATION_COPY.templateMigrationChanged);
     const parent = old.parent;
     if (!parent || !('insertChild' in parent)) throw new Error(TEMPLATE_MIGRATION_COPY.templateMigrationParentMissing);
     const transform = old.relativeTransform, position = old.layoutPositioning;

@@ -125,6 +125,151 @@ test('copy validation mismatch preserves the original and removes incomplete res
   assert.equal(w.page.children.length, 2);
 });
 
+function unmarkedSource(w: ReturnType<typeof world>, recorded = true, links = true) {
+  const template = w.source.root.clone(); w.page.appendChild(template);
+  template.setSharedPluginData(NS, 'flipbookOf', '');
+  template.setSharedPluginData(NS, 'flipbookNode', '');
+  template.setSharedPluginData(NS, 'flipbookTemplate', '');
+  w.source.root.setSharedPluginData(NS, 'flipbookTemplate', recorded ? template.id : '');
+  if (!links) w.source.root.setSharedPluginData(NS, 'templateLinks', '');
+  const clear = (n: any) => { n.setSharedPluginData(NS, 'templatePart', ''); n.children.forEach(clear); };
+  clear(w.source.root);
+  return template;
+}
+
+test('uses the connected original template for an unmarked source, preserving GUI, Description, IDs, history and hidden state', async () => {
+  const w = world();
+  w.source.gui.name = 'Artwork'; w.source.description.name = 'Authored description'; w.source.list.name = 'Release log';
+  const origin = unmarkedSource(w);
+  w.source.gui.appendChild(w.make('FRAME', 'Tracked content'));
+  w.source.description.type = 'SLOT';
+  const body = w.make('TEXT', 'Body'); body.characters = 'Authored text'; w.source.description.appendChild(body);
+  w.source.list.appendChild(w.make('INSTANCE', 'History row'));
+  const ids = w.source.root.children[3]; ids.appendChild(w.make('TEXT', 'Screen ID'));
+  w.source.root.children[0].characters = 'Original title';
+  w.source.root.children[1].characters = 'Original chapter';
+  w.source.root.children[2].characters = 'Original status';
+  // Same named GUI copies are not area candidates; inserting and reordering
+  // siblings must not cause index-based matching to copy the wrong content.
+  const copy = w.make('FRAME', 'Artwork'); copy.setSharedPluginData(NS, 'guiCopy', 'screen');
+  w.source.root.insertChild(0, copy);
+  w.source.root.appendChild(w.source.gui);
+  const originBefore = origin.getSharedPluginDataKeys(NS).map((k: string) => [k, origin.getSharedPluginData(NS, k)]);
+  w.protect();
+  const result = await migrateFlipbookTemplate(w.item, w.template.root.id);
+  const root = w.nodes.get(result.nodeId);
+  const all = (n: any): any[] => [n, ...n.children.flatMap(all)];
+  const out = all(root);
+  for (const text of ['Authored text', 'Original title', 'Original chapter', 'Original status'])
+    assert.ok(out.some(n => n.type === 'TEXT' && n.characters === text), text);
+  for (const name of ['Tracked content', 'History row', 'Screen ID']) assert.ok(out.some(n => n.name === name), name);
+  assert.equal(out.find(n => n.getSharedPluginData(NS, 'templatePart') === 'descriptionArea').visible, false);
+  assert.equal(w.source.gui.getSharedPluginData(NS, 'templatePart'), '', 'source is never repaired or marked during reading');
+  assert.deepEqual(origin.getSharedPluginDataKeys(NS).map((k: string) => [k, origin.getSharedPluginData(NS, k)]), originBefore);
+  assert.equal(w.removals(), 1);
+});
+
+test('discovers a unique registered template when the original template and links records are absent', async () => {
+  const w = world();
+  w.source.gui.name = 'Canvas area';
+  const origin = unmarkedSource(w, false, false);
+  w.source.gui.appendChild(w.make('FRAME', 'GUI content'));
+  w.protect();
+  const result = await migrateFlipbookTemplate(w.item, w.template.root.id, () => true, [w.template.root.id, 'deleted', origin.id]);
+  assert.ok(w.nodes.get(result.nodeId).children.some((n: any) => n.getSharedPluginData(NS, 'templatePart') === 'gui' && n.children.some((c: any) => c.name === 'GUI content')));
+  assert.equal(w.removals(), 1);
+});
+
+test('keeps surviving role marks even when those layers moved, and fills only missing areas from the template', async () => {
+  const w = world();
+  unmarkedSource(w);
+  w.source.gui.setSharedPluginData(NS, 'templatePart', 'gui');
+  w.source.root.children[0].setSharedPluginData(NS, 'templatePart', 'title');
+  w.source.root.children[0].name = 'Renamed title';
+  w.source.root.appendChild(w.make('FRAME', 'Authored wrapper', [w.source.gui]));
+  const body = w.make('TEXT', 'Body'); body.characters = 'Authored text'; w.source.description.appendChild(body);
+  w.source.gui.appendChild(w.make('FRAME', 'Correct GUI'));
+  w.protect();
+  const result = await migrateFlipbookTemplate(w.item, w.template.root.id);
+  const all = (n: any): any[] => [n, ...n.children.flatMap(all)];
+  const out = all(w.nodes.get(result.nodeId));
+  const description = out.find(n => n.getSharedPluginData(NS, 'templatePart') === 'description');
+  assert.equal(description.children[0].characters, 'Authored text');
+  assert.ok(out.some(n => n.name === 'Correct GUI'));
+  assert.equal(w.removals(), 1);
+});
+
+test('matches component ancestors instantiated in the original flipbook', async () => {
+  const w = world();
+  const title = w.source.root.children[0]; title.characters = 'Authored title';
+  const header = w.make('COMPONENT', 'Header', [title]); w.source.root.insertChild(0, header);
+  unmarkedSource(w);
+  header.type = 'INSTANCE';
+  w.source.gui.appendChild(w.make('FRAME', 'GUI content'));
+  w.protect();
+  const result = await migrateFlipbookTemplate(w.item, w.template.root.id);
+  const outTitle = w.nodes.get(result.nodeId).children.find((n: any) => n.getSharedPluginData(NS, 'templatePart') === 'title');
+  assert.equal(outTitle.characters, 'Authored title');
+  assert.equal(w.removals(), 1);
+});
+
+test('a recorded original template wins over other compatible templates', async () => {
+  const w = world();
+  const origin = unmarkedSource(w);
+  const other = origin.clone(); w.page.appendChild(other);
+  const otherGui = other.children.find((n: any) => n.name === 'gui');
+  otherGui.setSharedPluginData(NS, 'templatePart', '');
+  other.children.find((n: any) => n.name === 'ids').setSharedPluginData(NS, 'templatePart', 'gui');
+  w.source.gui.appendChild(w.make('FRAME', 'Correct GUI'));
+  const result = await migrateFlipbookTemplate(w.item, w.template.root.id, () => true, [other.id]);
+  const gui = w.nodes.get(result.nodeId).children.find((n: any) => n.getSharedPluginData(NS, 'templatePart') === 'gui');
+  assert.equal(gui.children[0].name, 'Correct GUI');
+});
+
+test('ambiguous registered template bindings keep the complete unmarked source untouched', async () => {
+  const w = world();
+  const origin = unmarkedSource(w, false);
+  const other = origin.clone(); w.page.appendChild(other);
+  other.children.find((n: any) => n.name === 'gui').setSharedPluginData(NS, 'templatePart', '');
+  other.children.find((n: any) => n.name === 'ids').setSharedPluginData(NS, 'templatePart', 'gui');
+  const before = [...w.page.children]; w.protect();
+  await assert.rejects(migrateFlipbookTemplate(w.item, w.template.root.id, () => true, [origin.id, other.id]),
+    new Error(TEMPLATE_MIGRATION_COPY.templateMigrationSourceAmbiguous));
+  assert.equal(w.removals(), 0);
+  assert.deepEqual(w.page.children, before);
+});
+
+test('duplicate named areas or a changed hierarchy cannot be resolved by sibling index', async () => {
+  for (const failure of ['duplicate', 'hierarchy', 'type']) {
+    const w = world();
+    unmarkedSource(w);
+    if (failure === 'duplicate') {
+      const duplicate = w.make('FRAME', 'gui'); duplicate.setSharedPluginData(NS, 'templatePart', '');
+      w.source.root.appendChild(duplicate);
+    }
+    if (failure === 'hierarchy') w.source.root.appendChild(w.make('FRAME', 'new wrapper', [w.source.gui]));
+    if (failure === 'type') w.source.gui.type = 'GROUP';
+    const before = [...w.page.children]; w.protect();
+    await assert.rejects(migrateFlipbookTemplate(w.item, w.template.root.id), new Error(TEMPLATE_MIGRATION_COPY.templateMigrationSourceGuiMissing));
+    assert.equal(w.removals(), 0, failure);
+    assert.deepEqual(w.page.children, before);
+  }
+});
+
+test('an original template edit during preparation discards the copy and keeps all original nodes', async () => {
+  const w = world();
+  const origin = unmarkedSource(w);
+  w.source.gui.appendChild(w.make('FRAME', 'GUI content'));
+  w.protect(); let edited = false;
+  await assert.rejects(migrateFlipbookTemplate(w.item, w.template.root.id, () => {
+    if (!edited) { edited = true; origin.children[0].name = 'Changed title connection path'; }
+    return true;
+  }), new Error(TEMPLATE_MIGRATION_COPY.templateMigrationChanged));
+  assert.equal(w.removals(), 0);
+  assert.equal(w.source.gui.children[0].name, 'GUI content');
+  assert.equal(w.page.children.length, 3);
+});
+
 test('track record follows the replacement node while retaining its identity and creation time', () => {
   const store = new Store(memoryKV());
   store.put(keys.track('track'), { id: 'track', uid: 'screen', nodeId: 'old', pageId: 'p', createdAt: 42, actor: { id: 'u', name: 'User' } });
@@ -135,7 +280,7 @@ test('track record follows the replacement node while retaining its identity and
 });
 test('controller requires a fresh scan and checks template and revision, converts selected candidates only and continues after failure', async () => {
   const store = new Store(memoryKV()); const actor = { id: 'u', name: 'User' }; const posted: ToUi[] = [];
-  store.saveProject({ ...store.state.project, templateNodeId: 'new', flipbookPageIds: ['p'], flipbookPageId: 'p' });
+  store.saveProject({ ...store.state.project, templateNodeId: 'new', previousTemplates: [{ nodeId: 'old', name: 'Original' }], flipbookPageIds: ['p'], flipbookPageId: 'p' });
   for (const id of ['a', 'b', 'c']) {
     const [fb] = planFlipbooks({ pageId: 'p', rows: [{ uids: [], multi: false, scale: 1, title: id }] }, new Map(), actor, 1, () => id);
     store.put(keys.flipbook(id), fb);
@@ -143,7 +288,10 @@ test('controller requires a fresh scan and checks template and revision, convert
   const called: string[] = [];
   const host = { actor, post: (m: ToUi) => posted.push(m),
     findTemplateMigrations: async (items: TemplateMigrationItem[]) => items.map(i => ({ ...i, templateId: 'old' })),
-    migrateFlipbookTemplate: async (item: TemplateMigrationItem) => { called.push(item.id); if (item.id === 'a') throw new Error('failure'); return { nodeId: `new-${item.id}`, pageId: 'p' }; },
+    migrateFlipbookTemplate: async (item: TemplateMigrationItem, templateId: string, current: () => boolean, sourceTemplateIds: string[]) => {
+      assert.equal(templateId, 'new'); assert.deepEqual(sourceTemplateIds, ['old']); assert.equal(current(), true);
+      called.push(item.id); if (item.id === 'a') throw new Error('failure'); return { nodeId: `new-${item.id}`, pageId: 'p' };
+    },
   } as unknown as Host;
   const controller = new TemplateMigrationController(host, store);
   await assert.rejects(controller.convert(['b'], 'new'));

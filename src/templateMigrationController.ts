@@ -39,11 +39,13 @@ export class TemplateMigrationController {
         if (this.store.state.project.templateNodeId !== templateId || fb?.status !== 'active' || fb.rev !== item.rev || fb.pageId !== item.pageId)
           throw new Error(TEMPLATE_MIGRATION_COPY.templateMigrationChanged);
         if (!this.host.migrateFlipbookTemplate) throw new Error(TEMPLATE_MIGRATION_COPY.templateMigrationUnsupported);
+        const sourceTemplateIds = this.store.state.project.previousTemplates.map(t => t.nodeId);
         const converted = await this.host.migrateFlipbookTemplate(item, templateId, () => {
           this.store.reload();
           const latest = this.store.state.flipbooks.get(id);
-          return this.store.state.project.templateNodeId === templateId && latest?.status === 'active' && latest.rev === item.rev && latest.pageId === item.pageId;
-        });
+          return this.store.state.project.templateNodeId === templateId && latest?.status === 'active' && latest.rev === item.rev && latest.pageId === item.pageId &&
+            JSON.stringify(this.store.state.project.previousTemplates.map(t => t.nodeId)) === JSON.stringify(sourceTemplateIds);
+        }, sourceTemplateIds);
         // Reload after asynchronous node work; keep unrelated edits from other users.
         this.store.reload();
         const latest = this.store.state.flipbooks.get(id);
