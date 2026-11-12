@@ -165,6 +165,38 @@ function fixture() {
   return { root, area, header, example, custom };
 }
 
+test('Description read failures identify the failing text layer and API stage without changing content', () => {
+  const { root, example, area } = fixture(); setup([root]);
+  const text = example.children[0] as Text;
+  text.getStyledTextSegments = () => { throw new TypeError("cannot read property 'length' of undefined"); };
+  for (const read of [readDescription, readDescriptionLayout]) {
+    assert.throws(() => read(root as unknown as SceneNode), error => {
+      assert.ok(error instanceof Error);
+      assert.ok(error.message.includes(COPY.textReadStyles));
+      assert.ok(error.message.includes(text.id));
+      assert.ok(error.message.includes("cannot read property 'length' of undefined"));
+      assert.equal(error.message.split(COPY.textReadFailed).length, 2, 'nested readers retain the original failure context');
+      return true;
+    });
+  }
+  assert.equal(text.characters, 'Example');
+  assert.equal(area.children[0], example);
+});
+
+test('a text node without characters reports its identity instead of treating content as empty', () => {
+  const { root, example } = fixture(); setup([root]);
+  const text = example.children[0];
+  Object.defineProperty(text, 'characters', { get: () => undefined });
+  assert.throws(() => readDescription(root as unknown as SceneNode), error => {
+    assert.ok(error instanceof Error);
+    assert.ok(error.message.includes(COPY.textReadCharacters));
+    assert.ok(error.message.includes(COPY.textReadCharactersMissing));
+    assert.ok(error.message.includes(text.id));
+    return true;
+  });
+  assert.equal(example.children[0], text);
+});
+
 test('Description 선택은 해당 프레임 안으로 제한한다', () => {
   const { root, area } = fixture();
   const page = new Node('FRAME', 'Flipbook', [root, fixture().root]);

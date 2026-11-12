@@ -1016,6 +1016,13 @@ export const COPY = {
   figmaText007: "한 플립북만 선택하세요.",
   // 적용할 때 만드는 본문 레이어와 제목 없는 묶음의 이름
   figmaText008: "본문",
+  textReadFailed: '텍스트 읽기 실패',
+  textReadCharacters: '글자',
+  textReadStyles: '글자 서식',
+  textReadLists: '목록 서식',
+  textReadStructure: 'Description 본문 구조',
+  textReadLayout: 'Description 서식',
+  textReadCharactersMissing: '텍스트 레이어의 글자 값을 가져오지 못했습니다.',
   // 플립북 밖 프레임에 추가하기
   figmaText009: "인스턴스 안의 프레임에는 텍스트를 추가할 수 없습니다.",
   figmaText010: "프레임에서는 불러올 수 없습니다. 플립북이나 텍스트를 선택하세요.",

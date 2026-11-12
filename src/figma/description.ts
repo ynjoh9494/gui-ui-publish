@@ -5,6 +5,7 @@ import { PART_KEY } from '../core/templateParts.ts';
 import { FLIPBOOK_KEY } from './flipbook.ts';
 import { applyRichText, BOLD_STYLE, readRichText, readTextLayout, textFonts, type TextFonts } from './richText.ts';
 import { DESCRIPTION_AREA, GUI_AREA, NS, linksOf, markedPart } from './template.ts';
+import { readingText, textCharacters } from './textReadError.ts';
 
 // 굵은 제목 줄마다 만든 제목·본문 묶음 표식. 레이어 하나로 넣었던 본문(OLD_BODY_MARKER)도 불러오기에서 읽는다.
 const GROUP_MARKER = 'guiUiPublishDescriptionGroup';
@@ -200,6 +201,10 @@ function managedItems(area: SlotNode | FrameNode): FrameNode[] {
 
 export function readDescription(root: SceneNode): RichParagraph[] {
   const area = bodyArea(root);
+  return readingText(area, COPY.textReadStructure, () => readArea(area));
+}
+
+function readArea(area: SlotNode | FrameNode): RichParagraph[] {
   const items = managedItems(area);
   const defaultHeight = items.find(item => item.getPluginData(SPACER_MARKER) !== '1' && item.paddingTop > 0)?.paddingTop ?? DEFAULT_TEXT_LAYOUT.spacer;
   const trailing = Math.max(0, Number(area.getPluginData(TRAILING_SPACER_COUNT)) || 0);
@@ -244,8 +249,8 @@ function containerLayout(container: SlotNode | FrameNode): TextLayout {
     layout.gap = container.itemSpacing;
     layout.padding = [container.paddingTop, container.paddingRight, container.paddingBottom, container.paddingLeft];
   }
-  const texts = container.findAllWithCriteria({ types: ['TEXT'] }).filter(node => isShown(node, container) && node.characters.length > 0);
-  const plain = texts.find(node => node.getStyledTextSegments(['fontName']).some(s => !BOLD_STYLE.test(s.fontName.style))) ?? texts[0];
+  const texts = container.findAllWithCriteria({ types: ['TEXT'] }).filter(node => isShown(node, container) && textCharacters(node).length > 0);
+  const plain = texts.find(node => readingText(node, COPY.textReadStyles, () => node.getStyledTextSegments(['fontName']).some(s => !BOLD_STYLE.test(s.fontName.style)))) ?? texts[0];
   if (plain) Object.assign(layout, readTextLayout(plain));
   const padded = managedItems(container).find(node => node.getPluginData(SPACER_MARKER) !== '1' && node.paddingTop > 0);
   if (padded?.type === 'FRAME') { layout.spacer = padded.paddingTop; return layout; }
@@ -257,7 +262,8 @@ function containerLayout(container: SlotNode | FrameNode): TextLayout {
 }
 
 export function readDescriptionLayout(root: SceneNode): TextLayout {
-  return containerLayout(bodyArea(root));
+  const area = bodyArea(root);
+  return readingText(area, COPY.textReadLayout, () => containerLayout(area));
 }
 
 // 텍스트 편집 탭의 불러오기: 텍스트 레이어 하나의 글자 서식. 간격·여백은 기본값이다.

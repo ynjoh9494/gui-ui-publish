@@ -2,6 +2,7 @@ import { COPY } from '../core/copy.ts';
 import { isRed } from '../core/richText.ts';
 import type { RichParagraph } from '../core/richText.ts';
 import type { TextLayout } from '../core/description.ts';
+import { readingText, textCharacters } from './textReadError.ts';
 
 // 텍스트 편집 탭: 캔버스에서 고른 텍스트 레이어 하나를 읽고 쓴다. 글꼴·크기는 레이어 것을 그대로 두고
 // 내용, 목록 종류·들여쓰기, 굵기와 색을 적용한다. 빨간 범위 외에는 #333333으로 쓴다. 목록 기호는 글자로 쓰지 않고 Figma 목록 서식을 쓴다.
@@ -23,8 +24,8 @@ export function selectedTextNode(): TextNode {
 }
 
 export function readRichText(node: TextNode): RichParagraph[] {
-  const chars = node.characters;
-  const segments = chars.length ? node.getStyledTextSegments(['fontName', 'fontWeight', 'fills']) : [];
+  const chars = textCharacters(node);
+  const segments = chars.length ? readingText(node, COPY.textReadStyles, () => node.getStyledTextSegments(['fontName', 'fontWeight', 'fills'])) : [];
   let offset = 0;
   return chars.split('\n').map(line => {
     const start = offset, end = offset + line.length;
@@ -35,11 +36,11 @@ export function readRichText(node: TextNode): RichParagraph[] {
     let depth: number | null = null;
     let listType: 'ORDERED' | 'UNORDERED' | undefined;
     if (line.length) {
-      const list = node.getRangeListOptions(start, end);
+      const list = readingText(node, COPY.textReadLists, () => node.getRangeListOptions(start, end));
       if (list !== figma.mixed && list.type !== 'NONE') {
         listType = list.type;
         // Figma 목록의 최상위 들여쓰기는 1이다.
-        const indentation = node.getRangeIndentation(start, end);
+        const indentation = readingText(node, COPY.textReadLists, () => node.getRangeIndentation(start, end));
         depth = typeof indentation === 'number' ? Math.max(0, indentation - 1) : 0;
       }
     }
@@ -87,8 +88,12 @@ export async function writeRichText(node: TextNode, paragraphs: RichParagraph[],
 
 // 텍스트 레이어의 글자 서식을 편집기 서식 도구 값으로 읽는다. 행간·자간은 %로 바꾸고, 행간이 자동이면 null이다.
 export function readTextLayout(node: TextNode): Partial<TextLayout> {
+  return readingText(node, COPY.textReadStyles, () => readLayout(node));
+}
+
+function readLayout(node: TextNode): Partial<TextLayout> {
   const out: Partial<TextLayout> = {};
-  const has = node.characters.length > 0;
+  const has = textCharacters(node).length > 0;
   const size = has ? node.getRangeFontSize(0, 1) : node.fontSize;
   if (typeof size === 'number') out.fontSize = Math.round(size * 100) / 100;
   const line = has ? node.getRangeLineHeight(0, 1) : node.lineHeight;
