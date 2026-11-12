@@ -1,5 +1,6 @@
 export const TEMPLATE_MIGRATION_COPY = {
   templateMigrationCopyMismatch: '복사한 내용이 원본과 달라 변환하지 않았습니다. 원본은 유지했습니다.',
+  templateMigrationHeightMismatch: '원본 높이를 유지하지 못해 변환하지 않았습니다. 원본은 유지했습니다.',
   templateMigrationFind: '다른 템플릿 찾기',
   templateMigrationTitle: '대표 템플릿으로 변환',
   templateMigrationScanning: '플립북 템플릿 확인 중',

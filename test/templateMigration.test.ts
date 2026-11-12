@@ -26,6 +26,7 @@ function world() {
       width: 480, height: 150, resolvedVariableModes: {}, explicitVariableModes: {},
       data: new Map(), characters: 'Text', fontName: { family: 'Inter', style: 'Regular' },
       layoutMode: 'NONE', layoutPositioning: 'AUTO', layoutSizingHorizontal: 'FIXED', layoutSizingVertical: 'FIXED',
+      primaryAxisSizingMode: 'FIXED', counterAxisSizingMode: 'FIXED', minHeight: null, maxHeight: null,
       visible: true, locked: false, relativeTransform: [[1, 0, 0], [0, 1, 0]],
       get absoluteTransform() { return this.relativeTransform; },
       getSharedPluginData(ns: string, key: string) { return this.data.get(`${ns}:${key}`) ?? ''; },
@@ -40,12 +41,18 @@ function world() {
         this.children.splice(index, 0, child); child.parent = this;
       },
       appendChild(child: any) { this.insertChild(this.children.length, child); },
+      resizeWithoutConstraints(width: number, height: number) {
+        this.width = width; this.height = this.rejectHeight ? this.height : Math.min(this.maxHeight ?? Infinity, Math.max(this.minHeight ?? 0, height));
+        this.layoutSizingHorizontal = 'FIXED'; this.layoutSizingVertical = 'FIXED';
+        this.primaryAxisSizingMode = 'FIXED'; this.counterAxisSizingMode = 'FIXED';
+      },
       remove() { if (sourceNodes.has(this.id)) { sourceRemovals++; if (this.getSharedPluginData(NS, 'flipbookOf') !== 'fb') throw new Error('source sublayer removed'); } if (this.parent) this.parent.children.splice(this.parent.children.indexOf(this), 1); this.parent = null; this.removed = true; },
       clone() {
         const copy = make(this.type === 'SLOT' ? 'FRAME' : this.type, this.name);
         copy.data = new Map(this.data); copy.characters = corrupt && this.characters === 'Authored text' ? 'Corrupted' : this.characters;
         copy.visible = this.visible; copy.fontName = this.fontName; copy.width = this.width; copy.height = this.height;
         copy.failName = this.failName; copy.relativeTransform = structuredClone(this.relativeTransform);
+        for (const key of ['layoutMode', 'layoutPositioning', 'layoutSizingHorizontal', 'layoutSizingVertical', 'primaryAxisSizingMode', 'counterAxisSizingMode', 'minHeight', 'maxHeight', 'rejectHeight']) copy[key] = this[key];
         for (const child of this.children) copy.appendChild(child.clone());
         return copy;
       },
@@ -112,6 +119,42 @@ test('failure after some areas have been copied leaves source hierarchy and IDs 
   assert.equal(w.source.root.removed, false);
   assert.equal(w.source.description.children[0], body);
   assert.equal(w.removals(), 0);
+  assert.equal(w.page.children.length, 2);
+});
+
+test('preserves each original outer-frame height while retaining the representative width and width sizing', async () => {
+  for (const layoutMode of ['NONE', 'VERTICAL', 'HORIZONTAL']) for (const height of [1080, 2400]) {
+    const w = world(); w.source.root.height = height;
+    w.template.root.width = 2544; w.template.root.height = 1435; w.template.root.layoutMode = layoutMode;
+    w.template.root.layoutSizingVertical = 'HUG'; w.template.root.layoutSizingHorizontal = 'HUG';
+    w.template.root.primaryAxisSizingMode = 'AUTO'; w.template.root.counterAxisSizingMode = 'AUTO';
+    w.source.gui.appendChild(w.make('FRAME', 'Authored GUI')); w.protect();
+    const result = await migrateFlipbookTemplate(w.item, w.template.root.id);
+    const root = w.nodes.get(result.nodeId);
+    assert.equal(root.height, height, layoutMode);
+    assert.equal(root.width, 2544);
+    assert.equal(root.layoutSizingVertical, 'FIXED');
+    assert.equal(root.layoutSizingHorizontal, 'HUG');
+    if (layoutMode !== 'NONE') assert.equal(layoutMode === 'VERTICAL' ? root.counterAxisSizingMode : root.primaryAxisSizingMode, 'AUTO');
+    const gui = root.children.find((n: any) => n.getSharedPluginData(NS, 'templatePart') === 'gui');
+    assert.deepEqual([gui.children[0].width, gui.children[0].height], [480, 150], 'authored GUI is not scaled');
+  }
+});
+
+test('clears only representative height limits that conflict with the original height', async () => {
+  for (const [height, min, max, expectedMin, expectedMax] of [[1080, 1435, 3000, null, 3000], [2400, 600, 1435, 600, null]]) {
+    const w = world(); w.source.root.height = height; w.template.root.minHeight = min; w.template.root.maxHeight = max;
+    const result = await migrateFlipbookTemplate(w.item, w.template.root.id);
+    const root = w.nodes.get(result.nodeId);
+    assert.deepEqual([root.height, root.minHeight, root.maxHeight], [height, expectedMin, expectedMax]);
+  }
+});
+
+test('height-preservation failure leaves the original frame intact and removes the incomplete replacement', async () => {
+  const w = world(); w.source.root.height = 1080; w.template.root.height = 1435; w.template.root.rejectHeight = true; w.protect();
+  await assert.rejects(migrateFlipbookTemplate(w.item, w.template.root.id), new Error(TEMPLATE_MIGRATION_COPY.templateMigrationHeightMismatch));
+  assert.equal(w.removals(), 0);
+  assert.equal(w.source.root.height, 1080);
   assert.equal(w.page.children.length, 2);
 });
 

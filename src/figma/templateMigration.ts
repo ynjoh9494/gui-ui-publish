@@ -108,6 +108,20 @@ function relativeTo(node: SceneNode, gui: FrameNode): Transform {
 function removeTemporary(node: FrameNode | null): void {
   if (node && !node.removed) node.remove();
 }
+function preserveHeight(frame: FrameNode, height: number): void {
+  const horizontal = frame.layoutSizingHorizontal;
+  const widthMode = frame.layoutMode === 'VERTICAL' ? frame.counterAxisSizingMode : frame.primaryAxisSizingMode;
+  if (frame.minHeight !== null && frame.minHeight > height) frame.minHeight = null;
+  if (frame.maxHeight !== null && frame.maxHeight < height) frame.maxHeight = null;
+  frame.layoutSizingVertical = 'FIXED';
+  frame.resizeWithoutConstraints(frame.width, height);
+  // Resizing can reset both axes. Only the height belongs to the original;
+  // width sizing continues to follow the representative template.
+  if (frame.layoutMode === 'VERTICAL') frame.counterAxisSizingMode = widthMode;
+  else if (frame.layoutMode === 'HORIZONTAL') frame.primaryAxisSizingMode = widthMode;
+  frame.layoutSizingHorizontal = horizontal;
+  if (Math.abs(frame.height - height) > 0.01) throw new Error(TEMPLATE_MIGRATION_COPY.templateMigrationHeightMismatch);
+}
 
 export async function migrateFlipbookTemplate(item: TemplateMigrationItem, templateId: string, isCurrent: () => boolean = () => true, sourceTemplateIds: string[] = []): Promise<{ nodeId: string; pageId: string }> {
   const skip = figma.skipInvisibleInstanceChildren;
@@ -118,6 +132,7 @@ export async function migrateFlipbookTemplate(item: TemplateMigrationItem, templ
 async function prepareMigration(item: TemplateMigrationItem, templateId: string, isCurrent: () => boolean, sourceTemplateIds: string[]): Promise<{ nodeId: string; pageId: string }> {
   const old = await original(item);
   if (old.getSharedPluginData(NS, TEMPLATE_KEY) === templateId) return { nodeId: old.id, pageId: item.pageId };
+  const originalHeight = old.height;
   const resolved = await migrationSource(old, sourceTemplateIds.filter(id => id !== templateId));
   const source = resolved.parts;
   if (!source.gui) throw new Error(TEMPLATE_MIGRATION_COPY.templateMigrationSourceGuiMissing);
@@ -272,6 +287,7 @@ async function prepareMigration(item: TemplateMigrationItem, templateId: string,
     parent.insertChild(parent.children.indexOf(old), next);
     if ('layoutMode' in parent && parent.layoutMode !== 'NONE') next.layoutPositioning = position;
     next.relativeTransform = transform;
+    preserveHeight(next, originalHeight);
     next.visible = old.visible; next.locked = old.locked;
     ready = { nodeId: next.id, pageId: item.pageId };
     staging.remove(); staging = null;
