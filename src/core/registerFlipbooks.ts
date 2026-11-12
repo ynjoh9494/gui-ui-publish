@@ -3,10 +3,11 @@ import { noSection } from './flipbooks.ts';
 import { templateNodeIds } from './templateList.ts';
 import type { State } from './store.ts';
 import type { Actor, Flipbook } from './types.ts';
+import { parseFlipbookName } from './screenName.ts';
 
 export const EXISTING_KEY = 'registeredFlipbook';
 
-export interface ExistingFlipbook { nodeId: string; pageId: string; title: string; flipbookId: string | null }
+export interface ExistingFlipbook { nodeId: string; pageId: string; title: string; flipbookId: string | null; screenId?: string | null; pageTitle?: string | null }
 
 // Node IDs are stable within a file; two registrations of the same frame must use the same record.
 export function planExistingFlipbooks(state: State, selected: ExistingFlipbook[], actor: Actor, now: number): { nodeId: string; record: Flipbook }[] {
@@ -21,8 +22,11 @@ export function planExistingFlipbooks(state: State, selected: ExistingFlipbook[]
     const id = node.flipbookId ?? `canvas:${node.nodeId}`;
     const before = state.flipbooks.get(id);
     if (before?.status === 'active') return [];
+    const parsed = parseFlipbookName(node.title);
+    const title = node.pageTitle?.trim() || parsed.name || node.title;
+    const screenId = node.screenId?.trim() || parsed.code || before?.screenId;
     return [{ nodeId: node.nodeId, record: {
-      id, rev: (before?.rev ?? 0) + 1, kind: 'single', title: node.title, autoTitle: false, titleNames: [],
+      id, rev: (before?.rev ?? 0) + 1, kind: 'single', title, autoTitle: false, titleNames: [], screenId,
       scale: 1, category: noSection(), screens: [], pageId: node.pageId, status: 'active', createdAt: now, actor,
       tracked: true,
       ...(before ? { screens: before.screens, kind: before.kind, createdAt: before.createdAt } : {}),

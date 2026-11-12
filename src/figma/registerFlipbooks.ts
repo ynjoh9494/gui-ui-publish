@@ -1,7 +1,7 @@
 import { COPY } from '../core/copy.ts';
 import { EXISTING_KEY, type ExistingFlipbook } from '../core/registerFlipbooks.ts';
 import { FLIPBOOK_KEY, NODE_KEY } from './flipbook.ts';
-import { NS, importNamedFrame, linksOf } from './template.ts';
+import { NS, cellText, findPart, flipbookParts, importNamedFrame, linksOf } from './template.ts';
 import { keys } from '../core/store.ts';
 import type { Flipbook } from '../core/types.ts';
 
@@ -48,8 +48,36 @@ export async function selectedFlipbooks(): Promise<ExistingFlipbook[]> {
   });
   const owners: Owners = new Map();
   return Promise.all(frames.map(async node => ({ nodeId: node.id, pageId: figma.currentPage.id, title: node.name,
+    ...existingFields(node as FrameNode),
     flipbookId: await registrationId(node, owners),
   })));
+}
+
+function existingFields(frame: FrameNode): Pick<ExistingFlipbook, 'screenId' | 'pageTitle'> {
+  let ids: SceneNode | null;
+  let pageTitle: string | undefined;
+  if (linksOf(frame)) {
+    const parts = flipbookParts(frame);
+    ids = parts.ids;
+    pageTitle = parts.titles.map(n => n.characters.trim()).find(Boolean);
+  } else {
+    const header = findPart(frame, n => n.name === 'Flipbook-Title' && (n.type === 'INSTANCE' || n.type === 'COMPONENT'));
+    if (!header || !('children' in header)) return {};
+    ids = findPart(header, n => n.name === 'input-cell-id');
+    pageTitle = cellText(header, 'input-cell-page')?.characters.trim();
+  }
+  // ID 태그·슬롯 내부만 읽는다. GUI와 Description의 ID 참조는 등록 정보가 아니다.
+  const firstText = (node: SceneNode): string | undefined => {
+    if (!node.visible) return undefined;
+    if (node.type === 'TEXT') return node.characters.trim() || undefined;
+    if ('children' in node) for (const child of node.children) {
+      const text = firstText(child);
+      if (text) return text;
+    }
+    return undefined;
+  };
+  const screenId = ids ? firstText(ids) : undefined;
+  return { screenId: screenId && screenId !== '-' && screenId.toLowerCase() !== 'screen id' ? screenId : undefined, pageTitle };
 }
 
 export async function markExistingFlipbooks(items: { nodeId: string; id: string; pageId: string }[]): Promise<void> {

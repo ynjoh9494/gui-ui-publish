@@ -5,7 +5,7 @@ import { Store, memoryKV, keys } from '../src/core/store.ts';
 import { Controller, type Host } from '../src/controller.ts';
 import { selectedFlipbooks, markExistingFlipbooks } from '../src/figma/registerFlipbooks.ts';
 import { FLIPBOOK_KEY, NODE_KEY } from '../src/figma/flipbook.ts';
-import { LINKS_KEY, parseLinks } from '../src/core/templateParts.ts';
+import { LINKS_KEY, PART_KEY, parseLinks } from '../src/core/templateParts.ts';
 import type { ToUi } from '../src/core/wire.ts';
 
 const actor = { id: 'u', name: 'Designer' };
@@ -29,6 +29,68 @@ test('registration rejects an empty selection, the configured template, and unco
   for (const nodes of [[], [{ ...selection[0], nodeId: 'tpl' }], [...selection, { ...selection[0], pageId: 'other' }]])
     assert.throws(() => planExistingFlipbooks(s.state, nodes, actor, 0));
   assert.equal(s.state.flipbooks.size, 0);
+});
+
+test('registration separates existing Screen IDs from titles and keeps them after reopening', () => {
+  const s = store();
+  const cases = [
+    ['ST_SE_001 · 검색', 'ST_SE_001', '검색'],
+    ['ST_LI_MV_002 · 멀티뷰 - 포커스', 'ST_LI_MV_002', '멀티뷰 - 포커스'],
+    ['ST_SE_POLICY_02 · 음성 검색', 'ST_SE_POLICY_02', '음성 검색'],
+    ['[STB_HO_001] 홈', 'STB_HO_001', '홈'],
+    ['WEB_LT_019', 'WEB_LT_019', 'WEB_LT_019'],
+    ['mo_vd_001 상세', 'mo_vd_001', '상세'],
+    ['ST_LI_001-02 · 케이스', 'ST_LI_001-02', '케이스'],
+    ['검색 · 입력', undefined, '검색 · 입력'],
+    ['[폐기] 검색', undefined, '[폐기] 검색'],
+  ] as const;
+  for (const [i, [title, screenId, expectedTitle]] of cases.entries()) {
+    const [planned] = planExistingFlipbooks(s.state, [{ ...selection[0], nodeId: `n${i}`, title }], actor, 1);
+    assert.equal(planned.record.title, expectedTitle);
+    assert.equal(planned.record.screenId, screenId);
+    s.put(keys.flipbook(planned.record.id), planned.record);
+  }
+  s.reload();
+  assert.equal(s.state.flipbooks.get('canvas:n0')?.screenId, 'ST_SE_001');
+  const [header] = planExistingFlipbooks(s.state, [{ ...selection[0], title: 'ST_SE_099 · 이전 제목', screenId: 'ST_SE_003', pageTitle: '헤더 제목' }], actor, 2);
+  assert.equal(header.record.screenId, 'ST_SE_003');
+  assert.equal(header.record.title, '헤더 제목');
+  s.put(keys.flipbook(header.record.id), { ...header.record, status: 'retired' });
+  const [restored] = planExistingFlipbooks(s.state, [{ ...selection[0], title: '변경된 이름', flipbookId: header.record.id }], actor, 3);
+  assert.equal(restored.record.screenId, 'ST_SE_003', '읽을 ID가 없어도 보관된 ID를 잃지 않는다');
+});
+
+test('selection reads legacy header and marked ID slots without changing visible content or reading GUI references', async () => {
+  const previous = (globalThis as any).figma;
+  const page: any = { id: 'p', type: 'PAGE', selection: [] };
+  let seq = 0;
+  const make = (type: string, name: string, children: any[] = [], text = '', role = ''): any => {
+    const node: any = { id: `field${seq++}`, type, name, characters: text, visible: true, children,
+      getSharedPluginData: (_ns: string, key: string) => key === PART_KEY ? role : '',
+    };
+    for (const child of children) child.parent = node;
+    return node;
+  };
+  const id = make('TEXT', 'Value', [], 'mo_vd_007');
+  const title = make('TEXT', 'Value', [], '관련 콘텐츠');
+  const header = make('INSTANCE', 'Flipbook-Title', [make('SLOT', 'input-cell-id', [id]), make('FRAME', 'input-cell-page', [title])]);
+  const legacy = make('FRAME', 'ST_VD_001 · 이전 제목', [header]);
+  const marked = make('FRAME', 'Unstructured name', [make('SLOT', 'renamed slot', [make('TEXT', 'Value', [], 'ST_SE_POLICY_02')], '', 'ids'), make('TEXT', 'renamed title', [], '음성 검색', 'title')]);
+  marked.getSharedPluginData = (_ns: string, key: string) => key === LINKS_KEY ? '{"components":{}}' : '';
+  const decoy = make('FRAME', 'Plain title', [make('FRAME', 'GUI Image Slot', [header])]);
+  page.selection = [legacy, marked, decoy];
+  for (const node of page.selection) node.parent = page;
+  (globalThis as any).figma = { currentPage: page };
+  try {
+    const selected = await selectedFlipbooks();
+    const planned = planExistingFlipbooks(store().state, selected, actor, 1).map(p => p.record);
+    assert.deepEqual(planned.map(p => [p.screenId, p.title]), [['mo_vd_007', '관련 콘텐츠'], ['ST_SE_POLICY_02', '음성 검색'], [undefined, 'Plain title']]);
+    id.visible = false;
+    assert.equal((await selectedFlipbooks())[0].screenId, undefined, '숨긴 ID는 가져오지 않는다');
+    assert.equal(legacy.name, 'ST_VD_001 · 이전 제목');
+    assert.equal(id.characters, 'mo_vd_007');
+    assert.equal(title.characters, '관련 콘텐츠');
+  } finally { (globalThis as any).figma = previous; }
 });
 
 test('controller adds existing frames without syncing template content or duplicating records', async () => {
