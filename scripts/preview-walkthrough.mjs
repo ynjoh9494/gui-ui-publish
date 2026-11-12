@@ -262,18 +262,23 @@ try {
   await shot('02-ui-template-settings');
   await app.locator(`.template-item[data-key="${optional.key}"] [data-action=admin-template-disconnect]`).click();
   await page.waitForFunction(key => document.querySelector(`#app .template-item[data-key="${key}"] .template-state.optional`), optional.key);
-  // 대표가 아닌 템플릿(2026-11-02): 줄을 누르면 이미 있는 플립북 반영에 쓰는 항목만 보여 주고, 연결은 그 템플릿에만 한다.
+  // 대표가 아닌 템플릿도 전체 항목을 보여 주고 연결은 선택한 템플릿에만 한다.
+  const currentKeys = rows.map(r => r.key);
   await app.locator('.template-entry[data-node="tpl-old"] .template-item-name').click();
-  await page.waitForFunction(() => document.querySelector('#app .template-entry[data-node="tpl-old"][aria-selected="true"]') && document.querySelector('#app .template-item[data-key="title"]') && !document.querySelector('#app .template-item[data-key="gui"]'));
+  await page.waitForFunction(() => document.querySelector('#app .template-entry[data-node="tpl-old"][aria-selected="true"]') && document.querySelector('#app .template-item[data-key="title"]') && document.querySelector('#app .template-item[data-key="gui"]'));
   rows = await templateRows();
-  assert.deepEqual(rows.map(r => r.key), ['title', 'chapter', 'statusTag', 'idTag', 'marker', 'row', 'rowStatus', 'rowStatusTag', 'rowComment', 'rowWorker', 'rowDate', 'rowTeam'], '반영에 쓰는 항목만');
+  assert.deepEqual(rows.map(r => r.key), currentKeys, '대표 여부와 관계없이 전체 항목을 보여 준다');
   {
-    // 숨은 부모(상태·Screen ID 칸·히스토리 목록)는 세지 않아 그 아래 항목이 홀로 들여써지지 않는다.
+    // 대표 템플릿과 같은 부모·자식 구조를 유지한다.
     const left = Object.fromEntries(await app.locator('.template-item[data-key]').evaluateAll(items => items.map(item => [item.dataset.key, Math.round(item.querySelector('.template-state').getBoundingClientRect().left)])));
-    assert.deepEqual([left.statusTag, left.idTag, left.row].map(x => x - left.title), [0, 0, 0], '숨은 부모 아래 항목은 들여쓰지 않는다');
+    assert.deepEqual([left.statusTag, left.idTag, left.row].map(x => x - left.title), [17, 17, 17], '상태·Screen ID·히스토리의 자식 항목을 들여쓴다');
     assert.equal(left.rowComment - left.row, 17, '보이는 부모 아래는 들여쓴다');
   }
-  assert.ok((await app.locator('[data-form=template] .note').allTextContents()).some(t => t.includes('대표가 아닌 템플릿')), '대표가 아닌 템플릿 안내');
+  assert.ok((await app.locator('[data-form=template] .note').allTextContents()).some(t => t.includes('대표 여부와 관계없이 모든 항목')), '모든 템플릿의 연결 안내');
+  await app.locator('.template-item[data-key="gui"] [data-action=admin-template-connect]').click();
+  await page.waitForFunction(() => document.querySelector('#app .template-item[data-key="gui"] .template-state.ok'));
+  assert.equal((await templateEntries()).find(e => e.picked)?.node, 'tpl-old', 'GUI 재연결은 이전 템플릿에 한다');
+  assert.equal((await templateRows()).find(r => r.key === 'gui').disconnect, false, '이전 템플릿도 GUI 영역은 해제할 수 없다');
   await app.locator('.template-item[data-key="rowTeam"] [data-action=admin-template-disconnect]').click();
   await page.waitForFunction(() => document.querySelector('#app .template-item[data-key="rowTeam"] .template-state.optional'));
   assert.equal((await templateEntries()).find(e => e.picked)?.node, 'tpl-old', '연결을 바꿔도 고른 템플릿을 유지한다');

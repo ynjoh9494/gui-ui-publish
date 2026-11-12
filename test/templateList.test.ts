@@ -6,12 +6,12 @@ import { planFlipbooks } from '../src/core/flipbooks.ts';
 import { planExistingFlipbooks } from '../src/core/registerFlipbooks.ts';
 import { keys, memoryKV, Store } from '../src/core/store.ts';
 import { addTemplate, removeTemplate, setCurrentTemplate, setRepresentativeTemplate, templateEntries, templateForItem } from '../src/core/templateList.ts';
-import type { TemplateInfo, TemplateItem } from '../src/core/templateParts.ts';
+import { TEMPLATE_ITEMS, type TemplateInfo } from '../src/core/templateParts.ts';
 import type { ToUi } from '../src/core/wire.ts';
 
 // 템플릿 목록(2026-11-02 사용자 결정): 템플릿을 목록 하나로 두고 대표를 지정한다. 새 플립북은 대표로 만들고,
 // 대표를 바꾸면 이전 대표는 대표 바로 아래에 남는다. 반영할 때 대표가 아닌 템플릿을 위부터 넘긴다.
-// 대표가 아닌 템플릿도 항목별로 연결하되, 이미 있는 플립북 반영에 쓰는 항목만 받는다.
+// 대표 여부와 관계없이 모든 항목을 선택한 템플릿에서 연결한다.
 const actor = { id: 'u', name: 'Designer' };
 
 test('대표를 바꾸면 이전 대표를 대표 바로 아래에 남기고 새 대표는 나머지에서 뺀다', () => {
@@ -41,14 +41,11 @@ test('목록이 비었으면 처음 더한 템플릿이 대표가 되고, 그다
   assert.deepEqual(templateEntries(removeTemplate(project, 'a')).map(t => t.nodeId), ['cur', 'b']);
 });
 
-test('대표가 아닌 템플릿은 반영에 쓰는 항목(화면 이름·Chapter·컴포넌트·이력 행 안의 칸)만 연결한다', () => {
+test('목록의 모든 템플릿은 대표 여부와 관계없이 전체 항목을 연결한다', () => {
   const project = addTemplate(addTemplate(new Store(memoryKV()).state.project, { id: 'cur', name: 'C' }), { id: 'old', name: 'O' });
-  for (const key of ['title', 'chapter', 'idTag', 'row', 'statusTag', 'rowStatusTag', 'rowStatus', 'rowComment', 'rowWorker', 'rowDate', 'rowTeam'] as TemplateItem[]) {
+  for (const { key } of TEMPLATE_ITEMS) {
     assert.equal(templateForItem(project, 'old', key), 'old', key);
-  }
-  for (const key of ['status', 'ids', 'gui', 'description', 'history', 'pdfHidden'] as TemplateItem[]) {
-    assert.throws(() => templateForItem(project, 'old', key), new Error(COPY.templateItemNotUsed), key);
-    assert.equal(templateForItem(project, 'cur', key), 'cur', `대표는 ${key}도 연결한다`);
+    assert.equal(templateForItem(project, 'cur', key), 'cur', key);
   }
   assert.throws(() => templateForItem(project, 'cur', 'previous'), new Error(COPY.templateItemNotUsed));
   assert.throws(() => templateForItem(project, 'nope', 'title'), new Error(COPY.templateNotListed));
@@ -107,7 +104,7 @@ test('관리에서 템플릿을 더하고 대표를 바꾸고 빼면 저장하�
   assert.deepEqual(posted.filter(m => m.type === 'error').map(m => (m as { message: string }).message), [COPY.templateRemoveRepresentative]);
 });
 
-test('대표가 아닌 템플릿의 항목도 연결·해제·보기를 그 템플릿에 하고, 반영에 쓰지 않는 항목은 받지 않는다', async () => {
+test('대표가 아닌 템플릿의 GUI·Description·PDF 항목도 연결·재연결·해제·보기를 선택한 템플릿에 한다', async () => {
   const store = new Store(memoryKV());
   store.saveProject(addTemplate(addTemplate(store.state.project, { id: 'cur', name: 'C' }), { id: 'old', name: 'O' }));
   const calls: string[] = [];
@@ -131,8 +128,12 @@ test('대표가 아닌 템플릿의 항목도 연결·해제·보기를 그 템�
   assert.deepEqual(issuesFor, [], '대표가 아닌 템플릿을 바꿔도 대표 템플릿 경고는 다시 확인하지 않는다');
   assert.ok(posted.filter(m => m.type === 'templateInfo').every(m => (m as Extract<ToUi, { type: 'templateInfo' }>).info?.id === 'old'));
   await controller.handle({ type: 'admin', action: { op: 'connectTemplateItem', templateId: 'old', key: 'gui' } });
+  await controller.handle({ type: 'admin', action: { op: 'connectTemplateItem', templateId: 'old', key: 'gui' } });
+  await controller.handle({ type: 'admin', action: { op: 'connectTemplateItem', templateId: 'old', key: 'description' } });
+  await controller.handle({ type: 'admin', action: { op: 'disconnectTemplateItem', templateId: 'old', key: 'pdfHidden' } });
+  await controller.handle({ type: 'revealTemplateItem', nav: 2, templateId: 'old', key: 'gui' });
   await controller.handle({ type: 'admin', action: { op: 'connectTemplateItem', templateId: 'cur', key: 'gui' } });
-  assert.deepEqual(calls.slice(4), ['connect cur gui'], '대표가 아닌 템플릿의 GUI 영역은 받지 않는다');
+  assert.deepEqual(calls.slice(4), ['connect old gui', 'connect old gui', 'connect old description', 'disconnect old pdfHidden', 'nodes old gui', 'select old:gui', 'connect cur gui']);
   assert.deepEqual(issuesFor, ['cur']);
-  assert.deepEqual(posted.filter(m => m.type === 'error').map(m => (m as { message: string }).message), [COPY.templateItemNotUsed]);
+  assert.deepEqual(posted.filter(m => m.type === 'error'), []);
 });

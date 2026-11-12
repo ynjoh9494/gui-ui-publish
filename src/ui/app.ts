@@ -32,7 +32,7 @@ import { emptyComment, type BatchComment, type Plan } from '../core/publish.ts';
 import { customSection, defaultSection, filterScreens, pageSections, rowKind, screenCategoryKey, uncreatedScreens, type FlipbookMove, type FlipbookRequest, type FlipbookRowRequest, type FlipbookSection, type ScreenFilter, type ScreenKind } from '../core/flipbooks.ts';
 import { defaultTitle, formatShort, GUI_WIDTH_MAX, GUI_WIDTH_MIN, HISTORY_DATE_FORMATS, isHistoryDateFormat, NO_SECTION_KEY, SMALL_SCALE, validGuiWidth } from '../core/flipbook.ts';
 import { TAG_PALETTE } from '../core/palette.ts';
-import { TEMPLATE_SECTIONS, TEMPLATE_ITEMS, isFallbackItem, isTemplateItem, type ItemKind, type TemplateInfo, type TemplateItemDef, type TemplateItemState } from '../core/templateParts.ts';
+import { TEMPLATE_SECTIONS, TEMPLATE_ITEMS, isTemplateItem, type ItemKind, type TemplateInfo, type TemplateItemDef, type TemplateItemState } from '../core/templateParts.ts';
 import { templateEntries, type TemplateEntry } from '../core/templateList.ts';
 import { findCategoryByName, systemTagId } from '../core/registry.ts';
 import { formatFrameName, parseFrameName } from '../core/screenName.ts';
@@ -2528,10 +2528,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const id = pickedTemplate(s);
     const picked = entries.find(t => t.nodeId === id);
     const info = templateInfo && templateInfo.id === id ? templateInfo : null;
-    // 대표가 아닌 템플릿은 이미 있는 플립북을 반영할 때 쓰는 항목만 보여 준다(2026-11-02 사용자 결정).
-    const defs = TEMPLATE_ITEMS.filter(d => picked?.representative || isFallbackItem(d.key));
+    const defs = TEMPLATE_ITEMS;
     // 의미 단위 묶음(2026-11-05 사용자 결정). 부모 칸 안에 들어가거나 부모가 있어야 쓰이는 항목은 부모 아래에 들여쓴다.
-    // 깊이는 지금 보이는 조상만 센다(대표가 아닌 템플릿에서 숨은 부모 때문에 홀로 들여써지지 않게).
+    // 모든 템플릿에 같은 부모·자식 구조를 보여 준다.
     const shown = new Set(defs.map(d => d.key));
     const depthOf = (d: TemplateItemDef) => {
       let depth = 0;
@@ -2548,7 +2547,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         <div class="template-items template-list">${entries.length ? entries.map(t => templateEntry(t, t.nodeId === id)).join('') : `<p class="note">${COPY.templateListEmpty}</p>`}</div>
         <div class="inline template-actions"><button data-action="admin-template-default">${COPY.uiApp393}</button><button data-action="admin-template-add">${COPY.templateAdd}</button></div>
         ${picked ? `<p class="note template-picked">${COPY.templateItemsOf} ${name}${info?.pageName ? ` · ${esc(info.pageName)}` : ''}</p>` : ''}
-        ${picked && !picked.representative ? `<p class="note">${COPY.templateFallbackItems}</p>` : ''}
+        ${picked ? `<p class="note">${COPY.templateFallbackItems}</p>` : ''}
         ${info?.error ? `<p class="bad">${esc(info.error)}</p>` : ''}
         ${groups}</section>`;
   }

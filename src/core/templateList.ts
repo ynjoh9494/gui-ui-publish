@@ -1,5 +1,5 @@
 import { COPY } from './copy.ts';
-import { isFallbackItem, isTemplateItem, type TemplateItem } from './templateParts.ts';
+import { isTemplateItem, type TemplateItem } from './templateParts.ts';
 import type { ProjectConfig } from './types.ts';
 
 // 템플릿 목록(2026-11-02 사용자 결정): 템플릿을 목록 하나로 두고 그중 하나를 대표로 지정한다. 새 플립북은 대표 템플릿으로 만들고,
@@ -49,12 +49,11 @@ export function removeTemplate(project: ProjectConfig, nodeId: string): ProjectC
   return { ...project, previousTemplates: project.previousTemplates.filter(t => t.nodeId !== nodeId) };
 }
 
-// 항목을 연결하거나 보여 줄 템플릿. 목록에 있어야 하고, 대표가 아닌 템플릿은 반영에 쓰는 항목만 다룬다.
+// 목록에 있는 모든 템플릿은 대표 여부와 관계없이 같은 항목을 연결하고 보여 준다.
 export function templateForItem(project: ProjectConfig, templateId: string, key: TemplateItem): string {
   if (!isTemplateItem(key)) throw new Error(COPY.templateItemNotUsed);
   const entry = templateEntries(project).find(t => t.nodeId === templateId);
   if (!entry) throw new Error(project.templateNodeId ? COPY.templateNotListed : COPY.controller053);
-  if (!entry.representative && !isFallbackItem(key)) throw new Error(COPY.templateItemNotUsed);
   return entry.nodeId;
 }
 

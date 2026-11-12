@@ -1967,7 +1967,7 @@ export class Controller {
         s.audit(a, 'project.previousTemplates', 'project', action.nodeId, null);
         break;
       }
-      // 캔버스에서 고른 레이어를 목록의 템플릿 항목에 연결하거나 연결을 푼다. 대표가 아닌 템플릿은 반영에 쓰는 항목만 받는다.
+      // 캔버스에서 고른 레이어를 목록의 템플릿 항목에 연결하거나 연결을 푼다. 대표 여부와 관계없이 모든 항목을 받는다.
       // 이름 규칙 템플릿은 이때 표식 템플릿으로 바뀌므로 실패해도 연결 상태를 다시 보낸다.
       case 'connectTemplateItem':
       case 'disconnectTemplateItem': {

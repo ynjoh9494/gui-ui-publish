@@ -1219,11 +1219,11 @@ export const COPY = {
   templateRemove: '삭제',
   templateRemoveHint: '목록에서 뺍니다. 캔버스의 템플릿 프레임은 지우지 않습니다.',
   templateItemsOf: '연결 항목:',
-  templateFallbackItems: '대표가 아닌 템플릿은 이미 있는 플립북을 반영할 때만 씁니다. 그때 쓰는 항목만 보여 줍니다.',
+  templateFallbackItems: '대표 여부와 관계없이 모든 항목을 연결할 수 있습니다. 새 플립북은 대표 템플릿으로 만듭니다.',
   templateAddIsRepresentative: '선택한 프레임은 이미 대표 템플릿입니다.',
   templateNotListed: '템플릿 목록에 없는 템플릿입니다. 관리의 템플릿을 다시 열어 확인하세요.',
   templateRemoveRepresentative: '대표 템플릿은 삭제할 수 없습니다. 다른 템플릿을 대표로 지정한 뒤 삭제하세요.',
-  templateItemNotUsed: '대표가 아닌 템플릿에서는 이 항목을 쓰지 않습니다. 대표로 지정한 뒤 연결하세요.',
+  templateItemNotUsed: '지원하지 않는 템플릿 연결 항목입니다.',
   // 이전 형식(이름 규칙) 플립북 변환 — src/ui/app.ts 플립북 상세, src/figma/legacyConvert.ts
   legacyAlert: '이전 형식 플립북입니다. 새 형식으로 변환해야 반영됩니다.',
   legacyAlertMulti: '고른 플립북 중 이전 형식 플립북:',
