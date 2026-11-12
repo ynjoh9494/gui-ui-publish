@@ -141,6 +141,36 @@ test('preserves each original outer-frame height while retaining the representat
   }
 });
 
+test('sizes the template before inserting content so resize constraints cannot shift authored positions', async () => {
+  for (const height of [1080, 2400]) {
+    const w = world(); w.source.root.height = height; w.template.root.height = 1435;
+    const authored = w.make('FRAME', 'Authored GUI');
+    authored.relativeTransform = [[1, 0, 32], [0, 1, 64]];
+    w.source.gui.appendChild(authored);
+    const clone = w.template.root.clone;
+    w.template.root.clone = function () {
+      const copy = clone.call(this), resize = copy.resizeWithoutConstraints;
+      copy.resizeWithoutConstraints = function (width: number, nextHeight: number) {
+        const delta = nextHeight - this.height;
+        resize.call(this, width, nextHeight);
+        // Model a bottom-constrained authored child following a root resize.
+        const shift = (node: any) => {
+          if (node.name === 'Authored GUI') node.relativeTransform[1][2] += delta;
+          node.children.forEach(shift);
+        };
+        shift(this);
+      };
+      return copy;
+    };
+    w.protect();
+    const result = await migrateFlipbookTemplate(w.item, w.template.root.id);
+    const root = w.nodes.get(result.nodeId);
+    const gui = root.children.find((n: any) => n.getSharedPluginData(NS, 'templatePart') === 'gui');
+    assert.equal(root.height, height);
+    assert.deepEqual(gui.children[0].relativeTransform, authored.relativeTransform);
+  }
+});
+
 test('clears only representative height limits that conflict with the original height', async () => {
   for (const [height, min, max, expectedMin, expectedMax] of [[1080, 1435, 3000, null, 3000], [2400, 600, 1435, 600, null]]) {
     const w = world(); w.source.root.height = height; w.template.root.minHeight = min; w.template.root.maxHeight = max;

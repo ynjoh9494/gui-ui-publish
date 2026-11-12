@@ -152,6 +152,9 @@ async function prepareMigration(item: TemplateMigrationItem, templateId: string,
     staging.appendChild(next);
     instantiate(kit.template, next);
     next.visible = false;
+    // Let template constraints settle before any authored content is inserted.
+    // Resizing afterward would move the copied children with those constraints.
+    preserveHeight(next, originalHeight);
     const write = async (to: TextNode | null, from: TextNode | null, key: string) => {
       if (!from) return;
       if (!to) throw new Error(`${TEMPLATE_MIGRATION_COPY.templateMigrationTargetTextMissing} ${from.name}`);
@@ -287,7 +290,7 @@ async function prepareMigration(item: TemplateMigrationItem, templateId: string,
     parent.insertChild(parent.children.indexOf(old), next);
     if ('layoutMode' in parent && parent.layoutMode !== 'NONE') next.layoutPositioning = position;
     next.relativeTransform = transform;
-    preserveHeight(next, originalHeight);
+    if (Math.abs(next.height - originalHeight) > 0.01) throw new Error(TEMPLATE_MIGRATION_COPY.templateMigrationHeightMismatch);
     next.visible = old.visible; next.locked = old.locked;
     ready = { nodeId: next.id, pageId: item.pageId };
     staging.remove(); staging = null;
