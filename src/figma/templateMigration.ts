@@ -84,6 +84,17 @@ function extraLayers(root: FrameNode, source: Parts): SceneNode[] {
   walk(root);
   return out;
 }
+function hiddenStatus(root: FrameNode, source: Parts): SceneNode | null {
+  const areas = [source.gui, source.ids, source.description, source.descriptionArea, source.list, source.previous];
+  for (let node: BaseNode | null = source.status; node && node !== root; node = node.parent) {
+    if ('visible' in node && !node.visible) {
+      // Preserve the hidden container, including its effective visibility. A
+      // container holding another migrated area would duplicate authored data.
+      return areas.some(area => area && inside(area, node)) ? null : node as SceneNode;
+    }
+  }
+  return null;
+}
 function relativeTo(node: SceneNode, gui: FrameNode): Transform {
   const a = node.absoluteTransform, g = gui.absoluteTransform;
   const det = g[0][0] * g[1][1] - g[0][1] * g[1][0];
@@ -138,19 +149,24 @@ async function prepareMigration(item: TemplateMigrationItem, templateId: string,
     for (let i = 0; i < Math.max(source.titles.length, target.titles.length); i++)
       await write(target.titles[i] ?? target.titles[0] ?? null, source.titles[i] ?? source.titles[0] ?? null, 'flipbookTitle');
     await write(target.chapter, source.chapter, 'flipbookChapter');
+    let preservedStatus: SceneNode | null = null;
     if (source.status) {
       const to = target.status, from = source.status;
-      if (!to) throw new Error(`${TEMPLATE_MIGRATION_COPY.templateMigrationTargetAreaMissing} ${COPY.coreTemplate005}`);
-      if (from.type === 'INSTANCE' && to.type === 'INSTANCE') {
-        const main = await from.getMainComponentAsync();
-        if (main) to.swapComponent(main);
-        const properties: Record<string, string | boolean> = {};
-        for (const [key, prop] of Object.entries(from.componentProperties)) if (key in to.componentProperties) properties[key] = prop.value;
-        to.setProperties(properties);
+      if (!to) {
+        preservedStatus = hiddenStatus(old, source);
+        if (!preservedStatus) throw new Error(`${TEMPLATE_MIGRATION_COPY.templateMigrationTargetAreaMissing} ${COPY.coreTemplate005}`);
+      } else {
+        if (from.type === 'INSTANCE' && to.type === 'INSTANCE') {
+          const main = await from.getMainComponentAsync();
+          if (main) to.swapComponent(main);
+          const properties: Record<string, string | boolean> = {};
+          for (const [key, prop] of Object.entries(from.componentProperties)) if (key in to.componentProperties) properties[key] = prop.value;
+          to.setProperties(properties);
+        }
+        const a = texts(from), b = texts(to);
+        for (let i = 0; i < a.length; i++) await write(b[i] ?? null, a[i], '');
+        if ('fills' in from && 'fills' in to && Array.isArray(from.fills)) to.fills = from.fills;
       }
-      const a = texts(from), b = texts(to);
-      for (let i = 0; i < a.length; i++) await write(b[i] ?? null, a[i], '');
-      if ('fills' in from && 'fills' in to && Array.isArray(from.fills)) to.fills = from.fills;
     }
     // Swapping an instance can invalidate its sublayer objects; resolve again.
     target = flipbookParts(next);
@@ -171,6 +187,10 @@ async function prepareMigration(item: TemplateMigrationItem, templateId: string,
       (inside(a.from, b.from) || (a.area !== b.area && inside(target[a.area]!, target[b.area]!))))
       throw new Error(`${TEMPLATE_MIGRATION_COPY.templateMigrationOverlappingAreas} ${a.label} ? ${b.label}`);
     const extras = extraLayers(old, source);
+    if (preservedStatus && !extras.some(node => inside(preservedStatus!, node))) {
+      for (let i = extras.length - 1; i >= 0; i--) if (inside(extras[i], preservedStatus)) extras.splice(i, 1);
+      extras.push(preservedStatus);
+    }
     // Clear samples only inside the new template clone. Never remove or reparent
     // a source node: Figma invalidates instance-slot child IDs during reparenting.
     const areas: Area[] = ['gui', 'description', 'ids', 'list', ...(previousArea === 'previous' ? ['previous' as const] : [])];

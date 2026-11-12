@@ -50,6 +50,9 @@ function mappedParts(template: FrameNode, source: FrameNode, own: Parts): Parts 
     const from = parts[key];
     if (!from) continue;
     const found = corresponding(template, source, from);
+    // Legacy templates can retain a hidden status header that was deleted
+    // from authored flipbooks. Its absence must not invalidate the GUI match.
+    if (!found && key === 'status') { mapped.status = null; continue; }
     if (!found || (key === 'gui' && found.type !== 'FRAME')) return null;
     // corresponding() checks the connected layer's type before it is assigned
     // back to that same field (frame/slot compatibility is only for containers).

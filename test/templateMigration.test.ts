@@ -125,6 +125,75 @@ test('copy validation mismatch preserves the original and removes incomplete res
   assert.equal(w.page.children.length, 2);
 });
 
+test('a target without a status field preserves hidden legacy status and its hidden UI Title container', async () => {
+  const w = world();
+  w.template.root.children[2].remove();
+  const status = w.source.root.children[2]; status.type = 'INSTANCE';
+  const label = w.make('TEXT', 'Label'); label.characters = 'Original status'; status.appendChild(label);
+  const oldTitle = w.make('TEXT', 'title'); oldTitle.characters = 'Legacy title';
+  const hidden = w.make('INSTANCE', 'UI Title', [oldTitle, status]);
+  hidden.setSharedPluginData(NS, 'templatePart', 'pdfHidden'); hidden.visible = false;
+  w.source.root.insertChild(0, hidden);
+  w.source.gui.appendChild(w.make('FRAME', 'GUI content'));
+  w.protect();
+  const result = await migrateFlipbookTemplate(w.item, w.template.root.id);
+  const root = w.nodes.get(result.nodeId);
+  const gui = root.children.find((n: any) => n.getSharedPluginData(NS, 'templatePart') === 'gui');
+  const preserved = gui.children.find((n: any) => n.name === 'UI Title');
+  assert.equal(preserved.visible, false, 'hidden status is never made visible');
+  assert.equal(preserved.children[0].characters, 'Legacy title');
+  assert.equal(preserved.children[1].children[0].characters, 'Original status');
+  assert.equal(root.children.find((n: any) => n.getSharedPluginData(NS, 'templatePart') === 'title').characters, 'Text');
+  assert.equal(gui.children.filter((n: any) => n.name === 'GUI content').length, 1);
+  assert.equal(w.removals(), 1);
+});
+
+test('a directly hidden status is preserved when the target omits the optional status field', async () => {
+  const w = world(); w.template.root.children[2].remove();
+  const status = w.source.root.children[2]; status.visible = false; status.characters = 'Hidden status';
+  w.protect();
+  const result = await migrateFlipbookTemplate(w.item, w.template.root.id);
+  const gui = w.nodes.get(result.nodeId).children.find((n: any) => n.getSharedPluginData(NS, 'templatePart') === 'gui');
+  assert.equal(gui.children[0].characters, 'Hidden status');
+  assert.equal(gui.children[0].visible, false);
+  assert.equal(w.removals(), 1);
+});
+
+test('a missing target status field still protects visible source status and keeps the original', async () => {
+  const w = world(); w.template.root.children[2].remove(); w.protect();
+  await assert.rejects(migrateFlipbookTemplate(w.item, w.template.root.id),
+    new Error(`${TEMPLATE_MIGRATION_COPY.templateMigrationTargetAreaMissing} ${COPY.coreTemplate005}`));
+  assert.equal(w.removals(), 0);
+  assert.equal(w.page.children.length, 2);
+});
+
+test('hidden-status copy validation failure retains the complete original and cleans up staging', async () => {
+  const w = world(); w.template.root.children[2].remove();
+  const status = w.source.root.children[2]; status.visible = false; status.characters = 'Authored text';
+  w.protect(); w.corrupt();
+  await assert.rejects(migrateFlipbookTemplate(w.item, w.template.root.id), new Error(TEMPLATE_MIGRATION_COPY.templateMigrationCopyMismatch));
+  assert.equal(w.removals(), 0);
+  assert.equal(status.characters, 'Authored text');
+  assert.equal(w.page.children.length, 2);
+});
+
+test('a legacy template status deleted from the source does not block resolving its unmarked GUI area', async () => {
+  const w = world(); w.template.root.children[2].remove();
+  const origin = w.source.root.clone(); w.page.appendChild(origin);
+  const oldStatus = origin.children[2];
+  const hidden = w.make('INSTANCE', 'UI Title', [oldStatus]); hidden.visible = false;
+  origin.insertChild(0, hidden);
+  w.source.root.setSharedPluginData(NS, 'flipbookTemplate', origin.id);
+  w.source.root.children[2].remove();
+  w.source.gui.setSharedPluginData(NS, 'templatePart', '');
+  w.source.gui.appendChild(w.make('FRAME', 'GUI content'));
+  w.protect();
+  const result = await migrateFlipbookTemplate(w.item, w.template.root.id);
+  const gui = w.nodes.get(result.nodeId).children.find((n: any) => n.getSharedPluginData(NS, 'templatePart') === 'gui');
+  assert.equal(gui.children[0].name, 'GUI content');
+  assert.equal(w.removals(), 1);
+});
+
 function unmarkedSource(w: ReturnType<typeof world>, recorded = true, links = true) {
   const template = w.source.root.clone(); w.page.appendChild(template);
   template.setSharedPluginData(NS, 'flipbookOf', '');
