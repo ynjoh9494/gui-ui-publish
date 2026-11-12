@@ -165,6 +165,22 @@ function fixture() {
   return { root, area, header, example, custom };
 }
 
+test('slot text queries cannot cause a Description/Head instance to be read as a text node', () => {
+  const { root, area } = fixture(); setup([root]);
+  const expected = readDescription(root as unknown as SceneNode);
+  const layout = readDescriptionLayout(root as unknown as SceneNode);
+  const wrongResult = area.parent!;
+  assert.equal(wrongResult.type, 'INSTANCE');
+  const breakCriteria = (node: Node) => {
+    node.findAllWithCriteria = () => [wrongResult];
+    node.children.forEach(breakCriteria);
+  };
+  breakCriteria(area);
+  assert.deepEqual(readDescription(root as unknown as SceneNode), expected);
+  assert.deepEqual(readDescriptionLayout(root as unknown as SceneNode), layout);
+  assert.equal(area.children.length, 2);
+});
+
 test('Description read failures identify the failing text layer and API stage without changing content', () => {
   const { root, example, area } = fixture(); setup([root]);
   const text = example.children[0] as Text;

@@ -190,13 +190,27 @@ function splitItems(doc: RichParagraph[]): DescriptionItem[] {
 const isGroup = (node: SceneNode): node is FrameNode => node.type === 'FRAME' && node.visible && node.getPluginData(GROUP_MARKER) === '1';
 const isSpacerFrame = (node: SceneNode): node is FrameNode => node.type === 'FRAME' && node.visible && node.getPluginData(SPACER_MARKER) === '1';
 
+function descriptionTexts(root: ChildrenMixin): TextNode[] {
+  const out: TextNode[] = [];
+  const visit = (parent: ChildrenMixin) => {
+    for (const child of parent.children) {
+      if (child.type === 'TEXT') out.push(child);
+      else if ('children' in child) visit(child);
+    }
+  };
+  // Native type queries inside instance slots can return the owning instance.
+  // Walk actual children and narrow each type rather than trusting the query.
+  visit(root);
+  return out;
+}
+
 function managedItems(area: SlotNode | FrameNode): FrameNode[] {
   const marked = area.children.filter((node): node is FrameNode => isGroup(node) || isSpacerFrame(node));
   if (marked.length) return marked;
   if (area.children.some(node => node.visible && node.type !== 'FRAME'
-    && (node.type === 'TEXT' || 'findAllWithCriteria' in node && node.findAllWithCriteria({ types: ['TEXT'] }).length > 0))) return [];
+    && (node.type === 'TEXT' || 'children' in node && descriptionTexts(node).length > 0))) return [];
   return area.children.filter((node): node is FrameNode => node.type === 'FRAME' && node.visible
-    && node.findAllWithCriteria({ types: ['TEXT'] }).some(text => isShown(text, node)));
+    && descriptionTexts(node).some(text => isShown(text, node)));
 }
 
 export function readDescription(root: SceneNode): RichParagraph[] {
@@ -217,7 +231,7 @@ function readArea(area: SlotNode | FrameNode): RichParagraph[] {
         result.push({ text: item.paddingTop === defaultHeight ? SPACER_TEXT : `${SPACER_TEXT}(${item.paddingTop})`, depth: null, bold: [] });
         afterSpacer = true;
       }
-      const texts = item.findAllWithCriteria({ types: ['TEXT'] }).filter(node => isShown(node, item));
+      const texts = descriptionTexts(item).filter(node => isShown(node, item));
       if (!afterSpacer) result.push(blank());
       afterSpacer = false;
       texts.forEach(node => {
@@ -230,7 +244,7 @@ function readArea(area: SlotNode | FrameNode): RichParagraph[] {
   const oldBody = area.children.find((node): node is TextNode =>
     node.type === 'TEXT' && node.visible && node.getPluginData(OLD_BODY_MARKER) === '1');
   if (oldBody) return normalizeHeadings(readRichText(oldBody));
-  const texts = area.findAllWithCriteria({ types: ['TEXT'] })
+  const texts = descriptionTexts(area)
     .filter(node => isShown(node, area))
     .sort((a, b) => (a.absoluteBoundingBox?.y ?? 0) - (b.absoluteBoundingBox?.y ?? 0)
       || (a.absoluteBoundingBox?.x ?? 0) - (b.absoluteBoundingBox?.x ?? 0));
@@ -249,7 +263,7 @@ function containerLayout(container: SlotNode | FrameNode): TextLayout {
     layout.gap = container.itemSpacing;
     layout.padding = [container.paddingTop, container.paddingRight, container.paddingBottom, container.paddingLeft];
   }
-  const texts = container.findAllWithCriteria({ types: ['TEXT'] }).filter(node => isShown(node, container) && textCharacters(node).length > 0);
+  const texts = descriptionTexts(container).filter(node => isShown(node, container) && textCharacters(node).length > 0);
   const plain = texts.find(node => readingText(node, COPY.textReadStyles, () => node.getStyledTextSegments(['fontName']).some(s => !BOLD_STYLE.test(s.fontName.style)))) ?? texts[0];
   if (plain) Object.assign(layout, readTextLayout(plain));
   const padded = managedItems(container).find(node => node.getPluginData(SPACER_MARKER) !== '1' && node.paddingTop > 0);
@@ -301,7 +315,7 @@ function textStyleOf(node: TextNode): TextStyle | null {
 }
 
 function styleOf(area: SlotNode | FrameNode): DescriptionStyle {
-  const texts = area.findAllWithCriteria({ types: ['TEXT'] }).filter(node => isShown(node, area) && !node.hasMissingFont);
+  const texts = descriptionTexts(area).filter(node => isShown(node, area) && !node.hasMissingFont);
   // 본문 글자(굵지 않은 글자)가 있는 레이어를 먼저 본다. 굵은 제목 레이어만 있으면 그 서식을 쓴다.
   const plain = (node: TextNode) => node.characters.length > 0 && node.getStyledTextSegments(['fontName']).some(s => !BOLD_STYLE.test(s.fontName.style));
   let text: TextStyle | null = null;
