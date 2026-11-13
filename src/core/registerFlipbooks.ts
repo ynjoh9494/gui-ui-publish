@@ -23,8 +23,8 @@ export function planExistingFlipbooks(state: State, selected: ExistingFlipbook[]
     const before = state.flipbooks.get(id);
     if (before?.status === 'active') return [];
     const parsed = parseFlipbookName(node.title);
-    const title = node.pageTitle?.trim() || parsed.name || node.title;
-    const screenId = node.screenId?.trim() || parsed.code || before?.screenId;
+    const title = parsed.name || node.pageTitle?.trim() || node.title;
+    const screenId = parsed.code || node.screenId?.trim() || before?.screenId;
     return [{ nodeId: node.nodeId, record: {
       id, rev: (before?.rev ?? 0) + 1, kind: 'single', title, autoTitle: false, titleNames: [], screenId,
       scale: 1, category: noSection(), screens: [], pageId: node.pageId, status: 'active', createdAt: now, actor,

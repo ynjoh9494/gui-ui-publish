@@ -53,11 +53,20 @@ test('registration separates existing Screen IDs from titles and keeps them afte
   s.reload();
   assert.equal(s.state.flipbooks.get('canvas:n0')?.screenId, 'ST_SE_001');
   const [header] = planExistingFlipbooks(s.state, [{ ...selection[0], title: 'ST_SE_099 · 이전 제목', screenId: 'ST_SE_003', pageTitle: '헤더 제목' }], actor, 2);
-  assert.equal(header.record.screenId, 'ST_SE_003');
-  assert.equal(header.record.title, '헤더 제목');
+  assert.equal(header.record.screenId, 'ST_SE_099');
+  assert.equal(header.record.title, '이전 제목');
   s.put(keys.flipbook(header.record.id), { ...header.record, status: 'retired' });
   const [restored] = planExistingFlipbooks(s.state, [{ ...selection[0], title: '변경된 이름', flipbookId: header.record.id }], actor, 3);
-  assert.equal(restored.record.screenId, 'ST_SE_003', '읽을 ID가 없어도 보관된 ID를 잃지 않는다');
+  assert.equal(restored.record.screenId, 'ST_SE_099', '읽을 ID가 없어도 보관된 ID를 잃지 않는다');
+  for (const [name, expectedId, expectedTitle] of [
+    ['프레임 제목', 'ST_SE_003', '프레임 제목'],
+    ['ST_SE_001', 'ST_SE_001', '헤더 제목'],
+    ['', 'ST_SE_003', '헤더 제목'],
+  ]) {
+    const [fallback] = planExistingFlipbooks(s.state, [{ ...selection[0], nodeId: 'fallback', title: name, screenId: 'ST_SE_003', pageTitle: '헤더 제목' }], actor, 4);
+    assert.equal(fallback.record.screenId, expectedId);
+    assert.equal(fallback.record.title, expectedTitle);
+  }
 });
 
 test('selection reads legacy header and marked ID slots without changing visible content or reading GUI references', async () => {
@@ -84,7 +93,7 @@ test('selection reads legacy header and marked ID slots without changing visible
   try {
     const selected = await selectedFlipbooks();
     const planned = planExistingFlipbooks(store().state, selected, actor, 1).map(p => p.record);
-    assert.deepEqual(planned.map(p => [p.screenId, p.title]), [['mo_vd_007', '관련 콘텐츠'], ['ST_SE_POLICY_02', '음성 검색'], [undefined, 'Plain title']]);
+    assert.deepEqual(planned.map(p => [p.screenId, p.title]), [['ST_VD_001', '이전 제목'], ['ST_SE_POLICY_02', 'Unstructured name'], [undefined, 'Plain title']]);
     id.visible = false;
     assert.equal((await selectedFlipbooks())[0].screenId, undefined, '숨긴 ID는 가져오지 않는다');
     assert.equal(legacy.name, 'ST_VD_001 · 이전 제목');
