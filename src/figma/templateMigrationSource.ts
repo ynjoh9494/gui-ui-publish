@@ -33,8 +33,7 @@ function corresponding(template: FrameNode, source: FrameNode, node: SceneNode):
   return target;
 }
 
-function mappedParts(template: FrameNode, source: FrameNode, own: Parts): Parts | null {
-  const parts = readParts(template);
+function mappedParts(template: FrameNode, source: FrameNode, own: Parts, parts: Parts): Parts | null {
   if (!parts.gui && !own.gui) return null;
   const mapped = { ...parts, titles: [] as TextNode[] };
   for (const title of own.links && own.titles.length ? [] : parts.titles) {
@@ -88,11 +87,13 @@ export async function migrationSource(frame: FrameNode, templateIds: string[]): 
   }
   for (const template of templates) {
     if (template.id === frame.id) continue;
-    const mapped = mappedParts(template, frame, own);
+    const templateParts = readParts(template);
+    const mapped = mappedParts(template, frame, own, templateParts);
     if (!mapped) continue;
-    // Existing role marks are authoritative. Legacy names only fill fields
-    // absent from the explicitly connected template.
+    // Existing role marks identify moved layers, but an explicitly disconnected
+    // origin status must not be restored from stale marks or legacy names.
     const parts = own.links ? merge(own, mapped) : merge(mapped, own);
+    if (templateParts.links && !templateParts.status) parts.status = null;
     candidates.push({ parts, template });
   }
   if (!candidates.length) return { parts: own, template: null };

@@ -240,6 +240,62 @@ test('a missing target status field still protects visible source status and kee
   assert.equal(w.page.children.length, 2);
 });
 
+test('an explicitly disconnected origin status overrides stale flipbook marks during migration', async () => {
+  for (const targetStatus of [false, true]) {
+    const w = world();
+    const origin = w.source.root.clone(); w.page.appendChild(origin);
+    origin.children[2].setSharedPluginData(NS, 'templatePart', '');
+    w.source.root.setSharedPluginData(NS, 'flipbookTemplate', origin.id);
+    const status = w.source.root.children[2]; status.characters = 'Disconnected status';
+    if (!targetStatus) w.template.root.children[2].remove();
+    w.source.gui.appendChild(w.make('FRAME', 'GUI content'));
+    const body = w.make('TEXT', 'Body'); body.characters = 'Authored text'; w.source.description.appendChild(body);
+    w.protect();
+    const result = await migrateFlipbookTemplate(w.item, w.template.root.id);
+    const root = w.nodes.get(result.nodeId);
+    const gui = root.children.find((n: any) => n.getSharedPluginData(NS, 'templatePart') === 'gui');
+    assert.ok(gui.children.some((n: any) => n.name === 'GUI content'));
+    assert.ok(gui.children.some((n: any) => n.characters === 'Disconnected status'), 'unmanaged content is preserved');
+    const description = root.children.find((n: any) => n.getSharedPluginData(NS, 'templatePart') === 'descriptionArea').children[0];
+    assert.equal(description.children[0].characters, 'Authored text');
+    const connected = root.children.find((n: any) => n.getSharedPluginData(NS, 'templatePart') === 'status');
+    assert.equal(connected?.characters, targetStatus ? 'Text' : undefined, 'disconnected status is not written to the target field');
+    assert.equal(origin.children[2].getSharedPluginData(NS, 'templatePart'), '');
+    assert.equal(status.characters, 'Disconnected status');
+    assert.equal(w.removals(), 1);
+  }
+});
+
+test('a disconnected origin status is not restored by legacy names in an unmarked flipbook', async () => {
+  const w = world(); w.template.root.children[2].remove();
+  w.source.gui.name = 'GUI Image Slot';
+  const status = w.source.root.children[2]; status.type = 'INSTANCE'; status.name = 'Status';
+  const label = w.make('TEXT', 'Label'); label.characters = 'Legacy status'; status.appendChild(label);
+  const header = w.make('INSTANCE', 'UI Title', [status]);
+  header.findOne = (predicate: (n: any) => boolean) => header.children.find(predicate) ?? null;
+  header.findChild = header.findOne;
+  w.source.root.insertChild(0, header);
+  const origin = unmarkedSource(w, true, false);
+  origin.children[0].children[0].setSharedPluginData(NS, 'templatePart', '');
+  w.source.gui.appendChild(w.make('FRAME', 'GUI content')); w.protect();
+  const result = await migrateFlipbookTemplate(w.item, w.template.root.id);
+  const gui = w.nodes.get(result.nodeId).children.find((n: any) => n.getSharedPluginData(NS, 'templatePart') === 'gui');
+  assert.ok(gui.children.some((n: any) => n.name === 'GUI content'));
+  assert.equal(gui.children.find((n: any) => n.name === 'UI Title').children[0].children[0].characters, 'Legacy status');
+  assert.equal(w.removals(), 1);
+});
+
+test('a connected origin status still prevents losing visible content when the target has no status field', async () => {
+  const w = world();
+  const origin = w.source.root.clone(); w.page.appendChild(origin);
+  w.source.root.setSharedPluginData(NS, 'flipbookTemplate', origin.id);
+  w.template.root.children[2].remove(); w.protect();
+  await assert.rejects(migrateFlipbookTemplate(w.item, w.template.root.id),
+    new Error(`${TEMPLATE_MIGRATION_COPY.templateMigrationTargetAreaMissing} ${COPY.coreTemplate005}`));
+  assert.equal(w.removals(), 0);
+  assert.equal(w.page.children.length, 3);
+});
+
 test('hidden-status copy validation failure retains the complete original and cleans up staging', async () => {
   const w = world(); w.template.root.children[2].remove();
   const status = w.source.root.children[2]; status.visible = false; status.characters = 'Authored text';
