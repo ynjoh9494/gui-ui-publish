@@ -401,9 +401,14 @@ test('Prefix·카테고리 코드·번호를 바꾸면 플립북에 저장한 �
   assert.equal(store.state.screens.get('a')!.code, 'MOB_HM_002');
   assert.equal(id('custom'), 'MOB_HM_001');
   assert.equal(id('policy'), 'MOB_HM_POLICY');
-  // 가리키던 화면이 첫 화면이고 그 새 ID와 같아지면 저장하지 않고 첫 화면을 따른다.
+  // 가리키던 화면이 첫 화면이고 그 새 ID와 같아져도 저장한 ID로 둔다(ID 동기화는 버튼으로만 켠다, 2026-11-20).
   store.put(keys.flipbook('custom'), { ...store.state.flipbooks.get('custom')!, screenId: 'MOB_HM_002' });
   renumberScreenIds(store, new Map([['a', { page: 0, x: 0, y: 0, height: 10 }], ['b', { page: 0, x: 0, y: 100, height: 10 }]]), actor);
   assert.equal(store.state.screens.get('a')!.code, 'MOB_HM_001');
-  assert.equal(id('custom'), undefined);
+  assert.equal(id('custom'), 'MOB_HM_001');
+  // 이 기능 전에 ID를 저장하지 않고 첫 화면을 따르던 플립북은 바뀐 ID를 저장하고, ID 동기화를 켠 플립북은 저장하지 않는다.
+  book('legacy', undefined as unknown as string, [{ uid: 'b', code: 'MOB_HM_002', name: 'B', version: 1 }]);
+  store.put(keys.flipbook('synced'), { ...store.state.flipbooks.get('legacy')!, id: 'synced', idSynced: true });
+  renumberScreenIds(store, new Map([['b', { page: 0, x: 0, y: 0, height: 10 }], ['a', { page: 0, x: 0, y: 100, height: 10 }]]), actor);
+  assert.deepEqual([id('legacy'), id('synced')], ['MOB_HM_001', undefined]);
 });

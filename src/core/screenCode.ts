@@ -90,11 +90,13 @@ export function flipbookIdRenames(state: State, renames: CodeRename[], heads: { 
     .map(h => ({ pattern: new RegExp(`^${escape(h.from)}(POLICY(?:_\\d+)?)$`, 'i'), to: h.to }));
   const out: FlipbookIdRename[] = [];
   for (const fb of state.flipbooks.values()) {
-    if (fb.status !== 'active' || !fb.screenId) continue;
-    const id = fb.screenId.toUpperCase();
+    // ID 동기화가 꺼진 플립북: 저장한 ID, 저장하지 않은 이전 플립북은 지금 따르는 첫 화면 ID를 바꾼 ID로 저장한다.
+    const current = fb.idSynced ? '' : fb.screenId || fb.screens[0]?.code || '';
+    if (fb.status !== 'active' || !current) continue;
+    const id = current.toUpperCase();
     let to = byCode.get(id) ?? null;
     for (const p of policy) { if (to) break; const match = p.pattern.exec(id); if (match) to = `${p.to}${match[1]}`; }
-    if (to && to !== fb.screenId) out.push({ flipbookId: fb.id, from: fb.screenId, to });
+    if (to && to !== current) out.push({ flipbookId: fb.id, from: current, to });
   }
   return out;
 }

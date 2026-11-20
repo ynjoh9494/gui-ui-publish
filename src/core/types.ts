@@ -188,8 +188,11 @@ export interface Flipbook {
   rev: number;
   kind: FlipbookKind;
   title: string;
-  // Optional local ID; absent on screen flipbooks means follow the first GUI ID.
+  // 저장한 Screen ID. ID 동기화(idSynced)가 꺼져 있으면 이 값을 쓴다. 이 기능 전 기록은 비어 있으면 첫 GUI ID를 보여 주고, 화면이 바뀔 때 그 ID를 저장한다(keptScreenId).
   screenId?: string;
+  // ID 동기화를 켰는가. 상세 Screen ID의 동기화 버튼을 눌렀을 때만 켠다(2026-11-20 사용자 결정). 켜져 있으면 저장한 ID 대신
+  // 첫 화면 ID(화면이 없으면 정책 자동 번호)를 따른다. 만들거나 등록한 직후는 늘 꺼져 있고, ID를 직접 입력하면 꺼진다.
+  idSynced?: boolean;
   // 이름 동기화를 켰는가. 상세 Page title의 동기화 버튼을 눌렀을 때만 켠다(2026-11-20 사용자 결정).
   // 켜져 있으면 제목이 화면 이름(자동 제목)을 따라가고 반영할 때 프레임 이름도 맞춘다. 꺼져 있으면 반영이 프레임 이름을 바꾸지 않는다.
   // 만들거나 등록한 직후는 늘 꺼져 있다. 제목이 자동 제목과 같아도 켜진 것으로 보지 않는다. 이전 기록의 autoTitle은 읽지 않는다.

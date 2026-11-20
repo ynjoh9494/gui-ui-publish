@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Store, memoryKV } from '../src/core/store.ts';
-import { flipbookIdentity, policyScreenId, unsavedPolicyIds, withFlipbookId } from '../src/core/flipbookIdentity.ts';
+import { flipbookIdentity, keptScreenId, policyScreenId, unsavedPolicyIds, withFlipbookId } from '../src/core/flipbookIdentity.ts';
 import { flipbookView } from '../src/core/flipbook.ts';
-import { followCanvasSections, moveFlipbooks, pinPolicyIds, removeFlipbooks } from '../src/core/flipbooks.ts';
+import { followCanvasSections, moveFlipbooks, pinPolicyIds, removeFlipbooks, syncGuiVersions } from '../src/core/flipbooks.ts';
 import { keys } from '../src/core/store.ts';
 import type { Flipbook } from '../src/core/types.ts';
 
@@ -43,11 +43,16 @@ test('policies reserve the base then NN suffix across the chapter, including a c
   assert.equal(flipbookIdentity(state, old).screenId, 'ST_LI_POLICY_04');
 });
 
-test('automatic IDs follow GUI changes; local overrides do not change GUI records', () => {
+// ID 동기화(2026-11-20 사용자 결정): 첫 GUI ID와 같아도 저장하고 따라가지 않는다. 동기화 버튼(sync)을 눌러야 GUI를 따른다.
+test('IDs stay as saved even when they match the first GUI; only ID sync follows GUI changes', () => {
   const { state, fb } = fixture();
   fb.screens = [{ uid: 's', code: 'ST_LI_001', name: 'Screen', version: 1 }];
-  const automatic = withFlipbookId(state, fb, 'ST_LI_001');
-  assert.equal(automatic.screenId, undefined);
+  const saved = withFlipbookId(state, fb, 'ST_LI_001');
+  assert.deepEqual([saved.screenId, saved.idSynced], ['ST_LI_001', false]);
+  assert.equal(flipbookIdentity(state, { ...saved, screens: [{ ...fb.screens[0], code: 'ST_LI_002' }] }).screenId, 'ST_LI_001', 'GUI renumbering does not move a saved ID');
+  assert.equal(withFlipbookId(state, fb, '').screenId, 'ST_LI_001', 'an empty input saves the current automatic ID without syncing');
+  const automatic = withFlipbookId(state, { ...saved, screenId: 'other' }, 'ignored', true);
+  assert.deepEqual([automatic.screenId, automatic.idSynced], [undefined, true]);
   automatic.screens = [{ ...fb.screens[0], code: 'ST_LI_002' }];
   assert.equal(flipbookIdentity(state, automatic).screenId, 'ST_LI_002');
   state.categories.set('home', { id: 'home', name: 'Home', code: 'HO', active: true, order: 1 });
@@ -55,7 +60,22 @@ test('automatic IDs follow GUI changes; local overrides do not change GUI record
   assert.equal(edited.screenId, 'st_ho_007', 'typed case is kept');
   assert.equal(flipbookIdentity(state, edited).chapter, 'Home');
   assert.equal(edited.screens[0].code, 'ST_LI_002');
-  assert.equal(withFlipbookId(state, edited, '').screenId, undefined);
+  assert.deepEqual([edited.idSynced, withFlipbookId(state, edited, '').screenId], [false, 'ST_LI_002']);
+});
+
+test('flipbooks saved before ID sync keep their shown ID when their screens change; synced ones follow', () => {
+  const store = new Store(memoryKV());
+  store.state.project.screenIdPrefix = 'ST';
+  const base = { rev: 1, kind: 'single' as const, title: 'T', titleNames: [], scale: 1 as const, category: { key: 'live', name: 'Live', order: 0 },
+    screens: [{ uid: 's', code: 'ST_LI_001', name: 'Screen', version: 1 }], pageId: 'p', status: 'active' as const, createdAt: 0, actor: { id: 'u', name: 'User' } };
+  store.put(keys.flipbook('legacy'), { ...base, id: 'legacy' } satisfies Flipbook);
+  store.put(keys.flipbook('synced'), { ...base, id: 'synced', idSynced: true, screenId: 'stale' } satisfies Flipbook);
+  assert.equal(keptScreenId(store.state, store.state.flipbooks.get('synced')!), undefined);
+  const renumbered = new Map([['s', { uid: 's', code: 'ST_LI_005', name: 'Screen', version: 1, status: 'active' }]]);
+  for (const id of ['legacy', 'synced']) syncGuiVersions(store, id, renumbered as never);
+  const shown = (id: string) => flipbookIdentity(store.state, store.state.flipbooks.get(id)!).screenId;
+  assert.deepEqual([shown('legacy'), store.state.flipbooks.get('legacy')!.screenId], ['ST_LI_001', 'ST_LI_001']);
+  assert.deepEqual([shown('synced'), store.state.flipbooks.get('synced')!.screenId], ['ST_LI_005', undefined]);
 });
 
 test('unknown policy context stays empty until the author supplies an ID', () => {
@@ -123,4 +143,20 @@ test('앞선 정책 플립북을 지우거나 새 ID를 저장해도 저장하�
   const audits = store.state.audit.length;
   assert.deepEqual(pinPolicyIds(store, actor), []);
   assert.equal(store.state.audit.length, audits);
+});
+
+test('ID 동기화를 켠 정책 플립북도 번호를 차지하고(같은 ID가 생기지 않는다) 저장하지 않는다', () => {
+  const store = new Store(memoryKV());
+  store.state.project.screenIdPrefix = 'ST';
+  store.state.categories.set('live', { id: 'live', name: 'Live', code: 'LI', order: 0, active: true });
+  const base = { rev: 1, kind: 'policy' as const, title: 'P', titleNames: [], scale: 1 as const, category: { key: 'live', name: 'Live', order: 0 },
+    screens: [], pageId: 'p', status: 'active' as const, createdAt: 0, actor: { id: 'u', name: 'User' } };
+  store.put(keys.flipbook('synced'), { ...base, id: 'synced', idSynced: true, screenId: 'ST_LI_POLICY_09' } satisfies Flipbook);
+  store.put(keys.flipbook('unsaved'), { ...base, id: 'unsaved' } satisfies Flipbook);
+  const shown = (id: string) => flipbookIdentity(store.state, store.state.flipbooks.get(id)!).screenId;
+  assert.deepEqual([shown('synced'), shown('unsaved')], ['ST_LI_POLICY', 'ST_LI_POLICY_02']);
+  assert.deepEqual([...unsavedPolicyIds(store.state)], [['synced', 'ST_LI_POLICY'], ['unsaved', 'ST_LI_POLICY_02']]);
+  assert.deepEqual(pinPolicyIds(store, { id: 'u', name: 'User' }), ['unsaved']);
+  // 동기화한 플립북은 남은 자동 번호를 따라가므로 다른 플립북이 번호를 저장하면 겹치지 않는 다음 번호로 바뀐다.
+  assert.deepEqual([shown('synced'), shown('unsaved'), store.state.flipbooks.get('synced')!.screenId], ['ST_LI_POLICY_03', 'ST_LI_POLICY_02', 'ST_LI_POLICY_09']);
 });

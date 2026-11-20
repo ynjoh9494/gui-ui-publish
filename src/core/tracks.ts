@@ -1,4 +1,5 @@
 import { defaultTitle } from './flipbook.ts';
+import { keptScreenId } from './flipbookIdentity.ts';
 import { formerUids, type GuiScreenInfo } from './guiScreens.ts';
 import { keys, type State, type Store } from './store.ts';
 import type { Actor, Flipbook, FlipbookKind, FlipbookScreen, TrackRecord } from './types.ts';
@@ -115,7 +116,7 @@ export function flagRetiredScreens(store: Store, uids: Set<string>, found?: Foun
     const kind = kindOf(fb, screens.length);
     const title = fb.nameSynced ? defaultTitle(kind, screens) : fb.title;
     store.put(keys.flipbook(fb.id), {
-      ...fb, rev: fb.rev + 1, kind, screens, title, deletedAlert: fb.deletedAlert || alert,
+      ...fb, rev: fb.rev + 1, kind, screens, title, screenId: keptScreenId(store.state, fb), deletedAlert: fb.deletedAlert || alert,
       titleNames: fb.titleNames.includes(title) ? fb.titleNames : [...fb.titleNames, title],
     } satisfies Flipbook);
     out.push(fb.id);
@@ -171,7 +172,7 @@ export function followMembers(store: Store, found: FoundCopy[], screens: Map<str
     const kind = kindOf(fb, next.length);
     const title = fb.nameSynced ? defaultTitle(kind, next) : fb.title;
     store.put(keys.flipbook(fb.id), {
-      ...fb, rev: fb.rev + 1, kind, screens: next, title,
+      ...fb, rev: fb.rev + 1, kind, screens: next, title, screenId: keptScreenId(store.state, fb),
       titleNames: fb.titleNames.includes(title) ? fb.titleNames : [...fb.titleNames, title],
     } satisfies Flipbook);
     changed.push(fb.id);

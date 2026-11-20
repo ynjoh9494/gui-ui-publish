@@ -1715,7 +1715,7 @@ export class Controller {
       try {
         this.store.reload();
         if (this.store.state.flipbooks.get(edit.id)?.rev !== edit.rev) throw new Error(COPY.flipbookTitleConflict);
-        if (edit.identity) await this.renameFlipbook(edit.id, edit.identity.title, edit.identity.screenId, edit.rev, true, edit.identity.sync);
+        if (edit.identity) await this.renameFlipbook(edit.id, edit.identity.title, edit.identity.screenId, edit.rev, true, edit.identity.sync, edit.identity.idSync);
         // Description 영역 보이기를 먼저 바꾼다. 끄는 수정에는 본문 수정이 없다(꺼진 동안은 본문을 불러오지 않는다).
         if (edit.descriptionShown !== undefined || edit.description) {
           const fb = this.store.state.flipbooks.get(edit.id);
@@ -1752,7 +1752,7 @@ export class Controller {
       layoutChanged ? description.layout : current.layout);
   }
 
-  private async renameFlipbook(id: string, title: string, screenId?: string, rev?: number, quiet = false, sync = false): Promise<void> {
+  private async renameFlipbook(id: string, title: string, screenId?: string, rev?: number, quiet = false, sync = false, idSync = false): Promise<void> {
     const s = this.store;
     s.reload();
     let before = s.state.flipbooks.get(id);
@@ -1760,7 +1760,7 @@ export class Controller {
     // ID를 바꾸면 ID를 저장하지 않은 정책 플립북의 ID가 밀리므로 먼저 저장한다(이 플립북이면 rev가 바뀐 기록으로 이어 간다).
     if (screenId !== undefined && pinPolicyIds(s, this.host.actor).length) before = s.state.flipbooks.get(id);
     const planned = plannedFlipbookTitle(s.state, id, title, sync);
-    const fb = screenId === undefined ? planned : withFlipbookId(s.state, planned, screenId);
+    const fb = screenId === undefined ? planned : withFlipbookId(s.state, planned, screenId, idSync);
     const identity = flipbookIdentity(s.state, fb);
     const previousId = before ? flipbookIdentity(s.state, before).screenId : undefined;
     try {

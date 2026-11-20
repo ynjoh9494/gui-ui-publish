@@ -384,6 +384,8 @@ export const COPY = {
   fbPageTitle: "Page title",
   fbNameSync: "이름 동기화",
   fbNameSynced: "이름 동기화됨",
+  fbIdSync: "ID 동기화",
+  fbIdSynced: "ID 동기화됨",
   fbScreenId: "Screen ID",
   fbIdentitySave: "적용하기",
   // 플립북 상세의 Description 영역과 맨 아래 「모두 적용하기」 줄(2026-11-04)

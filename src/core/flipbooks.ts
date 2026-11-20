@@ -2,7 +2,7 @@
 import { COPY } from './copy.ts';
 import type { FlipbookSpot } from './compare.ts';
 import { defaultTitle, NO_CATEGORY_KEY, NO_SECTION_KEY } from './flipbook.ts';
-import { unsavedPolicy, unsavedPolicyIds } from './flipbookIdentity.ts';
+import { keptScreenId, unsavedPolicy, unsavedPolicyIds } from './flipbookIdentity.ts';
 import { importedRecord, recordsToImport, type GuiRecordInfo, type GuiScreenInfo } from './guiScreens.ts';
 import { keys, type State, type Store } from './store.ts';
 import type { Actor, Flipbook, FlipbookKind, FlipbookScreen,FlipbookReview, FlipbookScale, ImportedGuiRecord, TagSnapshot, UiRecord, UiState } from './types.ts';
@@ -141,7 +141,7 @@ export function checkMoves(state: State, moves: FlipbookMove[], pageIds: readonl
 // 그 ID는 Section과 다른 플립북의 저장 ID·기록 순서로 정하므로, 하나만 저장하거나 플립북을 만들고·지우고·옮기면 나머지 ID가 밀린다.
 // 그런 기록 변경 직전에 한 번에 저장해 보이던 ID를 지킨다. 저장한 플립북 ID를 돌려준다(없으면 아무것도 쓰지 않는다).
 export function pinPolicyIds(store: Store, actor: Actor): string[] {
-  const ids = unsavedPolicyIds(store.state);
+  const ids = new Map([...unsavedPolicyIds(store.state)].filter(([id]) => unsavedPolicy(store.state.flipbooks.get(id)!)));
   for (const [id, screenId] of ids) {
     const fb = store.state.flipbooks.get(id)!;
     store.put(keys.flipbook(id), { ...fb, rev: fb.rev + 1, screenId } satisfies Flipbook);
@@ -253,7 +253,7 @@ export function followMergedFlipbooks(store: Store, fromId: string, toId: string
     const scale = kind === 'multi' ? before.scale : 1;
     const title = before.nameSynced ? defaultTitle(kind, next) : before.title;
     const after: Flipbook = {
-      ...before, rev: before.rev + 1, kind, scale, screens: next, title,
+      ...before, rev: before.rev + 1, kind, scale, screens: next, title, screenId: keptScreenId(store.state, before),
       titleNames: before.titleNames.includes(title) ? before.titleNames : [...before.titleNames, title],
     };
     store.put(keys.flipbook(before.id), after);
@@ -337,7 +337,7 @@ export function importGuiUpdates(store: Store, flipbookId: string, screens: Map<
   queue();
   const nextTitle = before.nameSynced ? defaultTitle(before.kind, next) : before.title;
   const after: Flipbook = {
-    ...before, rev: before.rev + 1, screens: next, title: nextTitle,
+    ...before, rev: before.rev + 1, screens: next, title: nextTitle, screenId: keptScreenId(store.state, before),
     titleNames: before.titleNames.includes(nextTitle) ? before.titleNames : [...before.titleNames, nextTitle],
   };
   store.put(keys.flipbook(flipbookId), after);
@@ -362,7 +362,7 @@ export function syncGuiVersions(store: Store, flipbookId: string, screens: Map<s
   if (changed) {
     beforeChange?.();
     const title = before.nameSynced ? defaultTitle(before.kind, next) : before.title;
-    store.put(keys.flipbook(flipbookId), { ...before, rev: before.rev + 1, screens: next, title,
+    store.put(keys.flipbook(flipbookId), { ...before, rev: before.rev + 1, screens: next, title, screenId: keptScreenId(store.state, before),
       titleNames: before.titleNames.includes(title) ? before.titleNames : [...before.titleNames, title] });
   }
   return { changed, added: 0, missing };

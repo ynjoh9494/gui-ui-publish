@@ -166,17 +166,15 @@ function applyRenames(store: Store, renames: CodeRename[], actor: Actor, reason:
   for (const r of renames) updateScreen(store, r.screenId, s => ({ ...s, code: r.to }), actor, 'screen.code', reason);
 }
 
-// 플립북에 저장한 Screen ID를 바꾼다. 첫 화면의 새 ID와 같아지면 저장하지 않고 첫 화면 ID를 따르게 둔다(withFlipbookId와 같다).
+// 플립북 Screen ID를 바꾼 ID로 저장한다. ID 동기화가 켜진 플립북은 목록에 없다(자동 ID를 따른다).
 // 헤더 반영은 호출한 쪽이 한다(controller admin).
 function applyFlipbookIdRenames(store: Store, list: FlipbookIdRename[], renames: CodeRename[], actor: Actor): void {
   const next = new Map(renames.map(r => [r.screenId, r.to]));
   for (const r of list) {
     const fb = store.state.flipbooks.get(r.flipbookId);
     if (!fb) continue;
-    const first = fb.screens[0] ? next.get(fb.screens[0].uid) ?? store.state.screens.get(fb.screens[0].uid)?.code : undefined;
-    const screenId = first && first === r.to ? undefined : r.to;
-    store.put(keys.flipbook(fb.id), { ...fb, rev: fb.rev + 1, screenId });
-    store.audit(actor, 'flipbook.screenId', fb.id, r.from, screenId ?? null);
+    store.put(keys.flipbook(fb.id), { ...fb, rev: fb.rev + 1, screenId: r.to });
+    store.audit(actor, 'flipbook.screenId', fb.id, r.from, r.to);
   }
 }
 

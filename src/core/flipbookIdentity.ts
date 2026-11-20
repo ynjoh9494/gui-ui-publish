@@ -11,7 +11,10 @@ function policyStem(state: State, fb: Flipbook): string {
 }
 
 // ID를 저장하지 않은 정책 플립북(화면도 ID도 없다). 처음 반영할 때 ID를 저장한다(controller deliverFlipbooks).
-export const unsavedPolicy = (fb: Flipbook) => fb.status === 'active' && !fb.screens.length && !fb.screenId;
+// 자동 번호를 쓰는 정책 플립북: ID를 저장하지 않았거나 ID 동기화를 켰다. 번호는 기록 순서대로 이어 정한다.
+const autoPolicy = (fb: Flipbook) => fb.status === 'active' && !fb.screens.length && (!fb.screenId || !!fb.idSynced);
+// 그중 처음 반영할 때 ID를 저장할 플립북. ID 동기화를 켠 플립북은 저장하지 않고 늘 자동 번호를 따른다.
+export const unsavedPolicy = (fb: Flipbook) => autoPolicy(fb) && !fb.idSynced;
 
 // 정책 ID의 번호: 머리 그대로는 1번, `머리_NN`은 NN번, 그 밖은 0
 function policyNumber(stem: string, code: string): number {
@@ -25,7 +28,7 @@ const policyCode = (stem: string, n: number) => (n <= 1 ? stem : `${stem}_${Stri
 // 저장한 플립북 ID·화면 ID 중 그 머리의 마지막 번호. exceptId의 저장 ID는 뺀다(자기 ID를 다시 정할 때).
 function lastPolicyNumber(state: State, stem: string, exceptId?: string): number {
   let last = 0;
-  for (const f of state.flipbooks.values()) if (f.status === 'active' && f.id !== exceptId && f.screenId) last = Math.max(last, policyNumber(stem, f.screenId));
+  for (const f of state.flipbooks.values()) if (f.status === 'active' && f.id !== exceptId && f.screenId && !f.idSynced) last = Math.max(last, policyNumber(stem, f.screenId));
   for (const s of state.screens.values()) if (s.status === 'active') last = Math.max(last, policyNumber(stem, s.code));
   return last;
 }
@@ -38,17 +41,17 @@ export function policyScreenId(state: State, fb: Flipbook): string {
   let last = lastPolicyNumber(state, stem, fb.id);
   for (const other of state.flipbooks.values()) {
     if (other.id === fb.id) break;
-    if (unsavedPolicy(other) && policyStem(state, other) === stem) last++;
+    if (autoPolicy(other) && policyStem(state, other) === stem) last++;
   }
   return policyCode(stem, last + 1);
 }
 
-// 저장하지 않은 정책 플립북 모두의 ID를 한 번에 정한다(policyScreenId와 같은 결과). 목록처럼 플립북마다 부를 때 쓴다.
+// 자동 번호를 쓰는 정책 플립북(저장하지 않은 것과 ID 동기화를 켠 것) 모두의 ID를 한 번에 정한다(policyScreenId와 같은 결과). 목록처럼 플립북마다 부를 때 쓴다.
 export function unsavedPolicyIds(state: State): Map<string, string> {
   const out = new Map<string, string>();
   const last = new Map<string, number>();
   for (const fb of state.flipbooks.values()) {
-    if (!unsavedPolicy(fb)) continue;
+    if (!autoPolicy(fb)) continue;
     const stem = policyStem(state, fb);
     if (!stem) continue;
     const n = (last.get(stem) ?? lastPolicyNumber(state, stem)) + 1;
@@ -60,15 +63,28 @@ export function unsavedPolicyIds(state: State): Map<string, string> {
 
 // policies: unsavedPolicyIds 결과. 여러 플립북을 차례로 볼 때 넘기면 정책 ID를 플립북마다 다시 계산하지 않는다.
 export function flipbookIdentity(state: State, fb: Flipbook, policies?: ReadonlyMap<string, string>): FlipbookIdentity {
-  const screenId = fb.screenId || fb.screens[0]?.code || policies?.get(fb.id) || policyScreenId(state, fb);
+  const screenId = (fb.idSynced ? '' : fb.screenId) || fb.screens[0]?.code || policies?.get(fb.id) || policyScreenId(state, fb);
   const code = screenId.split('_')[1] ?? '';
   const category = code ? [...state.categories.values()].find(c => c.code?.toUpperCase() === code.toUpperCase()) : undefined;
   return { screenId, chapter: category?.name ?? (code || '-'), frameName: screenId ? `${screenId} · ${fb.title}` : fb.title };
 }
 
-// A value matching the first GUI screen remains automatic when GUI renumbers it.
+// ID 동기화 때 따를 자동 ID: 첫 화면의 Screen ID, 화면이 없으면 정책 자동 번호
+export function autoScreenId(state: State, fb: Flipbook): string {
+  return fb.screens.length ? fb.screens[0].code : policyScreenId(state, fb);
+}
+
+// 입력한 ID를 저장한다. 비우면 지금 자동 ID를 저장한다. 첫 화면 ID와 같아도 저장하고 ID 동기화는 끈다(2026-11-20 사용자 결정).
+// sync: 상세 Screen ID의 동기화 버튼을 눌렀다. ID를 저장하지 않고 자동 ID를 따른다.
 // 입력한 대소문자를 그대로 저장한다(2026-11-04 사용자 요청: 대문자로 바꾸는 규칙 없앰).
-export function withFlipbookId(state: State, fb: Flipbook, input?: string): Flipbook {
-  const value = input?.trim() || (fb.screens.length ? fb.screens[0].code : policyScreenId(state, fb));
-  return { ...fb, screenId: fb.screens.length && value === fb.screens[0].code ? undefined : value || undefined };
+export function withFlipbookId(state: State, fb: Flipbook, input?: string, sync = false): Flipbook {
+  if (sync) return { ...fb, screenId: undefined, idSynced: true };
+  const value = input?.trim() || autoScreenId(state, fb);
+  return { ...fb, screenId: value || undefined, idSynced: false };
+}
+
+// 화면 목록이 바뀌기 직전에 부른다. ID 동기화가 꺼져 있으면 지금 보이는 ID를 저장해 화면을 따라 바뀌지 않게 한다.
+// (이 기능 전에 만든 플립북은 ID를 저장하지 않고 첫 화면 ID를 따랐다. 모두 고쳐 쓰지 않고 화면이 바뀔 때 저장한다.)
+export function keptScreenId(state: State, fb: Flipbook): string | undefined {
+  return fb.idSynced ? undefined : fb.screenId || flipbookIdentity(state, fb).screenId || undefined;
 }

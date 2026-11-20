@@ -154,6 +154,36 @@ try {
   store.put(keys.flipbook(fb.id), { ...fb, rev: 5, title: 'Only Page title', nameSynced: false, screenId: 'ST_LI_POLICY_05' });
   await page.evaluate(state => window.postMessage({ pluginMessage: { type: 'state', state, pages: [{ id: 'p', name: 'Pages' }] } }, '*'), toUiWire(store.state));
   await page.waitForFunction(() => document.querySelector('[data-input=fb-page-title]')?.value === 'Only Page title');
+  // Chapter → Page title → Screen ID, 각 한 줄 전체(2026-11-20 사용자 요청)
+  const rowsOrder = await page.locator('.fb-identity .prop').evaluateAll(props => props.map(p => [p.querySelector('.prop-label').textContent, Math.round(p.getBoundingClientRect().width)]));
+  assert.deepEqual(rowsOrder.map(r => r[0]), ['Chapter', 'Page title', 'Screen ID']);
+  assert.ok(rowsOrder.every(r => r[1] === rowsOrder[0][1]), `every identity row spans the full width: ${JSON.stringify(rowsOrder)}`);
+  // ID 동기화(2026-11-20): 이름과 같이 만든 뒤에는 꺼져 있고 버튼을 눌러야 켠다.
+  const idSync = page.locator('.fb-identity [data-action=fb-id-sync]');
+  assert.equal(await idSync.isDisabled(), false, 'a saved ID starts unsynced');
+  await idSync.click();
+  assert.equal(await page.locator('[data-input=fb-screen-id]').inputValue(), '', 'ID sync clears the Screen ID');
+  assert.ok(await page.locator('[data-input=fb-screen-id]').getAttribute('placeholder'), 'the automatic ID shows as placeholder');
+  assert.equal(await idSync.isDisabled(), true);
+  assert.deepEqual(await actions(), ['취소', '적용하기']);
+  await page.locator('[data-input=fb-screen-id]').fill('ST_LI_POLICY_09');
+  assert.equal(await idSync.isDisabled(), false, 'typing an ID turns ID sync off');
+  assert.equal(await page.locator('[data-identity-chapter]').inputValue(), 'Live');
+  await page.locator('[data-input=fb-screen-id]').fill('');
+  await idSync.click();
+  await page.locator('[data-action=fb-identity-save]').click();
+  await page.waitForFunction(() => window.requests.at(-1)?.type === 'applyFlipbookEdits');
+  assert.deepEqual((await page.evaluate(() => window.requests.at(-1))).edits.map(e => e.identity), [{ title: 'Only Page title', screenId: '', idSync: true }]);
+  await page.evaluate(() => window.postMessage({ pluginMessage: { type: 'flipbookEditsApplied', applied: ['fb'], failed: [], message: 'ok', creating: false } }, '*'));
+  store.put(keys.flipbook(fb.id), { ...fb, rev: 6, title: 'Only Page title', idSynced: true, screenId: undefined });
+  await page.evaluate(state => window.postMessage({ pluginMessage: { type: 'state', state, pages: [{ id: 'p', name: 'Pages' }] } }, '*'), toUiWire(store.state));
+  await page.waitForFunction(() => document.querySelector('.fb-identity [data-action=fb-id-sync]')?.disabled === true);
+  assert.equal(await page.locator('[data-input=fb-screen-id]').inputValue(), '', 'a synced ID keeps the input empty');
+  assert.deepEqual(await actions(), ['목록에서 삭제']);
+  await page.locator('#app').screenshot({ path: 'tmp/walkthrough/ui-id-sync.png' });
+  store.put(keys.flipbook(fb.id), { ...fb, rev: 7, title: 'Only Page title', screenId: 'ST_LI_POLICY_05' });
+  await page.evaluate(state => window.postMessage({ pluginMessage: { type: 'state', state, pages: [{ id: 'p', name: 'Pages' }] } }, '*'), toUiWire(store.state));
+  await page.waitForFunction(() => document.querySelector('[data-input=fb-screen-id]')?.value === 'ST_LI_POLICY_05');
   // 검사 화면은 tmp에 남긴다.
   mkdirSync('tmp/walkthrough', { recursive: true });
   await page.locator('#app').screenshot({ path: 'tmp/walkthrough/ui-identity.png' });

@@ -148,7 +148,7 @@ GUI 붙이기와 플로우 편집기의 화면 목록은 `src/ui/screenPicker.ts
 
 ### 제목 변경 전용 경로
 
-`core/flipbooks.plannedFlipbookTitle`은 저장 없이 제목 변경을 계산한다. Controller는 `Host.prepareFlipbookTitle`로 대상·글꼴을 준비한 뒤 기록의 최신 rev를 확인한다. 준비 결과의 동기 `apply`로 제목 칸·프레임 이름을 바꾸고 이름 기록을 저장한다. 준비 실패는 기록을 바꾸지 않으며, 제목 쓰기 실패는 스냅샷으로 복원한다. 전체 `deliverFlipbooks`는 실행하지 않는다. 이름 동기화(`Flipbook.nameSynced`)는 상세 Page title의 동기화 버튼으로 보낸 `identity.sync`로만 켜지고, 직접 입력한 제목으로 바꾸면 꺼진다. 켜져 있을 때만 자동 제목이 화면을 따라가고 `syncFlipbook()`이 기존 프레임 이름을 맞춘다.
+`core/flipbooks.plannedFlipbookTitle`은 저장 없이 제목 변경을 계산한다. Controller는 `Host.prepareFlipbookTitle`로 대상·글꼴을 준비한 뒤 기록의 최신 rev를 확인한다. 준비 결과의 동기 `apply`로 제목 칸·프레임 이름을 바꾸고 이름 기록을 저장한다. 준비 실패는 기록을 바꾸지 않으며, 제목 쓰기 실패는 스냅샷으로 복원한다. 전체 `deliverFlipbooks`는 실행하지 않는다. 이름 동기화(`Flipbook.nameSynced`)는 상세 Page title의 동기화 버튼으로 보낸 `identity.sync`로만 켜지고, 직접 입력한 제목으로 바꾸면 꺼진다. 켜져 있을 때만 자동 제목이 화면을 따라가고 `syncFlipbook()`이 기존 프레임 이름을 맞춘다. Screen ID도 같다: `Flipbook.idSynced`는 `identity.idSync`로만 켜지고, 꺼져 있으면 `withFlipbookId`가 ID를 저장하며 화면 목록을 바꾸는 쪽은 `keptScreenId`로 직전 ID를 저장한다(이전 기록은 이때 저장). 켜진 정책 플립북은 자동 번호를 차지하지만 `pinPolicyIds`가 저장하지 않는다.
 
 ### 요청별 반영 범위
 

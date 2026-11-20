@@ -135,12 +135,12 @@ export type ScanState = 'idle' | 'loading' | 'comparing' | 'done' | 'cancelled' 
 // 플립북 Description 영역(템플릿의 「Description 영역」 표식 레이어). none: 표식이 없는 플립북(토글 없음)
 export type DescriptionArea = 'none' | 'shown' | 'hidden';
 
-// 기존 플립북 하나의 수정. identity: Page title·Screen ID(sync: 이름 동기화 버튼을 눌렀다), description: Description 본문과 서식,
+// 기존 플립북 하나의 수정. identity: Page title·Screen ID(sync·idSync: 이름·ID 동기화 버튼을 눌렀다), description: Description 본문과 서식,
 // descriptionShown: Description 영역을 보일지(토글을 바꿨을 때만). rev: 고칠 때 본 기록
 export interface FlipbookEdit {
   id: string;
   rev: number;
-  identity?: { title: string; screenId: string; sync?: boolean };
+  identity?: { title: string; screenId: string; sync?: boolean; idSync?: boolean };
   description?: { paragraphs: RichParagraph[]; layout: TextLayout; before: { paragraphs: RichParagraph[]; layout: TextLayout } };
   descriptionShown?: boolean;
 }
