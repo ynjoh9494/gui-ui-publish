@@ -298,6 +298,9 @@ export function figmaHost(mode: Host['mode']): Host {
       await writeRichText(node, paragraphs, layout);
       return { kind: 'text' };
     },
+    async readFlipbookFrameName(item) {
+      return (await flipbookFrame(item)).name;
+    },
     async readFlipbookDescription(item) {
       const root = flipbookDescriptionRoot(await flipbookFrame(item));
       return { paragraphs: readDescription(root), layout: readDescriptionLayout(root) };

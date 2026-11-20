@@ -25,7 +25,7 @@ try {
     window.requests = [];
     window.addEventListener('message', e => {
       const m = e.data?.pluginMessage;
-      if (m?.type === 'updateFlipbookIdentity' || m?.type === 'renameFlipbook' || m?.type === 'applyFlipbookEdits' || (m?.type === 'flipbookDescription' && !('paragraphs' in m) && !('error' in m) && !('area' in m))) { window.requests.push(m); e.stopImmediatePropagation(); }
+      if (m?.type === 'updateFlipbookIdentity' || (m?.type === 'flipbookFrameName' && !('name' in m) && !('error' in m)) || m?.type === 'renameFlipbook' || m?.type === 'applyFlipbookEdits' || (m?.type === 'flipbookDescription' && !('paragraphs' in m) && !('error' in m) && !('area' in m))) { window.requests.push(m); e.stopImmediatePropagation(); }
       else if ((m?.type === 'history' && !('rows' in m)) || (m?.type === 'guiScreens' && !('screens' in m))) e.stopImmediatePropagation();
     }, true);
   });
@@ -125,8 +125,9 @@ try {
   await page.waitForFunction(() => document.querySelector('[data-input=fb-page-title]')?.value === 'Only Page title');
   await page.waitForFunction(() => document.querySelector('.list .row .name')?.textContent === 'ST_LI_POLICY_05 · Only Page title');
   // 이름 동기화(2026-11-20): 만든 뒤에는 꺼져 있고, Page title 안쪽 오른쪽 버튼을 눌러야 켠다. 켜지면 회색(누를 수 없음)이다.
+  const grayed = async locator => await locator.getAttribute('aria-disabled') === 'true';
   const syncButton = page.locator('.fb-identity .input-with-action [data-action=fb-title-sync]');
-  assert.equal(await syncButton.isDisabled(), false, 'a created flipbook starts unsynced even when the names match');
+  assert.equal(await grayed(syncButton), false, 'a created flipbook starts unsynced even when the names match');
   const titleBox = await page.locator('[data-input=fb-page-title]').boundingBox();
   const syncBox = await syncButton.boundingBox();
   assert.ok(syncBox.x + syncBox.width <= titleBox.x + titleBox.width && syncBox.x + syncBox.width >= titleBox.x + titleBox.width - 4, 'icon sits inside the right end of the input');
@@ -135,10 +136,10 @@ try {
   const autoTitle = await page.locator('[data-input=fb-page-title]').getAttribute('placeholder');
   assert.ok(autoTitle);
   assert.equal(await page.locator('.detail .title-head .head-name').innerText(), autoTitle, 'the synced name shows as placeholder and heading');
-  assert.equal(await syncButton.isDisabled(), true, 'synced draft shows the gray button');
+  assert.equal(await grayed(syncButton), true, 'synced draft shows the gray button');
   assert.deepEqual(await actions(), ['취소', '적용하기']);
   await page.locator('[data-input=fb-page-title]').fill('Typed again');
-  assert.equal(await syncButton.isDisabled(), false, 'typing turns the sync off again');
+  assert.equal(await grayed(syncButton), false, 'typing turns the sync off again');
   await page.locator('[data-input=fb-page-title]').fill('');
   await syncButton.click();
   await page.locator('[data-action=fb-identity-save]').click();
@@ -147,7 +148,7 @@ try {
   await page.evaluate(() => window.postMessage({ pluginMessage: { type: 'flipbookEditsApplied', applied: ['fb'], failed: [], message: 'ok', creating: false } }, '*'));
   store.put(keys.flipbook(fb.id), { ...fb, rev: 4, title: autoTitle, nameSynced: true, screenId: 'ST_LI_POLICY_05' });
   await page.evaluate(state => window.postMessage({ pluginMessage: { type: 'state', state, pages: [{ id: 'p', name: 'Pages' }] } }, '*'), toUiWire(store.state));
-  await page.waitForFunction(() => document.querySelector('.fb-identity [data-action=fb-title-sync]')?.disabled === true);
+  await page.waitForFunction(() => document.querySelector('.fb-identity [data-action=fb-title-sync]')?.getAttribute('aria-disabled') === 'true');
   assert.equal(await page.locator('[data-input=fb-page-title]').inputValue(), '', 'a synced flipbook keeps the input empty with the placeholder');
   assert.deepEqual(await actions(), ['목록에서 삭제'], 'a synced flipbook has nothing to apply');
   await page.locator('#app').screenshot({ path: 'tmp/walkthrough/ui-name-sync.png' });
@@ -160,14 +161,14 @@ try {
   assert.ok(rowsOrder.every(r => r[1] === rowsOrder[0][1]), `every identity row spans the full width: ${JSON.stringify(rowsOrder)}`);
   // ID 동기화(2026-11-20): 이름과 같이 만든 뒤에는 꺼져 있고 버튼을 눌러야 켠다.
   const idSync = page.locator('.fb-identity [data-action=fb-id-sync]');
-  assert.equal(await idSync.isDisabled(), false, 'a saved ID starts unsynced');
+  assert.equal(await grayed(idSync), false, 'a saved ID starts unsynced');
   await idSync.click();
   assert.equal(await page.locator('[data-input=fb-screen-id]').inputValue(), '', 'ID sync clears the Screen ID');
   assert.ok(await page.locator('[data-input=fb-screen-id]').getAttribute('placeholder'), 'the automatic ID shows as placeholder');
-  assert.equal(await idSync.isDisabled(), true);
+  assert.equal(await grayed(idSync), true);
   assert.deepEqual(await actions(), ['취소', '적용하기']);
   await page.locator('[data-input=fb-screen-id]').fill('ST_LI_POLICY_09');
-  assert.equal(await idSync.isDisabled(), false, 'typing an ID turns ID sync off');
+  assert.equal(await grayed(idSync), false, 'typing an ID turns ID sync off');
   assert.equal(await page.locator('[data-identity-chapter]').inputValue(), 'Live');
   await page.locator('[data-input=fb-screen-id]').fill('');
   await idSync.click();
@@ -177,13 +178,43 @@ try {
   await page.evaluate(() => window.postMessage({ pluginMessage: { type: 'flipbookEditsApplied', applied: ['fb'], failed: [], message: 'ok', creating: false } }, '*'));
   store.put(keys.flipbook(fb.id), { ...fb, rev: 6, title: 'Only Page title', idSynced: true, screenId: undefined });
   await page.evaluate(state => window.postMessage({ pluginMessage: { type: 'state', state, pages: [{ id: 'p', name: 'Pages' }] } }, '*'), toUiWire(store.state));
-  await page.waitForFunction(() => document.querySelector('.fb-identity [data-action=fb-id-sync]')?.disabled === true);
+  await page.waitForFunction(() => document.querySelector('.fb-identity [data-action=fb-id-sync]')?.getAttribute('aria-disabled') === 'true');
   assert.equal(await page.locator('[data-input=fb-screen-id]').inputValue(), '', 'a synced ID keeps the input empty');
   assert.deepEqual(await actions(), ['목록에서 삭제']);
   await page.locator('#app').screenshot({ path: 'tmp/walkthrough/ui-id-sync.png' });
   store.put(keys.flipbook(fb.id), { ...fb, rev: 7, title: 'Only Page title', screenId: 'ST_LI_POLICY_05' });
   await page.evaluate(state => window.postMessage({ pluginMessage: { type: 'state', state, pages: [{ id: 'p', name: 'Pages' }] } }, '*'), toUiWire(store.state));
   await page.waitForFunction(() => document.querySelector('[data-input=fb-screen-id]')?.value === 'ST_LI_POLICY_05');
+  // 레이어에서 가져오기(2026-11-20): 프레임 레이어 이름을 읽어 입력란만 채운다. 동기화는 꺼지고 「적용하기」 전에는 기록이 바뀌지 않는다.
+  const tips = await page.locator('.fb-identity .input-action').evaluateAll(buttons => buttons.map(b => [b.dataset.action, b.getAttribute('title')]));
+  assert.deepEqual(tips, [['fb-title-layer', '레이어에서 제목 가져오기'], ['fb-title-sync', 'GUI와 동기화하기'], ['fb-id-layer', '레이어에서 ID 가져오기'], ['fb-id-sync', 'GUI와 동기화하기']]);
+  assert.ok(await page.locator('.fb-identity .input-action').evaluateAll(buttons => buttons.every(b => !b.disabled)), 'no native disabled, so every tooltip shows');
+  const frameNameReply = (field, name) => page.evaluate(({ field, name }) => window.postMessage({ pluginMessage: { type: 'flipbookFrameName', id: 'fb', field, name } }, '*'), { field, name });
+  await syncButton.click();
+  assert.equal(await grayed(syncButton), true);
+  await page.locator('.fb-identity [data-action=fb-title-layer]').click();
+  await page.waitForFunction(() => window.requests.at(-1)?.type === 'flipbookFrameName');
+  assert.deepEqual(await page.evaluate(() => window.requests.at(-1)), { type: 'flipbookFrameName', id: 'fb', field: 'title' });
+  await frameNameReply('title', 'ST_LI_POLICY_07 · 홈 레이어 이름');
+  await page.waitForFunction(() => document.querySelector('[data-input=fb-page-title]')?.value === '홈 레이어 이름');
+  assert.equal(await grayed(syncButton), false, 'taking the layer name turns name sync off');
+  assert.equal(await page.locator('.detail .title-head .head-name').innerText(), '홈 레이어 이름');
+  await page.locator('.fb-identity [data-action=fb-id-layer]').click();
+  await page.waitForFunction(() => window.requests.at(-1)?.field === 'id');
+  await frameNameReply('id', '홈 화면');
+  assert.equal(await page.locator('[data-input=fb-screen-id]').inputValue(), 'ST_LI_POLICY_05', 'a layer name without an ID leaves the ID as it was');
+  await frameNameReply('id', '[ST_LI_POLICY_07] 홈');
+  await page.waitForFunction(() => document.querySelector('[data-input=fb-screen-id]')?.value === 'ST_LI_POLICY_07');
+  assert.equal(await page.locator('[data-identity-chapter]').inputValue(), 'Live');
+  assert.deepEqual(await actions(), ['취소', '적용하기'], 'nothing changes until 적용하기');
+  await page.locator('#app').screenshot({ path: 'tmp/walkthrough/ui-from-layer.png' });
+  await page.locator('[data-action=fb-identity-save]').click();
+  await page.waitForFunction(() => window.requests.at(-1)?.type === 'applyFlipbookEdits');
+  assert.deepEqual((await page.evaluate(() => window.requests.at(-1))).edits.map(e => e.identity), [{ title: '홈 레이어 이름', screenId: 'ST_LI_POLICY_07' }]);
+  await page.evaluate(() => window.postMessage({ pluginMessage: { type: 'flipbookEditsApplied', applied: ['fb'], failed: [], message: 'ok', creating: false } }, '*'));
+  store.put(keys.flipbook(fb.id), { ...fb, rev: 8, title: 'Only Page title', screenId: 'ST_LI_POLICY_05' });
+  await page.evaluate(state => window.postMessage({ pluginMessage: { type: 'state', state, pages: [{ id: 'p', name: 'Pages' }] } }, '*'), toUiWire(store.state));
+  await page.waitForFunction(() => document.querySelector('[data-input=fb-page-title]')?.value === 'Only Page title');
   // 검사 화면은 tmp에 남긴다.
   mkdirSync('tmp/walkthrough', { recursive: true });
   await page.locator('#app').screenshot({ path: 'tmp/walkthrough/ui-identity.png' });

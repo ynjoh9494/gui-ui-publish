@@ -929,9 +929,11 @@ details.fb-fold > summary .review-dot { margin-left: 2px; }
 .prop .addable button { height: 24px; padding: 0 6px; }
 .prop-button { flex: none; display: inline-flex; align-items: center; gap: 2px; height: 24px; padding: 0 4px 0 8px; color: var(--text); }
 .prop-button svg { width: 12px; height: 12px; }
-/* 입력란 안쪽 오른쪽 끝의 아이콘 버튼(Page title의 이름 동기화). 동기화 중이면 회색으로 둔다. */
+/* 입력란 안쪽 오른쪽 끝의 아이콘 버튼(Page title·Screen ID의 레이어에서 가져오기·GUI와 동기화하기). 동기화 중이면 동기화 버튼을 회색으로 둔다. */
 .prop > .input-with-action { position: relative; flex: 1; min-width: 0; display: flex; }
-.input-with-action > input { flex: 1; min-width: 0; margin: 0; padding-right: 24px; color: var(--text); }
-.input-action { position: absolute; top: 2px; right: 2px; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--text); }
-.input-action:hover:not(:disabled) { background: var(--figma-color-bg-hover, #f5f5f5); }
-.input-action:disabled { opacity: 1; color: var(--figma-color-text-disabled, #b3b3b3); cursor: default; }
+.input-with-action > input { flex: 1; min-width: 0; margin: 0; padding-right: 46px; color: var(--text); }
+.input-actions { position: absolute; top: 2px; right: 2px; display: flex; gap: 2px; }
+.input-action { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--text); }
+.input-action:hover:not([aria-disabled="true"]) { background: var(--figma-color-bg-hover, #f5f5f5); }
+/* 툴팁이 보이도록 disabled 대신 aria-disabled로 회색 처리한다. */
+.input-action[aria-disabled="true"] { color: var(--figma-color-text-disabled, #b3b3b3); cursor: default; }

@@ -365,6 +365,7 @@ export class Controller {
           break;
         }
         case 'flipbookDescription': await this.postFlipbookDescription(msg.id, !!msg.force); break;
+        case 'flipbookFrameName': await this.postFlipbookFrameName(msg.id, msg.field); break;
         case 'applyFlipbookEdits': await this.applyFlipbookEdits(msg.edits, msg.create); break;
         case 'pdfTab':
           if (this.host.mode === 'UI') this.pdf.setTab(msg.open);
@@ -1707,6 +1708,17 @@ export class Controller {
   // 플립북 제목 변경(2026-10-21 사용자 요청): 기록을 바꾸고 큰 제목·Page title·프레임 이름을 새 제목으로 맞춘다.
   // 플립북 상세의 Description 영역: 고른 플립북의 Description을 읽어 보낸다. 읽지 못하면 이유를 보낸다(오류 알림은 띄우지 않는다).
   // Description 영역을 숨긴 플립북은 force가 아니면 본문을 읽지 않고 영역 상태만 보낸다(2026-11-05 사용자 결정).
+  private async postFlipbookFrameName(id: string, field: 'title' | 'id'): Promise<void> {
+    const fb = this.store.state.flipbooks.get(id);
+    try {
+      if (!fb?.pageId) throw new Error(COPY.controller063);
+      const name = await this.host.readFlipbookFrameName({ flipbookId: id, pageId: fb.pageId, nodeId: this.uiScans.find(u => u.flipbookId === id)?.nodeId ?? undefined });
+      this.host.post({ type: 'flipbookFrameName', id, field, name });
+    } catch (error) {
+      this.host.post({ type: 'flipbookFrameName', id, field, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   private async postFlipbookDescription(id: string, force: boolean): Promise<void> {
     const fb = this.store.state.flipbooks.get(id);
     try {

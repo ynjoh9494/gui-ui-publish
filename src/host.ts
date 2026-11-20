@@ -107,6 +107,8 @@ export interface Host extends FingerprintReader {
   writeSelection(paragraphs: RichParagraph[], layout?: TextLayout): Promise<SelectionWrite>;
   // 플립북 상세의 Description 영역: 플립북 프레임의 Description 본문과 서식을 읽고 쓴다. 선택은 바꾸지 않는다.
   readFlipbookDescription(item: { flipbookId: string; pageId: string; nodeId?: string }): Promise<{ paragraphs: RichParagraph[]; layout: TextLayout }>;
+  // 플립북 프레임의 지금 레이어 이름(상세의 「레이어에서 가져오기」)
+  readFlipbookFrameName(item: { flipbookId: string; pageId: string; nodeId?: string }): Promise<string>;
   writeFlipbookDescription(item: { flipbookId: string; pageId: string; nodeId?: string }, paragraphs: RichParagraph[], layout: TextLayout): Promise<void>;
   // Description 영역(본문을 품은 표식 레이어)이 있는지·보이는지, 보이기를 바꾼다(상세의 Description 토글, 2026-11-05 사용자 결정).
   flipbookDescriptionArea(item: { flipbookId: string; pageId: string; nodeId?: string }): Promise<DescriptionArea>;

@@ -92,6 +92,8 @@ export function createDemo(options: DemoOptions): Demo {
   const thumbs = new Map<string, Uint8Array>();
   let thumbSeq = 0;
   const flipbooks = new Map<string, string>();
+  // 미리보기의 플립북 프레임 이름(만들 때 붙인 이름)
+  const frameNames = new Map<string, string>();
   const descriptions = new Map<string, RichParagraph[]>();
   // 플립북마다 Description 영역을 숨겼는지(처음은 모두 보인다)
   const descriptionHidden = new Set<string>();
@@ -268,6 +270,7 @@ export function createDemo(options: DemoOptions): Demo {
       if (!flipbooks.has(view.flipbookId) && !view.create) throw new Error(COPY.figmaFlipbook027);
       if (!flipbooks.has(view.flipbookId)) {
         flipbooks.set(view.flipbookId, `fb:${view.flipbookId}`);
+        frameNames.set(view.flipbookId, view.frameName ?? view.name);
         // 정한 자리(그 플립북 바로 다음, null이면 Section 맨 앞, 없으면 맨 뒤)에 놓는다.
         const same = placed.filter(p => p.pageId === settings.pageId && p.section === view.category.key);
         const anchor = view.after ? same.findIndex(p => p.flipbookId === view.after) : -1;
@@ -327,6 +330,10 @@ export function createDemo(options: DemoOptions): Demo {
       return { kind: 'text' };
     },
     // 플립북 Description: 플립북마다 문단을 따로 둔다(처음은 비어 있다).
+    async readFlipbookFrameName(item) {
+      if (!flipbooks.has(item.flipbookId)) throw new Error(COPY.figmaFlipbook027);
+      return frameNames.get(item.flipbookId) ?? item.flipbookId;
+    },
     async readFlipbookDescription(item) {
       if (!flipbooks.has(item.flipbookId)) throw new Error(COPY.figmaFlipbook027);
       if (options.instrument) document.body.dataset.previewDescriptionReads = String(Number(document.body.dataset.previewDescriptionReads ?? 0) + 1);

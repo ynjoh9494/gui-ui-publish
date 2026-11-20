@@ -227,6 +227,8 @@ export type ToMain =
   // 플립북 상세의 Description 영역(2026-11-04 사용자 요청): 고른 플립북의 Description 본문과 서식을 읽는다.
   // force: Description 영역이 숨겨져 있어도 읽는다(상세에서 토글을 켰을 때). 아니면 숨긴 영역은 읽지 않는다(2026-11-05 사용자 결정).
   | { type: 'flipbookDescription'; id: string; force?: boolean }
+  // 상세 Page title·Screen ID의 「레이어에서 가져오기」: 플립북 프레임의 지금 레이어 이름을 읽는다.
+  | { type: 'flipbookFrameName'; id: string; field: 'title' | 'id' }
   // 「적용하기」·「모두 적용하기」: 기존 플립북의 제목·ID·Description 수정을 반영하고, create가 있으면 이어서 새 플립북을 만들고 옮긴다.
   | { type: 'applyFlipbookEdits'; edits: FlipbookEdit[]; create?: FlipbookRequest }
   // 플로우: 고른 배포 화면으로 지금 보고 있는 페이지에 플로우 그룹을 만든다.
@@ -308,6 +310,7 @@ export type ToUi =
   | { type: 'textImported'; paragraphs: RichParagraph[]; layout?: TextLayout }
   // 플립북 Description을 읽었다. 읽지 못하면 error. area: Description 영역 상태(숨겼으면 force가 아닐 때 본문을 읽지 않아 paragraphs가 없다)
   | { type: 'flipbookDescription'; id: string; area?: DescriptionArea; paragraphs?: RichParagraph[]; layout?: TextLayout; error?: string }
+  | { type: 'flipbookFrameName'; id: string; field: 'title' | 'id'; name?: string; error?: string }
   // 기존 플립북 수정을 반영했다. creating: 이어서 새 플립북 만들기·옮기기를 하며 그 결과는 flipbooksCreated로 온다.
   | { type: 'flipbookEditsApplied'; applied: string[]; failed: { id: string; message: string }[]; message: string; creating: boolean }
   // 텍스트 편집 대상. 탭이 보이는 동안 캔버스 선택이 바뀔 때와 탭을 열 때 보낸다.
