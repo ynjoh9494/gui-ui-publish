@@ -397,10 +397,13 @@ button.link.danger { color: var(--danger); }
 .filter-line .sync-status { display: flex; flex: 1 1 auto; align-items: center; gap: 4px; min-width: 0; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .filter-line .sync-status span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .filter-line .sync-status + .switch { flex: none; white-space: nowrap; }
-.filter-line .sync-status .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); flex: none; }
-.filter-line .sync-status .icon-button:hover { color: var(--text); }
-.filter-line .sync-status .icon-button.spinning svg { animation: sync-spin .8s linear infinite; }
-@keyframes sync-spin { to { transform: rotate(360deg); } }
+.filter-line .sync-status .icon-button, .group-bar .page-refresh { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); flex: none; }
+.filter-line .sync-status .icon-button:hover, .group-bar .page-refresh:hover { color: var(--text); }
+.filter-line .sync-status .icon-button.spinning svg, .group-bar .page-refresh.spinning svg { animation: sync-spin 1.6s ease-in-out infinite; }
+.group-bar .page-refresh { margin-right: 5px; }
+.detail .page-unregistered { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+/* 180도 돌고 잠깐 멈추기를 되풀이한다(2026-11-20 사용자 요청). */
+@keyframes sync-spin { 0% { transform: rotate(0); } 35%, 50% { transform: rotate(180deg); } 85%, 100% { transform: rotate(360deg); } }
 .filter-line .all-include { position: static; display: flex; gap: 6px; margin: 0; padding: 0; border: 0; background: none; font-weight: 400; color: var(--text); }
 .filter-line .all-include input { margin: 0; }
 .filter-line.disabled { opacity: .45; }

@@ -27,7 +27,7 @@ try {
   await page.goto(pathToFileURL('tmp/build/ui.html').href);
   const send = msg => page.evaluate(msg => window.postMessage({ pluginMessage: msg }, '*'), msg);
   const init = async () => {
-    await send({ type: 'init', mode: 'UI', actor, pages: [{ id: 'page', name: 'Pages' }], issues: [], state });
+    await send({ type: 'init', mode: 'UI', actor, pages: [{ id: 'page', name: 'Pages', current: true }], issues: [], state });
     await send({ type: 'startupReady' });
     await send({ type: 'uiScan', scans: ['fb1', 'fb2'].map(id => ({ flipbookId: id, nodeId: 'node-' + id, fingerprint: null, error: null })) });
     await page.locator('[data-action=page-group]').first().waitFor();

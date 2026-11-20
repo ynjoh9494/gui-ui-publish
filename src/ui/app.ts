@@ -68,7 +68,7 @@ const ADMIN_MODE_PANELS: Record<Team, [form: string, title: string][]> = {
 };
 
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색
-const WHILE_BUSY = new Set(['recovery-toggle', 'tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel', 'update-download', 'update-go', 'update-close']);
+const WHILE_BUSY = new Set(['recovery-toggle', 'tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'refresh-page', 'cancel-scan', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel', 'update-download', 'update-go', 'update-close']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
 const BEFORE_CHECK = new Set([...(typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__ ? ['template-migration-find', 'template-migration-close', 'template-migration-toggle', 'template-migration-submit'] : []), ...WHILE_BUSY, 'switch-mode', 'scan', 'scan-selected', 'excluded-unexclude','nav', 'nav-suggested', 'create-page-manage', 'category-manage', 'new-add', 'new-remove', 'new-select', 'new-create-one', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'fb-identity-save', 'fb-title-sync', 'create-layout', 'create-search-all', 'create-screen-add', 'create-screen-remove', 'fb-edit-cancel', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'version-open', 'version-close', 'version-match', 'version-select', 'version-review-only', 'version-reveal', 'version-switch', 'version-cancel']);
@@ -84,7 +84,8 @@ const VERSION_MIN = { width: 960, height: 720 };
 const CHEVRON_RIGHT_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
 // 상세 Page title 안쪽 오른쪽의 이름 동기화(되돌리기) 아이콘
 const NAME_SYNC_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36"/><path d="M3 3v6h6"/></svg>';
-const REFRESH_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>';
+// 위·아래 두 화살표가 맞물린 순환 모양(2026-11-20 사용자 요청). 180도 돌리면 같은 모양이라 반 바퀴씩 돌고 멈춘다(styles.css sync-spin).
+const REFRESH_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 16.95-4.23"/><path d="M19.95 3v4.77h-4.77"/><path d="M21 12a9 9 0 0 1-16.95 4.23"/><path d="M4.05 21v-4.77h4.77"/></svg>';
 const CURSOR_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="m5 3 15 10-7 1-3 7Z"/></svg>';
 
 // 「+ 추가」 버튼 내용. 더하기 아이콘을 글자 앞에 붙인다.
@@ -281,6 +282,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   // 목록을 플립북 페이지와 마지막으로 맞춘 시각과, 새로고침을 누른 뒤 응답을 기다리는 중인지
   let listSyncedAt: number | null = null;
   let refreshingList = false;
+  // 페이지 머리의 새로고침을 누르고 응답을 기다리는 페이지(2026-11-20 사용자 요청)
+  const refreshingPages = new Set<string>();
+  // 마지막으로 목록 접기에 반영한 「보고 있는 페이지」. 바뀌면 그 페이지만 펼친다.
+  let followedPage: string | null | undefined;
   // 썸네일 이미지: 해시 → blob URL(불러오는 중이면 '')
   const previewCache = new PreviewCache(message => bridge.send(message));
   const thumbUrls = previewCache.urls;
@@ -601,6 +606,21 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   // UI 플립북 목록은 페이지별로 접는다(2026-10-23 사용자 요청). 「페이지|Section」 키 중 그 페이지의 키가 하나라도 있으면 펼친다.
   const pageOfGroup = (groupKey: string) => { const at = groupKey.indexOf('|'); return at < 0 ? groupKey : groupKey.slice(0, at); };
   const pageOpen = (pageId: string) => [...expanded.UI].some(key => pageOfGroup(key) === pageId);
+  // 지금 보고 있는 페이지와, 그 페이지가 플립북 페이지(관리에서 지정했거나 사용 중인 플립북이 기록된 페이지)인지
+  const currentPageId = () => pages.find(p => p.current)?.id ?? null;
+  const isFlipbookPage = (pageId: string | null) => !!pageId && !!state && (state.project.flipbookPageIds.includes(pageId)
+    || [...state.flipbooks.values()].some(fb => fb.status === 'active' && (fb.pageId ?? state!.project.flipbookPageId) === pageId));
+  // 보고 있는 페이지가 바뀌면 목록에서 그 페이지만 펼치고 나머지는 접는다(2026-11-20 사용자 요청). 플립북 페이지가 아니면 모두 접고
+  // 목록 선택을 비워 오른쪽에 등록 안내를 보여 준다. 그 뒤에 직접 접고 펴는 것은 다음에 페이지를 옮길 때까지 둔다.
+  function followCurrentPage(): boolean {
+    const pageId = currentPageId();
+    if (pageId === followedPage || !state) return false;
+    followedPage = pageId;
+    expanded.UI.clear();
+    if (isFlipbookPage(pageId)) expanded.UI.add(`${pageId}|`);
+    else { selection.UI.clear(); selected.UI = null; anchor.UI = null; }
+    return true;
+  }
 
   function listModel(t: Team): ListModel {
     if (t === 'GUI') followSelection();
@@ -1389,7 +1409,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
           <span class="count">${all.length - drafts}${drafts ? ` <b class="new-count" title="${COPY.uiApp333}">+${drafts}</b>` : ''}</span>
           ${unlinked ? unlinkedGroupBadge() : ''}
           ${flagged ? `<span class="review-dot group-review" role="img" title="${COPY.uiApp192}" aria-label="${COPY.uiApp192}"></span>` : ''}
-        </button></div>
+        </button>${pages.some(p => p.id === pageId) ? `<button class="icon-button page-refresh${refreshingPages.has(pageId) ? ' spinning' : ''}" data-action="refresh-page" data-page="${esc(pageId)}" title="${COPY.pageRefresh}" aria-label="${esc(name)} ${COPY.pageRefresh}">${REFRESH_ICON}</button>` : ''}</div>
         ${open ? sections.map(g => sectionRows(g)).join('') : ''}
       </div>`;
     }).join('');
@@ -1922,7 +1942,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       forgetScreensFold();
       leaveDescription();
       for (const id of identityDrafts.keys()) if (!identityEdited(id)) identityDrafts.delete(id);
-      detail.innerHTML = `<p class="empty">${COPY.uiApp217}</p>`; return;
+      const pageId = currentPageId();
+      // 보고 있는 페이지가 플립북 페이지가 아니면 등록 안내와 「추가하기」(관리의 플립북 페이지에 더함)를 둔다(2026-11-20 사용자 요청).
+      detail.innerHTML = state && pageId && !isFlipbookPage(pageId)
+        ? `<div class="empty page-unregistered"><p>${COPY.pageNotFlipbook}</p>${pageId !== state.project.dataPageId ? `<button data-action="add-current-page">${COPY.pageNotFlipbookAdd}</button>` : ''}</div>`
+        : `<p class="empty">${COPY.uiApp217}</p>`;
+      return;
     }
     const multi = chosen.length > 1;
     const notices = !multi ? newHistory.get(entry.flipbookId) ?? [] : [];
@@ -3460,6 +3485,20 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         paintSyncStatus();
         bridge.send({ type: 'refreshList' });
         break;
+      case 'refresh-page': {
+        const pageId = el.dataset.page ?? '';
+        if (!pageId || refreshingPages.has(pageId)) break;
+        refreshingPages.add(pageId);
+        el.classList.add('spinning');
+        bridge.send({ type: 'refreshList', pageId });
+        break;
+      }
+      case 'add-current-page': {
+        const pageId = currentPageId();
+        if (pageId && state && pageId !== state.project.dataPageId && !state.project.flipbookPageIds.includes(pageId))
+          admin({ op: 'setFlipbookPages', pageIds: [...state.project.flipbookPageIds, pageId] });
+        break;
+      }
       case 'group': {
         const g = el.dataset.group!;
         if (expanded[t].has(g)) expanded[t].delete(g); else expanded[t].add(g);
@@ -4435,6 +4474,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
           check[t] = idleCheck();
         }
         uiScans = new Map();
+        // 처음 열 때도 보고 있는 페이지만 펼친다.
+        followedPage = undefined;
+        followCurrentPage();
         plan = null;
         history = null;
         historyAsked = null;
@@ -4536,6 +4578,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         break;
       }
       case 'listSynced':
+        // 한 페이지만 다시 읽었으면 그 페이지의 새로고침만 끝낸다. 마지막 동기화 시각은 모든 페이지를 읽었을 때만 바꾼다.
+        if (msg.pageIds) {
+          if (msg.pageIds.some(id => refreshingPages.delete(id))) renderList();
+          break;
+        }
         listSyncedAt = msg.at;
         refreshingList = false;
         paintSyncStatus();
@@ -4685,6 +4732,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'pages':
         if (pages.length === msg.pages.length && pages.every((p, i) => p.id === msg.pages[i].id && p.name === msg.pages[i].name && !p.current === !msg.pages[i].current)) break;
         pages = msg.pages;
+        if (followCurrentPage() && mode === 'UI' && tab === 'UI') { renderList(); renderDetail(); }
         if (tab === 'ADMIN') renderDetail();
         else if (versionOpen) renderVersion();
         break;
@@ -4847,6 +4895,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         pendingCategory = null; pendingTag = null;
         // 목록 새로고침이 실패해도 아이콘이 계속 돌지 않게 한다.
         if (refreshingList) { refreshingList = false; paintSyncStatus(); }
+        if (refreshingPages.size) { refreshingPages.clear(); if (mode === 'UI' && tab === 'UI') renderList(); }
         // PDF 저장이 실패하면 취소 버튼을 저장 버튼으로 되돌린다.
         pdf.setRunning(false);
         if (bulk?.submitting) { bulk.submitting = false; bulk.error = msg.message; renderBulk(); }

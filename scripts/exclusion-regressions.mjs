@@ -32,6 +32,8 @@ try {
   await app.locator('.list .row.selected').waitFor();
   await pick(nodeId);
   await app.locator('.excluded-hint [data-action=excluded-unexclude]').waitFor();
+  // 안내와 목록은 따로 그려지므로 목록이 다시 그려질 때까지 잠깐 기다린다.
+  await app.locator('.list .row.selected').waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
   assert.equal(await app.locator('.list .row.selected').count(), 0, '숨긴 프레임을 고르면 목록 선택을 푼다');
   assert.equal(await app.locator('.excluded-hint p').innerText(), '목록에서 숨긴 화면입니다.');
 

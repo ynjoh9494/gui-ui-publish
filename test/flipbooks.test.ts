@@ -1013,7 +1013,7 @@ test('UI Flipbook은 연결 끊긴 플립북을 삭제할 때 캔버스를 다�
   const host = {
     kv: store.kv, mode: 'UI', actor,
     post: (message: ToUi) => posted.push(message),
-    pages: () => [{ id: 'ui', name: 'UI' }, { id: 'other', name: '다른 페이지' }],
+    pages: () => [{ id: 'ui', name: 'UI', current: true }, { id: 'other', name: '다른 페이지' }],
     listFlipbooks: async (pageIds: string[]) => { searched.push(pageIds); return new Map(pageIds.flatMap(id => Object.entries(frames[id] ?? {}))); },
   } as unknown as Host;
   const controller = new Controller(host);
@@ -1042,7 +1042,7 @@ test('상세의 「목록에서 삭제」는 프레임이 남은 플립북도 �
   const host = {
     kv: store.kv, mode: 'UI', actor,
     post: (message: ToUi) => posted.push(message),
-    pages: () => [{ id: 'ui', name: 'UI' }],
+    pages: () => [{ id: 'ui', name: 'UI', current: true }],
     listFlipbooks: async () => new Map([['fb1', '1:1']]),
   } as unknown as Host;
   const controller = new Controller(host);
@@ -1146,7 +1146,7 @@ test('캔버스에서 다른 Section·페이지로 옮긴 플립북은 기록이
   const synced: [string, string, string, string][] = [];
   const host = {
     kv: store.kv, mode: 'UI', actor, post: () => {},
-    pages: () => [{ id: 'ui', name: 'UI' }, { id: 'ui2', name: 'UI 2' }],
+    pages: () => [{ id: 'ui', name: 'UI', current: true }, { id: 'ui2', name: 'UI 2' }],
     templateIssues: async () => [],
     inspectFlipbooks: async () => ({
       found: new Map([['fb1', '1:1'], ['fb2', '1:2'], ['fb3', '1:3']]),
@@ -1214,7 +1214,7 @@ test('플립북을 반영할 때 플립북 페이지는 한 번만 읽고 찾은
   assert.deepEqual([...known[0] ?? []], [['fb1', '1:1']], '찾은 프레임을 반영에 넘겨 페이지를 다시 훑지 않게 한다');
 });
 
-test('GUI Publish의 반영은 반영할 플립북이 기록된 페이지만 읽고, 그 페이지에서 원본을 찾지 못하면 플립북 페이지를 모두 읽는다', async () => {
+test('반영은 GUI Publish·UI Flipbook 모두 반영할 플립북이 기록된 페이지만 읽고, 그 페이지에서 원본을 찾지 못하면 플립북 페이지를 모두 읽는다', async () => {
   for (const mode of ['GUI', 'UI'] as const) {
     const store = new Store(memoryKV());
     store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['ui', 'ui2'], flipbookPageId: 'ui' });
@@ -1242,10 +1242,6 @@ test('GUI Publish의 반영은 반영할 플립북이 기록된 페이지만 읽
     } as unknown as Host;
     const controller = new Controller(host);
     await controller.deliverFlipbooks({}, { targets: ['fb1'] });
-    if (mode === 'UI') {
-      assert.deepEqual(reads, [[['ui', 'ui2'], false]], 'UI Flipbook은 열 때 플립북 페이지를 모두 불러오므로 그대로 모두 읽는다');
-      continue;
-    }
     assert.deepEqual(reads, [[['ui'], true]], 'fb2가 있는 페이지는 불러오지 않는다');
     assert.deepEqual(synced, [['fb1', 'ui']]);
     // 캔버스에서 fb1을 다른 플립북 페이지로 옮겼다: 기록된 페이지에 없으므로 모두 읽고 기록이 캔버스를 따라간다.
@@ -1350,7 +1346,7 @@ test('캔버스에서 바꾼 Section 이름을 플러그인을 열 때 그 Secti
   const host = {
     kv: store.kv, mode: 'UI', actor,
     post: (message: ToUi) => posted.push(message),
-    pages: () => [{ id: 'ui', name: 'UI' }],
+    pages: () => [{ id: 'ui', name: 'UI', current: true }],
     templateIssues: async () => [],
     inspectFlipbooks: async () => ({
       found: new Map([['fb1', '1:1'], ['fb2', '1:2']]),
@@ -1387,9 +1383,9 @@ test('캔버스에서 바꾼 Section 이름을 플러그인을 열 때 그 Secti
 test('첫 플립북 동기화가 실패해도 대기 화면을 닫고 오류를 알린다', async () => {
   const posted: ToUi[] = [];
   const host = {
-    kv: memoryKV(), mode: 'UI', actor,
+    kv: memoryKV({ project: JSON.stringify({ flipbookPageIds: ['ui'] }) }), mode: 'UI', actor,
     post: (message: ToUi) => posted.push(message),
-    pages: () => [{ id: 'ui', name: 'UI' }],
+    pages: () => [{ id: 'ui', name: 'UI', current: true }],
     templateIssues: async () => [],
     inspectFlipbooks: async () => { throw new Error('페이지 읽기 실패'); },
   } as unknown as Host;
@@ -1430,16 +1426,18 @@ test('GUI 모드에서 화면 안 레이어나 GUI 페이지 밖 노드를 고�
   assert.equal(entriesPosts(), before);
 });
 
-test('GUI Publish로 열고 처음 UI Flipbook으로 바꾸면 UI Flipbook으로 열 때처럼 플립북 연결 상태를 읽고, 다시 바꿀 때는 읽지 않는다', async () => {
+test('GUI Publish에서 UI Flipbook으로 바꾸면 보고 있는 플립북 페이지만 읽고, 플립북 페이지가 아니면 읽지 않는다', async () => {
   const posted: ToUi[] = [];
   const store = new Store(memoryKV());
   store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['ui'], flipbookPageId: 'ui' });
   for (const fb of planFlipbooks({ pageId: 'ui', rows: [row([], false, 'A')] }, new Map(), actor, 1000, () => 'fb1')) store.put(keys.flipbook(fb.id), fb);
   let inspected = 0;
+  let current = 'ui';
+  const read: string[][] = [];
   const host = {
-    kv: store.kv, mode: 'GUI', actor, post: (m: ToUi) => posted.push(m), pages: () => [{ id: 'ui', name: 'UI' }], selectionNodeIds: () => [],
+    kv: store.kv, mode: 'GUI', actor, post: (m: ToUi) => posted.push(m), pages: () => [{ id: 'ui', name: 'UI', current: current === 'ui' }, { id: 'gui', name: 'GUI', current: current === 'gui' }], selectionNodeIds: () => [],
     templateIssues: async () => [],
-    inspectFlipbooks: async () => (inspected++, { found: new Map([['fb1', '1:1']]), spots: {} }),
+    inspectFlipbooks: async (pageIds: string[]) => (inspected++, read.push(pageIds), { found: new Map([['fb1', '1:1']]), spots: {} }),
   } as unknown as Host;
   const controller = new Controller(host);
   await controller.handle({ type: 'ready' });
@@ -1450,7 +1448,14 @@ test('GUI Publish로 열고 처음 UI Flipbook으로 바꾸면 UI Flipbook으로
   assert.equal(scans?.scans.find(s => s.flipbookId === 'fb1')?.nodeId, '1:1', '연결 상태를 보여 준다');
   const busy = posted.filter((m): m is Extract<ToUi, { type: 'busy' }> => m.type === 'busy');
   assert.equal(busy[busy.length - 1]?.label ?? null, null, '불러오는 중 표시를 닫는다');
+  assert.deepEqual(read, [['ui']]);
+  // 다시 바꿀 때도 보고 있는 플립북 페이지만 읽는다(2026-11-20 사용자 결정).
   await controller.handle({ type: 'switchMode', mode: 'GUI' });
   await controller.handle({ type: 'switchMode', mode: 'UI' });
-  assert.equal(inspected, 1);
+  assert.deepEqual(read, [['ui'], ['ui']]);
+  // 플립북 페이지가 아닌 페이지를 보고 있으면 읽지 않는다.
+  current = 'gui';
+  await controller.handle({ type: 'switchMode', mode: 'GUI' });
+  await controller.handle({ type: 'switchMode', mode: 'UI' });
+  assert.equal(inspected, 2);
 });

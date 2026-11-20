@@ -199,6 +199,8 @@ export type ToMain =
   // 새 버전 페이지: 붙여 넣은 페이지의 프레임을 등록 화면과 화면 내용으로 비교하고, 확인한 연결로 원본을 옮긴다.
   // 설정을 열 때 페이지 목록을 다시 받는다(플러그인을 연 뒤 추가한 페이지).
   | { type: 'pages' }
+  // 보고 있는 페이지가 바뀌었다(main.ts). UI Flipbook이면 그 플립북 페이지만 다시 읽는다.
+  | { type: 'pageChanged' }
   | { type: 'matchVersion'; pageId: string }
   | { type: 'switchVersion'; pageId: string; links: { screenId: string; nodeId: string }[] }
   // 화면과 연결할 프레임의 유사도 근거. 사용자가 고친 연결도 같은 규칙으로 계산한다.
@@ -216,7 +218,8 @@ export type ToMain =
   // 텍스트 편집 탭이 보이는지. 보이는 동안만 캔버스 선택이 바뀔 때 대상(textTarget)을 보낸다.
   | { type: 'textTab'; open: boolean }
   // UI Flipbook 목록 새로고침: 플립북 페이지를 다시 읽어 연결 상태·순서·Section을 맞춘다. 캔버스 선택마다 하지 않는다(2026-10-23 사용자 요청).
-  | { type: 'refreshList' }
+  // pageId: 목록 페이지 머리의 새로고침(그 페이지만). 없으면 플립북 페이지를 모두 다시 읽는다.
+  | { type: 'refreshList'; pageId?: string }
   // 관리의 템플릿: 목록에서 고른 템플릿(없거나 목록에 없으면 대표)의 항목별 연결 상태를 받고, 항목에 연결된 레이어를 캔버스에서 고른다.
   | { type: 'templateInfo'; templateId?: string }
   | { type: 'revealTemplateItem'; nav: number; templateId: string; key: TemplateItem }
@@ -286,7 +289,8 @@ export type ToUi =
   | { type: 'templateMigrationsDone'; result: import('./templateMigration.ts').TemplateMigrationResult }
   | { type: 'flowRepairCandidates'; token: string; candidates: import('./flowRepair.ts').FlowRepairCandidate[] }
   | { type: 'flowRepairDone'; result: import('./flowRepair.ts').FlowRepairResult }
-  | { type: 'listSynced'; at: number }
+  // pageIds: 이 페이지만 다시 읽었다. 없으면 모든 플립북 페이지를 읽었다.
+  | { type: 'listSynced'; at: number; pageIds?: string[] }
   // 새 버전 페이지 비교 결과. 전환했거나 비교 결과가 맞지 않게 되면 null
   | { type: 'versionMatch'; match: VersionMatchView | null }
   | { type: 'versionSwitched' }

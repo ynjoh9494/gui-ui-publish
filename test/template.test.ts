@@ -106,7 +106,7 @@ function world() {
   let selection: Node[] = [];
   Object.assign(globalThis, { figma: {
     mixed: Symbol('mixed'),
-    loadAllPagesAsync: async () => {}, getNodeByIdAsync: async (id: string) => nodes.get(id) ?? null,
+    getNodeByIdAsync: async (id: string) => nodes.get(id) ?? null,
     loadFontAsync: async () => {},
     currentPage: { get selection() { return selection; } },
   } });

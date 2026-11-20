@@ -231,7 +231,7 @@ test('캔버스 위치는 페이지의 루트 Section을 위에서부터, 안의
       return out;
     },
   };
-  (globalThis as unknown as { figma: unknown }).figma = { loadAllPagesAsync: async () => {}, getNodeByIdAsync: async (id: string) => (id === 'p' ? page : null) };
+  (globalThis as unknown as { figma: unknown }).figma = { getNodeByIdAsync: async (id: string) => (id === 'p' ? page : null) };
   (page as any).type = 'PAGE';
   const spots = await flipbookSpots('guiuipublish', ['p', 'missing']);
   const drawnKey = drawn.getSharedPluginData('guiuipublish', 'categoryOf');

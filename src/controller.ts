@@ -171,11 +171,22 @@ export class Controller {
         case 'switchMode':
           this.host.mode = msg.mode;
           this.postEntries();
-          // GUI Publish로 열고 처음 UI Flipbook으로 바꾸면 UI Flipbook으로 열 때와 같이 플립북 페이지를 읽어 연결 상태·순서·Section을 맞춘다.
-          // 그 뒤에 다시 바꿀 때는 읽지 않는다(바꿀 때마다 「불러오는 중」으로 멈추지 않게). 캔버스 변경은 목록 새로고침으로 맞춘다.
+          // GUI Publish로 열고 처음 UI Flipbook으로 바꾸면 UI Flipbook으로 열 때와 같이 시작한다. 그 뒤에 바꿀 때는 지금 보고 있는
+          // 플립북 페이지만 다시 읽는다(GUI Publish에 있는 동안 옮긴 페이지는 따라가지 않았다, 2026-11-20 사용자 결정).
           if (msg.mode === 'UI') {
-            if (this.uiStarted) await this.checkTemplate();
-            else await this.startUi();
+            if (this.uiStarted) {
+              const [, canvas] = await Promise.all([this.checkTemplate(), this.linkFlipbooks(this.currentFlipbookPages())]);
+              await this.syncCanvasSections(canvas);
+            } else await this.startUi();
+          }
+          break;
+        // 보고 있는 페이지가 바뀌었다(UI Flipbook). 그 페이지가 플립북 페이지면 그 페이지만 다시 읽어 연결 상태·순서·Section을 맞춘다.
+        case 'pageChanged':
+          if (this.host.mode !== 'UI' || !this.uiStarted) break;
+          {
+            const pageIds = this.currentFlipbookPages();
+            if (!pageIds.length) break;
+            await this.syncCanvasSections(await this.linkFlipbooks(pageIds));
           }
           break;
         case 'ready':
@@ -322,10 +333,12 @@ export class Controller {
         case 'refreshList':
           if (this.host.mode !== 'UI') break;
           {
-            const [, canvas] = await Promise.all([this.checkTemplate(), this.linkFlipbooks()]);
+            // pageId: 목록 페이지 머리의 새로고침 아이콘. 그 페이지만 다시 읽는다(2026-11-20 사용자 요청). 없으면 플립북 페이지를 모두 읽는다.
+            const pageIds = msg.pageId ? [msg.pageId] : undefined;
+            const [, canvas] = await Promise.all([this.checkTemplate(), this.linkFlipbooks(pageIds)]);
             await this.syncCanvasSections(canvas);
             // 새 템플릿 플립북의 화면 목록을 캔버스의 추적 GUI로 맞춘다(PRD 1.1: 플러그인을 열 때는 훑지 않는다).
-            await this.followMembers(await this.tracks.refresh(), canvas);
+            await this.followMembers(await (msg.pageId ? this.tracks.refreshPage(msg.pageId) : this.tracks.refresh()), canvas);
           }
           break;
         case 'pasteGui': {
@@ -448,10 +461,11 @@ export class Controller {
     if (this.textTabOpen) this.postTextTarget();
     this.pdf.selectionChanged();
     // UI Flipbook 목록은 프레임이 캔버스에 있는지 바로 보여 준다(연결 끊김 표시).
-    // 플립북 페이지를 불러오는 동안은 Figma가 입력을 받지 못하므로 아무 표시가 없으면 오류처럼 보인다. 그동안 「불러오는 중」을 띄운다.
+    // 지금 보고 있는 페이지가 플립북 페이지일 때 그 페이지만 읽는다(2026-11-20 사용자 결정). 다른 페이지는 그 페이지로 옮기거나
+    // 페이지 머리의 새로고침을 누를 때 읽는다. 읽는 동안은 Figma가 입력을 받지 못할 수 있으므로 「불러오는 중」을 띄운다.
     await this.progress(COPY.controller136);
     // 템플릿 페이지와 플립북 페이지는 서로 기다리지 않고 함께 불러온다.
-    const [, canvas] = await Promise.all([this.checkTemplate(), this.linkFlipbooks()]);
+    const [, canvas] = await Promise.all([this.checkTemplate(), this.linkFlipbooks(this.currentFlipbookPages())]);
     await this.syncCanvasSections(canvas);
     if (!this.historyNoticesAsked) {
       this.historyNoticesAsked = true;
@@ -781,9 +795,10 @@ export class Controller {
     this.postState();
   }
 
-  private postUiScans() {
+  // pageIds: 이 페이지만 다시 읽었다(없으면 모든 플립북 페이지).
+  private postUiScans(pageIds?: string[]) {
     this.host.post({ type: 'uiScan', scans: this.uiScans });
-    this.host.post({ type: 'listSynced', at: this.store.now() });
+    this.host.post({ type: 'listSynced', at: this.store.now(), pageIds });
   }
 
   // 관리의 템플릿에 목록에서 고른 템플릿의 항목별 연결 상태를 보낸다(UI Flipbook). 고른 템플릿이 없거나 목록에 없으면 대표,
@@ -1220,11 +1235,20 @@ export class Controller {
 
   // UI Flipbook: 플립북 프레임이 캔버스에 있는지만 다시 찾는다(지문 비교 없음). 찾지 못한 플립북은 목록에 연결 끊김으로 표시한다.
   // 읽은 캔버스를 돌려주어 이어지는 Section 맞추기가 다시 읽지 않게 한다.
-  private async linkFlipbooks(isLatest: () => boolean = () => true): Promise<CanvasRead | undefined> {
-    const canvas = await this.inspectFlipbooks();
-    if (!isLatest()) return undefined;
-    this.applyLinks(canvas.found, canvas.spots);
+  // pageIds: 이 페이지만 읽는다. 다른 페이지의 연결·위치는 마지막 조회 결과를 유지하고, 한 번도 읽지 않은 페이지의 플립북은
+  // 연결 끊김으로 보지 않는다(빈 배열이면 아무 페이지도 읽지 않는다). 없으면 플립북 페이지를 모두 읽는다.
+  private async linkFlipbooks(pageIds?: string[]): Promise<CanvasRead | undefined> {
+    if (pageIds && !pageIds.length) return undefined;
+    const canvas = pageIds ? await this.inspectFlipbookPages(pageIds) : await this.inspectFlipbooks();
+    this.applyLinks(canvas.found, canvas.spots, pageIds && new Set(pageIds));
     return canvas;
+  }
+
+  // 지금 보고 있는 페이지가 플립북 페이지(관리에서 지정했거나 사용 중인 플립북이 기록된 페이지)면 그 페이지, 아니면 빈 배열.
+  private currentFlipbookPages(): string[] {
+    const current = this.host.pages().find(p => p.current)?.id;
+    if (!current) return [];
+    return this.store.state.project.flipbookPageIds.includes(current) || this.flipbookPages().includes(current) ? [current] : [];
   }
 
   private async inspectFlipbooks(pageIds = this.flipbookPages(), originalsOnly = false): Promise<CanvasRead> {
@@ -1233,10 +1257,11 @@ export class Controller {
     return { found, spots: await this.spots(pageIds) };
   }
 
-  // 반영 전에 읽을 캔버스. GUI Publish는 플립북 페이지를 미리 불러오지 않으므로 반영할 플립북이 기록된 페이지만 먼저 읽는다(2026-10-27 사용자 결정).
-  // 반영할 플립북의 원본 프레임을 그 페이지에서 모두 찾았을 때만 쓰고, 아니면(다른 페이지로 옮김, 복사본만 있음) 플립북 페이지를 모두 읽는다.
+  // 반영 전에 읽을 캔버스. 반영할 플립북이 기록된 페이지만 먼저 읽는다(GUI Publish 2026-10-27, UI Flipbook도 열 때 보고 있는 페이지만 읽게 된
+  // 2026-11-20부터 같다). 반영할 플립북의 원본 프레임을 그 페이지에서 모두 찾았을 때만 쓰고, 아니면(다른 페이지로 옮김, 복사본만 있음)
+  // 플립북 페이지를 모두 읽는다.
   private async deliveryCanvas(flipbookIds: string[]): Promise<CanvasRead> {
-    if (this.host.mode === 'GUI' && this.host.inspectFlipbooks) {
+    if (this.host.inspectFlipbooks) {
       const canvas = await this.host.inspectFlipbooks(this.flipbookPages(new Set(flipbookIds)), true);
       if (flipbookIds.every(id => canvas.found.has(id))) return canvas;
     }
@@ -1265,20 +1290,26 @@ export class Controller {
   }
 
   // 찾은 플립북 프레임(플립북 ID → 노드 ID)과 캔버스 위치로 목록의 연결 상태·순서를 갱신한다.
-  private applyLinks(found: Map<string, string>, spots: Record<string, FlipbookSpot> = {}): void {
+  // readPages: 이 페이지만 읽었다. 찾지 못한 플립북 중 기록된 페이지를 읽지 않은 것은 마지막 결과를 두고, 결과가 없으면 비워 둔다
+  // (목록은 「비교 전」으로 보고 연결 끊김을 붙이지 않는다).
+  private applyLinks(found: Map<string, string>, spots: Record<string, FlipbookSpot> = {}, readPages?: ReadonlySet<string>): void {
     if (canvasSections(this.store.state, found, spots).length) this.canvasSectionsPending = true;
+    const s = this.store.state;
     const known = new Map(this.uiScans.map(u => [u.flipbookId, u]));
-    const next = [...this.store.state.flipbooks.values()].map(fb => {
+    const next = [...s.flipbooks.values()].flatMap(fb => {
       const nodeId = found.get(fb.id) ?? null;
-      const spot = spotOf(spots, nodeId);
       const before = known.get(fb.id);
-      if (before && before.nodeId === nodeId) return sameSpot(before.spot, spot) ? before : { ...before, spot };
-      return { flipbookId: fb.id, nodeId, fingerprint: null, error: null, spot };
+      const pageId = fb.pageId ?? s.project.flipbookPageId;
+      if (!nodeId && readPages && !(pageId && readPages.has(pageId))) return before ? [before] : [];
+      const spot = spotOf(spots, nodeId);
+      if (before && before.nodeId === nodeId) return [sameSpot(before.spot, spot) ? before : { ...before, spot }];
+      return [{ flipbookId: fb.id, nodeId, fingerprint: null, error: null, spot }];
     });
+    const pageIds = readPages && [...readPages];
     // 바뀐 것이 없어도 다시 읽은 시각은 알린다(목록 새로고침이 끝났다는 신호이기도 하다).
-    if (next.length === this.uiScans.length && next.every((u, i) => u === this.uiScans[i])) { this.host.post({ type: 'listSynced', at: this.store.now() }); return; }
+    if (next.length === this.uiScans.length && next.every((u, i) => u === this.uiScans[i])) { this.host.post({ type: 'listSynced', at: this.store.now(), pageIds }); return; }
     this.uiScans = next;
-    this.postUiScans();
+    this.postUiScans(pageIds);
   }
 
   // 플립북을 목록에서 삭제한다. 기록은 사용 안 함으로 남기고 캔버스의 프레임은 지우지 않는다.

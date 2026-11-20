@@ -9,7 +9,7 @@ import type { ToUi } from '../src/core/wire.ts';
 async function setup(pageCount = 3) {
   const actor = { id: 'u', name: 'Designer' };
   const store = new Store(memoryKV());
-  const pages = Array.from({ length: pageCount }, (_, i) => ({ id: `p${i}`, name: `UI ${i}` }));
+  const pages = Array.from({ length: pageCount }, (_, i) => ({ id: `p${i}`, name: `UI ${i}`, current: i === 0 }));
   store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageId: 'p0', flipbookPageIds: pages.map(p => p.id) });
   const frames = new Map<string, { nodeId: string; spot: FlipbookSpot }>();
   for (const page of pages) {
@@ -92,3 +92,37 @@ for (const withFrames of [false, true]) {
     assert.ok(!posted.some(msg => msg.type === 'error'));
   });
 }
+
+// 2026-11-20 사용자 결정: 열 때와 페이지를 옮길 때는 보고 있는 플립북 페이지만 읽는다.
+test('opening reads only the current flipbook page and leaves unread pages unchecked instead of unlinked', async () => {
+  const { scans } = await setup();
+  assert.deepEqual(scans().map(scan => [scan.flipbookId, scan.nodeId]), [['fb:p0', 'n:fb:p0']], '읽지 않은 페이지의 플립북은 연결 끊김(nodeId null)으로 보내지 않는다');
+});
+
+test('moving to another flipbook page reads only that page and keeps earlier results', async () => {
+  const { controller, host, reads, scans } = await setup();
+  const pages = host.pages() as { id: string; current?: boolean }[];
+  for (const page of pages) page.current = page.id === 'p1';
+  await controller.handle({ type: 'pageChanged' });
+  assert.deepEqual(reads, [['p1']]);
+  assert.deepEqual(scans().map(scan => [scan.flipbookId, scan.nodeId]), [['fb:p0', 'n:fb:p0'], ['fb:p1', 'n:fb:p1']]);
+});
+
+test('moving to a page that is not a flipbook page reads nothing', async () => {
+  const { controller, host, store, reads } = await setup();
+  store.saveProject({ ...store.state.project, flipbookPageIds: ['p0', 'p1'] });
+  store.put(keys.flipbook('fb:p2'), { ...store.state.flipbooks.get('fb:p2')!, status: 'deleted' });
+  controller.store.reload();
+  for (const page of host.pages() as { id: string; current?: boolean }[]) page.current = page.id === 'p2';
+  await controller.handle({ type: 'pageChanged' });
+  assert.deepEqual(reads, []);
+});
+
+test('the page header refresh reads only that page', async () => {
+  const { controller, reads, posted } = await setup();
+  posted.length = 0;
+  await controller.handle({ type: 'refreshList', pageId: 'p2' });
+  assert.deepEqual(reads.filter(pageIds => pageIds.length), [['p2']]);
+  assert.ok(posted.some(msg => msg.type === 'listSynced' && msg.pageIds?.join() === 'p2'));
+  assert.ok(!posted.some(msg => msg.type === 'error'));
+});
