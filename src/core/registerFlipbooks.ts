@@ -26,7 +26,7 @@ export function planExistingFlipbooks(state: State, selected: ExistingFlipbook[]
     const title = parsed.name || node.pageTitle?.trim() || node.title;
     const screenId = parsed.code || node.screenId?.trim() || before?.screenId;
     return [{ nodeId: node.nodeId, record: {
-      id, rev: (before?.rev ?? 0) + 1, kind: 'single', title, autoTitle: false, titleNames: [], screenId,
+      id, rev: (before?.rev ?? 0) + 1, kind: 'single', title, nameSynced: false, titleNames: [], screenId,
       scale: 1, category: noSection(), screens: [], pageId: node.pageId, status: 'active', createdAt: now, actor,
       tracked: true,
       ...(before ? { screens: before.screens, kind: before.kind, createdAt: before.createdAt } : {}),

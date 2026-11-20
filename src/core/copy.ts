@@ -382,6 +382,8 @@ export const COPY = {
   categoryManageHint: "카테고리 이름은 플립북의 Chapter에, 코드는 Screen ID의 두 번째 코드에 사용합니다.",
   fbChapter: "Chapter",
   fbPageTitle: "Page title",
+  fbNameSync: "이름 동기화",
+  fbNameSynced: "이름 동기화됨",
   fbScreenId: "Screen ID",
   fbIdentitySave: "적용하기",
   // 플립북 상세의 Description 영역과 맨 아래 「모두 적용하기」 줄(2026-11-04)

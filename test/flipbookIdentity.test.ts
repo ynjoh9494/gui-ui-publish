@@ -11,7 +11,7 @@ function fixture() {
   const store = new Store(memoryKV());
   store.state.project.screenIdPrefix = 'ST';
   store.state.categories.set('live', { id: 'live', name: 'Live', code: 'LI', order: 0, active: true });
-  const fb: Flipbook = { id: 'fb', rev: 1, kind: 'policy', title: 'Any title', autoTitle: false, titleNames: [], scale: 1,
+  const fb: Flipbook = { id: 'fb', rev: 1, kind: 'policy', title: 'Any title', nameSynced: false, titleNames: [], scale: 1,
     category: { key: 'live', name: 'Unrelated Section', order: 0 }, screens: [], pageId: 'p', status: 'active', createdAt: 0, actor: { id: 'u', name: 'User' } };
   return { state: store.state, fb };
 }
@@ -89,7 +89,7 @@ test('ID를 저장하지 않은 정책 플립북은 Section을 옮겨도 ID·Cha
   store.saveProject({ ...store.state.project, screenIdPrefix: 'ST', flipbookPageIds: ['p', 'q'] });
   store.put(keys.category('live'), { id: 'live', name: 'Live', code: 'LI', order: 0, active: true });
   store.put(keys.category('home'), { id: 'home', name: 'Home', code: 'HO', order: 1, active: true });
-  const base: Flipbook = { id: 'a', rev: 1, kind: 'policy', title: 'A', autoTitle: false, titleNames: [], scale: 1,
+  const base: Flipbook = { id: 'a', rev: 1, kind: 'policy', title: 'A', nameSynced: false, titleNames: [], scale: 1,
     category: { key: 'live', name: 'Live', order: 0 }, screens: [], pageId: 'p', status: 'active', createdAt: 0, actor };
   store.put(keys.flipbook('a'), base);
   store.put(keys.flipbook('b'), { ...base, id: 'b', title: 'B' });
@@ -111,7 +111,7 @@ test('앞선 정책 플립북을 지우거나 새 ID를 저장해도 저장하�
   const actor = { id: 'u', name: 'User' };
   store.saveProject({ ...store.state.project, screenIdPrefix: 'ST' });
   store.put(keys.category('live'), { id: 'live', name: 'Live', code: 'LI', order: 0, active: true });
-  const base: Flipbook = { id: 'a', rev: 1, kind: 'policy', title: 'A', autoTitle: false, titleNames: [], scale: 1,
+  const base: Flipbook = { id: 'a', rev: 1, kind: 'policy', title: 'A', nameSynced: false, titleNames: [], scale: 1,
     category: { key: 'live', name: 'Live', order: 0 }, screens: [], pageId: 'p', status: 'active', createdAt: 0, actor };
   for (const id of ['a', 'b', 'c']) store.put(keys.flipbook(id), { ...base, id });
   const id = (fb: string) => flipbookIdentity(store.state, store.state.flipbooks.get(fb)!).screenId;

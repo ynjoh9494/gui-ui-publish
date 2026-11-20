@@ -389,12 +389,14 @@ export function pageFlipbooks(ns: string, page: PageNode): Map<string, FrameNode
   return pickFlipbookFrames(ns, flipbookCandidates(ns, page));
 }
 
-// 여러 페이지를 한꺼번에 불러온다(받은 순서 유지, 없는 페이지는 뺀다). Figma를 다시 켠 뒤 처음 열 때는 페이지마다 불러오는 시간이
-// 길어 하나씩 기다리지 않는다.
+// 여러 페이지를 읽을 수 있게 한다(받은 순서 유지, 없는 페이지는 뺀다). 페이지마다 `loadAsync()`로 불러오면 Figma를 다시 켠 뒤
+// 처음 열 때 불러오는 동안 Figma가 입력을 받지 못했다. `loadAllPagesAsync()`는 Figma가 「Loading N pages for plugin」 토스트를
+// 띄우고 불러오는 동안에도 조작할 수 있어 파일의 모든 페이지를 이것으로 불러온다(2026-11-20 사용자 확인). 이미 불러온 페이지는
+// 다시 읽지 않는다.
 export async function loadPages(pageIds: string[]): Promise<PageNode[]> {
   const nodes = await Promise.all([...new Set(pageIds)].map(id => figma.getNodeByIdAsync(id)));
   const pages = nodes.filter((n): n is PageNode => n?.type === 'PAGE');
-  await Promise.all(pages.map(page => page.loadAsync()));
+  if (pages.length) await figma.loadAllPagesAsync();
   return pages;
 }
 
@@ -1007,7 +1009,8 @@ export async function syncFlipbook(ns: string, settings: FlipbookSettings, view:
   // 꼭 있어야 하는 칸은 새로 만드는 플립북의 GUI 영역뿐이다. GUI는 만들 때만 놓고, 그 뒤로는 추적 GUI라 GUI 배포가 바꾼다.
   // 제목·Status·Screen ID·이력 칸은 없으면 그 칸만 건너뛰고 나머지를 반영한다(2026-11-02 사용자 결정).
   if (view.create && !p.gui) throw new Error(COPY.figmaFlipbook028);
-  frame.name = view.frameName ?? view.name;
+  // 프레임 이름은 만들 때(createFlipbook)와 이름 동기화가 켜진 플립북만 맞춘다. 꺼져 있으면 사용자가 붙인 이름을 둔다(2026-11-20 사용자 결정).
+  if (existing && view.nameSynced) { const name = view.frameName ?? view.name; if (frame.name !== name) frame.name = name; }
   frame.locked = false;
   if (p.gui) p.gui.locked = false;
   const notes = new Set<string>();

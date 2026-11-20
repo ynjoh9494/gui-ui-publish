@@ -17,7 +17,7 @@ test('manual registration preserves title, is idempotent after reload, and accep
   const result = planExistingFlipbooks(s.state, [...selection, ...selection, { ...selection[0], nodeId: '1:3' }], actor, 10);
   assert.equal(result.length, 2);
   assert.equal(result[0].record.title, 'Manual book');
-  assert.equal(result[0].record.autoTitle, false);
+  assert.equal(result[0].record.nameSynced, false);
   for (const item of result) s.put(keys.flipbook(item.record.id), item.record);
   s.reload();
   assert.equal(planExistingFlipbooks(s.state, selection, actor, 20).length, 0);

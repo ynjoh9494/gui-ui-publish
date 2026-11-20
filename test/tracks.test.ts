@@ -26,7 +26,7 @@ const record = (uid: string, code: string, version: number): GuiRecordInfo => ({
   original: `GUI v${version}`, corrected: false, worker: 'Designer', committedAt: version * 1000,
 });
 function flipbook(id: string, pageId: string, screens: Flipbook['screens'] = []): Flipbook {
-  return { id, rev: 1, kind: 'single', title: '새 플립북', autoTitle: true, titleNames: ['새 플립북'], scale: 1, category: { key: 'c', name: 'C', order: 0 }, screens, pageId, status: 'active', createdAt: 500, actor, tracked: true };
+  return { id, rev: 1, kind: 'single', title: '새 플립북', nameSynced: true, titleNames: ['새 플립북'], scale: 1, category: { key: 'c', name: 'C', order: 0 }, screens, pageId, status: 'active', createdAt: 500, actor, tracked: true };
 }
 
 function setup(found: FoundCopy[]) {

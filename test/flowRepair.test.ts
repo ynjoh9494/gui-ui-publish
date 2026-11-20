@@ -96,7 +96,7 @@ function canvas() {
   const page = new Node('p', 'PAGE'), group = new Node('g', 'GROUP', page), rect = new Node('r', 'RECTANGLE', group), other = new Node('other', 'RECTANGLE', group);
   group.data.set('flowOf', 'f'); rect.data.set('flowScreen', 's1'); rect.data.set('flowVersion', '2');
   page.selection = [rect]; const all = [page, group, rect, other]; const images = new Set(['latest']);
-  Object.assign(globalThis, { figma: { currentPage: page, root: { children: [page] }, getNodeByIdAsync: async (id: string) => all.find(n => n.id === id) ?? null, getImageByHash: (hash: string) => images.has(hash) ? {} : null } });
+  Object.assign(globalThis, { figma: { loadAllPagesAsync: async () => {}, currentPage: page, root: { children: [page] }, getNodeByIdAsync: async (id: string) => all.find(n => n.id === id) ?? null, getImageByHash: (hash: string) => images.has(hash) ? {} : null } });
   return { page, group, rect, other, images };
 }
 const thumb: FlowThumb = { uid: 's1', code: 'ST_VP_001', name: 'Player', version: 2, thumb: { hash: 'latest', width: 480, height: 270 } };

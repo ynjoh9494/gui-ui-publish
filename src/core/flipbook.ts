@@ -32,6 +32,8 @@ export interface FlipbookView {
   name: string;
   screenId?: string;
   frameName?: string;
+  // 이름 동기화가 켜져 있다. 켜져 있을 때만 반영이 기존 프레임 이름을 frameName으로 맞춘다(2026-11-20 사용자 결정).
+  nameSynced?: boolean;
   // 플러그인이 제목에 쓴 적 있는 이름. 제목이 이 중 하나일 때만 현재 이름으로 바꾸고, 사용자가 고친 제목은 둔다.
   titleNames: string[];
   category: { key: string; name: string; order: number };
@@ -138,7 +140,7 @@ export function flipbookView(state: State, flipbookId: string): FlipbookView {
   const former = formerUids(state);
   return {
     flipbookId, kind: fb.kind, name: fb.title, titleNames: [TEMPLATE_TITLE, ...fb.titleNames],
-    category: fb.category, ...flipbookIdentity(state, fb), pageId: fb.pageId ?? state.project.flipbookPageId,
+    category: fb.category, ...flipbookIdentity(state, fb), nameSynced: !!fb.nameSynced, pageId: fb.pageId ?? state.project.flipbookPageId,
     gui: fb.screens.map(s => ({
       uid: s.uid, code: s.code, name: state.screens.get(s.uid)?.name ?? s.code, version: s.version, key: guiKey(s.uid, s.version), sourceNodeId: state.screens.get(s.uid)?.source?.nodeId ?? null, scale: s.scale ?? fb.scale,
       ...(former.has(s.uid) ? { formerUids: former.get(s.uid) } : {}),

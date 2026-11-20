@@ -12,7 +12,7 @@ for (const type of ['followFlipbook', 'refreshList', 'scanUi'] as const) {
     const store = new Store(memoryKV());
     store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageIds: ['p1'], flipbookPageId: 'p1' });
     store.put(keys.screen('s1'), { id: 's1', rev: 1, code: 'S1', name: 'Screen', categoryId: null, baseScreenId: null, status: 'active', source: { nodeId: 'src', pageId: 'gui' }, guiVersion: 1, guiTag: null, createdAt: 1 } as Screen);
-    store.put(keys.flipbook('fb'), { id: 'fb', rev: 1, kind: 'single', title: 'Book', autoTitle: true, titleNames: ['Book'], scale: 1, category: { key: 'c', name: 'C', order: 0 }, screens: type === 'scanUi' ? [{ uid: 's1', code: 'S1', name: 'Screen', version: 0 }] : [], pageId: 'p1', status: 'active', createdAt: 500, actor, tracked: true } satisfies Flipbook);
+    store.put(keys.flipbook('fb'), { id: 'fb', rev: 1, kind: 'single', title: 'Book', nameSynced: true, titleNames: ['Book'], scale: 1, category: { key: 'c', name: 'C', order: 0 }, screens: type === 'scanUi' ? [{ uid: 's1', code: 'S1', name: 'Screen', version: 0 }] : [], pageId: 'p1', status: 'active', createdAt: 500, actor, tracked: true } satisfies Flipbook);
     if (type === 'scanUi') store.put(keys.gui('s1', 1), {
       screenId: 's1', version: 1, batchId: 'b1', workType: 'changed', fingerprint: 'fp', thumb: null, width: 100, height: 100, code: 'S1', name: 'Screen', category: null, base: null,
       tag: { id: 't', name: 'Changed', colorKey: 'Green', color: '#00ff00' }, description: 'New', worker: actor, actor, committedAt: 1000, extra: {}, corrections: [],

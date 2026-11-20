@@ -190,8 +190,10 @@ export interface Flipbook {
   title: string;
   // Optional local ID; absent on screen flipbooks means follow the first GUI ID.
   screenId?: string;
-  // 제목을 화면 이름에서 자동으로 만들었는가. 화면 이름이 바뀌면 함께 바꾼다.
-  autoTitle: boolean;
+  // 이름 동기화를 켰는가. 상세 Page title의 동기화 버튼을 눌렀을 때만 켠다(2026-11-20 사용자 결정).
+  // 켜져 있으면 제목이 화면 이름(자동 제목)을 따라가고 반영할 때 프레임 이름도 맞춘다. 꺼져 있으면 반영이 프레임 이름을 바꾸지 않는다.
+  // 만들거나 등록한 직후는 늘 꺼져 있다. 제목이 자동 제목과 같아도 켜진 것으로 보지 않는다. 이전 기록의 autoTitle은 읽지 않는다.
+  nameSynced?: boolean;
   // 플러그인이 제목에 쓴 적 있는 값. 플립북 제목이 이 중 하나일 때만 바꾼다.
   titleNames: string[];
   scale: FlipbookScale;

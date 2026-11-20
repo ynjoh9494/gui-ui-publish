@@ -80,17 +80,22 @@ test('만들기 전 새 플립북을 정한 자리에 끼워 넣고, 없는 Sect
   assert.deepEqual(first.map(g => g.key), ['p1|home', 'p2|home']);
 });
 
-test('플립북 제목을 바꾸고, 비우면 첫 화면 이름(화면이 없으면 「새 플립북」)으로 돌아간다', () => {
+test('플립북 제목을 바꾸고, 비우면 첫 화면 이름(화면이 없으면 「새 플립북」)을 쓴다. 이름 동기화는 버튼(sync)으로만 켜진다', () => {
   const store = new Store(memoryKV());
   let id = 0;
   const made = planFlipbooks({ pageId: 'p', rows: [row(['a']), row([], '정책')] }, new Map([screen('a', 'STB_HO_001')].map(s => [s.uid, s])), actor, 100, () => `fb${++id}`);
   for (const fb of made) store.put(keys.flipbook(fb.id), fb);
   const renamed = renameFlipbook(store, 'fb1', '  홈 메인  ', actor);
-  assert.deepEqual([renamed.title, renamed.autoTitle, renamed.rev], ['홈 메인', false, 2]);
+  assert.deepEqual(made.map(fb => !!fb.nameSynced), [false, false], '만든 직후에는 자동 제목과 같아도 동기화하지 않는다');
+  assert.deepEqual([renamed.title, !!renamed.nameSynced, renamed.rev], ['홈 메인', false, 2]);
   assert.ok(renamed.titleNames.includes('홈 메인'), '플러그인이 쓴 제목으로 남긴다');
-  assert.deepEqual([renameFlipbook(store, 'fb1', '', actor).title, store.state.flipbooks.get('fb1')!.autoTitle], ['화면 a', true]);
-  assert.deepEqual([renameFlipbook(store, 'fb2', ' ', actor).title, store.state.flipbooks.get('fb2')!.autoTitle], ['새 플립북', true]);
-  assert.equal(flipbookView(store.state, 'fb1').name, '화면 a');
+  assert.deepEqual([renameFlipbook(store, 'fb1', '', actor).title, !!store.state.flipbooks.get('fb1')!.nameSynced], ['화면 a', false]);
+  assert.deepEqual([renameFlipbook(store, 'fb2', ' ', actor).title, !!store.state.flipbooks.get('fb2')!.nameSynced], ['새 플립북', false]);
+  assert.deepEqual([flipbookView(store.state, 'fb1').name, flipbookView(store.state, 'fb1').nameSynced], ['화면 a', false]);
+  renameFlipbook(store, 'fb1', '홈 메인', actor);
+  assert.deepEqual([renameFlipbook(store, 'fb1', '', actor, true).title, store.state.flipbooks.get('fb1')!.nameSynced], ['화면 a', true]);
+  assert.equal(flipbookView(store.state, 'fb1').nameSynced, true, '반영이 프레임 이름을 맞춘다');
+  assert.deepEqual([renameFlipbook(store, 'fb1', '홈', actor).title, store.state.flipbooks.get('fb1')!.nameSynced], ['홈', false], '직접 입력하면 동기화가 꺼진다');
 });
 
 test('항목마다 페이지·Section·자리를 정해 만들고, 같은 요청의 앞 행 뒤에 놓을 수 있다. 제목 변경은 캔버스 제목도 바꾼다', async () => {
@@ -226,7 +231,7 @@ test('캔버스 위치는 페이지의 루트 Section을 위에서부터, 안의
       return out;
     },
   };
-  (globalThis as unknown as { figma: unknown }).figma = { getNodeByIdAsync: async (id: string) => (id === 'p' ? page : null) };
+  (globalThis as unknown as { figma: unknown }).figma = { loadAllPagesAsync: async () => {}, getNodeByIdAsync: async (id: string) => (id === 'p' ? page : null) };
   (page as any).type = 'PAGE';
   const spots = await flipbookSpots('guiuipublish', ['p', 'missing']);
   const drawnKey = drawn.getSharedPluginData('guiuipublish', 'categoryOf');

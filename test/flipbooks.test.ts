@@ -197,7 +197,7 @@ test('중첩 Section의 화면 루트를 찾고 프레임 안의 하위 요소�
 
 test('캔버스 선택은 실행한 명령의 목록에서만 고르고 다른 명령의 화면으로 넘어가지 않는다', async () => {
   const posted: ToUi[] = [];
-  const fb = { id: 'fb1', rev: 1, kind: 'single', title: '홈', autoTitle: true, titleNames: ['홈'], scale: 1, category: { key: 'home', name: '홈', order: 0 }, screens: [], pageId: 'ui', status: 'active', createdAt: 0, actor };
+  const fb = { id: 'fb1', rev: 1, kind: 'single', title: '홈', nameSynced: true, titleNames: ['홈'], scale: 1, category: { key: 'home', name: '홈', order: 0 }, screens: [], pageId: 'ui', status: 'active', createdAt: 0, actor };
   // GUI Publish를 연 채 플립북 페이지에서 플립북 프레임을 골랐다.
   const host = {
     kv: memoryKV({ [keys.flipbook('fb1')]: JSON.stringify(fb) }), mode: 'GUI', actor,
@@ -412,7 +412,7 @@ test('플립북 만들기 표의 행마다 플립북을 만든다. 화면을 비
   assert.deepEqual(made[1].screens, [{ uid: 'b', code: 'B', name: '화면 b', version: 1, scale: 0.25 }, { uid: 'a', code: 'A', name: '화면 a', version: 1, scale: 0.5 }]);
   assert.deepEqual([made[0].title, made[1].title, made[2].title], ['화면 b', '화면 b', '정책']);
   const blank = planFlipbooks({ pageId: 'p', rows: [row([])] }, screens, actor, 100, next)[0];
-  assert.deepEqual([blank.title, blank.autoTitle, blank.category.name], ['새 플립북', true, '미분류']);
+  assert.deepEqual([blank.title, !!blank.nameSynced, blank.category.name], ['새 플립북', false, '미분류']);
   // 같은 화면을 여러 번 넣으면 넣은 순서·횟수대로 들어간다.
   const twice = planFlipbooks({ pageId: 'p', rows: [row(['a', 'b', 'a'], true)] }, screens, actor, 100, next)[0];
   assert.deepEqual(twice.screens.map(s => s.uid), ['a', 'b', 'a']);

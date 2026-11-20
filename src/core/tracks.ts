@@ -113,7 +113,7 @@ export function flagRetiredScreens(store: Store, uids: Set<string>, found?: Foun
     if (!alert && !fb.screens.some(s => uids.has(s.uid))) continue;
     const screens = fb.screens.filter(s => !uids.has(s.uid));
     const kind = kindOf(fb, screens.length);
-    const title = fb.autoTitle ? defaultTitle(kind, screens) : fb.title;
+    const title = fb.nameSynced ? defaultTitle(kind, screens) : fb.title;
     store.put(keys.flipbook(fb.id), {
       ...fb, rev: fb.rev + 1, kind, screens, title, deletedAlert: fb.deletedAlert || alert,
       titleNames: fb.titleNames.includes(title) ? fb.titleNames : [...fb.titleNames, title],
@@ -169,7 +169,7 @@ export function followMembers(store: Store, found: FoundCopy[], screens: Map<str
     next.sort((a, b) => a.code.localeCompare(b.code));
     if (next.length === fb.screens.length && next.every((s, i) => s.uid === fb.screens[i].uid)) continue;
     const kind = kindOf(fb, next.length);
-    const title = fb.autoTitle ? defaultTitle(kind, next) : fb.title;
+    const title = fb.nameSynced ? defaultTitle(kind, next) : fb.title;
     store.put(keys.flipbook(fb.id), {
       ...fb, rev: fb.rev + 1, kind, screens: next, title,
       titleNames: fb.titleNames.includes(title) ? fb.titleNames : [...fb.titleNames, title],

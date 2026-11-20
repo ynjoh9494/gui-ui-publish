@@ -108,9 +108,9 @@ function planRow(row: FlipbookRowRequest, pageId: string, screens: Map<string, G
   const typed = (row.title ?? '').trim();
   const auto = defaultTitle(kind, chosen);
   const title = typed || auto;
-  const autoTitle = title === auto;
+  // 만든 직후에는 제목이 자동 제목과 같아도 이름 동기화를 켜지 않는다(2026-11-20 사용자 결정).
   return {
-    id: newId(), rev: 1, kind, title, autoTitle, titleNames: autoTitle ? [title] : [], scale, category: sectionOf(row, chosen[0], existing),
+    id: newId(), rev: 1, kind, title, nameSynced: false, titleNames: title === auto ? [title] : [], scale, category: sectionOf(row, chosen[0], existing),
     screens: chosen.map(s => ({ uid: s.uid, code: s.code, name: s.name, version: s.version, scale: row.scales?.[s.uid] ?? scale })),
     pageId, status: 'active', createdAt: now, actor,
   };
@@ -214,20 +214,20 @@ export function followCanvasSections(store: Store, changes: CanvasSection[], act
   return out;
 }
 
-// 플립북 제목을 바꾼다(2026-10-21 사용자 요청). 비우면 자동 제목(첫 화면 이름, 화면이 없으면 「새 플립북」)으로 돌아간다.
+// 플립북 제목을 바꾼다(2026-10-21 사용자 요청). 비우면 자동 제목(첫 화면 이름, 화면이 없으면 「새 플립북」)을 제목으로 쓰지만 이름 동기화는 켜지 않는다.
+// sync: 상세 Page title의 동기화 버튼을 눌렀다. 자동 제목을 쓰고 이름 동기화를 켠다. 직접 입력한 제목으로 바꾸면 동기화가 꺼진다(2026-11-20 사용자 결정).
 // 캔버스의 큰 제목·Page title은 반영할 때 새 제목으로 바꾼다.
-export function plannedFlipbookTitle(state: State, flipbookId: string, title: string): Flipbook {
+export function plannedFlipbookTitle(state: State, flipbookId: string, title: string, sync = false): Flipbook {
   const before = state.flipbooks.get(flipbookId);
   if (!before || before.status !== 'active') throw new Error(COPY.coreFlipbook002);
   const typed = title.trim();
   const auto = defaultTitle(before.kind, before.screens);
-  const next = typed || auto;
-  const autoTitle = next === auto;
-  return { ...before, rev: before.rev + 1, title: next, autoTitle, titleNames: before.titleNames.includes(next) ? before.titleNames : [...before.titleNames, next] };
+  const next = sync ? auto : typed || auto;
+  return { ...before, rev: before.rev + 1, title: next, nameSynced: sync, titleNames: before.titleNames.includes(next) ? before.titleNames : [...before.titleNames, next] };
 }
 
-export function renameFlipbook(store: Store, flipbookId: string, title: string, actor: Actor): Flipbook {
-  const after = plannedFlipbookTitle(store.state, flipbookId, title);
+export function renameFlipbook(store: Store, flipbookId: string, title: string, actor: Actor, sync = false): Flipbook {
+  const after = plannedFlipbookTitle(store.state, flipbookId, title, sync);
   const before = store.state.flipbooks.get(flipbookId)!;
   store.put(keys.flipbook(flipbookId), after);
   store.audit(actor, 'flipbook.rename', flipbookId, before.title, after.title);
@@ -251,7 +251,7 @@ export function followMergedFlipbooks(store: Store, fromId: string, toId: string
       .map(s => ({ ...s, scale: s.scale ?? before.scale }));
     const kind: FlipbookKind = before.kind === 'multi' && next.length < 2 ? 'single' : before.kind;
     const scale = kind === 'multi' ? before.scale : 1;
-    const title = before.autoTitle ? defaultTitle(kind, next) : before.title;
+    const title = before.nameSynced ? defaultTitle(kind, next) : before.title;
     const after: Flipbook = {
       ...before, rev: before.rev + 1, kind, scale, screens: next, title,
       titleNames: before.titleNames.includes(title) ? before.titleNames : [...before.titleNames, title],
@@ -335,10 +335,10 @@ export function importGuiUpdates(store: Store, flipbookId: string, screens: Map<
   });
   if (!result.changed) return result;
   queue();
-  const autoTitle = before.autoTitle ? defaultTitle(before.kind, next) : before.title;
+  const nextTitle = before.nameSynced ? defaultTitle(before.kind, next) : before.title;
   const after: Flipbook = {
-    ...before, rev: before.rev + 1, screens: next, title: autoTitle,
-    titleNames: before.titleNames.includes(autoTitle) ? before.titleNames : [...before.titleNames, autoTitle],
+    ...before, rev: before.rev + 1, screens: next, title: nextTitle,
+    titleNames: before.titleNames.includes(nextTitle) ? before.titleNames : [...before.titleNames, nextTitle],
   };
   store.put(keys.flipbook(flipbookId), after);
   return result;
@@ -361,7 +361,7 @@ export function syncGuiVersions(store: Store, flipbookId: string, screens: Map<s
   const changed = next.some((fs, i) => fs.version !== before.screens[i].version || fs.code !== before.screens[i].code || fs.name !== before.screens[i].name);
   if (changed) {
     beforeChange?.();
-    const title = before.autoTitle ? defaultTitle(before.kind, next) : before.title;
+    const title = before.nameSynced ? defaultTitle(before.kind, next) : before.title;
     store.put(keys.flipbook(flipbookId), { ...before, rev: before.rev + 1, screens: next, title,
       titleNames: before.titleNames.includes(title) ? before.titleNames : [...before.titleNames, title] });
   }

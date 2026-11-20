@@ -378,7 +378,7 @@ test('Prefix·카테고리 코드·번호를 바꾸면 플립북에 저장한 �
   screen(store, 'a', 'STB_HO_001', 'home');
   screen(store, 'b', 'STB_HO_002', 'home');
   const book = (id: string, screenId: string, screens: Flipbook['screens'] = []): void => store.put(keys.flipbook(id), {
-    id, rev: 1, kind: screens.length ? 'single' : 'policy', title: id, autoTitle: false, titleNames: [], scale: 1,
+    id, rev: 1, kind: screens.length ? 'single' : 'policy', title: id, nameSynced: false, titleNames: [], scale: 1,
     category: { key: 'home', name: '홈', order: 0 }, screens, pageId: 'p', status: 'active', createdAt: 0, actor, screenId,
   } satisfies Flipbook);
   book('policy', 'STB_HO_POLICY');

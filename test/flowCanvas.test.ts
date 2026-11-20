@@ -55,7 +55,7 @@ function mockFigma(options: { failArrow?: boolean } = {}) {
     viewport: { center: { x: 0, y: 0 }, scrollAndZoomIntoView() {} },
     loadFontAsync: async () => {},
     getImageByHash: (hash: string) => (images.has(hash) ? {} : null),
-    getNodeByIdAsync: async (id: string) => all.find(n => n.id === id && !n.removed) ?? null,
+    loadAllPagesAsync: async () => {}, getNodeByIdAsync: async (id: string) => all.find(n => n.id === id && !n.removed) ?? null,
     createText: () => onPage('TEXT'),
     createRectangle: () => onPage('RECTANGLE'),
     createVector: () => {

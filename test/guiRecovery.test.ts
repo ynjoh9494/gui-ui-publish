@@ -27,7 +27,7 @@ function fixture(confirmed = true) {
   const record: GuiRecord = { screenId: 's1', version: 2, batchId: 'b2', workType: 'changed', fingerprint: 'fp2', fpVersion: 2, thumb: { hash: 'h2', width: 100, height: 100 }, width: 100, height: 100, code: before.code, name: before.name, category: { id: 'c', name: 'Home' }, base: null, tag, description: 'Change', worker: actor, actor, committedAt: 1000, extra: {}, corrections: [] };
   store.put(keys.screen('s1'), before);
   store.put(keys.gui('s1', 1), { ...record, version: 1, batchId: 'b1', fingerprint: 'fp1', committedAt: 1 });
-  store.put(keys.flipbook('fb'), { id: 'fb', rev: 1, kind: 'single', title: 'Home', autoTitle: true, titleNames: ['Home'], scale: 1, category: { key: 'c', name: 'Home', order: 0 }, screens: [{ uid: 's1', code: before.code, name: before.name, version: 1 }], pageId: 'ui', status: 'active', createdAt: 0, actor, tracked: true } satisfies Flipbook);
+  store.put(keys.flipbook('fb'), { id: 'fb', rev: 1, kind: 'single', title: 'Home', nameSynced: true, titleNames: ['Home'], scale: 1, category: { key: 'c', name: 'Home', order: 0 }, screens: [{ uid: 's1', code: before.code, name: before.name, version: 1 }], pageId: 'ui', status: 'active', createdAt: 0, actor, tracked: true } satisfies Flipbook);
   store.put(keys.track('t1'), { id: 't1', uid: 's1', nodeId: 'copy', pageId: 'ui', createdAt: 10, actor });
   store.put(keys.flow('flow'), { id: 'flow', nodeId: 'flow-node', pageId: 'ui', title: 'Flow', uids: ['s1'], createdAt: 1, actor });
   if (confirmed) {

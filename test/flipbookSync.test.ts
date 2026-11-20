@@ -59,7 +59,7 @@ function setup(parts: { gui?: boolean; registered?: boolean }) {
     pageId: 'ui', gui: [], scale: 1, guiWidth: 1440, status: { tag: { name: '현행' }, colorKey: 'Black' }, rows: [],
   } as unknown as FlipbookView;
   const run = () => syncFlipbook(NS, { pageId: 'ui', templateId: 'tpl' }, view, session);
-  return { frame, gui, run };
+  return { frame, gui, run, view };
 }
 
 test('이전 형식 플립북(연결 기록 없음)은 칸을 찾지 않고 반영하지 않으며 새 형식으로 변환하라고 알린다', async () => {
@@ -76,6 +76,21 @@ test('연결 기록 없이 등록한 기존 프레임은 반영할 때 이름으
   assert.notEqual(frame.getSharedPluginData(NS, LINKS_KEY), '');
   assert.equal(gui!.getSharedPluginData(NS, 'templatePart'), 'gui');
   assert.equal(gui!.getSharedPluginData(NS, 'flipbookImage'), '', 'GUI는 넣지 않는다');
+});
+
+// 이름 동기화(2026-11-20 사용자 결정): 반영은 이름 동기화를 켠 플립북만 프레임 이름을 맞춘다. 사용자가 붙인 이름은 그대로 둔다.
+test('반영은 이름 동기화가 꺼진 기존 플립북의 프레임 이름을 바꾸지 않고, 켜진 플립북만 Screen ID · 제목으로 맞춘다', async () => {
+  const { frame, run, view } = setup({ registered: true, gui: true });
+  frame.name = '홈 화면 (작업용)';
+  Object.assign(view, { frameName: 'STB_HO_001 · Home', nameSynced: false });
+  await run();
+  assert.equal(frame.name, '홈 화면 (작업용)');
+  view.nameSynced = true;
+  const global = globalThis as unknown as { figma: PluginAPI };
+  const previous = global.figma;
+  global.figma = { getNodeByIdAsync: async () => frame } as unknown as PluginAPI;
+  try { await run(); } finally { global.figma = previous; }
+  assert.equal(frame.name, 'STB_HO_001 · Home');
 });
 
 // 제목·ID 수정도 반영과 같이 등록한 기존 프레임에 표식을 단다(2026-11-05: 2026-10-30~11-02에 등록한 프레임은 기록만 새 형식이고 표식이 없어,

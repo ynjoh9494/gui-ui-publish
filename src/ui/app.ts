@@ -70,7 +70,7 @@ const ADMIN_MODE_PANELS: Record<Team, [form: string, title: string][]> = {
 // 처리 중에도 허용하는 조작: 탭 전환과 목록 탐색
 const WHILE_BUSY = new Set(['recovery-toggle', 'tab', 'settings', 'admin-nav', 'group', 'page-group', 'select', 'changed-only', 'refresh-list', 'cancel-scan', 'text-close', 'flow-open', 'pdf-open', 'pdf-cancel', 'update-download', 'update-go', 'update-close']);
 // 변경사항 확인 전에도 허용하는 조작: 목록 탐색, 캔버스 이동, 변경사항 확인
-const BEFORE_CHECK = new Set([...(typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__ ? ['template-migration-find', 'template-migration-close', 'template-migration-toggle', 'template-migration-submit'] : []), ...WHILE_BUSY, 'switch-mode', 'scan', 'scan-selected', 'excluded-unexclude','nav', 'nav-suggested', 'create-page-manage', 'category-manage', 'new-add', 'new-remove', 'new-select', 'new-create-one', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'fb-identity-save', 'create-layout', 'create-search-all', 'create-screen-add', 'create-screen-remove', 'fb-edit-cancel', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
+const BEFORE_CHECK = new Set([...(typeof __PLUGIN_RELEASE__ !== 'boolean' || !__PLUGIN_RELEASE__ ? ['template-migration-find', 'template-migration-close', 'template-migration-toggle', 'template-migration-submit'] : []), ...WHILE_BUSY, 'switch-mode', 'scan', 'scan-selected', 'excluded-unexclude','nav', 'nav-suggested', 'create-page-manage', 'category-manage', 'new-add', 'new-remove', 'new-select', 'new-create-one', 'new-section-add', 'new-section-confirm', 'new-section-cancel', 'new-clear', 'arrange-skip', 'arrange-apply', 'new-dialog-close', 'new-cancel-confirm', 'fb-edit-title', 'fb-identity-save', 'fb-title-sync', 'create-layout', 'create-search-all', 'create-screen-add', 'create-screen-remove', 'fb-edit-cancel', 'create-uncreated-only', 'create-submit', 'bulk-open', 'bulk-close', 'bulk-submit', 'pick', 'admin-template', 'admin-template-default', 'admin-template-connect', 'admin-template-disconnect', 'admin-template-show', 'admin-gui-width', 'admin-policy-template', 'admin-flipbook-page',
   'version-open', 'version-close', 'version-match', 'version-select', 'version-review-only', 'version-reveal', 'version-switch', 'version-cancel']);
 
 import { WORK_LABEL } from '../core/copy.ts';
@@ -82,6 +82,8 @@ const X_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stro
 const NEW_EDITOR_MIN = { width: 800, height: 640 };
 const VERSION_MIN = { width: 960, height: 720 };
 const CHEVRON_RIGHT_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
+// 상세 Page title 안쪽 오른쪽의 이름 동기화(되돌리기) 아이콘
+const NAME_SYNC_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36"/><path d="M3 3v6h6"/></svg>';
 const REFRESH_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>';
 const CURSOR_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="m5 3 15 10-7 1-3 7Z"/></svg>';
 
@@ -211,7 +213,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const preview = { ...state!, flipbooks: new Map(state!.flipbooks) };
     for (const row of newFlipbooks) {
       const screens = newScreens(row);
-      const fb: Flipbook = { id: row.key, rev: 1, kind: newKind(row), title: newTitle(row), autoTitle: !row.title.trim(), titleNames: [], scale: 1,
+      const fb: Flipbook = { id: row.key, rev: 1, kind: newKind(row), title: newTitle(row), nameSynced: false, titleNames: [], scale: 1,
         category: newSection(row), screens, pageId: row.pageId, status: 'active', createdAt: 0, actor: { id: '', name: '' } };
       const next = withFlipbookId(preview, fb, row.screenId);
       preview.flipbooks.set(next.id, next);
@@ -232,7 +234,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   const NEW_PREFIX = 'new:';
   const isNewKey = (key: string) => key.startsWith(NEW_PREFIX);
   let newFlipbooks: NewFlipbook[] = [];
-  const identityDrafts = new Map<string, { rev: number; title: string; screenId: string }>();
+  // sync: 이름 동기화 버튼을 눌렀다(켜진 플립북은 처음부터 true). 동기화 중이면 title은 비워 두고 자동 제목을 placeholder로 보여 준다.
+  const identityDrafts = new Map<string, { rev: number; title: string; screenId: string; sync: boolean }>();
   // 기존 플립북 상세의 Description 영역(2026-11-04 사용자 요청). 고르면 캔버스의 내용을 불러오고, 고친 내용은 플립북마다 남는다.
   // 캔버스에서 다시 읽을 때는 고치지 않은 항목을 최신 값으로 갱신하고, 사용자가 바꾼 항목만 초안으로 유지한다.
   // Description 토글(2026-11-05 사용자 결정): area는 캔버스의 Description 영역 상태다(none: 영역 표식이 없어 토글 없음).
@@ -926,7 +929,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     if (!fb) return null;
     const edit: FlipbookEdit = { id, rev: fb.rev };
     const draft = identityDrafts.get(id);
-    if (draft && identityEdited(id)) edit.identity = { title: draft.title, screenId: draft.screenId };
+    if (draft && identityEdited(id)) edit.identity = { title: draft.sync ? '' : draft.title, screenId: draft.screenId, ...(draft.sync ? { sync: true } : {}) };
     const d = descDrafts.get(id);
     if (d?.status === 'ready' && descContentEdited(d)) edit.description = { paragraphs: d.doc, layout: d.layout, before: { paragraphs: d.savedDoc, layout: d.savedLayout } };
     const shown = descShownChange(d);
@@ -1077,7 +1080,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   function renameExisting(id: string, title: string) {
     const fb = state?.flipbooks.get(id);
     editingTitle = null;
-    if (fb && title.trim() !== fb.title && (title.trim() || !fb.autoTitle)) bridge.send({ type: 'renameFlipbook', id, title });
+    // 이름 동기화 중이면 빈 입력은 그대로 두고, 아니면 비울 때 자동 제목을 제목으로 쓴다(동기화는 켜지 않는다).
+    const typed = title.trim();
+    if (fb && (fb.nameSynced ? !!typed && typed !== fb.title : (typed || defaultTitle(fb.kind, fb.screens)) !== fb.title)) bridge.send({ type: 'renameFlipbook', id, title });
     renderDetail(); renderList();
   }
   // 제목 고치기를 연다. 목록에서 열면 그 행의 이름을, 오른쪽 영역에서 열면 제목을 입력으로 바꾼다.
@@ -1422,7 +1427,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
           const fb = r.entry.estimate !== 'missing' ? record : undefined;
           const frameName = record ? flipbookIdentity(state!, record, policies).frameName : r.name;
           const name = fb && editingAt(fb.id, 'list')
-            ? `<input class="title-input" data-input="fb-title" data-id="${esc(fb.id)}" value="${esc(fb.title)}" placeholder="${esc(defaultTitle(fb.kind, fb.screens))}" aria-label="${COPY.uiApp203}">`
+            ? `<input class="title-input" data-input="fb-title" data-id="${esc(fb.id)}" value="${esc(fb.nameSynced ? '' : fb.title)}" placeholder="${esc(defaultTitle(fb.kind, fb.screens))}" aria-label="${COPY.uiApp203}">`
             : `<span class="name"${fb ? ` data-edit-title="${esc(fb.id)}" title="${COPY.uiApp314}"` : ''}>${esc(frameName)}</span>`;
           // 기존 플립북도 드래그하거나 Alt+↑↓로 자리를 옮긴다(2026-10-22 사용자 요청). 연결이 끊긴 플립북은 캔버스에 프레임이 없어 옮기지 않는다.
           const movable = !!fb && movablePage && !editingAt(fb.id, 'list') && !newSubmitting;
@@ -1944,11 +1949,11 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     // 고른 플립북이 모두 연결 끊김이면 아래 연결 끊김 안내의 「목록에서 삭제」만 둔다.
     const removable = chosen.some(e => e.estimate !== 'missing');
     const removeButton = removable ? `<button class="remove-text" data-action="fb-remove-list" title="${esc(COPY.flipbookRemoveHint)}">${COPY.uiApp237}</button>` : '';
-    let draft: { rev: number; title: string; screenId: string } | undefined;
+    let draft: { rev: number; title: string; screenId: string; sync: boolean } | undefined;
     if (renamable) {
       draft = identityDrafts.get(fb.id);
       if (!draft || draft.rev !== fb.rev) {
-        draft = { rev: fb.rev, title: fb.title, screenId: flipbookIdentity(state, fb).screenId };
+        draft = { rev: fb.rev, title: fb.nameSynced ? '' : fb.title, screenId: flipbookIdentity(state, fb).screenId, sync: !!fb.nameSynced };
         identityDrafts.set(fb.id, draft);
       }
     }
@@ -1959,9 +1964,9 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     const editing = renamable && (identityEdited(fb.id) || descEdited(fb.id));
     let top = `${legacyAlert}${deletedAlert}<div class="detail-head title-head">${heading}<div class="title-actions" data-editing="${editing}">${titleActionsOf(editing)}</div></div>`;
     if (renamable && draft) {
-      const info = flipbookIdentity(state, { ...fb, title: draft.title, screenId: draft.screenId });
+      const info = flipbookIdentity(state, { ...fb, title: draft.title.trim() || defaultTitle(fb.kind, fb.screens), screenId: draft.screenId });
       top += `<div class="fb-identity props" data-id="${esc(fb.id)}">
-        ${prop(COPY.fbPageTitle, `<input data-input="fb-page-title" value="${esc(draft.title)}" aria-label="${COPY.fbPageTitle}">`, true)}
+        ${prop(COPY.fbPageTitle, `<span class="input-with-action"><input data-input="fb-page-title" value="${esc(draft.title)}" placeholder="${esc(defaultTitle(fb.kind, fb.screens))}" aria-label="${COPY.fbPageTitle}">${nameSyncButton(fb.id, draft.sync)}</span>`, true)}
         ${identityPair(`<input data-input="fb-screen-id" value="${esc(draft.screenId)}" placeholder="${esc(COPY.fbIdPlaceholder)}" aria-label="${COPY.fbScreenId}">`, info.chapter)}
       </div>
       <section class="fb-description" aria-label="${COPY.fbDescription}"><div class="fb-description-head">${COPY.fbDescription}</div><div class="fb-desc-body"></div></section>`;
@@ -2008,9 +2013,19 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   function identityPair(screenIdInput: string, chapter: string): string {
     return prop(COPY.fbScreenId, screenIdInput) + prop(COPY.fbChapter, `<input data-identity-chapter value="${esc(chapter)}" disabled title="${esc(COPY.fbChapterAuto)}">`, false, 'label', true);
   }
+  // Page title 안쪽 오른쪽의 이름 동기화 버튼. 동기화 중이면 회색으로 두고 누를 수 없다(2026-11-20 사용자 요청).
+  function nameSyncButton(id: string, synced: boolean): string {
+    const label = synced ? COPY.fbNameSynced : COPY.fbNameSync;
+    return `<button type="button" class="input-action" data-action="fb-title-sync" data-id="${esc(id)}" title="${label}" aria-label="${label}"${synced ? ' disabled' : ''}>${NAME_SYNC_ICON}</button>`;
+  }
+  function paintNameSync(id: string, synced: boolean) {
+    const button = root.querySelector<HTMLElement>(`.fb-identity[data-id="${CSS.escape(id)}"] [data-action="fb-title-sync"]`);
+    if (button) button.outerHTML = nameSyncButton(id, synced);
+  }
   // 저장하지 않은 Page title·Screen ID 입력이 있는지. ID는 적용할 때와 같은 규칙(앞뒤 공백 제거, 대문자, 비우면 자동)으로 비교한다.
-  function identityDirty(fb: Flipbook, draft: { title: string; screenId: string }): boolean {
-    return draft.title.trim() !== fb.title.trim()
+  // 제목은 이름 동기화를 켜고 끈 것과, 동기화하지 않을 때 적용될 제목(비우면 자동 제목)으로 비교한다.
+  function identityDirty(fb: Flipbook, draft: { title: string; screenId: string; sync: boolean }): boolean {
+    return draft.sync !== !!fb.nameSynced || !draft.sync && (draft.title.trim() || defaultTitle(fb.kind, fb.screens)) !== fb.title.trim()
       || flipbookIdentity(state!, withFlipbookId(state!, fb, draft.screenId)).screenId !== flipbookIdentity(state!, fb).screenId;
   }
 
@@ -3295,6 +3310,22 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       case 'create-page-manage': tab = 'ADMIN'; adminOpen = COPY.uiApp107; renderAll(); bridge.send({ type: 'templateInfo', templateId: templatePick ?? undefined }); break;
       case 'register-existing': bridge.send({ type: 'registerFlipbooks' }); break;
       // 상세의 「적용하기」: 이 플립북의 제목·ID·Description 수정만 반영한다.
+      // Page title의 이름 동기화: 제목을 비워 자동 제목을 placeholder로 보이고, 「적용하기」를 누르면 동기화를 켠다.
+      case 'fb-title-sync': {
+        const id = el.dataset.id!;
+        const fb = state?.flipbooks.get(id);
+        const draft = identityDrafts.get(id);
+        if (!fb || !draft || draft.rev !== fb.rev) break;
+        draft.title = '';
+        draft.sync = true;
+        const input = root.querySelector<HTMLInputElement>('.fb-identity [data-input="fb-page-title"]');
+        if (input) input.value = '';
+        const head = root.querySelector<HTMLElement>('.detail .title-head .head-name');
+        if (head) head.textContent = defaultTitle(fb.kind, fb.screens);
+        paintNameSync(id, true);
+        paintEditState();
+        break;
+      }
       case 'fb-identity-save': {
         const edit = editOf(el.dataset.id!);
         if (edit) bridge.send({ type: 'applyFlipbookEdits', edits: [edit] });
@@ -4147,10 +4178,12 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
       if (fb && draft) {
         if (el.dataset.input === 'fb-page-title') {
           draft.title = el.value;
+          // 직접 입력하면 이름 동기화가 꺼진다. 버튼을 다시 누를 수 있게 한다.
+          if (draft.sync) { draft.sync = false; paintNameSync(id, false); }
           const head = root.querySelector<HTMLElement>('.detail .title-head .head-name');
           if (head) head.textContent = draft.title.trim() || defaultTitle(fb.kind, fb.screens);
         } else draft.screenId = el.value;
-        const info = flipbookIdentity(state!, { ...fb, title: draft.title, screenId: draft.screenId.trim() });
+        const info = flipbookIdentity(state!, { ...fb, title: draft.title.trim() || defaultTitle(fb.kind, fb.screens), screenId: draft.screenId.trim() });
         const chapter = root.querySelector<HTMLInputElement>('[data-identity-chapter]');
         if (chapter) chapter.value = info.chapter;
         paintEditState();

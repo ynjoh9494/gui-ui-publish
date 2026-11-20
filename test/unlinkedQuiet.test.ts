@@ -9,7 +9,7 @@ import type { Flipbook } from '../src/core/types.ts';
 
 const actor = { id: 'u', name: 'Designer' };
 const book = (id: string, title: string): Flipbook => ({
-  id, rev: 1, kind: 'single', title, autoTitle: true, titleNames: [title], scale: 1, category: { key: 'c', name: 'C', order: 0 },
+  id, rev: 1, kind: 'single', title, nameSynced: true, titleNames: [title], scale: 1, category: { key: 'c', name: 'C', order: 0 },
   screens: [], pageId: 'p1', status: 'active', createdAt: 500, actor, tracked: true,
 });
 
