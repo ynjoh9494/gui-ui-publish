@@ -285,6 +285,8 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
   let refreshingList = false;
   // 페이지 머리의 새로고침을 누르고 응답을 기다리는 페이지(2026-11-20 사용자 요청)
   const refreshingPages = new Set<string>();
+  // 목록을 캔버스와 맞추는 중(본체의 listSyncing). 그동안 오른쪽 영역을 막는다(2026-11-20 사용자 요청).
+  let listSyncing = false;
   // 마지막으로 목록 접기에 반영한 「보고 있는 페이지」. 바뀌면 그 페이지만 펼친다.
   let followedPage: string | null | undefined;
   // 썸네일 이미지: 해시 → blob URL(불러오는 중이면 '')
@@ -1661,7 +1663,13 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
     $('.detail').classList.toggle('locked', tab !== 'ADMIN' && detailLocked(team()));
     $('.detail').classList.remove('flipbook-detail', 'new-flipbook-detail');
     if (tab === 'ADMIN') { forgetHistoryFold(); renderAdmin(); return; }
-    if (team() === 'UI') { forgetHistoryFold(); if (currentNew()) renderNewDetail(); else renderFlipbookDetail(); return; }
+    if (team() === 'UI') {
+      forgetHistoryFold();
+      // 동기화하는 동안은 오른쪽 영역을 비우고 안내만 둔다. 고치던 제목·Description 초안은 그대로 두었다가 끝나면 다시 그린다.
+      if (listSyncing && listTabOpen()) { $('.detail').innerHTML = `<div class="detail-hint"><p>${COPY.uiApp345}</p></div>`; return; }
+      if (currentNew()) renderNewDetail(); else renderFlipbookDetail();
+      return;
+    }
     const t = team();
     // 캔버스에서 제외 프레임만 골랐으면 확인 전후와 관계없이 제외 안내와 해제 버튼을 가운데에 보인다.
     const picked = excludedPicked();
@@ -4490,6 +4498,7 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
           check[t] = idleCheck();
         }
         uiScans = new Map();
+        listSyncing = false;
         // 처음 열 때도 보고 있는 페이지만 펼친다.
         followedPage = undefined;
         followCurrentPage();
@@ -4593,6 +4602,10 @@ export function startApp(bridge: Bridge, root: HTMLElement): () => void {
         if (tab !== 'ADMIN') { renderList(); renderFooter(); if (cleared) renderDetail(); else if (estimateChanged) renderDetailKeepingFocus(); else renderValidation(); }
         break;
       }
+      case 'listSyncing':
+        listSyncing = msg.on;
+        if (team() === 'UI' && tab !== 'ADMIN') renderDetail();
+        break;
       case 'listSynced':
         // 한 페이지만 다시 읽었으면 그 페이지의 새로고침만 끝낸다. 마지막 동기화 시각은 모든 페이지를 읽었을 때만 바꾼다.
         if (msg.pageIds) {

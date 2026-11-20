@@ -174,10 +174,13 @@ export class Controller {
           // GUI Publish로 열고 처음 UI Flipbook으로 바꾸면 UI Flipbook으로 열 때와 같이 시작한다. 그 뒤에 바꿀 때는 지금 보고 있는
           // 플립북 페이지만 다시 읽는다(GUI Publish에 있는 동안 옮긴 페이지는 따라가지 않았다, 2026-11-20 사용자 결정).
           if (msg.mode === 'UI') {
-            if (this.uiStarted) {
-              const [, canvas] = await Promise.all([this.checkTemplate(), this.linkFlipbooks(this.currentFlipbookPages())]);
+            const pageIds = this.currentFlipbookPages();
+            if (!this.uiStarted) await this.startUi();
+            else if (!pageIds.length) await this.checkTemplate();
+            else await this.listSyncing(async () => {
+              const [, canvas] = await Promise.all([this.checkTemplate(), this.linkFlipbooks(pageIds)]);
               await this.syncCanvasSections(canvas);
-            } else await this.startUi();
+            });
           }
           break;
         // 보고 있는 페이지가 바뀌었다(UI Flipbook). 그 페이지가 플립북 페이지면 그 페이지만 다시 읽어 연결 상태·순서·Section을 맞춘다.
@@ -186,7 +189,7 @@ export class Controller {
           {
             const pageIds = this.currentFlipbookPages();
             if (!pageIds.length) break;
-            await this.syncCanvasSections(await this.linkFlipbooks(pageIds));
+            await this.listSyncing(async () => this.syncCanvasSections(await this.linkFlipbooks(pageIds)));
           }
           break;
         case 'ready':
@@ -335,10 +338,12 @@ export class Controller {
           {
             // pageId: 목록 페이지 머리의 새로고침 아이콘. 그 페이지만 다시 읽는다(2026-11-20 사용자 요청). 없으면 플립북 페이지를 모두 읽는다.
             const pageIds = msg.pageId ? [msg.pageId] : undefined;
-            const [, canvas] = await Promise.all([this.checkTemplate(), this.linkFlipbooks(pageIds)]);
-            await this.syncCanvasSections(canvas);
-            // 새 템플릿 플립북의 화면 목록을 캔버스의 추적 GUI로 맞춘다(PRD 1.1: 플러그인을 열 때는 훑지 않는다).
-            await this.followMembers(await (msg.pageId ? this.tracks.refreshPage(msg.pageId) : this.tracks.refresh()), canvas);
+            await this.listSyncing(async () => {
+              const [, canvas] = await Promise.all([this.checkTemplate(), this.linkFlipbooks(pageIds)]);
+              await this.syncCanvasSections(canvas);
+              // 새 템플릿 플립북의 화면 목록을 캔버스의 추적 GUI로 맞춘다.
+              await this.followMembers(await (msg.pageId ? this.tracks.refreshPage(msg.pageId) : this.tracks.refresh()), canvas);
+            });
           }
           break;
         case 'pasteGui': {
@@ -465,8 +470,12 @@ export class Controller {
     // 페이지 머리의 새로고침을 누를 때 읽는다. 읽는 동안은 Figma가 입력을 받지 못할 수 있으므로 「불러오는 중」을 띄운다.
     await this.progress(COPY.controller136);
     // 템플릿 페이지와 플립북 페이지는 서로 기다리지 않고 함께 불러온다.
-    const [, canvas] = await Promise.all([this.checkTemplate(), this.linkFlipbooks(this.currentFlipbookPages())]);
+    const pageIds = this.currentFlipbookPages();
+    const [, canvas] = await Promise.all([this.checkTemplate(), this.linkFlipbooks(pageIds)]);
     await this.syncCanvasSections(canvas);
+    // 처음 열 때는 보고 있는 플립북 페이지를 페이지 머리의 새로고침과 같이 끝까지 맞춘다: 새 템플릿 플립북의 화면 목록도
+    // 캔버스의 추적 GUI로 맞춘다(2026-11-20 사용자 요청: 로딩이 있어도 괜찮다). 다른 페이지는 훑지 않는다.
+    if (pageIds.length) await this.followMembers(await this.tracks.refreshPage(pageIds[0]), canvas);
     if (!this.historyNoticesAsked) {
       this.historyNoticesAsked = true;
       const window = await this.host.historyWindow?.();
@@ -1242,6 +1251,12 @@ export class Controller {
     const canvas = pageIds ? await this.inspectFlipbookPages(pageIds) : await this.inspectFlipbooks();
     this.applyLinks(canvas.found, canvas.spots, pageIds && new Set(pageIds));
     return canvas;
+  }
+
+  // 목록을 캔버스와 맞추는 동안 UI에 알려 오른쪽 영역을 막는다(실패해도 풀어 준다).
+  private async listSyncing(run: () => Promise<void>): Promise<void> {
+    this.host.post({ type: 'listSyncing', on: true });
+    try { await run(); } finally { this.host.post({ type: 'listSyncing', on: false }); }
   }
 
   // 지금 보고 있는 페이지가 플립북 페이지(관리에서 지정했거나 사용 중인 플립북이 기록된 페이지)면 그 페이지, 아니면 빈 배열.

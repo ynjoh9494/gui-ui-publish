@@ -126,3 +126,38 @@ test('the page header refresh reads only that page', async () => {
   assert.ok(posted.some(msg => msg.type === 'listSynced' && msg.pageIds?.join() === 'p2'));
   assert.ok(!posted.some(msg => msg.type === 'error'));
 });
+
+// 2026-11-20 사용자 요청: 처음 열 때는 보고 있는 플립북 페이지의 추적 GUI까지 맞추고, 동기화하는 동안 오른쪽 영역을 막게 알린다.
+test('opening also reads tracked GUI on the current flipbook page only', async () => {
+  const actor = { id: 'u', name: 'Designer' };
+  const store = new Store(memoryKV());
+  store.saveProject({ ...store.state.project, templateNodeId: 'tpl', flipbookPageId: 'p0', flipbookPageIds: ['p0', 'p1'] });
+  const scanned: string[][] = [];
+  const host = {
+    kv: store.kv, actor, mode: 'UI', post: () => {}, templateIssues: async () => [],
+    pages: () => [{ id: 'p0', name: 'UI 0', current: true }, { id: 'p1', name: 'UI 1' }],
+    inspectFlipbooks: async () => ({ found: new Map(), spots: {} }),
+    scanCopies: async (pageIds: string[]) => { scanned.push([...pageIds]); return []; },
+  } as unknown as Host;
+  await new Controller(host).handle({ type: 'ready' });
+  assert.deepEqual(scanned, [['p0']]);
+});
+
+test('page syncs are wrapped in listSyncing on/off; an unregistered page sends nothing', async () => {
+  const { controller, host, store, posted } = await setup();
+  const syncing = () => posted.filter((msg): msg is Extract<ToUi, { type: 'listSyncing' }> => msg.type === 'listSyncing').map(msg => msg.on);
+  posted.length = 0;
+  for (const page of host.pages() as { id: string; current?: boolean }[]) page.current = page.id === 'p1';
+  await controller.handle({ type: 'pageChanged' });
+  assert.deepEqual(syncing(), [true, false]);
+  posted.length = 0;
+  await controller.handle({ type: 'refreshList', pageId: 'p2' });
+  assert.deepEqual(syncing(), [true, false]);
+  posted.length = 0;
+  store.saveProject({ ...store.state.project, flipbookPageIds: ['p0', 'p1'] });
+  store.put(keys.flipbook('fb:p2'), { ...store.state.flipbooks.get('fb:p2')!, status: 'deleted' });
+  controller.store.reload();
+  for (const page of host.pages() as { id: string; current?: boolean }[]) page.current = page.id === 'p2';
+  await controller.handle({ type: 'pageChanged' });
+  assert.deepEqual(syncing(), []);
+});

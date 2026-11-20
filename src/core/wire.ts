@@ -291,6 +291,8 @@ export type ToUi =
   | { type: 'flowRepairDone'; result: import('./flowRepair.ts').FlowRepairResult }
   // pageIds: 이 페이지만 다시 읽었다. 없으면 모든 플립북 페이지를 읽었다.
   | { type: 'listSynced'; at: number; pageIds?: string[] }
+  // 목록을 캔버스와 맞추는 중(페이지 이동·새로고침). 그동안 UI Flipbook 오른쪽 영역을 막는다(2026-11-20 사용자 요청).
+  | { type: 'listSyncing'; on: boolean }
   // 새 버전 페이지 비교 결과. 전환했거나 비교 결과가 맞지 않게 되면 null
   | { type: 'versionMatch'; match: VersionMatchView | null }
   | { type: 'versionSwitched' }

@@ -52,6 +52,15 @@ try {
   await send({ type: 'listSynced', at: 1, pageIds: ['p1'] });
   await page.waitForFunction(() => !document.querySelector('[data-action=refresh-page][data-page=p1].spinning'));
 
+  // 동기화하는 동안 오른쪽 영역을 비우고 안내만 두며, 끝나면 고른 플립북 상세로 돌아온다.
+  await page.locator('.list .row').first().click();
+  await page.locator('.detail.flipbook-detail').waitFor();
+  await send({ type: 'listSyncing', on: true });
+  await page.waitForFunction(() => document.querySelector('.detail .detail-hint')?.textContent?.includes('동기화'));
+  assert.equal(await page.locator('.detail input, .detail button').count(), 0, '동기화 중에는 오른쪽 영역에서 고칠 수 없다');
+  await send({ type: 'listSyncing', on: false });
+  await page.locator('.detail.flipbook-detail').waitFor();
+
   // 플립북 페이지가 아닌 페이지: 모두 접고 오른쪽에 등록 안내와 「추가하기」.
   await page.locator('.list .row').first().click();
   await page.locator('.list .row.selected').waitFor();
@@ -65,7 +74,7 @@ try {
   assert.deepEqual(await page.evaluate(() => window.sent.filter(m => m.type === 'admin').map(m => m.action)), [{ op: 'setFlipbookPages', pageIds: ['p1', 'p2', 'gui'] }]);
   await page.screenshot({ path: 'tmp/page-follow.png' });
   assert.deepEqual(errors, []);
-  console.log('Page follow: current page expands, unregistered notice and add, per-page refresh passed');
+  console.log('Page follow: current page expands, unregistered notice and add, per-page refresh, detail lock while syncing passed');
 } catch (error) {
   await page.screenshot({ path: 'tmp/page-follow-failed.png' });
   console.log(await page.locator('#app').innerText());

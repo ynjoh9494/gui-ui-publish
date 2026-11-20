@@ -1008,9 +1008,11 @@ try {
   }
 
   await mode('UI');
-  for (const head of await app.locator('.group-head').all())
-    if (await head.getAttribute('aria-expanded') === 'false') await head.click();
-  await page.waitForFunction(() => document.querySelectorAll('#app .list .row').length === 3);
+  // 바꾼 뒤 목록이 다시 그려지는 동안 누르면 펼침이 되돌아갈 수 있어, 접힌 머리를 펼치며 행이 다 보일 때까지 기다린다.
+  await page.waitForFunction(() => {
+    for (const head of document.querySelectorAll('#app .group-head[aria-expanded=false]')) head.click();
+    return document.querySelectorAll('#app .list .row').length === 3;
+  });
   assert.equal(await app.locator('[data-action=fb-history-open], .history-overlay').count(), 0);
   await app.locator('.list .row').filter({ hasText: initialName }).first().click();
   await openScreens();
